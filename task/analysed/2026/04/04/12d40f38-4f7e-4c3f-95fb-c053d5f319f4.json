@@ -1,0 +1,16 @@
+{
+  "task_id": "12d40f38-4f7e-4c3f-95fb-c053d5f319f4",
+  "user_id": "a3f1b2c4-d5e6-47f8-9a0b-1c2d3e4f5a6b",
+  "user_name": "张三",
+  "client_id": "abcdef1234567890abcdef1234567890",
+  "client_ide": "vscode",
+  "client_version": "2.6.0",
+  "client_os": "Windows",
+  "client_os_version": "11.0",
+  "caller": "inline",
+  "repo_addr": "https://github.com/example/mobile-app.git",
+  "repo_branch": "feature-auth",
+  "work_dir": "d:\\work\\data-service",
+  "diff": "- fmt.Println(err)\n+ log.Error(\"operation failed\", zap.Error(err))\n+ return fmt.Errorf(\"operation failed: %w\", err)",
+  "diff_lines": 374
+}

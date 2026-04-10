@@ -1,0 +1,42 @@
+server:
+  port: 9990
+
+elasticsearch:
+  url: "https://127.0.0.1:9200"
+  username: "costrict"
+  password: "costrict"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "1"
+  dbname: "report"
+  sslmode: "disable"
+
+stat_database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "1"
+  dbname: "costrict_stat"
+  sslmode: "disable"
+
+rawdata_dir: "../rawdata"
+task_dir: "../task"
+
+cors:
+  allow_origins:
+    - "http://localhost:8880"
+
+ai_estimation:
+  enabled: true
+  api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  base_url: "https://open.bigmodel.cn/api/anthropic"
+  model: "claude-3-5-sonnet-20241022"
+  timeout_ms: 300000
+  http_proxy: ""
+
+task_real_minutes:
+  gap_threshold_minutes: 30
+  extension_minutes: 5

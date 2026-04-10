@@ -1,0 +1,16 @@
+{
+  "task_id": "0a6d1009-6d7b-42a7-9695-0c91dc593cf0",
+  "user_id": "a3f1b2c4-d5e6-47f8-9a0b-1c2d3e4f5a6b",
+  "user_name": "张三",
+  "client_id": "1234567890abcdef1234567890abcdef",
+  "client_ide": "cli",
+  "client_version": "1.0.0",
+  "client_os": "Linux",
+  "client_os_version": "5.15",
+  "caller": "chat",
+  "repo_addr": "https://github.com/example/data-service.git",
+  "repo_branch": "release-v2",
+  "work_dir": "/home/user/mobile-app",
+  "diff": "- old_query = db.Query(sql)\n+ new_query = db.QueryBatch(sql, params)",
+  "diff_lines": 1977
+}

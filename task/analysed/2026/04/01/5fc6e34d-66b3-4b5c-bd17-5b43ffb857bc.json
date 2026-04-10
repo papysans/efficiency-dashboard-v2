@@ -1,0 +1,16 @@
+{
+  "task_id": "5fc6e34d-66b3-4b5c-bd17-5b43ffb857bc",
+  "user_id": "d1e2f3a4-b5c6-47d8-a9e0-f1a2b3c4d5e6",
+  "user_name": "赵六",
+  "client_id": "abcdef1234567890abcdef1234567890",
+  "client_ide": "vscode",
+  "client_version": "2.6.0",
+  "client_os": "Windows",
+  "client_os_version": "11.0",
+  "caller": "inline",
+  "repo_addr": "https://github.com/example/backend.git",
+  "repo_branch": "dev",
+  "work_dir": "d:\\work\\data-service",
+  "diff": "+ func TestCreateUser(t *testing.T) {\n+     user := NewUser(\"test\", \"test@example.com\")\n+     assert.NotNil(t, user)\n+     assert.Equal(t, \"test\", user.Name)\n+ }",
+  "diff_lines": 564
+}

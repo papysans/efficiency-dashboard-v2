@@ -1,0 +1,13 @@
+user_id,user_name,org1,org2,org3,org4,git_user_name,git_user_email
+fa50dba2-91ad-485e-92b0-483deee60d24,dengbinbox,示例公司,研发体系,平台部,基础设施组,dengbin,dengbin@example.com
+a1b2c3d4-e5f6-7890-abcd-ef1234567890,zhangsan,示例公司,研发体系,后端组,支付小组,zhangsan,zhangsan@example.com
+,wangwu,示例公司,产品体系,产品一部,用户产品组,wangwu,wangwu@example.com
+user-001,138xxxx0001,示例公司,研发体系,平台部,基础设施组,user001,user001@example.com
+user-002,139xxxx0002,示例公司,研发体系,平台部,中间件组,user002,user002@example.com
+user-003,zhangsan-gh,示例公司,研发体系,后端组,支付小组,zhangsan-gh,zhangsan@example.com
+user-004,lisi-dev,示例公司,产品体系,产品一部,用户产品组,lisi-dev,lisi@example.com
+user-005,wangwu2025,示例公司,产品体系,产品二部,增长组,wangwu2025,wangwu@example.com
+a3f1b2c4-d5e6-47f8-9a0b-1c2d3e4f5a6b,张三,示例公司,研发体系,后端组,支付小组,zhangsan,zhangsan@example.com
+b7c8d9e0-f1a2-43b4-85c6-d7e8f9a0b1c2,李四,示例公司,研发体系,平台部,基础设施组,lisi,lisi@example.com
+c4d5e6f7-a8b9-40c1-92d3-e4f5a6b7c8d9,王五,示例公司,产品体系,产品一部,用户产品组,wangwu,wangwu@example.com
+d1e2f3a4-b5c6-47d8-a9e0-f1a2b3c4d5e6,赵六,示例公司,产品体系,产品二部,增长组,zhaoliu,zhaoliu@example.com
