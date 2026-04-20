@@ -197,7 +197,7 @@ func listCommitsV2(c *gin.Context) {
 			"user_id":                              commit.UserID,
 			"user_name":                            commit.UserName,
 			"client_id":                            commit.ClientID,
-			"work_path":                            commit.WorkPath,
+			"work_dir":                             commit.WorkDir,
 			"diff_lines":                           commit.DiffLines,
 			"commit_ancient_minutes":               commit.CommitAncientMinutes,
 			"commit_ancient_minutes_reason":        commit.CommitAncientMinutesReason,

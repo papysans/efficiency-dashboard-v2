@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"strings"
 )
@@ -41,18 +40,5 @@ func loadDotEnv() {
 
 func main() {
 	loadDotEnv()
-
-	// 加载配置
-	config, err := LoadConfig("config.yaml")
-	if err != nil {
-		// 尝试上级目录
-		config, err = LoadConfig("../config.yaml")
-		if err != nil {
-			fmt.Printf("加载配置文件失败: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	// 分发子命令
-	RunCLI(config)
+	Execute()
 }

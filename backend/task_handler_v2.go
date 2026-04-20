@@ -106,11 +106,40 @@ func upsertTaskV2(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// 验证必填字段
+	if strings.TrimSpace(task.TaskID) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task_id 不能为空"})
+		return
+	}
+
+	// 幂等性保障：先查询记录是否存在
+	existingTask, err := GetStatTask(statDB, task.TaskID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询任务失败: " + err.Error()})
+		return
+	}
+
+	// 执行 upsert 操作
 	if err := UpsertStatTask(statDB, &task); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+
+	// 返回操作结果
+	if existingTask != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "updated",
+			"task_id": task.TaskID,
+			"action":  "记录已更新",
+		})
+	} else {
+		c.JSON(http.StatusCreated, gin.H{
+			"status":  "created",
+			"task_id": task.TaskID,
+			"action":  "新记录已创建",
+		})
+	}
 }
 
 // batchUpsertConversationsV2 POST /api/v2/tasks/conversations/batch
@@ -189,7 +218,6 @@ func listTasksV2(c *gin.Context) {
 			"repo_branch":                        t.RepoBranch,
 			"work_dir":                           t.WorkDir,
 			"work_dir_id":                        t.WorkDirID,
-			"diff":                               t.Diff,
 			"start_time":                         t.StartTime,
 			"end_time":                           t.EndTime,
 			"upstream_tokens":                    t.UpstreamTokens,
@@ -598,9 +626,9 @@ func getTaskFile(c *gin.Context) {
 	var contentType string
 
 	if typ == "summary" {
-		filePath = filepath.Join(appConfig.TaskDir, "summary", yyyy, mm, dd, taskId+".json")
+		filePath = filepath.Join(appConfig.AnalysedDir, "analysed", yyyy, mm, dd, taskId+".json")
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			filePath = filepath.Join(appConfig.TaskDir, "analysed", yyyy, mm, dd, taskId+".json")
+			filePath = filepath.Join(appConfig.TaskDir, "summary", yyyy, mm, dd, taskId+".json")
 		}
 		contentType = "application/json"
 	} else {

@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     repo_branch VARCHAR(500),
     work_dir TEXT,
     work_dir_id VARCHAR(500),
-    diff TEXT,
     diff_lines INT,
     start_time TIMESTAMPTZ,
     end_time TIMESTAMPTZ,
@@ -81,7 +80,7 @@ CREATE TABLE IF NOT EXISTS commits (
     user_id VARCHAR(255),
     user_name VARCHAR(255),
     client_id VARCHAR(255),
-    work_path TEXT,
+    work_dir TEXT,
     diff_lines INT,
     commit_ancient_minutes FLOAT8,
     commit_ancient_minutes_reason TEXT,
@@ -89,6 +88,10 @@ CREATE TABLE IF NOT EXISTS commits (
     commit_ancient_minutes_reason_manual TEXT,
     task_ids JSONB,
     task_ids_silica JSONB,
+    upstream_tokens BIGINT,
+    downstream_tokens BIGINT,
+    cost FLOAT8,
+    silica FLOAT8,
     commit_real_ai_minutes FLOAT8,
     commit_real_ancient_minutes FLOAT8,
     commit_real_minutes FLOAT8,
@@ -104,6 +107,21 @@ CREATE INDEX IF NOT EXISTS idx_commits_repo_addr ON commits(repo_addr);
 CREATE INDEX IF NOT EXISTS idx_commits_repo_addr_branch ON commits(repo_addr, repo_branch);
 CREATE INDEX IF NOT EXISTS idx_commits_user_id ON commits(user_id);
 CREATE INDEX IF NOT EXISTS idx_commits_commit_time ON commits(commit_time);
+
+-- repos 表
+CREATE TABLE IF NOT EXISTS repos (
+    repo_id VARCHAR(500) PRIMARY KEY,
+    repo_addr TEXT NOT NULL,
+    repo_branch VARCHAR(500) NOT NULL,
+    start_time TIMESTAMPTZ,
+    end_time TIMESTAMPTZ,
+    commit_ids JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_repos_repo_addr ON repos(repo_addr);
+CREATE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch);
 
 -- projects 表（虚拟项目）
 CREATE TABLE IF NOT EXISTS projects (

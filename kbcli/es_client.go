@@ -113,7 +113,7 @@ func (e *ESClient) BulkIndex(indexName string, docs []interface{}) error {
 	var bulkRes struct {
 		Errors bool `json:"errors"`
 		Items  []map[string]struct {
-			Status int    `json:"status"`
+			Status int `json:"status"`
 			Error  *struct {
 				Type   string `json:"type"`
 				Reason string `json:"reason"`

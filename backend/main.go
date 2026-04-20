@@ -31,6 +31,7 @@ type Config struct {
 	StatDatabase  DatabaseConfig `yaml:"stat_database"`
 	RawDataDir    string         `yaml:"rawdata_dir"`
 	TaskDir       string         `yaml:"task_dir"`
+	AnalysedDir   string         `yaml:"analysed_dir"`
 	CORS          struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
@@ -81,6 +82,7 @@ func loadConfig(path string) (Config, error) {
 	}
 	cfg.RawDataDir = "../rawdata"
 	cfg.TaskDir = "../task"
+	cfg.AnalysedDir = "../task"
 	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}
 	cfg.TaskRealMinutes.GapThresholdMinutes = 30
 	cfg.TaskRealMinutes.ExtensionMinutes = 5
@@ -129,6 +131,12 @@ func main() {
 		log.Fatalf("costrict_stat数据库初始化失败: %v", err)
 	}
 	log.Println("costrict_stat数据库连接成功")
+
+	// 确保 stat 数据库表结构存在（幂等，每次启动执行）
+	if err := EnsureStatSchema(statDB); err != nil {
+		log.Fatalf("costrict_stat 数据库表结构初始化失败: %v", err)
+	}
+	log.Println("costrict_stat 数据库表结构检查完成")
 
 	// 加载 org_mapping.csv
 	if err := LoadOrgMapping("../org_mapping.csv"); err != nil {

@@ -7,76 +7,94 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
-// runReindex 执行 reindex 命令，将指定日期的 rawdata 写入 ES
-func runReindex(config *Config, args []string) {
-	step := parseFlag(args, "step", "")
-	force := parseBoolFlag(args, "force")
-	dateStr := parseFlag(args, "date", "")
-	startDate := parseFlag(args, "start-date", "")
-	endDate := parseFlag(args, "end-date", "")
+var reindexCmd = &cobra.Command{
+	Use:   "reindex",
+	Short: "将指定日期的 rawdata 写入 Elasticsearch",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		step, _ := cmd.Flags().GetString("step")
+		force, _ := cmd.Flags().GetBool("force")
+		dateStr, _ := cmd.Flags().GetString("date")
+		startDate, _ := cmd.Flags().GetString("start-date")
+		endDate, _ := cmd.Flags().GetString("end-date")
 
-	// 确定日期列表
-	var dates []string
-	if startDate != "" && endDate != "" {
-		var err error
-		dates, err = generateDateRange(startDate, endDate)
+		// 确定日期列表
+		var dates []string
+		if startDate != "" && endDate != "" {
+			var err error
+			dates, err = generateDateRange(startDate, endDate)
+			if err != nil {
+				return fmt.Errorf("%w", err)
+			}
+		} else if dateStr != "" {
+			if len(dateStr) != 8 {
+				return fmt.Errorf("--date 格式不正确，应为 YYYYMMDD，如 20260331")
+			}
+			dates = []string{dateStr}
+		} else {
+			return fmt.Errorf("必须指定 --date 或 --start-date/--end-date 参数（格式: YYYYMMDD）")
+		}
+
+		// 初始化 OrgProvider
+		orgProvider, err := NewOrgProvider(cfg.OrgCSVFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-			os.Exit(1)
+			fmt.Printf("警告: 加载组织信息失败: %v，将使用空组织信息\n", err)
+			orgProvider = &OrgProvider{
+				userIDMap:   make(map[string]OrgInfo),
+				userNameMap: make(map[string]OrgInfo),
+			}
 		}
-	} else if dateStr != "" {
-		if len(dateStr) != 8 {
-			fmt.Fprintf(os.Stderr, "错误: --date 格式不正确，应为 YYYYMMDD，如 20260331\n")
-			os.Exit(1)
+
+		// 初始化 ESClient
+		esClient, err := NewESClient(cfg)
+		if err != nil {
+			return fmt.Errorf("%w", err)
 		}
-		dates = []string{dateStr}
-	} else {
-		fmt.Fprintln(os.Stderr, "错误: 必须指定 --date 或 --start-date/--end-date 参数（格式: YYYYMMDD）")
-		os.Exit(1)
-	}
 
-	// 初始化 OrgProvider
-	orgProvider, err := NewOrgProvider(config.OrgCSVFile)
-	if err != nil {
-		fmt.Printf("警告: 加载组织信息失败: %v，将使用空组织信息\n", err)
-		orgProvider = &OrgProvider{
-			userIDMap:   make(map[string]OrgInfo),
-			userNameMap: make(map[string]OrgInfo),
+		backendClient := NewBackendClient(cfg.BackendURL)
+
+		for _, d := range dates {
+			if err := reindexDate(cfg, esClient, orgProvider, backendClient, d, step, force); err != nil {
+				return err
+			}
 		}
-	}
 
-	// 初始化 ESClient
-	esClient, err := NewESClient(config)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-		os.Exit(1)
-	}
+		fmt.Printf("\n✅ reindex 完成！共处理 %d 个日期\n", len(dates))
+		return nil
+	},
+}
 
-	backendClient := NewBackendClient(config.BackendURL)
-
-	for _, d := range dates {
-		reindexDate(config, esClient, orgProvider, backendClient, d, step, force)
-	}
-
-	fmt.Printf("\n✅ reindex 完成！共处理 %d 个日期\n", len(dates))
+func init() {
+	reindexCmd.Flags().String("date", "", "指定日期（格式: YYYYMMDD）")
+	reindexCmd.Flags().String("start-date", "", "开始日期（格式: YYYYMMDD）")
+	reindexCmd.Flags().String("end-date", "", "结束日期（格式: YYYYMMDD）")
+	reindexCmd.Flags().String("step", "", "执行步骤（request 或 task，默认全部）")
+	reindexCmd.Flags().Bool("force", false, "强制重新创建索引")
+	rootCmd.AddCommand(reindexCmd)
 }
 
 // reindexDate 处理单个日期的 reindex
-func reindexDate(config *Config, esClient *ESClient, orgProvider *OrgProvider, backendClient *BackendClient, dateStr string, step string, force bool) {
+func reindexDate(config *Config, esClient *ESClient, orgProvider *OrgProvider, backendClient *BackendClient, dateStr string, step string, force bool) error {
 	fmt.Printf("\n处理日期: %s\n", dateStr)
 
 	if step == "" || step == "request" {
-		reindexRequest(config, esClient, orgProvider, dateStr, force)
+		if err := reindexRequest(config, esClient, orgProvider, dateStr, force); err != nil {
+			return err
+		}
 	}
 	if step == "" || step == "task" {
-		reindexTask(config, esClient, orgProvider, backendClient, dateStr, force)
+		if err := reindexTask(config, esClient, orgProvider, backendClient, dateStr, force); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // reindexRequest 处理 request 步骤
-func reindexRequest(config *Config, esClient *ESClient, orgProvider *OrgProvider, dateStr string, force bool) {
+func reindexRequest(config *Config, esClient *ESClient, orgProvider *OrgProvider, dateStr string, force bool) error {
 	year := dateStr[:4]
 	month := dateStr[4:6]
 	day := dateStr[6:8]
@@ -92,7 +110,7 @@ func reindexRequest(config *Config, esClient *ESClient, orgProvider *OrgProvider
 
 	if _, err := os.Stat(rawDataPath); os.IsNotExist(err) {
 		fmt.Printf("警告: 目录不存在: %s，跳过 request 步骤\n", rawDataPath)
-		return
+		return nil
 	}
 
 	var rawDocs []RawDoc
@@ -140,15 +158,14 @@ func reindexRequest(config *Config, esClient *ESClient, orgProvider *OrgProvider
 		return nil
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "错误: 遍历目录失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("遍历目录失败: %w", err)
 	}
 
 	fmt.Printf("文件扫描完成: 成功解析 %d 个，跳过 %d 个\n", processed, skipped)
 
 	if len(rawDocs) == 0 {
 		fmt.Println("没有可写入的 request 文档，跳过")
-		return
+		return nil
 	}
 
 	requestIndexName := fmt.Sprintf("costrict_chat_request_%s", dateStr)
@@ -159,8 +176,7 @@ func reindexRequest(config *Config, esClient *ESClient, orgProvider *OrgProvider
 
 	// 确保索引存在
 	if err := esClient.CreateIndexIfNotExists(requestIndexName, RequestIndexMapping); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("%w", err)
 	}
 
 	fmt.Printf("写入 request 层文档: %d 条\n", len(rawDocs))
@@ -169,20 +185,20 @@ func reindexRequest(config *Config, esClient *ESClient, orgProvider *OrgProvider
 		requestIfaces[i] = doc
 	}
 	if err := esClient.BulkIndex(requestIndexName, requestIfaces); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: request 层写入失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("request 层写入失败: %w", err)
 	}
 	fmt.Printf("request 层写入成功: %s（%d 条）\n", requestIndexName, len(rawDocs))
+	return nil
 }
 
 // reindexTask 处理 task 步骤
-func reindexTask(config *Config, esClient *ESClient, orgProvider *OrgProvider, backendClient *BackendClient, dateStr string, force bool) {
+func reindexTask(config *Config, esClient *ESClient, orgProvider *OrgProvider, backendClient *BackendClient, dateStr string, force bool) error {
 	requestIndexName := fmt.Sprintf("costrict_chat_request_%s", dateStr)
 
 	rawMessages, err := esClient.ScrollAll(requestIndexName)
 	if err != nil {
 		fmt.Printf("警告: 从 %s 读取数据失败: %v，跳过 task 步骤\n", requestIndexName, err)
-		return
+		return nil
 	}
 
 	var rawDocs []RawDoc
@@ -260,7 +276,7 @@ func reindexTask(config *Config, esClient *ESClient, orgProvider *OrgProvider, b
 
 	if len(taskDocs) == 0 {
 		fmt.Println("没有可写入的 task 文档，跳过")
-		return
+		return nil
 	}
 
 	taskIndexName := fmt.Sprintf("costrict_chat_task_%s", dateStr)
@@ -272,8 +288,7 @@ func reindexTask(config *Config, esClient *ESClient, orgProvider *OrgProvider, b
 
 	// 确保索引存在（已存在则跳过）
 	if err := esClient.CreateIndexIfNotExists(taskIndexName, TaskIndexMapping); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("%w", err)
 	}
 
 	fmt.Printf("写入 task 层文档: %d 条\n", len(taskDocs))
@@ -282,10 +297,10 @@ func reindexTask(config *Config, esClient *ESClient, orgProvider *OrgProvider, b
 		taskIfaces[i] = doc
 	}
 	if err := esClient.BulkIndex(taskIndexName, taskIfaces); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: task 层写入失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("task 层写入失败: %w", err)
 	}
 	fmt.Printf("task 层写入成功: %s（%d 条）\n", taskIndexName, len(taskDocs))
+	return nil
 }
 
 // generateDateRange 生成从 startDate 到 endDate 的日期列表（YYYYMMDD 格式）

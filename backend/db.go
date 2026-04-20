@@ -29,6 +29,210 @@ func InitDB(cfg DatabaseConfig) (*sql.DB, error) {
 	return db, nil
 }
 
+// EnsureStatSchema 确保 costrict_stat 数据库的表结构存在
+// 使用 CREATE TABLE IF NOT EXISTS 实现幂等，每次启动时调用
+func EnsureStatSchema(db *sql.DB) error {
+	stmts := []string{
+		// tasks 表
+		`CREATE TABLE IF NOT EXISTS tasks (
+			task_id VARCHAR(500) PRIMARY KEY,
+			user_id VARCHAR(255),
+			user_name VARCHAR(255),
+			client_id VARCHAR(255),
+			client_ide VARCHAR(100),
+			client_version VARCHAR(100),
+			client_os VARCHAR(100),
+			client_os_version VARCHAR(100),
+			caller VARCHAR(100),
+			repo_addr TEXT,
+			repo_branch VARCHAR(500),
+			work_dir TEXT,
+			work_dir_id VARCHAR(500),
+			diff_lines INT,
+			start_time TIMESTAMPTZ,
+			end_time TIMESTAMPTZ,
+			upstream_tokens BIGINT,
+			downstream_tokens BIGINT,
+			cost FLOAT8,
+			task_real_minutes FLOAT8,
+			task_real_minutes_reason TEXT,
+			task_real_minutes_manual FLOAT8,
+			task_real_minutes_reason_manual TEXT,
+			task_ancient_minutes FLOAT8,
+			task_ancient_minutes_reason TEXT,
+			task_ancient_minutes_manual FLOAT8,
+			task_ancient_minutes_reason_manual TEXT,
+			efficiency_ratio FLOAT8,
+			title VARCHAR(200),
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_work_dir_id ON tasks(work_dir_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_start_time ON tasks(start_time)`,
+
+		// task_conversations 表
+		`CREATE TABLE IF NOT EXISTS task_conversations (
+			id SERIAL PRIMARY KEY,
+			task_id VARCHAR(500) NOT NULL,
+			request_id VARCHAR(500) NOT NULL,
+			sender VARCHAR(50),
+			prompt_mode VARCHAR(50),
+			mode VARCHAR(100),
+			model VARCHAR(200),
+			start_time TIMESTAMPTZ,
+			end_time TIMESTAMPTZ,
+			process_time BIGINT,
+			process_ttft BIGINT,
+			upstream_tokens BIGINT,
+			downstream_tokens BIGINT,
+			cost FLOAT8,
+			request_content TEXT,
+			response_content TEXT,
+			user_input TEXT,
+			diff TEXT,
+			diff_lines BIGINT,
+			error_code VARCHAR(100),
+			error_reason TEXT,
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(task_id, request_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_task_conversations_task_id ON task_conversations(task_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_task_conversations_start_time ON task_conversations(start_time)`,
+
+		// commits 表
+		`CREATE TABLE IF NOT EXISTS commits (
+			commit_id VARCHAR(500) PRIMARY KEY,
+			commit_time TIMESTAMPTZ,
+			repo_addr TEXT,
+			repo_branch VARCHAR(500),
+			git_user_name VARCHAR(255),
+			git_user_email VARCHAR(255),
+			user_id VARCHAR(255),
+			user_name VARCHAR(255),
+			client_id VARCHAR(255),
+			work_dir TEXT,
+			diff_lines INT,
+			commit_ancient_minutes FLOAT8,
+			commit_ancient_minutes_reason TEXT,
+			commit_ancient_minutes_manual FLOAT8,
+			commit_ancient_minutes_reason_manual TEXT,
+			task_ids JSONB,
+			task_ids_silica JSONB,
+			upstream_tokens BIGINT,
+			downstream_tokens BIGINT,
+			cost FLOAT8,
+			silica FLOAT8,
+			commit_real_ai_minutes FLOAT8,
+			commit_real_ancient_minutes FLOAT8,
+			commit_real_minutes FLOAT8,
+			commit_real_minutes_reason TEXT,
+			commit_real_minutes_manual FLOAT8,
+			commit_real_minutes_reason_manual TEXT,
+			comment VARCHAR(150),
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_commits_repo_addr ON commits(repo_addr)`,
+		`CREATE INDEX IF NOT EXISTS idx_commits_repo_addr_branch ON commits(repo_addr, repo_branch)`,
+		`CREATE INDEX IF NOT EXISTS idx_commits_user_id ON commits(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_commits_commit_time ON commits(commit_time)`,
+
+		// repos 表
+		`CREATE TABLE IF NOT EXISTS repos (
+			repo_id VARCHAR(500) PRIMARY KEY,
+			repo_addr TEXT NOT NULL,
+			repo_branch VARCHAR(500) NOT NULL,
+			start_time TIMESTAMPTZ,
+			end_time TIMESTAMPTZ,
+			commit_ids JSONB DEFAULT '[]',
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_repos_repo_addr ON repos(repo_addr)`,
+		`CREATE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch)`,
+
+		// projects 表（虚拟项目）
+		`CREATE TABLE IF NOT EXISTS projects (
+			project_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+			name VARCHAR(500) NOT NULL,
+			description TEXT,
+			repos JSONB DEFAULT '[]',
+			task_ids JSONB DEFAULT '[]',
+			task_ids_silica JSONB DEFAULT '[]',
+			start_time TIMESTAMPTZ,
+			end_time TIMESTAMPTZ,
+			start_time_manual TIMESTAMPTZ,
+			end_time_manual TIMESTAMPTZ,
+			upstream_tokens BIGINT DEFAULT 0,
+			downstream_tokens BIGINT DEFAULT 0,
+			cost FLOAT8 DEFAULT 0,
+			project_ancient_minutes FLOAT8,
+			project_ancient_minutes_reason TEXT,
+			project_ancient_minutes_manual FLOAT8,
+			project_ancient_minutes_reason_manual TEXT,
+			project_real_process_minutes FLOAT8,
+			project_real_process_minutes_reason TEXT,
+			project_real_process_minutes_manual FLOAT8,
+			project_real_process_minutes_reason_manual TEXT,
+			project_real_lead_minutes FLOAT8,
+			project_real_lead_minutes_reason TEXT,
+			project_real_lead_minutes_manual FLOAT8,
+			project_real_lead_minutes_reason_manual TEXT,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)`,
+		`CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at)`,
+
+		// user_productivity 表（用户生产力预聚合）
+		`CREATE TABLE IF NOT EXISTS user_productivity (
+			user_productivity_id VARCHAR(500) PRIMARY KEY,
+			create_time TIMESTAMPTZ,
+			user_id VARCHAR(255),
+			user_name VARCHAR(255),
+			task_ids JSONB,
+			work_dir_ids JSONB,
+			task_diff_lines INT,
+			upstream_tokens BIGINT,
+			downstream_tokens BIGINT,
+			cost FLOAT8,
+			task_real_minutes FLOAT8,
+			task_ancient_minutes FLOAT8,
+			task_efficiency_ratio FLOAT8,
+			commit_ids JSONB,
+			commit_diff_lines INT,
+			commit_ancient_minutes FLOAT8,
+			commit_real_ai_minutes FLOAT8,
+			commit_real_ancient_minutes FLOAT8,
+			commit_real_minutes FLOAT8,
+			commit_efficiency_ratio FLOAT8,
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_productivity_user_id ON user_productivity(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_productivity_create_time ON user_productivity(create_time)`,
+
+		// user_groups 表（虚拟用户组）
+		`CREATE TABLE IF NOT EXISTS user_groups (
+			group_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+			name VARCHAR(500) NOT NULL,
+			org_name VARCHAR(200) DEFAULT '',
+			user_ids JSONB DEFAULT '[]',
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_groups_name ON user_groups(name)`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("EnsureStatSchema 执行失败 [%s]: %w", stmt[:60], err)
+		}
+	}
+	return nil
+}
+
 // ProjectMetrics 项目维度指标
 type ProjectMetrics struct {
 	ID                       int
@@ -650,7 +854,6 @@ type StatTask struct {
 	RepoBranch                     *string    `json:"repo_branch"`
 	WorkDir                        *string    `json:"work_dir"`
 	WorkDirID                      *string    `json:"work_dir_id"`
-	Diff                           *string    `json:"diff"`
 	DiffLines                      *int       `json:"diff_lines"`
 	StartTime                      *time.Time `json:"start_time"`
 	EndTime                        *time.Time `json:"end_time"`
@@ -701,7 +904,7 @@ type StatTaskConversation struct {
 
 var statTaskSelectColumns = `task_id, user_id, user_name, client_id, client_ide, client_version, client_os, client_os_version,
 	caller, repo_addr, repo_branch, work_dir, work_dir_id,
-	diff, diff_lines,
+	diff_lines,
 	start_time, end_time, upstream_tokens, downstream_tokens, cost,
 	task_real_minutes, task_real_minutes_reason,
 	task_real_minutes_manual, task_real_minutes_reason_manual,
@@ -713,7 +916,7 @@ func scanStatTask(s rowScanner, m *StatTask) error {
 	return s.Scan(
 		&m.TaskID, &m.UserID, &m.UserName, &m.ClientID, &m.ClientIDE, &m.ClientVersion, &m.ClientOS, &m.ClientOSVersion,
 		&m.Caller, &m.RepoAddr, &m.RepoBranch, &m.WorkDir, &m.WorkDirID,
-		&m.Diff, &m.DiffLines,
+		&m.DiffLines,
 		&m.StartTime, &m.EndTime, &m.UpstreamTokens, &m.DownstreamTokens, &m.Cost,
 		&m.TaskRealMinutes, &m.TaskRealMinutesReason,
 		&m.TaskRealMinutesManual, &m.TaskRealMinutesReasonManual,
@@ -749,7 +952,7 @@ func UpsertStatTask(db *sql.DB, t *StatTask) error {
 		INSERT INTO tasks (
 			task_id, user_id, user_name, client_id, client_ide, client_version, client_os, client_os_version,
 			caller, repo_addr, repo_branch, work_dir, work_dir_id,
-			diff, diff_lines,
+			diff_lines,
 			start_time, end_time, upstream_tokens, downstream_tokens, cost,
 			task_real_minutes, task_real_minutes_reason,
 			task_real_minutes_manual, task_real_minutes_reason_manual,
@@ -759,30 +962,30 @@ func UpsertStatTask(db *sql.DB, t *StatTask) error {
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8,
 			$9, $10, $11, $12, $13,
-			$14, $15,
-			$16, $17, $18, $19, $20,
-			$21, $22,
-			$23, $24,
-			$25, $26,
-			$27, $28,
-			$29, $30
+			$14,
+			$15, $16, $17, $18, $19,
+			$20, $21,
+			$22, $23,
+			$24, $25,
+			$26, $27,
+			$28, $29
 		)
 		ON CONFLICT(task_id) DO UPDATE SET
 			user_id = $2, user_name = $3, client_id = $4, client_ide = $5, client_version = $6,
 			client_os = $7, client_os_version = $8, caller = $9,
 			repo_addr = $10, repo_branch = $11, work_dir = $12, work_dir_id = $13,
-			diff = $14, diff_lines = $15,
-			start_time = $16, end_time = $17, upstream_tokens = $18, downstream_tokens = $19,
-			cost = $20,
-			task_real_minutes = $21, task_real_minutes_reason = $22,
-			task_real_minutes_manual = $23, task_real_minutes_reason_manual = $24,
-			task_ancient_minutes = $25, task_ancient_minutes_reason = $26,
-			task_ancient_minutes_manual = $27, task_ancient_minutes_reason_manual = $28,
-			efficiency_ratio = $29, title = COALESCE($30, tasks.title),
+			diff_lines = $14,
+			start_time = $15, end_time = $16, upstream_tokens = $17, downstream_tokens = $18,
+			cost = $19,
+			task_real_minutes = $20, task_real_minutes_reason = $21,
+			task_real_minutes_manual = $22, task_real_minutes_reason_manual = $23,
+			task_ancient_minutes = $24, task_ancient_minutes_reason = $25,
+			task_ancient_minutes_manual = $26, task_ancient_minutes_reason_manual = $27,
+			efficiency_ratio = $28, title = COALESCE($29, tasks.title),
 			updated_at = CURRENT_TIMESTAMP`,
 		t.TaskID, t.UserID, t.UserName, t.ClientID, t.ClientIDE, t.ClientVersion, t.ClientOS, t.ClientOSVersion,
 		t.Caller, t.RepoAddr, t.RepoBranch, t.WorkDir, t.WorkDirID,
-		t.Diff, t.DiffLines,
+		t.DiffLines,
 		t.StartTime, t.EndTime, t.UpstreamTokens, t.DownstreamTokens, t.Cost,
 		t.TaskRealMinutes, t.TaskRealMinutesReason,
 		t.TaskRealMinutesManual, t.TaskRealMinutesReasonManual,
@@ -1053,7 +1256,7 @@ type StatCommit struct {
 	UserID                           *string         `json:"user_id"`
 	UserName                         *string         `json:"user_name"`
 	ClientID                         *string         `json:"client_id"`
-	WorkPath                         *string         `json:"work_path"`
+	WorkDir                          *string         `json:"work_dir"`
 	DiffLines                        *int            `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
 	CommitAncientMinutesReason       *string         `json:"commit_ancient_minutes_reason"`
@@ -1075,7 +1278,7 @@ type StatCommit struct {
 // --- stat commits 列名与 scan 辅助 ---
 
 var statCommitSelectColumns = `commit_id, commit_time, repo_addr, repo_branch,
-	git_user_name, git_user_email, user_id, user_name, client_id, work_path,
+	git_user_name, git_user_email, user_id, user_name, client_id, work_dir,
 	diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason,
 	commit_ancient_minutes_manual, commit_ancient_minutes_reason_manual,
 	task_ids, task_ids_silica,
@@ -1089,7 +1292,7 @@ func scanStatCommit(s rowScanner, m *StatCommit) error {
 	var taskIDs, taskIDsSilica *[]byte
 	err := s.Scan(
 		&m.CommitID, &m.CommitTime, &m.RepoAddr, &m.RepoBranch,
-		&m.GitUserName, &m.GitUserEmail, &m.UserID, &m.UserName, &m.ClientID, &m.WorkPath,
+		&m.GitUserName, &m.GitUserEmail, &m.UserID, &m.UserName, &m.ClientID, &m.WorkDir,
 		&m.DiffLines, &m.CommitAncientMinutes, &m.CommitAncientMinutesReason,
 		&m.CommitAncientMinutesManual, &m.CommitAncientMinutesReasonManual,
 		&taskIDs, &taskIDsSilica,
@@ -1118,7 +1321,7 @@ func UpsertStatCommit(db *sql.DB, c *StatCommit) error {
 	_, err := db.Exec(`
 		INSERT INTO commits (
 			commit_id, commit_time, repo_addr, repo_branch,
-			git_user_name, git_user_email, user_id, user_name, client_id, work_path,
+			git_user_name, git_user_email, user_id, user_name, client_id, work_dir,
 			diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason,
 			commit_ancient_minutes_manual, commit_ancient_minutes_reason_manual,
 			task_ids, task_ids_silica,
@@ -1140,7 +1343,7 @@ func UpsertStatCommit(db *sql.DB, c *StatCommit) error {
 		ON CONFLICT(commit_id) DO UPDATE SET
 			commit_time = $2, repo_addr = $3, repo_branch = $4,
 			git_user_name = $5, git_user_email = $6, user_id = $7, user_name = $8,
-			client_id = $9, work_path = $10,
+			client_id = $9, work_dir = $10,
 			diff_lines = $11, commit_ancient_minutes = $12, commit_ancient_minutes_reason = $13,
 			commit_ancient_minutes_manual = $14, commit_ancient_minutes_reason_manual = $15,
 			task_ids = $16, task_ids_silica = $17,
@@ -1150,7 +1353,7 @@ func UpsertStatCommit(db *sql.DB, c *StatCommit) error {
 			comment = $24,
 			updated_at = CURRENT_TIMESTAMP`,
 		c.CommitID, c.CommitTime, c.RepoAddr, c.RepoBranch,
-		c.GitUserName, c.GitUserEmail, c.UserID, c.UserName, c.ClientID, c.WorkPath,
+		c.GitUserName, c.GitUserEmail, c.UserID, c.UserName, c.ClientID, c.WorkDir,
 		c.DiffLines, c.CommitAncientMinutes, c.CommitAncientMinutesReason,
 		c.CommitAncientMinutesManual, c.CommitAncientMinutesReasonManual,
 		jsonRawToString(c.TaskIDs), jsonRawToString(c.TaskIDsSilica),
@@ -1314,7 +1517,7 @@ func BatchUpsertStatCommits(db *sql.DB, commits []StatCommit) error {
 		_, err := tx.Exec(`
 			INSERT INTO commits (
 				commit_id, commit_time, repo_addr, repo_branch,
-				git_user_name, git_user_email, user_id, user_name, client_id, work_path,
+				git_user_name, git_user_email, user_id, user_name, client_id, work_dir,
 				diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason,
 				commit_ancient_minutes_manual, commit_ancient_minutes_reason_manual,
 				task_ids, task_ids_silica,
@@ -1336,7 +1539,7 @@ func BatchUpsertStatCommits(db *sql.DB, commits []StatCommit) error {
 			ON CONFLICT(commit_id) DO UPDATE SET
 				commit_time = $2, repo_addr = $3, repo_branch = $4,
 				git_user_name = $5, git_user_email = $6, user_id = $7, user_name = $8,
-				client_id = $9, work_path = $10,
+				client_id = $9, work_dir = $10,
 				diff_lines = $11, commit_ancient_minutes = $12, commit_ancient_minutes_reason = $13,
 				commit_ancient_minutes_manual = $14, commit_ancient_minutes_reason_manual = $15,
 				task_ids = $16, task_ids_silica = $17,
@@ -1346,7 +1549,7 @@ func BatchUpsertStatCommits(db *sql.DB, commits []StatCommit) error {
 				comment = $24,
 				updated_at = CURRENT_TIMESTAMP`,
 			c.CommitID, c.CommitTime, c.RepoAddr, c.RepoBranch,
-			c.GitUserName, c.GitUserEmail, c.UserID, c.UserName, c.ClientID, c.WorkPath,
+			c.GitUserName, c.GitUserEmail, c.UserID, c.UserName, c.ClientID, c.WorkDir,
 			c.DiffLines, c.CommitAncientMinutes, c.CommitAncientMinutesReason,
 			c.CommitAncientMinutesManual, c.CommitAncientMinutesReasonManual,
 			jsonRawToString(c.TaskIDs), jsonRawToString(c.TaskIDsSilica),

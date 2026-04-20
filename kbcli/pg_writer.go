@@ -25,7 +25,7 @@ type PGTaskData struct {
 	RepoAddr                 *string    `json:"RepoAddr"`
 	RepoBranch               *string    `json:"RepoBranch"`
 	RepoID                   *string    `json:"RepoID"`
-	WorkPath                 *string    `json:"WorkPath"`
+	WorkDir                  *string    `json:"WorkDir"`
 	ProjectID                *string    `json:"ProjectID"`
 	StartTime                *time.Time `json:"StartTime"`
 	EndTime                  *time.Time `json:"EndTime"`
@@ -74,7 +74,7 @@ func MapTaskDocToPG(taskDoc TaskDoc, rawDocs []RawDoc) *PGTaskData {
 		UserName:                 ptrString(taskDoc.UserName),
 		ClientID:                 ptrString(taskDoc.ClientID),
 		Caller:                   ptrString(taskDoc.Caller),
-		WorkPath:                 ptrString(taskDoc.ProjectPath),
+		WorkDir:                  ptrString(taskDoc.ProjectPath),
 		ProjectID:                ptrString(taskDoc.ProjectID),
 		IDE:                      ptrString(taskDoc.ClientIDE),
 		Version:                  ptrString(taskDoc.ClientVersion),
@@ -248,7 +248,7 @@ type PGCommitData struct {
 	UserID                     *string    `json:"UserID"`
 	UserName                   *string    `json:"UserName"`
 	ClientID                   *string    `json:"ClientID"`
-	WorkPath                   *string    `json:"WorkPath"`
+	WorkDir                    *string    `json:"WorkDir"`
 	DiffLines                  *int64     `json:"DiffLines"`
 	CommitAncientMinutes       *float64   `json:"CommitAncientMinutes"`
 	CommitAncientMinutesReason *string    `json:"CommitAncientMinutesReason"`

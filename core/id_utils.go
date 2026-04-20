@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	reNonPathSafe    = regexp.MustCompile(`[^a-z0-9\-.]`)
+	reNonPathSafe    = regexp.MustCompile(`[^a-z0-9\-]`)
 	reMultipleDashes = regexp.MustCompile(`-{2,}`)
 )
 

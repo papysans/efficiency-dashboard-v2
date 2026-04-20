@@ -1,5 +1,5 @@
 database:
-  host: localhost
+  host: 127.0.0.1
   port: 5432
   user: postgres
   password: "1"
@@ -7,9 +7,11 @@ database:
   sslmode: disable
 
 elasticsearch:
-  url: "https://127.0.0.1:9200"
-  username: "costrict"
+  url: "http://127.0.0.1:9200"
+  username: "elastic"
   password: "costrict"
+  # username: "costrict"
+  # password: "costrict"
 
 model_prices:
   GLM-4.7:
@@ -28,7 +30,7 @@ model_prices:
     in_price: 0.0
     out_price: 0.0
 
-rawdata_dir: "../rawdata"
+rawdata_dir: "./rawdata"
 
 # HTTP 代理（用于 git clone 等网络操作）
 http_proxy: "http://127.0.0.1:7890"
@@ -37,7 +39,7 @@ org_csv_file: "./org_mapping.csv"
 
 
 stat_database:
-  host: localhost
+  host: 127.0.0.1
   port: 5432
   user: postgres
   password: "1"
