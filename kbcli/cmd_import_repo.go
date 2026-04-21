@@ -301,7 +301,7 @@ func ensureImportRepoTables(db *sql.DB) error {
 		user_id VARCHAR(255),
 		user_name VARCHAR(255),
 		client_id VARCHAR(255),
-		work_path TEXT,
+		work_dir TEXT,
 		diff_lines INT,
 		commit_ancient_minutes FLOAT8,
 		commit_ancient_minutes_reason TEXT,
@@ -326,6 +326,9 @@ func ensureImportRepoTables(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("创建commits表失败: %w", err)
 	}
+
+	// 兼容旧表：将 work_path 列重命名为 work_dir
+	db.Exec(`ALTER TABLE commits RENAME COLUMN work_path TO work_dir`)
 
 	// 创建 repos 表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS repos (

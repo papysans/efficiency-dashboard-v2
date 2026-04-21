@@ -56,6 +56,8 @@ type taskConversation struct {
 	DiffLines        int64      `json:"diff_lines"`
 	ErrorCode        flexString `json:"error_code"`
 	ErrorReason      flexString `json:"error_reason"`
+	// 内部使用的计算字段
+	calculatedCost float64 // 计算得出的cost（如果原始cost为0或缺失）
 }
 
 type flexString string
@@ -230,10 +232,10 @@ func importSingleTask(db *sql.DB, summaryPath, summaryDir, conversationDir, anal
 	convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
 	convPath := filepath.Join(conversationDir, convRelPath)
 
-	// 解析 conversation
+	// 解析 conversation（传入modelPrices用于计算cost）
 	var conversations []taskConversation
 	if _, err := os.Stat(convPath); err == nil {
-		conversations, err = parseConversationFile(convPath)
+		conversations, err = parseConversationFile(convPath, cfg.ModelPrices)
 		if err != nil {
 			return fmt.Errorf("解析conversation文件失败: %w", err)
 		}
@@ -545,8 +547,8 @@ func calculateImportTaskRealMinutes(conversations []taskConversation, gapThresho
 	return totalMinutes, reason
 }
 
-// parseConversationFile 解析 .jsonl 文件为 conversation 列表
-func parseConversationFile(path string) ([]taskConversation, error) {
+// parseConversationFile 解析 .jsonl 文件为 conversation 列表，并计算cost（如果缺失）
+func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]taskConversation, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -567,6 +569,17 @@ func parseConversationFile(path string) ([]taskConversation, error) {
 		if err := json.Unmarshal([]byte(line), &conv); err != nil {
 			return nil, fmt.Errorf("第%d行JSON解析失败: %w", lineNum, err)
 		}
+
+		// 计算cost：如果原始cost为0或缺失，则根据tokens计算
+		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
+			conv.calculatedCost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
+			if conv.calculatedCost > 0 {
+				conv.Cost = conv.calculatedCost
+			}
+		} else {
+			conv.calculatedCost = conv.Cost
+		}
+
 		convs = append(convs, conv)
 	}
 	if err := scanner.Err(); err != nil {
