@@ -11,6 +11,15 @@ import (
 )
 
 // createUserGroupHandler POST /api/v2/user-groups
+// @Summary 创建用户组
+// @Description 创建新的用户组
+// @Tags UserGroups
+// @Accept json
+// @Produce json
+// @Param group body object true "用户组信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/user-groups [post]
 func createUserGroupHandler(c *gin.Context) {
 	var req struct {
 		Name    string   `json:"name"`
@@ -36,6 +45,12 @@ func createUserGroupHandler(c *gin.Context) {
 }
 
 // listUserGroupsHandler GET /api/v2/user-groups
+// @Summary 获取用户组列表
+// @Description 获取所有用户组列表
+// @Tags UserGroups
+// @Produce json
+// @Success 200 {object} object
+// @Router /api/v2/user-groups [get]
 func listUserGroupsHandler(c *gin.Context) {
 	groups, err := ListUserGroups(statDB)
 	if err != nil {
@@ -47,6 +62,14 @@ func listUserGroupsHandler(c *gin.Context) {
 }
 
 // deleteUserGroupHandler DELETE /api/v2/user-groups/:groupId
+// @Summary 删除用户组
+// @Description 根据用户组ID删除用户组
+// @Tags UserGroups
+// @Produce json
+// @Param groupId path string true "用户组ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/user-groups/{groupId} [delete]
 func deleteUserGroupHandler(c *gin.Context) {
 	groupId := c.Param("groupId")
 
@@ -64,6 +87,14 @@ func deleteUserGroupHandler(c *gin.Context) {
 }
 
 // getUserGroupDetailHandler GET /api/v2/user-groups/:groupId
+// @Summary 获取用户组详情
+// @Description 根据用户组ID获取用户组详细信息
+// @Tags UserGroups
+// @Produce json
+// @Param groupId path string true "用户组ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/user-groups/{groupId} [get]
 func getUserGroupDetailHandler(c *gin.Context) {
 	groupId := c.Param("groupId")
 

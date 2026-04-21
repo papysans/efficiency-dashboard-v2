@@ -1,21 +1,21 @@
 version: '3.8'
 
 services:
-  server:
-    extends:
-      file: ./server/server.yml
-      service: server
-    depends_on:
-      postgres:
-        condition: service_healthy
+  #  server:
+  #    extends:
+  #      file: ./server/server.yml
+  #      service: server
+  #    depends_on:
+  #      postgres:
+  #        condition: service_healthy
 
-  portal:
-    extends:
-      file: ./portal/portal.yml
-      service: portal
-    depends_on:
-      server:
-        condition: service_started
+  #  portal:
+  #    extends:
+  #      file: ./portal/portal.yml
+  #      service: portal
+  #    depends_on:
+  #      server:
+  #        condition: service_started
 
   postgres:
     extends:

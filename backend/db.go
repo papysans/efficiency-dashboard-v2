@@ -1262,8 +1262,8 @@ type StatCommit struct {
 	CommitAncientMinutesReason       *string         `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
 	CommitAncientMinutesReasonManual *string         `json:"commit_ancient_minutes_reason_manual"`
-	TaskIDs                          json.RawMessage `json:"task_ids"`
-	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica"`
+	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`

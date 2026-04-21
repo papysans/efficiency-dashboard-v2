@@ -25,41 +25,41 @@ func NewBackendClient(baseURL string) *BackendClient {
 	}
 }
 
-// SaveGitAnalysis 通过 POST /api/analysis/git/analyze 保存 git 分析结果到 PG
-func (c *BackendClient) SaveGitAnalysis(repoID, startDate, endDate string, result *GitAnalysisResult, aiEstDays *float64) error {
-	body := map[string]interface{}{
-		"repo_id":    repoID,
-		"start_date": startDate,
-		"end_date":   endDate,
-	}
-	if result != nil {
-		body["commit_count"] = result.CommitCount
-		body["contributor_count"] = result.ContributorCount
-		body["lines_added"] = result.LinesAdded
-		body["lines_deleted"] = result.LinesDeleted
-		body["files_changed"] = result.FilesChanged
-	}
-	if aiEstDays != nil {
-		body["commit_ancient_minutes_from_git"] = *aiEstDays
-	}
+// // SaveGitAnalysis 通过 POST /api/analysis/git/analyze 保存 git 分析结果到 PG
+// func (c *BackendClient) SaveGitAnalysis(repoID, startDate, endDate string, result *GitAnalysisResult, aiEstDays *float64) error {
+// 	body := map[string]interface{}{
+// 		"repo_id":    repoID,
+// 		"start_date": startDate,
+// 		"end_date":   endDate,
+// 	}
+// 	if result != nil {
+// 		body["commit_count"] = result.CommitCount
+// 		body["contributor_count"] = result.ContributorCount
+// 		body["lines_added"] = result.LinesAdded
+// 		body["lines_deleted"] = result.LinesDeleted
+// 		body["files_changed"] = result.FilesChanged
+// 	}
+// 	if aiEstDays != nil {
+// 		body["commit_ancient_minutes_from_git"] = *aiEstDays
+// 	}
 
-	jsonData, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("序列化请求体失败: %w", err)
-	}
+// 	jsonData, err := json.Marshal(body)
+// 	if err != nil {
+// 		return fmt.Errorf("序列化请求体失败: %w", err)
+// 	}
 
-	resp, err := c.HTTPClient.Post(c.BaseURL+"/api/analysis/git/analyze", "application/json", bytes.NewReader(jsonData))
-	if err != nil {
-		return fmt.Errorf("调用 backend API 失败: %w", err)
-	}
-	defer resp.Body.Close()
+// 	resp, err := c.HTTPClient.Post(c.BaseURL+"/api/analysis/git/analyze", "application/json", bytes.NewReader(jsonData))
+// 	if err != nil {
+// 		return fmt.Errorf("调用 backend API 失败: %w", err)
+// 	}
+// 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("backend API 返回错误: %d, %s", resp.StatusCode, string(respBody))
-	}
-	return nil
-}
+// 	if resp.StatusCode != 200 {
+// 		respBody, _ := io.ReadAll(resp.Body)
+// 		return fmt.Errorf("backend API 返回错误: %d, %s", resp.StatusCode, string(respBody))
+// 	}
+// 	return nil
+// }
 
 // CalculateEfficiency 调用后端 API 触发提效分析计算
 func (c *BackendClient) CalculateEfficiency(dimension, id, startDate, endDate string, force bool) (map[string]interface{}, error) {

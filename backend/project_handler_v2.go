@@ -214,6 +214,15 @@ func recalculateProjectAggregates(projectID string) error {
 }
 
 // createProjectV2 POST /api/v2/projects
+// @Summary 创建项目
+// @Description 创建新项目
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param project body object true "项目信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/projects [post]
 func createProjectV2(c *gin.Context) {
 	var req struct {
 		Name        string  `json:"name"`
@@ -247,6 +256,12 @@ func createProjectV2(c *gin.Context) {
 }
 
 // listProjectsV2 GET /api/v2/projects
+// @Summary 获取项目列表
+// @Description 获取所有项目列表
+// @Tags Projects
+// @Produce json
+// @Success 200 {object} object
+// @Router /api/v2/projects [get]
 func listProjectsV2(c *gin.Context) {
 	list, err := ListProjects(statDB)
 	if err != nil {
@@ -379,6 +394,14 @@ func listProjectsV2(c *gin.Context) {
 }
 
 // getProjectDetailV2 GET /api/v2/projects/:projectId
+// @Summary 获取项目详情
+// @Description 根据项目ID获取项目详细信息
+// @Tags Projects
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/projects/{projectId} [get]
 func getProjectDetailV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
@@ -552,6 +575,16 @@ func getProjectDetailV2(c *gin.Context) {
 }
 
 // updateProjectV2 PUT /api/v2/projects/:projectId
+// @Summary 更新项目
+// @Description 更新项目信息
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Param project body object true "项目信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/projects/{projectId} [put]
 func updateProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
@@ -596,6 +629,14 @@ func updateProjectV2(c *gin.Context) {
 }
 
 // deleteProjectV2 DELETE /api/v2/projects/:projectId
+// @Summary 删除项目
+// @Description 根据项目ID删除项目
+// @Tags Projects
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/projects/{projectId} [delete]
 func deleteProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
@@ -607,6 +648,16 @@ func deleteProjectV2(c *gin.Context) {
 }
 
 // updateProjectManualV2 PUT /api/v2/projects/:projectId/manual
+// @Summary 更新项目人工数据
+// @Description 更新项目的人工修改数据
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Param data body object true "人工数据"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/projects/{projectId}/manual [put]
 func updateProjectManualV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
@@ -624,6 +675,16 @@ func updateProjectManualV2(c *gin.Context) {
 }
 
 // addTasksToProjectV2 POST /api/v2/projects/:projectId/tasks
+// @Summary 为项目添加任务
+// @Description 向项目添加多个任务
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Param tasks body []string true "任务ID列表"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/projects/{projectId}/tasks [post]
 func addTasksToProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
@@ -692,6 +753,16 @@ func addTasksToProjectV2(c *gin.Context) {
 }
 
 // addRepoToProjectV2 POST /api/v2/projects/:projectId/repos
+// @Summary 为项目添加仓库
+// @Description 向项目添加仓库
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Param repo body object true "仓库信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/projects/{projectId}/repos [post]
 func addRepoToProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
@@ -733,6 +804,15 @@ func addRepoToProjectV2(c *gin.Context) {
 }
 
 // removeRepoFromProjectV2 DELETE /api/v2/projects/:projectId/repos/:index
+// @Summary 从项目移除仓库
+// @Description 从项目中移除指定索引的仓库
+// @Tags Projects
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Param index path int true "仓库索引"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/projects/{projectId}/repos/{index} [delete]
 func removeRepoFromProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 	indexStr := c.Param("index")
@@ -779,6 +859,14 @@ func removeRepoFromProjectV2(c *gin.Context) {
 }
 
 // checkProjectConflictsV2 POST /api/v2/projects/check-conflicts
+// @Summary 检查项目冲突
+// @Description 检查项目中任务或仓库的冲突情况
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param data body object true "检查数据"
+// @Success 200 {object} object
+// @Router /api/v2/projects/check-conflicts [post]
 func checkProjectConflictsV2(c *gin.Context) {
 	var req struct {
 		CommitIDs []string `json:"commit_ids"`
@@ -826,6 +914,14 @@ func checkProjectConflictsV2(c *gin.Context) {
 }
 
 // removeTasksFromProjectV2 DELETE /api/v2/projects/:projectId/tasks
+// @Summary 从项目移除任务
+// @Description 从项目中移除所有任务
+// @Tags Projects
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/projects/{projectId}/tasks [delete]
 func removeTasksFromProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
@@ -900,6 +996,16 @@ func removeTasksFromProjectV2(c *gin.Context) {
 }
 
 // updateTaskSilicaInProjectV2 PUT /api/v2/projects/:projectId/tasks/silica
+// @Summary 更新项目任务二氧化硅数据
+// @Description 更新项目中任务的二氧化硅数据
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Param projectId path string true "项目ID"
+// @Param data body object true "二氧化硅数据"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/projects/{projectId}/tasks/silica [put]
 func updateTaskSilicaInProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 

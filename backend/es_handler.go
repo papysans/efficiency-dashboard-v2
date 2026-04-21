@@ -30,7 +30,13 @@ func getDefaultString(c *gin.Context, key, defaultVal string) string {
 
 // --- Handler ---
 
-// getIndices 获取 ES 索引列表，按 request/task 分类
+// getIndices ?? ES ?????? request/task ??
+// @Summary ??ES????
+// @Description ??Elasticsearch???????request/task??
+// @Tags ES
+// @Produce json
+// @Success 200 {object} object
+// @Router /api/indices [get]
 func getIndices(c *gin.Context) {
 	indices, err := esClient.GetIndices(ESIndexPattern)
 	if err != nil {
@@ -53,12 +59,20 @@ func getIndices(c *gin.Context) {
 	})
 }
 
-// getRawData 查询原始聊天记录
+// getRawData ????????
+// @Summary ????????
+// @Description ?Elasticsearch????????
+// @Tags ES
+// @Produce json
+// @Param startDate query string true "????"
+// @Param endDate query string false "????"
+// @Success 200 {object} object
+// @Router /api/requests [get]
 func getRawData(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	if startDate == "" || endDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 和 endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate ? endDate ?????"})
 		return
 	}
 

@@ -12,6 +12,14 @@ import (
 )
 
 // listReposV2 GET /api/v2/repos
+// @Summary 获取仓库列表
+// @Description 按条件查询仓库列表
+// @Tags Repos
+// @Produce json
+// @Param startDate query string false "开始日期"
+// @Param endDate query string false "结束日期"
+// @Success 200 {object} object
+// @Router /api/v2/repos [get]
 func listReposV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -78,6 +86,14 @@ func listReposV2(c *gin.Context) {
 }
 
 // getRepoDetailV2 GET /api/v2/repos/detail
+// @Summary 获取仓库详情
+// @Description 根据仓库地址获取仓库详细信息
+// @Tags Repos
+// @Produce json
+// @Param repoAddr query string true "仓库地址"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/repos/detail [get]
 func getRepoDetailV2(c *gin.Context) {
 	repoAddr := c.Query("repoAddr")
 	if repoAddr == "" {
@@ -274,6 +290,13 @@ func getRepoDetailV2(c *gin.Context) {
 }
 
 // listRepoBranchesV2 GET /api/v2/repos/branches
+// @Summary 获取仓库分支列表
+// @Description 根据仓库地址获取所有分支
+// @Tags Repos
+// @Produce json
+// @Param repoAddr query string true "仓库地址"
+// @Success 200 {object} object
+// @Router /api/v2/repos/branches [get]
 func listRepoBranchesV2(c *gin.Context) {
 	repoAddr := c.Query("repoAddr")
 	if repoAddr == "" {

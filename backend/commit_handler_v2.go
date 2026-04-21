@@ -12,6 +12,15 @@ import (
 )
 
 // upsertCommitV2 POST /api/v2/commits
+// @Summary 创建或更新提交
+// @Description 创建新提交或更新已有提交信息
+// @Tags Commits
+// @Accept json
+// @Produce json
+// @Param commit body main.StatCommit true "提交信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/commits [post]
 func upsertCommitV2(c *gin.Context) {
 	var commit StatCommit
 	if err := c.ShouldBindJSON(&commit); err != nil {
@@ -26,6 +35,15 @@ func upsertCommitV2(c *gin.Context) {
 }
 
 // batchUpsertCommitsV2 POST /api/v2/commits/batch
+// @Summary 批量添加或更新提交
+// @Description 批量添加或更新提交记录
+// @Tags Commits
+// @Accept json
+// @Produce json
+// @Param commits body []main.StatCommit true "提交列表"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/commits/batch [post]
 func batchUpsertCommitsV2(c *gin.Context) {
 	var commits []StatCommit
 	if err := c.ShouldBindJSON(&commits); err != nil {
@@ -44,6 +62,16 @@ func batchUpsertCommitsV2(c *gin.Context) {
 }
 
 // listCommitsV2 GET /api/v2/commits
+// @Summary 获取提交列表
+// @Description 按条件查询提交列表
+// @Tags Commits
+// @Produce json
+// @Param repoAddr query string true "仓库地址"
+// @Param branch query string false "分支名"
+// @Param startDate query string false "开始日期"
+// @Param endDate query string false "结束日期"
+// @Success 200 {object} object
+// @Router /api/v2/commits [get]
 func listCommitsV2(c *gin.Context) {
 	repoAddr := c.Query("repoAddr")
 	repoBranch := c.Query("repoBranch")
@@ -276,6 +304,14 @@ func listCommitsV2(c *gin.Context) {
 }
 
 // getCommitDetailV2 GET /api/v2/commits/:commitId
+// @Summary 获取提交详情
+// @Description 根据提交ID获取提交详细信息
+// @Tags Commits
+// @Produce json
+// @Param commitId path string true "提交ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/commits/{commitId} [get]
 func getCommitDetailV2(c *gin.Context) {
 	commitID := c.Param("commitId")
 
@@ -426,6 +462,16 @@ func getCommitDetailV2(c *gin.Context) {
 }
 
 // updateCommitManualV2 PUT /api/v2/commits/:commitId/manual
+// @Summary 更新提交人工数据
+// @Description 更新提交的人工修改数据
+// @Tags Commits
+// @Accept json
+// @Produce json
+// @Param commitId path string true "提交ID"
+// @Param data body object true "人工数据"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/commits/{commitId}/manual [put]
 func updateCommitManualV2(c *gin.Context) {
 	commitId := c.Param("commitId")
 

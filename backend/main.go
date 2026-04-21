@@ -6,10 +6,13 @@ import (
 	"log"
 	"os"
 
+	_ "kanban/backend/docs" // 待生成swagger文档后取消注释
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gopkg.in/yaml.v3"
-	// _ "kanban/backend/docs" // 待生成swagger文档后取消注释
 )
 
 // @title           Efficiency Dashboard API
@@ -162,7 +165,8 @@ func main() {
 	r := gin.Default()
 
 	// Swagger 文档路由（需要先运行 swag init 生成文档）
-	// r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler)) // 待生成swagger文档后取消注释
+	// Swagger 文档路由
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// CORS 配置
 	corsOrigins := appConfig.CORS.AllowOrigins
@@ -271,7 +275,7 @@ func main() {
 		port = 9990
 	}
 	log.Printf("服务器启动在端口 %d", port)
-	// log.Printf("Swagger文档地址: http://localhost:%d/swagger/index.html", port) // 待生成swagger文档后取消注释
+	log.Printf("Swagger文档地址: http://localhost:%d/swagger/index.html", port)
 	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}

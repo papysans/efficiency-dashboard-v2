@@ -13,6 +13,15 @@ import (
 )
 
 // createVirtualGroup 创建虚拟组
+// @Summary 创建虚拟组
+// @Description 创建新的虚拟组
+// @Tags VirtualGroups
+// @Accept json
+// @Produce json
+// @Param group body object true "虚拟组信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/virtual-groups [post]
 func createVirtualGroup(c *gin.Context) {
 	var req struct {
 		Name       string   `json:"name"`
@@ -75,6 +84,13 @@ func createVirtualGroup(c *gin.Context) {
 }
 
 // listVirtualGroups 查询虚拟组列表
+// @Summary 获取虚拟组列表
+// @Description 按条件查询虚拟组列表
+// @Tags VirtualGroups
+// @Produce json
+// @Param dimension query string false "维度过滤"
+// @Success 200 {object} object
+// @Router /api/virtual-groups [get]
 func listVirtualGroups(c *gin.Context) {
 	dimension := strings.TrimSpace(c.Query("dimension"))
 
@@ -124,6 +140,14 @@ func listVirtualGroups(c *gin.Context) {
 }
 
 // deleteVirtualGroup 删除虚拟组
+// @Summary 删除虚拟组
+// @Description 根据虚拟组ID删除虚拟组
+// @Tags VirtualGroups
+// @Produce json
+// @Param id path string true "虚拟组ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/virtual-groups/{id} [delete]
 func deleteVirtualGroup(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
@@ -236,6 +260,15 @@ func aggregateVirtualGroup(c *gin.Context) {
 }
 
 // createFavorite 添加收藏
+// @Summary 添加收藏
+// @Description 添加新的收藏
+// @Tags Favorites
+// @Accept json
+// @Produce json
+// @Param favorite body object true "收藏信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/favorites [post]
 func createFavorite(c *gin.Context) {
 	var req struct {
 		Dimension   string `json:"dimension"`
@@ -276,6 +309,13 @@ func createFavorite(c *gin.Context) {
 }
 
 // listFavorites 查询收藏列表
+// @Summary 获取收藏列表
+// @Description 按条件查询收藏列表
+// @Tags Favorites
+// @Produce json
+// @Param dimension query string false "维度过滤"
+// @Success 200 {object} object
+// @Router /api/favorites [get]
 func listFavorites(c *gin.Context) {
 	dimension := strings.TrimSpace(c.Query("dimension"))
 
@@ -331,6 +371,14 @@ func listFavorites(c *gin.Context) {
 }
 
 // deleteFavorite 取消收藏
+// @Summary 取消收藏
+// @Description 根据收藏ID取消收藏
+// @Tags Favorites
+// @Produce json
+// @Param id path string true "收藏ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/favorites/{id} [delete]
 func deleteFavorite(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)

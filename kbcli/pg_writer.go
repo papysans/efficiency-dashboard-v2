@@ -254,42 +254,42 @@ type PGCommitData struct {
 	CommitAncientMinutesReason *string    `json:"CommitAncientMinutesReason"`
 }
 
-// MapCommitDetailsToPG 将 CommitDetail 列表映射为 PGCommitData 列表
-func MapCommitDetailsToPG(commits []CommitDetail, repoID string, orgProvider *OrgProvider) []PGCommitData {
-	var result []PGCommitData
-	for _, commit := range commits {
-		pg := PGCommitData{
-			CommitID:     commit.Hash,
-			CommitTime:   ptrTime(commit.Timestamp),
-			GitUserName:  ptrString(commit.AuthorName),
-			GitUserEmail: ptrString(commit.AuthorEmail),
-			DiffLines:    ptrInt64(commit.LinesAdded),
-		}
+// // MapCommitDetailsToPG 将 CommitDetail 列表映射为 PGCommitData 列表
+// func MapCommitDetailsToPG(commits []CommitDetail, repoID string, orgProvider *OrgProvider) []PGCommitData {
+// 	var result []PGCommitData
+// 	for _, commit := range commits {
+// 		pg := PGCommitData{
+// 			CommitID:     commit.Hash,
+// 			CommitTime:   ptrTime(commit.Timestamp),
+// 			GitUserName:  ptrString(commit.AuthorName),
+// 			GitUserEmail: ptrString(commit.AuthorEmail),
+// 			DiffLines:    ptrInt64(commit.LinesAdded),
+// 		}
 
-		// repo_addr / repo_branch: 按 "#" 分割 repoID
-		if strings.Contains(repoID, "#") {
-			parts := strings.SplitN(repoID, "#", 2)
-			pg.RepoAddr = ptrString(parts[0])
-			pg.RepoBranch = ptrString(parts[1])
-		} else {
-			pg.RepoAddr = ptrString(repoID)
-			pg.RepoBranch = ptrString("")
-		}
+// 		// repo_addr / repo_branch: 按 "#" 分割 repoID
+// 		if strings.Contains(repoID, "#") {
+// 			parts := strings.SplitN(repoID, "#", 2)
+// 			pg.RepoAddr = ptrString(parts[0])
+// 			pg.RepoBranch = ptrString(parts[1])
+// 		} else {
+// 			pg.RepoAddr = ptrString(repoID)
+// 			pg.RepoBranch = ptrString("")
+// 		}
 
-		// user_id 映射
-		if orgProvider != nil {
-			userID, found := orgProvider.LookupByGitAuthor(commit.AuthorName, commit.AuthorEmail)
-			if found {
-				pg.UserID = ptrString(userID)
-				orgInfo := orgProvider.GetOrgInfo(userID, "")
-				pg.UserName = ptrString(orgInfo.UserName)
-			}
-		}
+// 		// user_id 映射
+// 		if orgProvider != nil {
+// 			userID, found := orgProvider.LookupByGitAuthor(commit.AuthorName, commit.AuthorEmail)
+// 			if found {
+// 				pg.UserID = ptrString(userID)
+// 				orgInfo := orgProvider.GetOrgInfo(userID, "")
+// 				pg.UserName = ptrString(orgInfo.UserName)
+// 			}
+// 		}
 
-		result = append(result, pg)
-	}
-	return result
-}
+// 		result = append(result, pg)
+// 	}
+// 	return result
+// }
 
 // SaveCommitsToPG 通过 POST /api/v2/commits/batch 批量保存提交到 PG
 func (c *BackendClient) SaveCommitsToPG(commits []PGCommitData) error {

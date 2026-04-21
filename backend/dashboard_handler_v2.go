@@ -10,6 +10,14 @@ import (
 )
 
 // getDashboardSummary GET /api/v2/dashboard/summary
+// @Summary 获取仪表盘汇总信息
+// @Description 获取仪表盘的汇总统计数据
+// @Tags Dashboard
+// @Produce json
+// @Param startDate query string false "开始日期"
+// @Param endDate query string false "结束日期"
+// @Success 200 {object} object
+// @Router /api/v2/dashboard/summary [get]
 func getDashboardSummary(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")

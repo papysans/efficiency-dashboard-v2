@@ -14,6 +14,14 @@ import (
 )
 
 // listUsersV2 GET /api/v2/users
+// @Summary 获取用户列表
+// @Description 按条件查询用户列表，支持日期范围过滤
+// @Tags Users
+// @Produce json
+// @Param startDate query string false "开始日期"
+// @Param endDate query string false "结束日期"
+// @Success 200 {object} object
+// @Router /api/v2/users [get]
 func listUsersV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -704,6 +712,14 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 }
 
 // getUserDetailV2 GET /api/v2/users/:userId
+// @Summary 获取用户详情
+// @Description 根据用户ID获取用户详细信息
+// @Tags Users
+// @Produce json
+// @Param userId path string true "用户ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/users/{userId} [get]
 func getUserDetailV2(c *gin.Context) {
 	userID := c.Param("userId")
 	startDate := c.Query("startDate")

@@ -100,6 +100,15 @@ func joinStrings(ss []string, sep string) string {
 }
 
 // upsertTaskV2 POST /api/v2/tasks
+// @Summary 创建或更新任务
+// @Description 创建新任务或更新已有任务信息
+// @Tags Tasks
+// @Accept json
+// @Produce json
+// @Param task body StatTask true "任务信息"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/tasks [post]
 func upsertTaskV2(c *gin.Context) {
 	var task StatTask
 	if err := c.ShouldBindJSON(&task); err != nil {
@@ -143,6 +152,15 @@ func upsertTaskV2(c *gin.Context) {
 }
 
 // batchUpsertConversationsV2 POST /api/v2/tasks/conversations/batch
+// @Summary 批量添加或更新任务对话
+// @Description 批量添加或更新任务的对话记录
+// @Tags Tasks
+// @Accept json
+// @Produce json
+// @Param conversations body []StatTaskConversation true "对话记录列表"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/tasks/conversations/batch [post]
 func batchUpsertConversationsV2(c *gin.Context) {
 	var convs []StatTaskConversation
 	if err := c.ShouldBindJSON(&convs); err != nil {
@@ -161,6 +179,15 @@ func batchUpsertConversationsV2(c *gin.Context) {
 }
 
 // listTasksV2 GET /api/v2/tasks
+// @Summary 获取任务列表
+// @Description 按条件查询任务列表，支持日期范围过滤
+// @Tags Tasks
+// @Produce json
+// @Param startDate query string false "开始日期"
+// @Param endDate query string false "结束日期"
+// @Param dimension query string false "维度过滤"
+// @Success 200 {object} object
+// @Router /api/v2/tasks [get]
 func listTasksV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -282,6 +309,14 @@ func listTasksV2(c *gin.Context) {
 }
 
 // getTaskDetailV2 GET /api/v2/tasks/:taskId
+// @Summary 获取任务详情
+// @Description 根据任务ID获取任务详细信息
+// @Tags Tasks
+// @Produce json
+// @Param taskId path string true "任务ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/tasks/{taskId} [get]
 func getTaskDetailV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 
@@ -426,6 +461,16 @@ func callAIForTaskTitle(taskID string, userInputs []string) {
 }
 
 // updateTaskManualV2 PUT /api/v2/tasks/:taskId/manual
+// @Summary 更新任务人工数据
+// @Description 更新任务的人工修改数据
+// @Tags Tasks
+// @Accept json
+// @Produce json
+// @Param taskId path string true "任务ID"
+// @Param data body object true "人工数据"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /api/v2/tasks/{taskId}/manual [put]
 func updateTaskManualV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 	if taskId == "" {
@@ -559,6 +604,12 @@ func extractMinutesFromReason(reason string) (float64, string) {
 }
 
 // fixAncientMinutes POST /api/v2/tasks/fix-ancient-minutes
+// @Summary 修复古代工时数据
+// @Description 从任务古代工时原因中提取工时数值并更新到数据库
+// @Tags Tasks
+// @Produce json
+// @Success 200 {object} object
+// @Router /api/v2/tasks/fix-ancient-minutes [post]
 func fixAncientMinutes(c *gin.Context) {
 	rows, err := statDB.Query(`SELECT task_id, task_ancient_minutes_reason FROM tasks WHERE task_ancient_minutes IS NULL AND task_ancient_minutes_reason IS NOT NULL AND task_ancient_minutes_reason != ''`)
 	if err != nil {
@@ -596,6 +647,15 @@ func fixAncientMinutes(c *gin.Context) {
 }
 
 // getTaskFile GET /api/v2/tasks/file
+// @Summary 获取任务文件
+// @Description 获取任务的原始文件内容
+// @Tags Tasks
+// @Produce json
+// @Param taskId query string true "任务ID"
+// @Param type query string false "文件类型"
+// @Success 200 {object} object
+// @Failure 404 {object} object
+// @Router /api/v2/tasks/file [get]
 func getTaskFile(c *gin.Context) {
 	typ := c.Query("type")
 	taskId := c.Query("taskId")
@@ -651,7 +711,14 @@ func getTaskFile(c *gin.Context) {
 }
 
 // estimateAncientMinutes POST /api/v2/tasks/estimate-ancient
-// 对 task_ancient_minutes 为空的 task，从对话记录调 AI 估算传统开发时长并回写
+// estimateAncientMinutes POST /api/v2/tasks/estimate-ancient
+// @Summary 估算古代工时
+// @Description 使用AI从对话记录中估算任务的古代工时
+// @Tags Tasks
+// @Produce json
+// @Success 200 {object} object
+// @Failure 500 {object} object
+// @Router /api/v2/tasks/estimate-ancient [post]
 func estimateAncientMinutes(c *gin.Context) {
 	cfg := appConfig.AIEstimation
 	if !cfg.Enabled || cfg.APIKey == "" {
