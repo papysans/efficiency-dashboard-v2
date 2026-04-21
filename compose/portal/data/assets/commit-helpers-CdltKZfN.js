@@ -1,0 +1,1 @@
+function e(n){return n.commit_ancient_minutes_manual??n.commit_ancient_minutes??null}function t(n){return n.commit_real_minutes_manual??n.commit_real_minutes??null}function i(n){return n==null?"#909399":n>=300?"#67C23A":n>=150?"#409EFF":"#909399"}export{e as a,i as b,t as g};

@@ -9,7 +9,23 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
+	// _ "kanban/backend/docs" // 待生成swagger文档后取消注释
 )
+
+// @title           Efficiency Dashboard API
+// @version         1.0
+// @description     效率仪表盘后端API，提供任务、提交、用户、仓库、项目、组织等数据管理接口
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.url    http://www.swagger.io/support
+// @contact.email  support@swagger.io
+
+// @license.name  Apache 2.0
+// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host      localhost:9990
+// @BasePath  /api
 
 // DatabaseConfig PostgreSQL 数据库连接配置
 type DatabaseConfig struct {
@@ -145,6 +161,9 @@ func main() {
 
 	r := gin.Default()
 
+	// Swagger 文档路由（需要先运行 swag init 生成文档）
+	// r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler)) // 待生成swagger文档后取消注释
+
 	// CORS 配置
 	corsOrigins := appConfig.CORS.AllowOrigins
 	if len(corsOrigins) == 0 {
@@ -252,6 +271,7 @@ func main() {
 		port = 9990
 	}
 	log.Printf("服务器启动在端口 %d", port)
+	// log.Printf("Swagger文档地址: http://localhost:%d/swagger/index.html", port) // 待生成swagger文档后取消注释
 	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}

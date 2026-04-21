@@ -1,0 +1,14 @@
+services:
+  server:
+    image: ${IMAGE_SERVER}
+    restart: always
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - /mnt/prod_env/user-indicator/raw/task:/app/task
+      - ./analysed:/app/analysed
+    ports:
+      - "${PORT_BACKEND}:9990"
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      - efficiency
