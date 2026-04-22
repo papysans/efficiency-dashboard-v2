@@ -155,16 +155,29 @@ func calcProcessTime(hits []map[string]interface{}) float64 {
 }
 
 // getAggregate 维度聚合查询
+// @Summary 维度聚合查询
+// @Description 按维度（work_dir/repo/user/org1-4）聚合查询ES任务数据，返回各维度的统计指标
+// @Tags Aggregate
+// @Produce json
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Param dimension query string true "聚合维度(work_dir/repo/user/org1/org2/org3/org4)"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
+// @Success 200 {object} AggregateResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /aggregate [get]
 func getAggregate(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	dimension := c.Query("dimension")
 	if startDate == "" || endDate == "" || dimension == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate, endDate 和 dimension 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate, endDate 和 dimension 为必填参数"})
 		return
 	}
 	if !validDimensions[dimension] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无效的 dimension: %s，有效值为 work_dir, repo, user, org1, org2, org3, org4", dimension)})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("无效的 dimension: %s，有效值为 work_dir, repo, user, org1, org2, org3, org4", dimension)})
 		return
 	}
 
@@ -173,7 +186,7 @@ func getAggregate(c *gin.Context) {
 
 	indexNames, err := generateIndexNames(ESTaskIndexPrefix, startDate, endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -181,7 +194,7 @@ func getAggregate(c *gin.Context) {
 
 	aggregations, err := esClient.Aggregate(indexNames, aggsQuery)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -193,7 +206,7 @@ func getAggregate(c *gin.Context) {
 		}
 	}
 
-	items := make([]map[string]interface{}, 0, len(buckets))
+	items := make([]AggregateItem, 0, len(buckets))
 	for _, raw := range buckets {
 		bucket, ok := raw.(map[string]interface{})
 		if !ok {
@@ -216,49 +229,55 @@ func getAggregate(c *gin.Context) {
 			processTime = calcProcessTime(searchResult.Hits)
 		}
 
-		item := map[string]interface{}{
-			"key":               key,
-			"user_in_chars":     getAggValue(bucket, "sum_user_in_chars"),
-			"code_lines":        getAggValue(bucket, "sum_code_lines"),
-			"api_count":         getAggValue(bucket, "sum_api_count"),
-			"api_cost":          getAggValue(bucket, "sum_api_cost"),
-			"api_in_tokens":     getAggValue(bucket, "sum_api_in_tokens"),
-			"api_out_tokens":    getAggValue(bucket, "sum_api_out_tokens"),
-			"task_count":        getAggValue(bucket, "task_count"),
-			"ai_estimated_days": getAggValue(bucket, "sum_ai_estimated_days"),
-			"start_time":        getAggTimeString(bucket, "min_start_time"),
-			"end_time":          getAggTimeString(bucket, "max_end_time"),
-			"lead_time":         leadTime,
-			"process_time":      processTime,
+		item := AggregateItem{
+			Key:             key,
+			UserInChars:     getAggValue(bucket, "sum_user_in_chars"),
+			CodeLines:       getAggValue(bucket, "sum_code_lines"),
+			APICount:        getAggValue(bucket, "sum_api_count"),
+			APICost:         getAggValue(bucket, "sum_api_cost"),
+			APIInTokens:     getAggValue(bucket, "sum_api_in_tokens"),
+			APIOutTokens:    getAggValue(bucket, "sum_api_out_tokens"),
+			TaskCount:       getAggValue(bucket, "task_count"),
+			AIEstimatedDays: getAggValue(bucket, "sum_ai_estimated_days"),
+			StartTime:       getAggTimeString(bucket, "min_start_time"),
+			EndTime:         getAggTimeString(bucket, "max_end_time"),
+			LeadTime:        leadTime,
+			ProcessTime:     processTime,
 		}
 		items = append(items, item)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"total":    len(buckets),
-		"page":     page,
-		"pageSize": pageSize,
-		"items":    items,
-	})
+	c.JSON(http.StatusOK, AggregateResponse{Total: len(buckets), Page: page, PageSize: pageSize, Items: items})
 }
 
 // getAggregateSummary 维度聚合汇总
+// @Summary 维度聚合汇总
+// @Description 按维度汇总所有分桶的统计数据，返回总任务数、API调用数、费用和AI估算天数
+// @Tags Aggregate
+// @Produce json
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Param dimension query string true "聚合维度(work_dir/repo/user/org1/org2/org3/org4)"
+// @Success 200 {object} AggregateSummaryResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /aggregate/summary [get]
 func getAggregateSummary(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	dimension := c.Query("dimension")
 	if startDate == "" || endDate == "" || dimension == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate, endDate 和 dimension 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate, endDate 和 dimension 为必填参数"})
 		return
 	}
 	if !validDimensions[dimension] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无效的 dimension: %s，有效值为 work_dir, repo, user, org1, org2, org3, org4", dimension)})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("无效的 dimension: %s，有效值为 work_dir, repo, user, org1, org2, org3, org4", dimension)})
 		return
 	}
 
 	indexNames, err := generateIndexNames(ESTaskIndexPrefix, startDate, endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -266,7 +285,7 @@ func getAggregateSummary(c *gin.Context) {
 
 	aggregations, err := esClient.Aggregate(indexNames, aggsQuery)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -293,17 +312,29 @@ func getAggregateSummary(c *gin.Context) {
 		totalAiEstimatedDays += getAggValue(bucket, "sum_ai_estimated_days")
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"dimension":               dimension,
-		"bucket_count":            len(buckets),
-		"total_task_count":        totalTaskCount,
-		"total_api_count":         totalApiCount,
-		"total_api_cost":          totalApiCost,
-		"total_ai_estimated_days": totalAiEstimatedDays,
+	c.JSON(http.StatusOK, AggregateSummaryResponse{
+		Dimension:            dimension,
+		BucketCount:          len(buckets),
+		TotalTaskCount:       totalTaskCount,
+		TotalAPICount:        totalApiCount,
+		TotalAPICost:         totalApiCost,
+		TotalAIEstimatedDays: totalAiEstimatedDays,
 	})
 }
 
 // getAggregateKeys 轻量级接口：只返回指定维度的 key 列表（用于下拉提示）
+// @Summary 获取维度key列表
+// @Description 按维度返回key列表，用于下拉提示，可选关键词过滤
+// @Tags Aggregate
+// @Produce json
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Param dimension query string true "聚合维度(work_dir/repo/user/org1/org2/org3/org4)"
+// @Param keyword query string false "搜索关键词"
+// @Success 200 {object} AggregateKeysResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /aggregate/keys [get]
 func getAggregateKeys(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -311,17 +342,17 @@ func getAggregateKeys(c *gin.Context) {
 	keyword := c.Query("keyword") // 可选：前端输入的搜索关键词
 
 	if startDate == "" || endDate == "" || dimension == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate, endDate 和 dimension 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate, endDate 和 dimension 为必填参数"})
 		return
 	}
 	if !validDimensions[dimension] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无效的 dimension: %s", dimension)})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("无效的 dimension: %s", dimension)})
 		return
 	}
 
 	indexNames, err := generateIndexNames(ESTaskIndexPrefix, startDate, endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -348,13 +379,13 @@ func getAggregateKeys(c *gin.Context) {
 			},
 		}
 	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无法构建维度聚合"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "无法构建维度聚合"})
 		return
 	}
 
 	result, err := esClient.Aggregate(indexNames, aggs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -376,5 +407,5 @@ func getAggregateKeys(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"keys": keys, "total": len(keys)})
+	c.JSON(http.StatusOK, AggregateKeysResponse{Keys: keys, Total: len(keys)})
 }

@@ -18,20 +18,21 @@ import (
 // @Accept json
 // @Produce json
 // @Param commit body main.StatCommit true "提交信息"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/commits [post]
 func upsertCommitV2(c *gin.Context) {
 	var commit StatCommit
 	if err := c.ShouldBindJSON(&commit); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if err := UpsertStatCommit(statDB, &commit); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // batchUpsertCommitsV2 POST /api/v2/commits/batch
@@ -41,24 +42,24 @@ func upsertCommitV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param commits body []main.StatCommit true "提交列表"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Success 200 {object} StatusCountResponse
+// @Failure 400 {object} ErrorResponse
 // @Router /api/v2/commits/batch [post]
 func batchUpsertCommitsV2(c *gin.Context) {
 	var commits []StatCommit
 	if err := c.ShouldBindJSON(&commits); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if len(commits) == 0 {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "count": 0})
+		c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: 0})
 		return
 	}
 	if err := BatchUpsertStatCommits(statDB, commits); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "count": len(commits)})
+	c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: len(commits)})
 }
 
 // listCommitsV2 GET /api/v2/commits
@@ -70,7 +71,9 @@ func batchUpsertCommitsV2(c *gin.Context) {
 // @Param branch query string false "分支名"
 // @Param startDate query string false "开始日期"
 // @Param endDate query string false "结束日期"
-// @Success 200 {object} object
+// @Success 200 {object} CommitListResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/commits [get]
 func listCommitsV2(c *gin.Context) {
 	repoAddr := c.Query("repoAddr")
@@ -87,7 +90,7 @@ func listCommitsV2(c *gin.Context) {
 	if startDate != "" {
 		startT, err := parseDateParam(startDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 			return
 		}
 		startTime = startT.Format(time.RFC3339)
@@ -95,7 +98,7 @@ func listCommitsV2(c *gin.Context) {
 	if endDate != "" {
 		endT, err := parseDateParam(endDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 			return
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
@@ -121,7 +124,7 @@ func listCommitsV2(c *gin.Context) {
 		}
 		// org 有效但无匹配用户 → 直接返回空结果
 		if len(orgFilterUserIDs) == 0 {
-			c.JSON(http.StatusOK, gin.H{"total": 0, "page": 1, "pageSize": 250, "data": []gin.H{}})
+			c.JSON(http.StatusOK, CommitListResponse{Total: 0, Page: 1, PageSize: 250, Data: []CommitListItem{}})
 			return
 		}
 	}
@@ -131,13 +134,13 @@ func listCommitsV2(c *gin.Context) {
 
 	total, err := CountStatCommits(statDB, repoAddr, repoBranch, userID, startTime, endTime, orgFilterUserIDs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	list, err := ListStatCommits(statDB, repoAddr, repoBranch, userID, startTime, endTime, page, pageSize, orgFilterUserIDs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -166,7 +169,7 @@ func listCommitsV2(c *gin.Context) {
 	}
 
 	// 为每条 commit 计算 efficiency_ratio
-	results := make([]gin.H, len(list))
+	results := make([]CommitListItem, len(list))
 	for i, commit := range list {
 		// 聚合 cost/tokens
 		var totalCost float64
@@ -215,37 +218,37 @@ func listCommitsV2(c *gin.Context) {
 			overallSilica = &s
 		}
 
-		item := gin.H{
-			"commit_id":                            commit.CommitID,
-			"commit_time":                          commit.CommitTime,
-			"repo_addr":                            commit.RepoAddr,
-			"repo_branch":                          commit.RepoBranch,
-			"git_user_name":                        commit.GitUserName,
-			"git_user_email":                       commit.GitUserEmail,
-			"user_id":                              commit.UserID,
-			"user_name":                            commit.UserName,
-			"client_id":                            commit.ClientID,
-			"work_dir":                             commit.WorkDir,
-			"diff_lines":                           commit.DiffLines,
-			"commit_ancient_minutes":               commit.CommitAncientMinutes,
-			"commit_ancient_minutes_reason":        commit.CommitAncientMinutesReason,
-			"commit_ancient_minutes_manual":        commit.CommitAncientMinutesManual,
-			"commit_ancient_minutes_reason_manual": commit.CommitAncientMinutesReasonManual,
-			"commit_real_minutes":                  commit.CommitRealMinutes,
-			"commit_real_minutes_reason":           commit.CommitRealMinutesReason,
-			"commit_real_minutes_manual":           commit.CommitRealMinutesManual,
-			"commit_real_minutes_reason_manual":    commit.CommitRealMinutesReasonManual,
-			"commit_real_ai_minutes":               commit.CommitRealAIMinutes,
-			"commit_real_ancient_minutes":          commit.CommitRealAncientMinutes,
-			"task_ids":                             commit.TaskIDs,
-			"task_ids_silica":                      commit.TaskIDsSilica,
-			"comment":                              commit.Comment,
-			"created_at":                           commit.CreatedAt,
-			"updated_at":                           commit.UpdatedAt,
-			"cost":                                 totalCost,
-			"upstream_tokens":                      upstreamTokens,
-			"downstream_tokens":                    downstreamTokens,
-			"silica":                               overallSilica,
+		item := CommitListItem{
+			CommitID:                         commit.CommitID,
+			CommitTime:                       commit.CommitTime,
+			RepoAddr:                         commit.RepoAddr,
+			RepoBranch:                       commit.RepoBranch,
+			GitUserName:                      commit.GitUserName,
+			GitUserEmail:                     commit.GitUserEmail,
+			UserID:                           commit.UserID,
+			UserName:                         commit.UserName,
+			ClientID:                         commit.ClientID,
+			WorkDir:                          commit.WorkDir,
+			DiffLines:                        commit.DiffLines,
+			CommitAncientMinutes:             commit.CommitAncientMinutes,
+			CommitAncientMinutesReason:       commit.CommitAncientMinutesReason,
+			CommitAncientMinutesManual:       commit.CommitAncientMinutesManual,
+			CommitAncientMinutesReasonManual: commit.CommitAncientMinutesReasonManual,
+			CommitRealMinutes:                commit.CommitRealMinutes,
+			CommitRealMinutesReason:          commit.CommitRealMinutesReason,
+			CommitRealMinutesManual:          commit.CommitRealMinutesManual,
+			CommitRealMinutesReasonManual:    commit.CommitRealMinutesReasonManual,
+			CommitRealAIMinutes:              commit.CommitRealAIMinutes,
+			CommitRealAncientMinutes:         commit.CommitRealAncientMinutes,
+			TaskIDs:                          commit.TaskIDs,
+			TaskIDsSilica:                    commit.TaskIDsSilica,
+			Comment:                          commit.Comment,
+			CreatedAt:                        commit.CreatedAt,
+			UpdatedAt:                        commit.UpdatedAt,
+			Cost:                             totalCost,
+			UpstreamTokens:                   upstreamTokens,
+			DownstreamTokens:                 downstreamTokens,
+			Silica:                           overallSilica,
 		}
 
 		effectiveAncient := commit.CommitAncientMinutes
@@ -256,50 +259,39 @@ func listCommitsV2(c *gin.Context) {
 		if commit.CommitRealMinutesManual != nil {
 			effectiveReal = commit.CommitRealMinutesManual
 		}
+		var efficiencyRatio *float64
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
 			ratio := (*effectiveAncient / *effectiveReal) * 100
-			item["efficiency_ratio"] = math.Round(ratio*10) / 10
-		} else {
-			item["efficiency_ratio"] = nil
+			r := math.Round(ratio*10) / 10
+			efficiencyRatio = &r
 		}
+		item.EfficiencyRatio = efficiencyRatio
 
 		// 补充 org 字段
 		if commit.UserID != nil {
 			if om, ok := orgMappings[*commit.UserID]; ok {
-				item["org1"] = om.Org1
-				item["org2"] = om.Org2
-				item["org3"] = om.Org3
-				item["org4"] = om.Org4
+				item.Org1 = om.Org1
+				item.Org2 = om.Org2
+				item.Org3 = om.Org3
+				item.Org4 = om.Org4
 				parts := []string{}
 				for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4} {
 					if v != "" {
 						parts = append(parts, v)
 					}
 				}
-				item["org_display"] = strings.Join(parts, "/")
-			} else {
-				item["org1"] = ""
-				item["org2"] = ""
-				item["org3"] = ""
-				item["org4"] = ""
-				item["org_display"] = ""
+				item.OrgDisplay = strings.Join(parts, "/")
 			}
-		} else {
-			item["org1"] = ""
-			item["org2"] = ""
-			item["org3"] = ""
-			item["org4"] = ""
-			item["org_display"] = ""
 		}
 
 		results[i] = item
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
-		"data":     results,
+	c.JSON(http.StatusOK, CommitListResponse{
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+		Data:     results,
 	})
 }
 
@@ -309,31 +301,21 @@ func listCommitsV2(c *gin.Context) {
 // @Tags Commits
 // @Produce json
 // @Param commitId path string true "提交ID"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Success 200 {object} CommitDetailResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/commits/{commitId} [get]
 func getCommitDetailV2(c *gin.Context) {
 	commitID := c.Param("commitId")
 
 	commit, err := GetStatCommitByID(statDB, commitID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if commit == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "commit not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "commit not found"})
 		return
-	}
-
-	// 解析关联 task
-	type RelatedTask struct {
-		TaskID          string     `json:"task_id"`
-		UserName        *string    `json:"user_name"`
-		StartTime       *time.Time `json:"start_time"`
-		TaskRealMinutes *float64   `json:"task_real_minutes"`
-		Silica          *float64   `json:"silica"`
-		Cost            *float64   `json:"cost"`
-		DiffLines       *int       `json:"diff_lines"`
 	}
 
 	var relatedTasks []RelatedTask
@@ -450,14 +432,14 @@ func getCommitDetailV2(c *gin.Context) {
 		overallSilica = &s
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"commit":            commit,
-		"related_tasks":     relatedTasks,
-		"efficiency_ratio":  efficiencyRatio,
-		"total_cost":        math.Round(totalCost*10000) / 10000,
-		"silica":            overallSilica,
-		"upstream_tokens":   upstreamTokens,
-		"downstream_tokens": downstreamTokens,
+	c.JSON(http.StatusOK, CommitDetailResponse{
+		Commit:           commit,
+		RelatedTasks:     relatedTasks,
+		EfficiencyRatio:  efficiencyRatio,
+		TotalCost:        math.Round(totalCost*10000) / 10000,
+		Silica:           overallSilica,
+		UpstreamTokens:   upstreamTokens,
+		DownstreamTokens: downstreamTokens,
 	})
 }
 
@@ -468,27 +450,22 @@ func getCommitDetailV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param commitId path string true "提交ID"
-// @Param data body object true "人工数据"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param data body UpdateCommitManualRequest true "人工数据"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
 // @Router /api/v2/commits/{commitId}/manual [put]
 func updateCommitManualV2(c *gin.Context) {
 	commitId := c.Param("commitId")
 
-	var req struct {
-		CommitAncientMinutesManual       *float64 `json:"commit_ancient_minutes_manual"`
-		CommitAncientMinutesReasonManual *string  `json:"commit_ancient_minutes_reason_manual"`
-		CommitRealMinutesManual          *float64 `json:"commit_real_minutes_manual"`
-		CommitRealMinutesReasonManual    *string  `json:"commit_real_minutes_reason_manual"`
-	}
+	var req UpdateCommitManualRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	if err := UpdateStatCommitManual(statDB, commitId, req.CommitAncientMinutesManual, req.CommitAncientMinutesReasonManual, req.CommitRealMinutesManual, req.CommitRealMinutesReasonManual); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }

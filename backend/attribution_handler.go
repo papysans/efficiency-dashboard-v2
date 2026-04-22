@@ -8,134 +8,162 @@ import (
 )
 
 // getTaskCommitMappings GET /api/analysis/task-commits
+// @Summary 获取任务-提交映射
+// @Description 查询指定仓库和日期范围内的任务与提交的映射关系
+// @Tags Attribution
+// @Produce json
+// @Param repo_id query string true "仓库ID"
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Success 200 {object} TaskCommitMappingsResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/task-commits [get]
 func getTaskCommitMappings(c *gin.Context) {
 	repoID := c.Query("repo_id")
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 
 	if repoID == "" || startDate == "" || endDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_id, startDate, endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repo_id, startDate, endDate 为必填参数"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(startDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
 	list, err := ListTaskCommitMappings(db, repoID, formatDateYMD(startDateFmt), formatDateYMD(endDateFmt))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	items := make([]gin.H, 0, len(list))
+	items := make([]TaskCommitMappingItem, 0, len(list))
 	for _, m := range list {
-		item := gin.H{
-			"task_id":     m.TaskID,
-			"commit_hash": m.CommitHash,
-			"code_source": m.CodeSource,
+		item := TaskCommitMappingItem{
+			TaskID:     m.TaskID,
+			CommitHash: m.CommitHash,
+			CodeSource: m.CodeSource,
 		}
 		if m.UserID != nil {
-			item["user_id"] = *m.UserID
+			item.UserID = m.UserID
 		}
 		if m.MatchScore != nil {
-			item["match_score"] = *m.MatchScore
+			item.MatchScore = m.MatchScore
 		}
 		if m.MatchReason != nil {
-			item["match_reason"] = *m.MatchReason
+			item.MatchReason = m.MatchReason
 		}
 		items = append(items, item)
 	}
-
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, TaskCommitMappingsResponse{Items: items})
 }
 
 // getCodeAttribution GET /api/analysis/code-attribution
+// @Summary 获取代码归属分析
+// @Description 查询指定仓库和日期范围内的代码归属分析，统计AI和人工代码行数
+// @Tags Attribution
+// @Produce json
+// @Param repo_id query string true "仓库ID"
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Success 200 {object} CodeAttributionResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/code-attribution [get]
 func getCodeAttribution(c *gin.Context) {
 	repoID := c.Query("repo_id")
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 
 	if repoID == "" || startDate == "" || endDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_id, startDate, endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repo_id, startDate, endDate 为必填参数"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(startDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
 	list, err := ListCodeAttributions(db, repoID, formatDateYMD(startDateFmt), formatDateYMD(endDateFmt))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	var totalOurAI, totalHuman int64
-	details := make([]gin.H, 0, len(list))
+	details := make([]CodeAttributionDetail, 0, len(list))
 	for _, a := range list {
 		totalOurAI += a.OurAICodeLines
 		totalHuman += a.HumanCodeLines
-		item := gin.H{
-			"commit_hash":   a.CommitHash,
-			"our_ai_lines":  a.OurAICodeLines,
-			"human_lines":   a.HumanCodeLines,
+		item := CodeAttributionDetail{
+			CommitHash: a.CommitHash,
+			OurAILines: a.OurAICodeLines,
+			HumanLines: a.HumanCodeLines,
 		}
 		if a.TaskID != nil {
-			item["task_id"] = *a.TaskID
+			item.TaskID = a.TaskID
 		}
 		details = append(details, item)
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"summary": gin.H{
-			"total_our_ai_lines": totalOurAI,
-			"total_human_lines":  totalHuman,
-		},
-		"details": details,
+	c.JSON(http.StatusOK, CodeAttributionResponse{
+		Summary: CodeAttributionSummary{TotalOurAILines: totalOurAI, TotalHumanLines: totalHuman},
+		Details: details,
 	})
 }
 
 // getCodeSourceStats GET /api/analysis/code-source
+// @Summary 获取代码来源统计
+// @Description 查询指定仓库的代码来源分布统计（AI当前/Human/AI其他/未知）
+// @Tags Attribution
+// @Produce json
+// @Param repo_id query string true "仓库ID"
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Success 200 {object} CodeSourceStatsResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/code-source [get]
 func getCodeSourceStats(c *gin.Context) {
 	repoID := c.Query("repo_id")
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 
 	if repoID == "" || startDate == "" || endDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_id, startDate, endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repo_id, startDate, endDate 为必填参数"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(startDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
 	analysisDate := formatDateYMD(time.Now())
 	m, err := GetRepoMetrics(db, repoID, analysisDate, formatDateYMD(startDateFmt), formatDateYMD(endDateFmt))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -167,13 +195,13 @@ func getCodeSourceStats(c *gin.Context) {
 		return float64(v) / float64(total) * 100
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code_source": gin.H{
-			"ai_current":       gin.H{"lines": aiCurrent, "percentage": pct(aiCurrent)},
-			"human":            gin.H{"lines": human, "percentage": pct(human)},
-			"ai_other":         gin.H{"lines": aiOther, "percentage": pct(aiOther)},
-			"unknown":          gin.H{"lines": unknown, "percentage": pct(unknown)},
+	c.JSON(http.StatusOK, CodeSourceStatsResponse{
+		CodeSource: CodeSourceGroup{
+			AICurrent: CodeSourceItem{Lines: aiCurrent, Percentage: pct(aiCurrent)},
+			Human:     CodeSourceItem{Lines: human, Percentage: pct(human)},
+			AIOther:   CodeSourceItem{Lines: aiOther, Percentage: pct(aiOther)},
+			Unknown:   CodeSourceItem{Lines: unknown, Percentage: pct(unknown)},
 		},
-		"mapped_task_count": mappedTaskCount,
+		MappedTaskCount: mappedTaskCount,
 	})
 }

@@ -226,13 +226,7 @@ func buildEfficiencyResponse(dimension, dimensionID, analysisDate string,
 	userCount int, startTime, endTime time.Time,
 	users []userTaskInfo, apiCost float64, analysisFile string,
 	reasons []string, efficiencyReason string, aiRatioProcess float64,
-	totalCodeLines int64) gin.H {
-
-	isCorrected := correctedDays != nil
-	var correctedVal interface{}
-	if correctedDays != nil {
-		correctedVal = *correctedDays
-	}
+	totalCodeLines int64) EfficiencyResponse {
 
 	// 计算提效比例
 	aiDays := rawDays
@@ -268,15 +262,15 @@ func buildEfficiencyResponse(dimension, dimensionID, analysisDate string,
 	}
 
 	// 用户列表
-	userList := make([]gin.H, 0, len(users))
+	userList := make([]ActualTimeUser, 0, len(users))
 	for _, u := range users {
-		userList = append(userList, gin.H{
-			"user_id":         u.UserID,
-			"user_name":       u.UserName,
-			"start_time":      u.StartTime.Format(time.RFC3339),
-			"end_time":        u.EndTime.Format(time.RFC3339),
-			"lead_time_ms":    u.LeadTimeMs,
-			"process_time_ms": u.ProcessTime,
+		userList = append(userList, ActualTimeUser{
+			UserID:        u.UserID,
+			UserName:      u.UserName,
+			StartTime:     u.StartTime.Format(time.RFC3339),
+			EndTime:       u.EndTime.Format(time.RFC3339),
+			LeadTimeMs:    u.LeadTimeMs,
+			ProcessTimeMs: u.ProcessTime,
 		})
 	}
 
@@ -286,42 +280,42 @@ func buildEfficiencyResponse(dimension, dimensionID, analysisDate string,
 		aiReasons = []string{}
 	}
 
-	return gin.H{
-		"dimension":     dimension,
-		"dimension_id":  dimensionID,
-		"analysis_date": analysisDate,
-		"ai_estimated": gin.H{
-			"raw_days":       rawDays,
-			"corrected_days": correctedVal,
-			"is_corrected":   isCorrected,
-			"reasons":        aiReasons,
+	return EfficiencyResponse{
+		Dimension:    dimension,
+		DimensionID:  dimensionID,
+		AnalysisDate: analysisDate,
+		AIEstimated: AIEstimatedInfo{
+			RawDays:       rawDays,
+			CorrectedDays: correctedDays,
+			IsCorrected:   correctedDays != nil,
+			Reasons:       aiReasons,
 		},
-		"actual_time": gin.H{
-			"total_lead_time_ms":    totalLeadTimeMs,
-			"total_process_time_ms": totalProcessTimeMs,
-			"total_code_lines":      totalCodeLines,
-			"user_count":            userCount,
-			"start_time":            startTime.Format(time.RFC3339),
-			"end_time":              endTime.Format(time.RFC3339),
-			"users":                 userList,
+		ActualTime: ActualTimeInfo{
+			TotalLeadTimeMs:    totalLeadTimeMs,
+			TotalProcessTimeMs: totalProcessTimeMs,
+			TotalCodeLines:     totalCodeLines,
+			UserCount:          userCount,
+			StartTime:          startTime.Format(time.RFC3339),
+			EndTime:            endTime.Format(time.RFC3339),
+			Users:              userList,
 		},
-		"efficiency": gin.H{
-			"ratio_lead":    ratioLead,
-			"ratio_process": ratioProcess,
-			"reason":        efficiencyReason,
+		Efficiency: EfficiencyInfo{
+			RatioLead:    ratioLead,
+			RatioProcess: ratioProcess,
+			Reason:       efficiencyReason,
 		},
-		"cost": gin.H{
-			"api_cost":    apiCost,
-			"daily_rate":  dailyRate,
-			"cost_saving": costSaving,
-			"roi":         roi,
+		Cost: CostInfo{
+			APICost:    apiCost,
+			DailyRate:  dailyRate,
+			CostSaving: costSaving,
+			ROI:        roi,
 		},
-		"analysis_file": analysisFile,
+		AnalysisFile: analysisFile,
 	}
 }
 
 // buildResponseFromProjectMetrics 从 PG ProjectMetrics 构建响应
-func buildResponseFromProjectMetrics(m *ProjectMetrics) gin.H {
+func buildResponseFromProjectMetrics(m *ProjectMetrics) EfficiencyResponse {
 	var rawDays, apiCost float64
 	var totalLeadTimeMs, totalProcessTimeMs int64
 	var userCount int
@@ -367,7 +361,7 @@ func buildResponseFromProjectMetrics(m *ProjectMetrics) gin.H {
 }
 
 // buildResponseFromRepoMetrics 从 PG RepoMetrics 构建响应
-func buildResponseFromRepoMetrics(m *RepoMetrics) gin.H {
+func buildResponseFromRepoMetrics(m *RepoMetrics) EfficiencyResponse {
 	var rawDays, apiCost float64
 	var totalLeadTimeMs, totalProcessTimeMs int64
 	var startTime, endTime time.Time
@@ -420,6 +414,18 @@ func buildResponseFromRepoMetrics(m *RepoMetrics) gin.H {
 // --- Handler ---
 
 // getEfficiency GET /api/analysis/efficiency
+// @Summary 获取提效分析结果
+// @Description 根据维度和ID查询提效分析结果，优先从PG缓存获取，无缓存时从ES实时计算
+// @Tags Efficiency
+// @Produce json
+// @Param dimension query string true "维度(work_dir或repo)"
+// @Param id query string true "维度ID"
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Success 200 {object} EfficiencyResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/efficiency [get]
 func getEfficiency(c *gin.Context) {
 	dimension := c.Query("dimension")
 	id := c.Query("id")
@@ -427,22 +433,22 @@ func getEfficiency(c *gin.Context) {
 	endDate := c.Query("endDate")
 
 	if dimension != "work_dir" && dimension != "repo" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "dimension 必须是 work_dir 或 repo"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dimension 必须是 work_dir 或 repo"})
 		return
 	}
 	if id == "" || startDate == "" || endDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id, startDate, endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "id, startDate, endDate 为必填参数"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(startDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
@@ -454,7 +460,7 @@ func getEfficiency(c *gin.Context) {
 	if dimension == "work_dir" {
 		m, err := GetProjectMetrics(db, id, analysisDate, startDateStr, endDateStr)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 		if m != nil {
@@ -464,7 +470,7 @@ func getEfficiency(c *gin.Context) {
 	} else {
 		m, err := GetRepoMetrics(db, id, analysisDate, startDateStr, endDateStr)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 		if m != nil {
@@ -476,7 +482,7 @@ func getEfficiency(c *gin.Context) {
 	// 实时从 ES 计算
 	ar, err := computeFromES(dimension, id, startDate, endDate)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if ar == nil {
@@ -515,6 +521,16 @@ func getEfficiency(c *gin.Context) {
 }
 
 // calculateEfficiency POST /api/analysis/efficiency/calculate
+// @Summary 计算提效分析
+// @Description 强制重新计算指定维度和ID的提效分析结果，包含AI综合评估，并持久化到PG
+// @Tags Efficiency
+// @Accept json
+// @Produce json
+// @Param data body object true "计算参数" example({"dimension":"work_dir","id":"project1","startDate":"20260101","endDate":"20260331"})
+// @Success 200 {object} EfficiencyResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/efficiency/calculate [post]
 func calculateEfficiency(c *gin.Context) {
 	var req struct {
 		Dimension string `json:"dimension"`
@@ -523,27 +539,27 @@ func calculateEfficiency(c *gin.Context) {
 		EndDate   string `json:"endDate"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数解析失败"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求参数解析失败"})
 		return
 	}
 
 	if req.Dimension != "work_dir" && req.Dimension != "repo" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "dimension 必须是 work_dir 或 repo"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dimension 必须是 work_dir 或 repo"})
 		return
 	}
 	if req.ID == "" || req.StartDate == "" || req.EndDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id, startDate, endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "id, startDate, endDate 为必填参数"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(req.StartDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(req.EndDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
@@ -553,7 +569,7 @@ func calculateEfficiency(c *gin.Context) {
 	// 强制重新计算
 	ar, err := computeFromES(req.Dimension, req.ID, req.StartDate, req.EndDate)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if ar == nil {
@@ -610,7 +626,7 @@ func calculateEfficiency(c *gin.Context) {
 	dirName := analysisDate.Format("2006-01") + "/analysis"
 	analysisDir := filepath.Join(appConfig.RawDataDir, dirName)
 	if err := os.MkdirAll(analysisDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("创建分析目录失败: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("创建分析目录失败: %v", err)})
 		return
 	}
 
@@ -627,11 +643,11 @@ func calculateEfficiency(c *gin.Context) {
 
 	fileData, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("序列化分析结果失败: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("序列化分析结果失败: %v", err)})
 		return
 	}
 	if err := os.WriteFile(analysisFilePath, fileData, 0644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("写入分析文件失败: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("写入分析文件失败: %v", err)})
 		return
 	}
 
@@ -659,7 +675,7 @@ func calculateEfficiency(c *gin.Context) {
 			AnalysisFilePath:       ptrString(analysisFilePath),
 		}
 		if err := UpsertProjectMetrics(db, m); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 	} else {
@@ -683,7 +699,7 @@ func calculateEfficiency(c *gin.Context) {
 			AnalysisFilePath:           ptrString(analysisFilePath),
 		}
 		if err := UpsertRepoMetrics(db, m); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 	}
@@ -704,38 +720,49 @@ type CorrectionRequest struct {
 }
 
 // correctEfficiency PUT /api/analysis/efficiency/correct
+// @Summary 纠正提效分析数据
+// @Description 纠正AI估算天数等字段，记录纠正历史，并重新计算提效比例
+// @Tags Efficiency
+// @Accept json
+// @Produce json
+// @Param data body CorrectionRequest true "纠正请求"
+// @Success 200 {object} EfficiencyResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/efficiency/correct [put]
 func correctEfficiency(c *gin.Context) {
 	var req CorrectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数解析失败"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求参数解析失败"})
 		return
 	}
 
 	if req.Field != "ai_estimated_days" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "field 仅支持 ai_estimated_days"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "field 仅支持 ai_estimated_days"})
 		return
 	}
 	if strings.TrimSpace(req.Reason) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "reason 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "reason 不能为空"})
 		return
 	}
 	if strings.TrimSpace(req.By) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "by 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "by 不能为空"})
 		return
 	}
 	if req.Dimension != "work_dir" && req.Dimension != "repo" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "dimension 必须是 work_dir 或 repo"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dimension 必须是 work_dir 或 repo"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(req.StartDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(req.EndDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
@@ -747,11 +774,11 @@ func correctEfficiency(c *gin.Context) {
 	if req.Dimension == "work_dir" {
 		m, err := GetProjectMetrics(db, req.ID, analysisDate, startDateStr, endDateStr)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 		if m == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "未找到对应的分析记录"})
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "未找到对应的分析记录"})
 			return
 		}
 
@@ -778,7 +805,7 @@ func correctEfficiency(c *gin.Context) {
 		}
 
 		if err := UpsertProjectMetrics(db, m); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 
@@ -794,7 +821,7 @@ func correctEfficiency(c *gin.Context) {
 			CorrectedBy:  ptrString(req.By),
 		}
 		if err := InsertCorrectionHistory(db, h); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 
@@ -802,11 +829,11 @@ func correctEfficiency(c *gin.Context) {
 	} else {
 		m, err := GetRepoMetrics(db, req.ID, analysisDate, startDateStr, endDateStr)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 		if m == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "未找到对应的分析记录"})
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "未找到对应的分析记录"})
 			return
 		}
 
@@ -830,7 +857,7 @@ func correctEfficiency(c *gin.Context) {
 		}
 
 		if err := UpsertRepoMetrics(db, m); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 
@@ -845,7 +872,7 @@ func correctEfficiency(c *gin.Context) {
 			CorrectedBy:  ptrString(req.By),
 		}
 		if err := InsertCorrectionHistory(db, h); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 
@@ -854,61 +881,84 @@ func correctEfficiency(c *gin.Context) {
 }
 
 // getEfficiencyHistory GET /api/analysis/efficiency/history
+// @Summary 获取纠正历史
+// @Description 查询指定维度和ID的纠正历史记录
+// @Tags Efficiency
+// @Produce json
+// @Param dimension query string true "维度(work_dir或repo)"
+// @Param id query string true "维度ID"
+// @Success 200 {object} EfficiencyHistoryResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/efficiency/history [get]
 func getEfficiencyHistory(c *gin.Context) {
 	dimension := c.Query("dimension")
 	id := c.Query("id")
 
 	if dimension == "" || id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "dimension 和 id 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dimension 和 id 为必填参数"})
 		return
 	}
 
 	list, err := ListCorrectionHistory(db, dimension, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	items := make([]gin.H, 0, len(list))
+	items := make([]CorrectionHistoryItem, 0, len(list))
 	for _, h := range list {
-		item := gin.H{
-			"field_name": h.FieldName,
+		item := CorrectionHistoryItem{
+			FieldName: h.FieldName,
 		}
 		if h.OldValue != nil {
-			item["old_value"] = *h.OldValue
+			item.OldValue = h.OldValue
 		}
 		if h.NewValue != nil {
-			item["new_value"] = *h.NewValue
+			item.NewValue = h.NewValue
 		}
 		if h.Reason != nil {
-			item["reason"] = *h.Reason
+			item.Reason = h.Reason
 		}
 		if h.CorrectedBy != nil {
-			item["corrected_by"] = *h.CorrectedBy
+			item.CorrectedBy = h.CorrectedBy
 		}
 		if h.CorrectedAt != nil {
-			item["corrected_at"] = h.CorrectedAt.Format(time.RFC3339)
+			correctedAtStr := h.CorrectedAt.Format(time.RFC3339)
+			item.CorrectedAt = &correctedAtStr
 		}
 		items = append(items, item)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, EfficiencyHistoryResponse{Items: items})
 }
 
 // getEfficiencyFile GET /api/analysis/efficiency/file
+// @Summary 获取提效分析文件
+// @Description 根据维度、ID和日期获取提效分析的原始JSON文件内容
+// @Tags Efficiency
+// @Produce json
+// @Param dimension query string true "维度(work_dir或repo)"
+// @Param id query string true "维度ID"
+// @Param date query string true "日期(YYYYMMDD)"
+// @Success 200 {object} object
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/efficiency/file [get]
 func getEfficiencyFile(c *gin.Context) {
 	dimension := c.Query("dimension")
 	id := c.Query("id")
 	date := c.Query("date")
 
 	if dimension == "" || id == "" || date == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "dimension, id, date 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dimension, id, date 为必填参数"})
 		return
 	}
 
 	dateParsed, err := parseDateParam(date)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "date 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "date 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
@@ -918,13 +968,13 @@ func getEfficiencyFile(c *gin.Context) {
 	filePath := filepath.Join(appConfig.RawDataDir, dirName, fileName)
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "分析文件不存在"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "分析文件不存在"})
 		return
 	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("读取分析文件失败: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("读取分析文件失败: %v", err)})
 		return
 	}
 
@@ -932,6 +982,16 @@ func getEfficiencyFile(c *gin.Context) {
 }
 
 // updateUserManualDays PUT /api/analysis/efficiency/manual-days
+// @Summary 更新用户人工天数
+// @Description 更新指定维度和ID的用户人工天数，需提供原因和操作人
+// @Tags Efficiency
+// @Accept json
+// @Produce json
+// @Param data body object true "更新参数" example({"dimension":"work_dir","id":"project1","startDate":"20260101","endDate":"20260331","value":5.0,"reason":"修正估算","by":"admin"})
+// @Success 200 {object} ManualDaysResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/efficiency/manual-days [put]
 func updateUserManualDays(c *gin.Context) {
 	var req struct {
 		Dimension string  `json:"dimension"`
@@ -943,35 +1003,35 @@ func updateUserManualDays(c *gin.Context) {
 		By        string  `json:"by"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数解析失败"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求参数解析失败"})
 		return
 	}
 
 	if req.Dimension != "work_dir" && req.Dimension != "repo" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "dimension 必须是 work_dir 或 repo"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dimension 必须是 work_dir 或 repo"})
 		return
 	}
 	if req.ID == "" || req.StartDate == "" || req.EndDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id, startDate, endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "id, startDate, endDate 为必填参数"})
 		return
 	}
 	if strings.TrimSpace(req.Reason) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "reason 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "reason 不能为空"})
 		return
 	}
 	if strings.TrimSpace(req.By) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "by 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "by 不能为空"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(req.StartDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(req.EndDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
@@ -979,12 +1039,12 @@ func updateUserManualDays(c *gin.Context) {
 	if err := UpdateUserManualDays(db, req.Dimension, req.ID, analysisDate,
 		formatDateYMD(startDateFmt), formatDateYMD(endDateFmt),
 		req.Value, req.Reason, req.By); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":          "ok",
-		"user_manual_days": req.Value,
+	c.JSON(http.StatusOK, ManualDaysResponse{
+		Message:        "ok",
+		UserManualDays: req.Value,
 	})
 }

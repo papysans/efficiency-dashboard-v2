@@ -1723,9 +1723,9 @@ type Project struct {
 	ProjectID                             string          `json:"project_id"`
 	Name                                  string          `json:"name"`
 	Description                           *string         `json:"description"`
-	Repos                                 json.RawMessage `json:"repos"`
-	TaskIDs                               json.RawMessage `json:"task_ids"`
-	TaskIDsSilica                         json.RawMessage `json:"task_ids_silica"`
+	Repos                                 json.RawMessage `json:"repos" swaggertype:"string" example:"[{\"repo_addr\":\"https://github.com/example/repo\"}]"`
+	TaskIDs                               json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	TaskIDsSilica                         json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\", \"0.5\"]"`
 	StartTime                             *time.Time      `json:"start_time"`
 	EndTime                               *time.Time      `json:"end_time"`
 	StartTimeManual                       *time.Time      `json:"start_time_manual"`
@@ -1989,8 +1989,8 @@ type UserProductivity struct {
 	CreateTime               *time.Time      `json:"create_time"`
 	UserID                   *string         `json:"user_id"`
 	UserName                 *string         `json:"user_name"`
-	TaskIDs                  json.RawMessage `json:"task_ids"`
-	WorkDirIDs               json.RawMessage `json:"work_dir_ids"`
+	TaskIDs                  json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
+	WorkDirIDs               json.RawMessage `json:"work_dir_ids" swaggertype:"string" example:"[\"dir1\"]"`
 	TaskDiffLines            *int            `json:"task_diff_lines"`
 	UpstreamTokens           *int64          `json:"upstream_tokens"`
 	DownstreamTokens         *int64          `json:"downstream_tokens"`
@@ -1998,7 +1998,7 @@ type UserProductivity struct {
 	TaskRealMinutes          *float64        `json:"task_real_minutes"`
 	TaskAncientMinutes       *float64        `json:"task_ancient_minutes"`
 	TaskEfficiencyRatio      *float64        `json:"task_efficiency_ratio"`
-	CommitIDs                json.RawMessage `json:"commit_ids"`
+	CommitIDs                json.RawMessage `json:"commit_ids" swaggertype:"string" example:"[\"commit1\"]"`
 	CommitDiffLines          *int            `json:"commit_diff_lines"`
 	CommitAncientMinutes     *float64        `json:"commit_ancient_minutes"`
 	CommitRealAIMinutes      *float64        `json:"commit_real_ai_minutes"`
@@ -2189,7 +2189,7 @@ type UserGroup struct {
 	GroupID   string          `json:"group_id"`
 	Name      string          `json:"name"`
 	OrgName   string          `json:"org_name"`
-	UserIDs   json.RawMessage `json:"user_ids"`
+	UserIDs   json.RawMessage `json:"user_ids" swaggertype:"string" example:"[\"user1\", \"user2\"]"`
 	CreatedAt *time.Time      `json:"created_at"`
 	UpdatedAt *time.Time      `json:"updated_at"`
 }

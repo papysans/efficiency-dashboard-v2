@@ -12,16 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RepoFilter repos JSONB 中每个元素的结构
-type RepoFilter struct {
-	RepoAddr           string   `json:"repo_addr"`
-	RepoBranch         string   `json:"repo_branch"`
-	StartTime          *string  `json:"start_time"`
-	EndTime            *string  `json:"end_time"`
-	ExcludeCommits     []string `json:"exclude_commits"`
-	IncludeOnlyCommits []string `json:"include_only_commits"`
-}
-
 // collectProjectCommits 根据 project 的 repos 配置收集去重后的 commits
 func collectProjectCommits(project *Project) (map[string]*StatCommit, error) {
 	var repos []RepoFilter
@@ -219,21 +209,19 @@ func recalculateProjectAggregates(projectID string) error {
 // @Tags Projects
 // @Accept json
 // @Produce json
-// @Param project body object true "项目信息"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param project body CreateProjectRequest true "项目信息"
+// @Success 200 {object} Project
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects [post]
 func createProjectV2(c *gin.Context) {
-	var req struct {
-		Name        string  `json:"name"`
-		Description *string `json:"description"`
-	}
+	var req CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "name 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "name 不能为空"})
 		return
 	}
 
@@ -243,13 +231,13 @@ func createProjectV2(c *gin.Context) {
 	}
 	projectID, err := CreateProject(statDB, p)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, project)
@@ -260,16 +248,17 @@ func createProjectV2(c *gin.Context) {
 // @Description 获取所有项目列表
 // @Tags Projects
 // @Produce json
-// @Success 200 {object} object
+// @Success 200 {object} ProjectListResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects [get]
 func listProjectsV2(c *gin.Context) {
 	list, err := ListProjects(statDB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	results := make([]gin.H, len(list))
+	results := make([]ProjectListItem, len(list))
 	for i, p := range list {
 		// repo_count
 		repoCount := 0
@@ -336,10 +325,11 @@ func listProjectsV2(c *gin.Context) {
 		if p.ProjectRealProcessMinutesManual != nil {
 			effectiveReal = p.ProjectRealProcessMinutesManual
 		}
-		var actualLinesPerDay interface{}
+		var actualLinesPerDay *float64
 		if effectiveReal != nil && *effectiveReal > 0 && totalCodeLines > 0 {
 			days := *effectiveReal / 480.0
-			actualLinesPerDay = math.Round(float64(totalCodeLines) / days)
+			v := math.Round(float64(totalCodeLines) / days)
+			actualLinesPerDay = &v
 		}
 
 		// efficiency_ratio
@@ -347,50 +337,51 @@ func listProjectsV2(c *gin.Context) {
 		if p.ProjectAncientMinutesManual != nil {
 			effectiveAncient = p.ProjectAncientMinutesManual
 		}
-		var effRatio interface{}
+		var effRatio *float64
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
 			ratio := (*effectiveAncient / *effectiveReal) * 100
-			effRatio = math.Round(ratio*10) / 10
+			v := math.Round(ratio*10) / 10
+			effRatio = &v
 		}
 
-		results[i] = gin.H{
-			"project_id":                            p.ProjectID,
-			"name":                                  p.Name,
-			"description":                           p.Description,
-			"repos":                                 p.Repos,
-			"task_ids":                              p.TaskIDs,
-			"task_ids_silica":                       p.TaskIDsSilica,
-			"start_time":                            p.StartTime,
-			"end_time":                              p.EndTime,
-			"start_time_manual":                     p.StartTimeManual,
-			"end_time_manual":                       p.EndTimeManual,
-			"upstream_tokens":                       p.UpstreamTokens,
-			"downstream_tokens":                     p.DownstreamTokens,
-			"cost":                                  p.Cost,
-			"project_ancient_minutes":               p.ProjectAncientMinutes,
-			"project_ancient_minutes_reason":        p.ProjectAncientMinutesReason,
-			"project_ancient_minutes_manual":        p.ProjectAncientMinutesManual,
-			"project_ancient_minutes_reason_manual": p.ProjectAncientMinutesReasonManual,
-			"project_real_process_minutes":          p.ProjectRealProcessMinutes,
-			"project_real_process_minutes_reason":   p.ProjectRealProcessMinutesReason,
-			"project_real_process_minutes_manual":   p.ProjectRealProcessMinutesManual,
-			"project_real_process_minutes_reason_manual": p.ProjectRealProcessMinutesReasonManual,
-			"project_real_lead_minutes":                  p.ProjectRealLeadMinutes,
-			"project_real_lead_minutes_reason":           p.ProjectRealLeadMinutesReason,
-			"project_real_lead_minutes_manual":           p.ProjectRealLeadMinutesManual,
-			"project_real_lead_minutes_reason_manual":    p.ProjectRealLeadMinutesReasonManual,
-			"created_at":           p.CreatedAt,
-			"updated_at":           p.UpdatedAt,
-			"repo_count":           repoCount,
-			"task_count":           taskCount,
-			"user_count":           userCount,
-			"total_code_lines":     totalCodeLines,
-			"actual_lines_per_day": actualLinesPerDay,
-			"efficiency_ratio":     effRatio,
+		results[i] = ProjectListItem{
+			ProjectID:                             p.ProjectID,
+			Name:                                  p.Name,
+			Description:                           p.Description,
+			Repos:                                 p.Repos,
+			TaskIDs:                               p.TaskIDs,
+			TaskIDsSilica:                         p.TaskIDsSilica,
+			StartTime:                             p.StartTime,
+			EndTime:                               p.EndTime,
+			StartTimeManual:                       p.StartTimeManual,
+			EndTimeManual:                         p.EndTimeManual,
+			UpstreamTokens:                        &p.UpstreamTokens,
+			DownstreamTokens:                      &p.DownstreamTokens,
+			Cost:                                  &p.Cost,
+			ProjectAncientMinutes:                 p.ProjectAncientMinutes,
+			ProjectAncientMinutesReason:           p.ProjectAncientMinutesReason,
+			ProjectAncientMinutesManual:           p.ProjectAncientMinutesManual,
+			ProjectAncientMinutesReasonManual:     p.ProjectAncientMinutesReasonManual,
+			ProjectRealProcessMinutes:             p.ProjectRealProcessMinutes,
+			ProjectRealProcessMinutesReason:       p.ProjectRealProcessMinutesReason,
+			ProjectRealProcessMinutesManual:       p.ProjectRealProcessMinutesManual,
+			ProjectRealProcessMinutesReasonManual: p.ProjectRealProcessMinutesReasonManual,
+			ProjectRealLeadMinutes:                p.ProjectRealLeadMinutes,
+			ProjectRealLeadMinutesReason:          p.ProjectRealLeadMinutesReason,
+			ProjectRealLeadMinutesManual:          p.ProjectRealLeadMinutesManual,
+			ProjectRealLeadMinutesReasonManual:    p.ProjectRealLeadMinutesReasonManual,
+			CreatedAt:                             p.CreatedAt,
+			UpdatedAt:                             p.UpdatedAt,
+			RepoCount:                             repoCount,
+			TaskCount:                             taskCount,
+			UserCount:                             userCount,
+			TotalCodeLines:                        totalCodeLines,
+			ActualLinesPerDay:                     actualLinesPerDay,
+			EfficiencyRatio:                       effRatio,
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": results})
+	c.JSON(http.StatusOK, ProjectListResponse{Data: results})
 }
 
 // getProjectDetailV2 GET /api/v2/projects/:projectId
@@ -399,26 +390,27 @@ func listProjectsV2(c *gin.Context) {
 // @Tags Projects
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Success 200 {object} ProjectDetailResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId} [get]
 func getProjectDetailV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
 		return
 	}
 
 	// 收集 commits
 	commitMap, err := collectProjectCommits(project)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -467,7 +459,7 @@ func getProjectDetailV2(c *gin.Context) {
 	}
 
 	// 构建 commits 列表，计算每条 commit 的加权硅含量
-	commitItems := make([]gin.H, 0, len(commitMap))
+	commitItems := make([]ProjectCommitItem, 0, len(commitMap))
 	for _, cm := range commitMap {
 		var taskIDs []string
 		if len(cm.TaskIDs) > 0 && string(cm.TaskIDs) != "null" && string(cm.TaskIDs) != "[]" {
@@ -494,44 +486,52 @@ func getProjectDetailV2(c *gin.Context) {
 			s := math.Round(weightedSilicaSum/silicaWeightSum*1000) / 10
 			overallSilica = &s
 		}
-		commitItems = append(commitItems, gin.H{
-			"commit_id":                     cm.CommitID,
-			"commit_time":                   cm.CommitTime,
-			"repo_addr":                     cm.RepoAddr,
-			"repo_branch":                   cm.RepoBranch,
-			"user_name":                     cm.UserName,
-			"git_user_name":                 cm.GitUserName,
-			"diff_lines":                    cm.DiffLines,
-			"comment":                       cm.Comment,
-			"commit_ancient_minutes":        cm.CommitAncientMinutes,
-			"commit_ancient_minutes_manual": cm.CommitAncientMinutesManual,
-			"commit_real_minutes":           cm.CommitRealMinutes,
-			"commit_real_minutes_manual":    cm.CommitRealMinutesManual,
-			"silica":                        overallSilica,
+		repoAddr := ""
+		if cm.RepoAddr != nil {
+			repoAddr = *cm.RepoAddr
+		}
+		repoBranch := ""
+		if cm.RepoBranch != nil {
+			repoBranch = *cm.RepoBranch
+		}
+		commitItems = append(commitItems, ProjectCommitItem{
+			CommitID:                   cm.CommitID,
+			CommitTime:                 cm.CommitTime,
+			RepoAddr:                   repoAddr,
+			RepoBranch:                 repoBranch,
+			UserName:                   cm.UserName,
+			GitUserName:                cm.GitUserName,
+			DiffLines:                  cm.DiffLines,
+			Comment:                    cm.Comment,
+			CommitAncientMinutes:       cm.CommitAncientMinutes,
+			CommitAncientMinutesManual: cm.CommitAncientMinutesManual,
+			CommitRealMinutes:          cm.CommitRealMinutes,
+			CommitRealMinutesManual:    cm.CommitRealMinutesManual,
+			Silica:                     overallSilica,
 		})
 	}
 
-	var tasks []gin.H
+	var tasks []ProjectTaskItem
 	for taskID, silica := range taskSilicaMap {
 		task := taskDetailMap[taskID]
 		if task == nil {
 			continue
 		}
-		tasks = append(tasks, gin.H{
-			"task_id":                     task.TaskID,
-			"user_name":                   task.UserName,
-			"start_time":                  task.StartTime,
-			"end_time":                    task.EndTime,
-			"upstream_tokens":             task.UpstreamTokens,
-			"downstream_tokens":           task.DownstreamTokens,
-			"cost":                        task.Cost,
-			"task_ancient_minutes":        task.TaskAncientMinutes,
-			"task_ancient_minutes_manual": task.TaskAncientMinutesManual,
-			"task_real_minutes":           task.TaskRealMinutes,
-			"task_real_minutes_manual":    task.TaskRealMinutesManual,
-			"title":                       task.Title,
-			"work_dir":                    task.WorkDir,
-			"silica":                      silica,
+		tasks = append(tasks, ProjectTaskItem{
+			TaskID:                   task.TaskID,
+			UserName:                 task.UserName,
+			StartTime:                task.StartTime,
+			EndTime:                  task.EndTime,
+			UpstreamTokens:           task.UpstreamTokens,
+			DownstreamTokens:         task.DownstreamTokens,
+			Cost:                     task.Cost,
+			TaskAncientMinutes:       task.TaskAncientMinutes,
+			TaskAncientMinutesManual: task.TaskAncientMinutesManual,
+			TaskRealMinutes:          task.TaskRealMinutes,
+			TaskRealMinutesManual:    task.TaskRealMinutesManual,
+			Title:                    task.Title,
+			WorkDir:                  task.WorkDir,
+			Silica:                   silica,
 		})
 	}
 
@@ -544,10 +544,11 @@ func getProjectDetailV2(c *gin.Context) {
 	if project.ProjectRealProcessMinutesManual != nil {
 		effectiveReal = project.ProjectRealProcessMinutesManual
 	}
-	var effRatio interface{}
+	var effRatio *float64
 	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
 		ratio := (*effectiveAncient / *effectiveReal) * 100
-		effRatio = math.Round(ratio*10) / 10
+		v := math.Round(ratio*10) / 10
+		effRatio = &v
 	}
 
 	// user_count: 统计参与的用户数
@@ -565,12 +566,12 @@ func getProjectDetailV2(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"project":          project,
-		"commits":          commitItems,
-		"tasks":            tasks,
-		"efficiency_ratio": effRatio,
-		"user_count":       len(userSet),
+	c.JSON(http.StatusOK, ProjectDetailResponse{
+		Project:         project,
+		Commits:         commitItems,
+		Tasks:           tasks,
+		EfficiencyRatio: effRatio,
+		UserCount:       len(userSet),
 	})
 }
 
@@ -581,32 +582,27 @@ func getProjectDetailV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Param project body object true "项目信息"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param project body UpdateProjectRequest true "项目信息"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId} [put]
 func updateProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
-	var req struct {
-		Name          string          `json:"name"`
-		Description   *string         `json:"description"`
-		Repos         json.RawMessage `json:"repos"`
-		TaskIDs       json.RawMessage `json:"task_ids"`
-		TaskIDsSilica json.RawMessage `json:"task_ids_silica"`
-	}
+	var req UpdateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
 		return
 	}
 
@@ -617,7 +613,7 @@ func updateProjectV2(c *gin.Context) {
 	project.TaskIDsSilica = req.TaskIDsSilica
 
 	if err := UpdateProject(statDB, project); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -625,7 +621,7 @@ func updateProjectV2(c *gin.Context) {
 		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // deleteProjectV2 DELETE /api/v2/projects/:projectId
@@ -634,17 +630,18 @@ func updateProjectV2(c *gin.Context) {
 // @Tags Projects
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Success 200 {object} StatusResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId} [delete]
 func deleteProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
 	if err := DeleteProject(statDB, projectID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // updateProjectManualV2 PUT /api/v2/projects/:projectId/manual
@@ -654,24 +651,25 @@ func deleteProjectV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Param data body object true "人工数据"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param data body UpdateProjectManualRequest true "人工数据"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId}/manual [put]
 func updateProjectManualV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
-	var fields map[string]interface{}
+	var fields UpdateProjectManualRequest
 	if err := c.ShouldBindJSON(&fields); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	if err := UpdateProjectManual(statDB, projectID, fields); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // addTasksToProjectV2 POST /api/v2/projects/:projectId/tasks
@@ -681,29 +679,27 @@ func updateProjectManualV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Param tasks body []string true "任务ID列表"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param tasks body AddTasksRequest true "任务ID列表"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId}/tasks [post]
 func addTasksToProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
-	var req struct {
-		TaskIDs       []string  `json:"task_ids"`
-		TaskIDsSilica []float64 `json:"task_ids_silica"`
-	}
+	var req AddTasksRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
 		return
 	}
 
@@ -741,7 +737,7 @@ func addTasksToProjectV2(c *gin.Context) {
 	project.TaskIDsSilica = silicaJSON
 
 	if err := UpdateProject(statDB, project); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -749,7 +745,7 @@ func addTasksToProjectV2(c *gin.Context) {
 		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // addRepoToProjectV2 POST /api/v2/projects/:projectId/repos
@@ -759,26 +755,27 @@ func addTasksToProjectV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Param repo body object true "仓库信息"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param repo body RepoFilter true "仓库信息"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId}/repos [post]
 func addRepoToProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
 	var req RepoFilter
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
 		return
 	}
 
@@ -792,7 +789,7 @@ func addRepoToProjectV2(c *gin.Context) {
 	project.Repos = reposJSON
 
 	if err := UpdateProject(statDB, project); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -800,7 +797,7 @@ func addRepoToProjectV2(c *gin.Context) {
 		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // removeRepoFromProjectV2 DELETE /api/v2/projects/:projectId/repos/:index
@@ -810,25 +807,26 @@ func addRepoToProjectV2(c *gin.Context) {
 // @Produce json
 // @Param projectId path string true "项目ID"
 // @Param index path int true "仓库索引"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId}/repos/{index} [delete]
 func removeRepoFromProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 	indexStr := c.Param("index")
 	index, err := strconv.Atoi(indexStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "index 必须为整数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "index 必须为整数"})
 		return
 	}
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
 		return
 	}
 
@@ -838,7 +836,7 @@ func removeRepoFromProjectV2(c *gin.Context) {
 	}
 
 	if index < 0 || index >= len(repos) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("index %d 超出范围 [0, %d)", index, len(repos))})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("index %d 超出范围 [0, %d)", index, len(repos))})
 		return
 	}
 
@@ -847,7 +845,7 @@ func removeRepoFromProjectV2(c *gin.Context) {
 	project.Repos = reposJSON
 
 	if err := UpdateProject(statDB, project); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -855,7 +853,7 @@ func removeRepoFromProjectV2(c *gin.Context) {
 		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // checkProjectConflictsV2 POST /api/v2/projects/check-conflicts
@@ -864,21 +862,21 @@ func removeRepoFromProjectV2(c *gin.Context) {
 // @Tags Projects
 // @Accept json
 // @Produce json
-// @Param data body object true "检查数据"
-// @Success 200 {object} object
+// @Param data body CheckProjectConflictsRequest true "检查数据"
+// @Success 200 {object} ProjectConflictsResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/check-conflicts [post]
 func checkProjectConflictsV2(c *gin.Context) {
-	var req struct {
-		CommitIDs []string `json:"commit_ids"`
-	}
+	var req CheckProjectConflictsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	projects, err := ListProjects(statDB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -887,12 +885,7 @@ func checkProjectConflictsV2(c *gin.Context) {
 		checkSet[id] = true
 	}
 
-	type conflict struct {
-		CommitID    string `json:"commit_id"`
-		ProjectID   string `json:"project_id"`
-		ProjectName string `json:"project_name"`
-	}
-	var conflicts []conflict
+	var conflicts []ProjectConflict
 
 	for _, p := range projects {
 		commitMap, err := collectProjectCommits(&p)
@@ -901,7 +894,7 @@ func checkProjectConflictsV2(c *gin.Context) {
 		}
 		for commitID := range commitMap {
 			if checkSet[commitID] {
-				conflicts = append(conflicts, conflict{
+				conflicts = append(conflicts, ProjectConflict{
 					CommitID:    commitID,
 					ProjectID:   p.ProjectID,
 					ProjectName: p.Name,
@@ -910,7 +903,7 @@ func checkProjectConflictsV2(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"conflicts": conflicts})
+	c.JSON(http.StatusOK, ProjectConflictsResponse{Conflicts: conflicts})
 }
 
 // removeTasksFromProjectV2 DELETE /api/v2/projects/:projectId/tasks
@@ -919,31 +912,31 @@ func checkProjectConflictsV2(c *gin.Context) {
 // @Tags Projects
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Param tasks body RemoveTasksRequest true "任务ID列表"
+// @Success 200 {object} StatusResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId}/tasks [delete]
 func removeTasksFromProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
-	var req struct {
-		TaskIDs []string `json:"task_ids"`
-	}
+	var req RemoveTasksRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if len(req.TaskIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "task_ids 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "task_ids 不能为空"})
 		return
 	}
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
 		return
 	}
 
@@ -984,7 +977,7 @@ func removeTasksFromProjectV2(c *gin.Context) {
 	project.TaskIDsSilica = silicaJSON
 
 	if err := UpdateProject(statDB, project); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -992,7 +985,7 @@ func removeTasksFromProjectV2(c *gin.Context) {
 		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // updateTaskSilicaInProjectV2 PUT /api/v2/projects/:projectId/tasks/silica
@@ -1002,33 +995,31 @@ func removeTasksFromProjectV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param projectId path string true "项目ID"
-// @Param data body object true "二氧化硅数据"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param data body UpdateTaskSilicaRequest true "二氧化硅数据"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects/{projectId}/tasks/silica [put]
 func updateTaskSilicaInProjectV2(c *gin.Context) {
 	projectID := c.Param("projectId")
 
-	var req struct {
-		TaskID string  `json:"task_id"`
-		Silica float64 `json:"silica"`
-	}
+	var req UpdateTaskSilicaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if req.TaskID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "task_id 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "task_id 不能为空"})
 		return
 	}
 
 	project, err := GetProject(statDB, projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if project == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
 		return
 	}
 
@@ -1061,7 +1052,7 @@ func updateTaskSilicaInProjectV2(c *gin.Context) {
 		}
 	}
 	if !found {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("task_id %s 不在此 project 中", req.TaskID)})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("task_id %s 不在此 project 中", req.TaskID)})
 		return
 	}
 
@@ -1069,7 +1060,7 @@ func updateTaskSilicaInProjectV2(c *gin.Context) {
 	project.TaskIDsSilica = silicaJSON
 
 	if err := UpdateProject(statDB, project); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -1077,5 +1068,5 @@ func updateTaskSilicaInProjectV2(c *gin.Context) {
 		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }

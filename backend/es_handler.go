@@ -30,17 +30,18 @@ func getDefaultString(c *gin.Context, key, defaultVal string) string {
 
 // --- Handler ---
 
-// getIndices ?? ES ?????? request/task ??
-// @Summary ??ES????
-// @Description ??Elasticsearch???????request/task??
+// getIndices 获取 ES 索引列表，区分 request/task 索引
+// @Summary 获取ES索引列表
+// @Description 获取Elasticsearch中匹配的索引列表，区分request和task索引
 // @Tags ES
 // @Produce json
-// @Success 200 {object} object
+// @Success 200 {object} IndicesResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/indices [get]
 func getIndices(c *gin.Context) {
 	indices, err := esClient.GetIndices(ESIndexPattern)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -53,26 +54,25 @@ func getIndices(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"request": requestIndices,
-		"task":    taskIndices,
-	})
+	c.JSON(http.StatusOK, IndicesResponse{Request: requestIndices, Task: taskIndices})
 }
 
-// getRawData ????????
-// @Summary ????????
-// @Description ?Elasticsearch????????
+// getRawData 查询原始请求数据
+// @Summary 查询原始请求数据
+// @Description 从Elasticsearch中查询原始请求数据列表
 // @Tags ES
 // @Produce json
-// @Param startDate query string true "????"
-// @Param endDate query string false "????"
-// @Success 200 {object} object
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Success 200 {object} RawDataResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/requests [get]
 func getRawData(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	if startDate == "" || endDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate ? endDate ?????"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 和 endDate 为必填参数"})
 		return
 	}
 
@@ -83,7 +83,7 @@ func getRawData(c *gin.Context) {
 
 	indexNames, err := generateIndexNames(ESRequestIndexPrefix, startDate, endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -93,14 +93,13 @@ func getRawData(c *gin.Context) {
 
 	result, err := esClient.Search(indexNames, query, (page-1)*pageSize, pageSize, sortField, sortOrder)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"total":    result.Total,
-		"page":     page,
-		"pageSize": pageSize,
-		"hits":     result.Hits,
-	})
+	hits := make([]interface{}, len(result.Hits))
+	for i, h := range result.Hits {
+		hits[i] = h
+	}
+	c.JSON(http.StatusOK, RawDataResponse{Total: int64(result.Total), Page: page, PageSize: pageSize, Hits: hits})
 }

@@ -12,10 +12,20 @@ import (
 )
 
 // getGitAnalysis GET /api/analysis/git
+// @Summary 获取Git分析结果
+// @Description 根据仓库ID查询Git分析结果，包含提交统计和AI估算信息
+// @Tags Git
+// @Produce json
+// @Param repo_id query string true "仓库ID"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Success 200 {object} GitAnalysisResponse
+// @Failure 400 {object} ErrorResponse
+// @Router /analysis/git [get]
 func getGitAnalysis(c *gin.Context) {
 	repoID := c.Query("repo_id")
 	if repoID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_id 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repo_id 为必填参数"})
 		return
 	}
 
@@ -28,12 +38,12 @@ func getGitAnalysis(c *gin.Context) {
 	if startDate != "" && endDate != "" {
 		startDateFmt, e := parseDateParam(startDate)
 		if e != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误，需要 YYYYMMDD"})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误，需要 YYYYMMDD"})
 			return
 		}
 		endDateFmt, e := parseDateParam(endDate)
 		if e != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 			return
 		}
 		analysisDate := formatDateYMD(time.Now())
@@ -43,96 +53,102 @@ func getGitAnalysis(c *gin.Context) {
 	}
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if m == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"repo_id":       repoID,
-			"analysis_date": nil,
-			"git_stats":     nil,
-			"estimation":    nil,
-		})
+		c.JSON(http.StatusOK, GitAnalysisResponse{RepoID: repoID, AnalysisDate: ""})
 		return
 	}
 
 	c.JSON(http.StatusOK, buildGitAnalysisResponse(m))
 }
 
-// buildGitAnalysisResponse 构建 git 分析响应
-func buildGitAnalysisResponse(m *RepoMetrics) gin.H {
-	gitStats := gin.H{}
+func buildGitAnalysisResponse(m *RepoMetrics) GitAnalysisResponse {
+	gitStats := &GitStatsInfo{}
 	if m.GitCommitCount != nil {
-		gitStats["commit_count"] = *m.GitCommitCount
+		gitStats.CommitCount = m.GitCommitCount
 	}
 	if m.GitContributorCount != nil {
-		gitStats["contributor_count"] = *m.GitContributorCount
+		gitStats.ContributorCount = m.GitContributorCount
 	}
 	if m.GitLinesAdded != nil {
-		gitStats["lines_added"] = *m.GitLinesAdded
+		gitStats.LinesAdded = m.GitLinesAdded
 	}
 	if m.GitLinesDeleted != nil {
-		gitStats["lines_deleted"] = *m.GitLinesDeleted
+		gitStats.LinesDeleted = m.GitLinesDeleted
 	}
 	if m.GitFilesChanged != nil {
-		gitStats["files_changed"] = *m.GitFilesChanged
+		gitStats.FilesChanged = m.GitFilesChanged
 	}
 
-	estimation := gin.H{}
+	estimation := &EstimationInfo{}
 	if m.RawAIEstimatedDaysFromTask != nil {
-		estimation["from_task"] = *m.RawAIEstimatedDaysFromTask
+		estimation.FromTask = m.RawAIEstimatedDaysFromTask
 	}
 	if m.RawAIEstimatedDaysFromGit != nil {
-		estimation["from_git"] = *m.RawAIEstimatedDaysFromGit
+		estimation.FromGit = m.RawAIEstimatedDaysFromGit
 	}
 	if m.RawAIEstimatedDaysFinal != nil {
-		estimation["final"] = *m.RawAIEstimatedDaysFinal
+		estimation.Final = m.RawAIEstimatedDaysFinal
 	}
 
-	resp := gin.H{
-		"repo_id":       m.RepoID,
-		"analysis_date": formatDateYMD(m.AnalysisDate),
-		"git_stats":     gitStats,
-		"estimation":    estimation,
+	resp := GitAnalysisResponse{
+		RepoID:       m.RepoID,
+		AnalysisDate: formatDateYMD(m.AnalysisDate),
+		GitStats:     gitStats,
+		Estimation:   estimation,
 	}
 	if m.GitAnalysisFilePath != nil {
-		resp["git_analysis_file"] = *m.GitAnalysisFilePath
+		resp.GitAnalysisFile = m.GitAnalysisFilePath
 	}
 	return resp
 }
 
 // triggerGitAnalysis POST /api/analysis/git/analyze
+// @Summary 触发Git分析
+// @Description 提交Git分析数据（提交数、贡献者数、代码行数等），保存到PG
+// @Tags Git
+// @Accept json
+// @Produce json
+// @Param data body GitAnalysisRequest true "Git分析数据"
+// @Success 200 {object} GitAnalysisSaveResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /analysis/git/analyze [post]
+type GitAnalysisRequest struct {
+	RepoID                 string   `json:"repo_id" example:"repo1"`
+	StartDate              string   `json:"start_date" example:"20260101"`
+	EndDate                string   `json:"end_date" example:"20260331"`
+	CommitCount            *int     `json:"commit_count,omitempty" example:"100"`
+	ContributorCount       *int     `json:"contributor_count,omitempty" example:"5"`
+	LinesAdded             *int64   `json:"lines_added,omitempty" example:"1000"`
+	LinesDeleted           *int64   `json:"lines_deleted,omitempty" example:"500"`
+	FilesChanged           *int     `json:"files_changed,omitempty" example:"20"`
+	AIEstimatedDaysFromGit *float64 `json:"ai_estimated_days_from_git,omitempty" example:"10.5"`
+	AIEstimatedReason      *string  `json:"ai_estimated_reason,omitempty"`
+}
+
 func triggerGitAnalysis(c *gin.Context) {
-	var req struct {
-		RepoID                   string   `json:"repo_id"`
-		StartDate                string   `json:"start_date"`
-		EndDate                  string   `json:"end_date"`
-		CommitCount              *int     `json:"commit_count"`
-		ContributorCount         *int     `json:"contributor_count"`
-		LinesAdded               *int64   `json:"lines_added"`
-		LinesDeleted             *int64   `json:"lines_deleted"`
-		FilesChanged             *int     `json:"files_changed"`
-		AIEstimatedDaysFromGit   *float64 `json:"ai_estimated_days_from_git"`
-		AIEstimatedReason        *string  `json:"ai_estimated_reason"`
-	}
+	var req GitAnalysisRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("请求体解析失败: %v", err)})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("请求体解析失败: %v", err)})
 		return
 	}
 	if req.RepoID == "" || req.StartDate == "" || req.EndDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_id, start_date, end_date 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repo_id, start_date, end_date 为必填参数"})
 		return
 	}
 
 	startDateFmt, err := parseDateParam(req.StartDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "start_date 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "start_date 格式错误，需要 YYYYMMDD"})
 		return
 	}
 	endDateFmt, err := parseDateParam(req.EndDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "end_date 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "end_date 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
@@ -144,7 +160,7 @@ func triggerGitAnalysis(c *gin.Context) {
 	// 查询已有记录，保留非 git 字段
 	existing, err := GetRepoMetrics(db, req.RepoID, analysisDateStr, startDateStr, endDateStr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -174,21 +190,27 @@ func triggerGitAnalysis(c *gin.Context) {
 	m.GitAnalysisFilePath = ptrString(gitFilePath)
 
 	if err := UpsertRepoMetrics(db, &m); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "git 分析数据已保存",
-		"repo_id": req.RepoID,
-	})
+	c.JSON(http.StatusOK, GitAnalysisSaveResponse{Message: "git 分析数据已保存", RepoID: req.RepoID})
 }
 
 // getGitCommits GET /api/analysis/git/commits
+// @Summary 获取Git提交列表
+// @Description 根据仓库ID和日期获取Git提交记录列表
+// @Tags Git
+// @Produce json
+// @Param repo_id query string true "仓库ID"
+// @Param endDate query string false "结束日期(YYYYMMDD)，默认今天"
+// @Success 200 {object} GitCommitsResponse
+// @Failure 400 {object} ErrorResponse
+// @Router /analysis/git/commits [get]
 func getGitCommits(c *gin.Context) {
 	repoID := c.Query("repo_id")
 	if repoID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_id 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repo_id 为必填参数"})
 		return
 	}
 
@@ -199,7 +221,7 @@ func getGitCommits(c *gin.Context) {
 
 	endDateFmt, err := parseDateParam(endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误，需要 YYYYMMDD"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误，需要 YYYYMMDD"})
 		return
 	}
 
@@ -209,21 +231,21 @@ func getGitCommits(c *gin.Context) {
 	filePath := filepath.Join(appConfig.RawDataDir, dirName, fileName)
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		c.JSON(http.StatusOK, gin.H{"commits": []interface{}{}, "repo_id": repoID})
+		c.JSON(http.StatusOK, GitCommitsResponse{Commits: []GitCommitItem{}, RepoID: repoID})
 		return
 	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("读取 commit 文件失败: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("读取 commit 文件失败: %v", err)})
 		return
 	}
 
-	var commits interface{}
+	var commits []GitCommitItem
 	if err := json.Unmarshal(data, &commits); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("解析 commit 文件失败: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("解析 commit 文件失败: %v", err)})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"commits": commits, "repo_id": repoID})
+	c.JSON(http.StatusOK, GitCommitsResponse{Commits: commits, RepoID: repoID})
 }

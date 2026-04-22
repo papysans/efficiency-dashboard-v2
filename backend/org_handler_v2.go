@@ -118,6 +118,19 @@ func filterUsersByParent(parent string) []*OrgMapping {
 // 支持两种模式：
 //   - 不带 granularity（或 granularity=""）：返回 data[]（各组织汇总）
 //   - 带 granularity：额外返回 series（各组织×时间段的时间序列，用于图表）
+//
+// @Summary 获取组织列表
+// @Description 按组织层级查询各组织的效率汇总数据，可选时间序列
+// @Tags Orgs
+// @Produce json
+// @Param level query string false "组织层级(org1/org2/org3/org4)" default(org1)
+// @Param parent query string false "父级组织路径(用/分隔)"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param granularity query string false "时间粒度(day/week/month/year)"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /v2/orgs [get]
 func listOrgV2(c *gin.Context) {
 	level := c.Query("level")
 	parent := c.Query("parent")
@@ -582,6 +595,17 @@ func listOrgV2(c *gin.Context) {
 
 // getOrgDetailV2 GET /api/v2/orgs/detail
 // 重构：复用 user_productivity 聚合，与 getGroupDetailV2 逻辑对齐，并支持 granularity
+// @Summary 获取组织详情
+// @Description 根据组织路径查询组织详情，包含汇总数据、提交/任务时间序列、成员列表
+// @Tags Orgs
+// @Produce json
+// @Param org_path query string true "组织路径(用/分隔，如 org1/org2)"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param granularity query string false "时间粒度(day/week/month/year)" default(day)
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /v2/orgs/detail [get]
 func getOrgDetailV2(c *gin.Context) {
 	orgPath := c.Query("org_path")
 	startDate := c.Query("startDate")
@@ -842,6 +866,19 @@ func getOrgDetailV2(c *gin.Context) {
 }
 
 // getGroupDetailV2 GET /api/v2/group
+// @Summary 获取组织分组详情
+// @Description 根据org1-org4维度查询组织分组详情，包含汇总、每日数据和成员列表
+// @Tags Orgs
+// @Produce json
+// @Param org1 query string false "一级组织"
+// @Param org2 query string false "二级组织"
+// @Param org3 query string false "三级组织"
+// @Param org4 query string false "四级组织"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /v2/group [get]
 func getGroupDetailV2(c *gin.Context) {
 	org1 := c.Query("org1")
 	org2 := c.Query("org2")

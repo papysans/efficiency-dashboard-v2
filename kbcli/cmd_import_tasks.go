@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -122,11 +124,10 @@ var importTasksCmd = &cobra.Command{
 	Short: "导入 task 数据到 costrict_stat 数据库",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskDir, _ := cmd.Flags().GetString("task-dir")
-		outputDir, _ := cmd.Flags().GetString("output-dir")
+		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 
 		summaryDir := filepath.Join(taskDir, "summary")
 		conversationDir := filepath.Join(taskDir, "conversation")
-		analysedDir := filepath.Join(outputDir, "analysed")
 
 		// 检查 summary 目录是否存在
 		if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
@@ -174,21 +175,23 @@ var importTasksCmd = &cobra.Command{
 		skipCount := 0
 
 		for _, summaryPath := range summaryFiles {
-			// 检查 analysedDir 下是否已有对应文件，有则跳过
 			relPath, err := filepath.Rel(summaryDir, summaryPath)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "计算相对路径失败 [%s]: %v\n", summaryPath, err)
 				failCount++
 				continue
 			}
-			analysedPath := filepath.Join(analysedDir, relPath)
-			if _, err := os.Stat(analysedPath); err == nil {
-				fmt.Printf("跳过(已分析): %s\n", summaryPath)
+			fpRelPath := strings.TrimSuffix(relPath, ".json") + ".fp"
+			fpPath := filepath.Join(analysedDir, "task", "summary", fpRelPath)
+			if _, err := os.Stat(fpPath); err == nil {
+				fmt.Printf("跳过(fp已存在): %s\n", summaryPath)
 				skipCount++
 				continue
 			}
+			convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
+			conversationPath := filepath.Join(conversationDir, convRelPath)
 
-			if err := importSingleTask(db, summaryPath, summaryDir, conversationDir, analysedDir); err != nil {
+			if err := importSingleTask(db, summaryPath, conversationPath, fpPath); err != nil {
 				fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", summaryPath, err)
 				failCount++
 			} else {
@@ -203,12 +206,12 @@ var importTasksCmd = &cobra.Command{
 
 func init() {
 	importTasksCmd.Flags().String("task-dir", "./task", "task 目录路径")
-	importTasksCmd.Flags().String("output-dir", "./task", "输出目录路径")
+	importTasksCmd.Flags().String("analysed-dir", "./analysed", "输出目录路径")
 	rootCmd.AddCommand(importTasksCmd)
 }
 
 // importSingleTask 导入单个 task
-func importSingleTask(db *sql.DB, summaryPath, summaryDir, conversationDir, analysedDir string) error {
+func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) error {
 	// 解析 summary JSON
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
@@ -224,18 +227,10 @@ func importSingleTask(db *sql.DB, summaryPath, summaryDir, conversationDir, anal
 		return fmt.Errorf("task_id为空")
 	}
 
-	// 查找对应的 conversation 文件
-	relPath, err := filepath.Rel(summaryDir, summaryPath)
-	if err != nil {
-		return fmt.Errorf("计算相对路径失败: %w", err)
-	}
-	convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
-	convPath := filepath.Join(conversationDir, convRelPath)
-
 	// 解析 conversation（传入modelPrices用于计算cost）
 	var conversations []taskConversation
-	if _, err := os.Stat(convPath); err == nil {
-		conversations, err = parseConversationFile(convPath, cfg.ModelPrices)
+	if _, err := os.Stat(conversationPath); err == nil {
+		conversations, err = parseConversationFile(conversationPath, cfg.ModelPrices)
 		if err != nil {
 			return fmt.Errorf("解析conversation文件失败: %w", err)
 		}
@@ -383,14 +378,15 @@ func importSingleTask(db *sql.DB, summaryPath, summaryDir, conversationDir, anal
 		}
 	}
 
-	// 导入成功，拷贝 summary 文件到 analysed 目录（保留原始文件）
-	analysedPath := filepath.Join(analysedDir, relPath)
-	analysedParent := filepath.Dir(analysedPath)
-	if err := os.MkdirAll(analysedParent, 0755); err != nil {
-		return fmt.Errorf("创建analysed目录失败: %w", err)
+	// 生成代码行指纹文件
+	if err := generateFingerprintFile(&summary, conversations, fpPath); err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 生成指纹文件失败 [%s]: %v\n", summary.TaskID, err)
 	}
-	if err := os.WriteFile(analysedPath, data, 0644); err != nil {
-		return fmt.Errorf("拷贝summary文件到analysed失败: %w", err)
+
+	// 生成silica命令需要的task摘要JSON文件
+	silicaJSONPath := strings.TrimSuffix(fpPath, ".fp") + ".json"
+	if err := generateSilicaSummaryFile(&summary, startTime, silicaJSONPath); err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 生成silica摘要文件失败 [%s]: %v\n", summary.TaskID, err)
 	}
 
 	fmt.Printf("导入成功: %s\n", summary.TaskID)
@@ -586,4 +582,230 @@ func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]ta
 		return nil, fmt.Errorf("读取文件失败: %w", err)
 	}
 	return convs, nil
+}
+
+type addedLine struct {
+	FilePath string
+	Content  string
+}
+
+type diffJSONEntry struct {
+	File      string `json:"file"`
+	Before    string `json:"before"`
+	After     string `json:"after"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Status    string `json:"status"`
+}
+
+func extractAddedLinesFromDiff(diffText string) []addedLine {
+	if strings.TrimSpace(diffText) == "" {
+		return nil
+	}
+
+	var jsonDiff []diffJSONEntry
+	if err := json.Unmarshal([]byte(diffText), &jsonDiff); err == nil && len(jsonDiff) > 0 {
+		hasExpected := false
+		for _, d := range jsonDiff {
+			if d.File != "" || d.After != "" || d.Before != "" || d.Additions > 0 || d.Deletions > 0 {
+				hasExpected = true
+				break
+			}
+		}
+		if hasExpected {
+			return extractFromJSONDiff(jsonDiff)
+		}
+	}
+
+	if strings.Contains(diffText, "<<< BEFORE") && strings.Contains(diffText, ">>> AFTER") {
+		return extractFromBeforeAfterDiff(diffText)
+	}
+
+	return extractFromUnifiedDiff(diffText)
+}
+
+func extractFromUnifiedDiff(diffText string) []addedLine {
+	var result []addedLine
+	var currentFile string
+
+	for _, line := range strings.Split(diffText, "\n") {
+		if strings.HasPrefix(line, "+++ b/") {
+			currentFile = line[6:]
+			continue
+		}
+		if strings.HasPrefix(line, "+++ /dev/null") {
+			currentFile = ""
+			continue
+		}
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			content := line[1:]
+			trimmed := strings.TrimSpace(content)
+			if trimmed != "" {
+				result = append(result, addedLine{FilePath: currentFile, Content: trimmed})
+			}
+		}
+	}
+	return result
+}
+
+func extractFromJSONDiff(jsonDiff []diffJSONEntry) []addedLine {
+	var result []addedLine
+	for _, d := range jsonDiff {
+		if d.After == "" {
+			continue
+		}
+		beforeLines := make(map[string]bool)
+		if d.Before != "" {
+			for _, line := range strings.Split(d.Before, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if trimmed != "" {
+					beforeLines[trimmed] = true
+				}
+			}
+		}
+		for _, line := range strings.Split(d.After, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" && !beforeLines[trimmed] {
+				result = append(result, addedLine{FilePath: d.File, Content: trimmed})
+			}
+		}
+	}
+	return result
+}
+
+func extractFromBeforeAfterDiff(diffText string) []addedLine {
+	var result []addedLine
+	var currentFile string
+	var beforeContent, afterContent strings.Builder
+	var inBefore, inAfter bool
+
+	for _, line := range strings.Split(diffText, "\n") {
+		if strings.HasPrefix(line, "--- ") {
+			if afterContent.Len() > 0 || beforeContent.Len() > 0 {
+				result = append(result, computeDiffAddedLines(currentFile, beforeContent.String(), afterContent.String())...)
+				beforeContent.Reset()
+				afterContent.Reset()
+			}
+			currentFile = strings.TrimSpace(line[4:])
+			inBefore = false
+			inAfter = false
+			continue
+		}
+		if strings.TrimSpace(line) == "<<< BEFORE" {
+			inBefore = true
+			inAfter = false
+			continue
+		}
+		if strings.TrimSpace(line) == ">>> AFTER" {
+			inBefore = false
+			inAfter = true
+			continue
+		}
+		if inBefore {
+			beforeContent.WriteString(line)
+			beforeContent.WriteByte('\n')
+		} else if inAfter {
+			afterContent.WriteString(line)
+			afterContent.WriteByte('\n')
+		}
+	}
+	if afterContent.Len() > 0 || beforeContent.Len() > 0 {
+		result = append(result, computeDiffAddedLines(currentFile, beforeContent.String(), afterContent.String())...)
+	}
+	return result
+}
+
+func computeDiffAddedLines(filePath, before, after string) []addedLine {
+	beforeLines := make(map[string]bool)
+	for _, line := range strings.Split(before, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			beforeLines[trimmed] = true
+		}
+	}
+	var result []addedLine
+	for _, line := range strings.Split(after, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !beforeLines[trimmed] {
+			result = append(result, addedLine{FilePath: filePath, Content: trimmed})
+		}
+	}
+	return result
+}
+
+func generateSilicaSummaryFile(summary *taskSummary, startTime *time.Time, jsonPath string) error {
+	s := silicaTaskSummary{
+		TaskID:   summary.TaskID,
+		RepoAddr: summary.RepoAddr,
+		UserID:   summary.UserID,
+	}
+	if startTime != nil {
+		s.StartTime = startTime.Format(time.RFC3339)
+	}
+
+	data, err := json.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("序列化silica摘要失败: %w", err)
+	}
+
+	if err := os.WriteFile(jsonPath, data, 0644); err != nil {
+		return fmt.Errorf("写入silica摘要文件失败: %w", err)
+	}
+
+	fmt.Printf("  silica摘要已生成: %s\n", jsonPath)
+	return nil
+}
+
+func generateFingerprintFile(summary *taskSummary, conversations []taskConversation, fpPath string) error {
+	diffText := summary.Diff
+	source := "summary"
+
+	if strings.TrimSpace(diffText) == "" {
+		var diffs []string
+		for _, conv := range conversations {
+			if strings.TrimSpace(conv.Diff) != "" {
+				diffs = append(diffs, conv.Diff)
+			}
+		}
+		if len(diffs) > 0 {
+			diffText = strings.Join(diffs, "\n")
+			source = "conversation"
+		}
+	}
+
+	dir := filepath.Dir(fpPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建fp目录失败: %w", err)
+	}
+
+	if strings.TrimSpace(diffText) == "" {
+		if err := os.WriteFile(fpPath, []byte{}, 0644); err != nil {
+			return fmt.Errorf("写入fp文件失败: %w", err)
+		}
+		fmt.Printf("  fp文件已生成(无diff数据, 来源:%s): %s\n", source, fpPath)
+		return nil
+	}
+
+	addedLines := extractAddedLinesFromDiff(diffText)
+	if len(addedLines) == 0 {
+		if err := os.WriteFile(fpPath, []byte{}, 0644); err != nil {
+			return fmt.Errorf("写入fp文件失败: %w", err)
+		}
+		fmt.Printf("  fp文件已生成(无新增行, 来源:%s): %s\n", source, fpPath)
+		return nil
+	}
+
+	var sb strings.Builder
+	for _, al := range addedLines {
+		hash := sha256.Sum256([]byte(removeWhitespace(al.FilePath + al.Content)))
+		sb.WriteString(hex.EncodeToString(hash[:]))
+		sb.WriteByte('\n')
+	}
+
+	if err := os.WriteFile(fpPath, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("写入fp文件失败: %w", err)
+	}
+
+	fmt.Printf("  fp文件已生成(来源:%s, %d行指纹): %s\n", source, len(addedLines), fpPath)
+	return nil
 }

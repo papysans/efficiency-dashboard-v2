@@ -106,48 +106,41 @@ func joinStrings(ss []string, sep string) string {
 // @Accept json
 // @Produce json
 // @Param task body StatTask true "任务信息"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Success 200 {object} UpsertTaskResponse
+// @Success 201 {object} UpsertTaskResponse
+// @Failure 400 {object} ErrorResponse
 // @Router /api/v2/tasks [post]
 func upsertTaskV2(c *gin.Context) {
 	var task StatTask
 	if err := c.ShouldBindJSON(&task); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	// 验证必填字段
 	if strings.TrimSpace(task.TaskID) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "task_id 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "task_id 不能为空"})
 		return
 	}
 
 	// 幂等性保障：先查询记录是否存在
 	existingTask, err := GetStatTask(statDB, task.TaskID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询任务失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询任务失败: " + err.Error()})
 		return
 	}
 
 	// 执行 upsert 操作
 	if err := UpsertStatTask(statDB, &task); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	// 返回操作结果
 	if existingTask != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "updated",
-			"task_id": task.TaskID,
-			"action":  "记录已更新",
-		})
+		c.JSON(http.StatusOK, UpsertTaskResponse{Status: "updated", TaskID: task.TaskID, Action: "记录已更新"})
 	} else {
-		c.JSON(http.StatusCreated, gin.H{
-			"status":  "created",
-			"task_id": task.TaskID,
-			"action":  "新记录已创建",
-		})
+		c.JSON(http.StatusCreated, UpsertTaskResponse{Status: "created", TaskID: task.TaskID, Action: "新记录已创建"})
 	}
 }
 
@@ -158,24 +151,24 @@ func upsertTaskV2(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param conversations body []StatTaskConversation true "对话记录列表"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Success 200 {object} StatusCountResponse
+// @Failure 400 {object} ErrorResponse
 // @Router /api/v2/tasks/conversations/batch [post]
 func batchUpsertConversationsV2(c *gin.Context) {
 	var convs []StatTaskConversation
 	if err := c.ShouldBindJSON(&convs); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if len(convs) == 0 {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "count": 0})
+		c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: 0})
 		return
 	}
 	if err := BatchInsertStatTaskConversations(statDB, convs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "count": len(convs)})
+	c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: len(convs)})
 }
 
 // listTasksV2 GET /api/v2/tasks
@@ -186,24 +179,26 @@ func batchUpsertConversationsV2(c *gin.Context) {
 // @Param startDate query string false "开始日期"
 // @Param endDate query string false "结束日期"
 // @Param dimension query string false "维度过滤"
-// @Success 200 {object} object
+// @Success 200 {object} TaskListResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/tasks [get]
 func listTasksV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	if startDate == "" || endDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 和 endDate 为必填参数"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 和 endDate 为必填参数"})
 		return
 	}
 
 	startT, err := parseDateParam(startDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误: " + err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 		return
 	}
 	endT, err := parseDateParam(endDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误: " + err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 		return
 	}
 
@@ -217,50 +212,50 @@ func listTasksV2(c *gin.Context) {
 
 	total, err := CountStatTasks(statDB, userID, workDirID, startTime, endTime)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	list, err := ListStatTasks(statDB, userID, workDirID, startTime, endTime, page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	// 为每条 task 计算 efficiency_ratio
-	results := make([]gin.H, len(list))
+	results := make([]TaskListItem, len(list))
 	for i, t := range list {
-		item := gin.H{
-			"task_id":                            t.TaskID,
-			"title":                              t.Title,
-			"user_id":                            t.UserID,
-			"user_name":                          t.UserName,
-			"client_id":                          t.ClientID,
-			"client_ide":                         t.ClientIDE,
-			"client_version":                     t.ClientVersion,
-			"client_os":                          t.ClientOS,
-			"client_os_version":                  t.ClientOSVersion,
-			"caller":                             t.Caller,
-			"repo_addr":                          t.RepoAddr,
-			"repo_branch":                        t.RepoBranch,
-			"work_dir":                           t.WorkDir,
-			"work_dir_id":                        t.WorkDirID,
-			"start_time":                         t.StartTime,
-			"end_time":                           t.EndTime,
-			"upstream_tokens":                    t.UpstreamTokens,
-			"downstream_tokens":                  t.DownstreamTokens,
-			"cost":                               t.Cost,
-			"diff_lines":                         t.DiffLines,
-			"task_ancient_minutes":               t.TaskAncientMinutes,
-			"task_ancient_minutes_reason":        t.TaskAncientMinutesReason,
-			"task_ancient_minutes_manual":        t.TaskAncientMinutesManual,
-			"task_ancient_minutes_reason_manual": t.TaskAncientMinutesReasonManual,
-			"task_real_minutes":                  t.TaskRealMinutes,
-			"task_real_minutes_reason":           t.TaskRealMinutesReason,
-			"task_real_minutes_manual":           t.TaskRealMinutesManual,
-			"task_real_minutes_reason_manual":    t.TaskRealMinutesReasonManual,
-			"created_at":                         t.CreatedAt,
-			"updated_at":                         t.UpdatedAt,
+		item := TaskListItem{
+			TaskID:                         t.TaskID,
+			Title:                          t.Title,
+			UserID:                         t.UserID,
+			UserName:                       t.UserName,
+			ClientID:                       t.ClientID,
+			ClientIDE:                      t.ClientIDE,
+			ClientVersion:                  t.ClientVersion,
+			ClientOS:                       t.ClientOS,
+			ClientOSVersion:                t.ClientOSVersion,
+			Caller:                         t.Caller,
+			RepoAddr:                       t.RepoAddr,
+			RepoBranch:                     t.RepoBranch,
+			WorkDir:                        t.WorkDir,
+			WorkDirID:                      t.WorkDirID,
+			StartTime:                      t.StartTime,
+			EndTime:                        t.EndTime,
+			UpstreamTokens:                 t.UpstreamTokens,
+			DownstreamTokens:               t.DownstreamTokens,
+			Cost:                           t.Cost,
+			DiffLines:                      t.DiffLines,
+			TaskAncientMinutes:             t.TaskAncientMinutes,
+			TaskAncientMinutesReason:       t.TaskAncientMinutesReason,
+			TaskAncientMinutesManual:       t.TaskAncientMinutesManual,
+			TaskAncientMinutesReasonManual: t.TaskAncientMinutesReasonManual,
+			TaskRealMinutes:                t.TaskRealMinutes,
+			TaskRealMinutesReason:          t.TaskRealMinutesReason,
+			TaskRealMinutesManual:          t.TaskRealMinutesManual,
+			TaskRealMinutesReasonManual:    t.TaskRealMinutesReasonManual,
+			CreatedAt:                      t.CreatedAt,
+			UpdatedAt:                      t.UpdatedAt,
 		}
 
 		effectiveAncient := t.TaskAncientMinutes
@@ -273,39 +268,21 @@ func listTasksV2(c *gin.Context) {
 		}
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
 			ratio := (*effectiveAncient / *effectiveReal) * 100
-			item["efficiency_ratio"] = ratio
-		} else {
-			item["efficiency_ratio"] = nil
+			item.EfficiencyRatio = &ratio
 		}
 
-		// 补充 org 字段
 		if t.UserID != nil {
 			if om, ok := orgMappings[*t.UserID]; ok {
-				item["org1"] = om.Org1
-				item["org2"] = om.Org2
-				item["org3"] = om.Org3
-				item["org4"] = om.Org4
-			} else {
-				item["org1"] = ""
-				item["org2"] = ""
-				item["org3"] = ""
-				item["org4"] = ""
+				item.Org1 = om.Org1
+				item.Org2 = om.Org2
+				item.Org3 = om.Org3
+				item.Org4 = om.Org4
 			}
-		} else {
-			item["org1"] = ""
-			item["org2"] = ""
-			item["org3"] = ""
-			item["org4"] = ""
 		}
 		results[i] = item
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"total":    total,
-		"page":     page,
-		"pageSize": pageSize,
-		"data":     results,
-	})
+	c.JSON(http.StatusOK, TaskListResponse{Total: total, Page: page, PageSize: pageSize, Data: results})
 }
 
 // getTaskDetailV2 GET /api/v2/tasks/:taskId
@@ -314,25 +291,26 @@ func listTasksV2(c *gin.Context) {
 // @Tags Tasks
 // @Produce json
 // @Param taskId path string true "任务ID"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Success 200 {object} TaskDetailResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/tasks/{taskId} [get]
 func getTaskDetailV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 
 	task, err := GetStatTask(statDB, taskId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if task == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "task not found"})
 		return
 	}
 
 	convs, err := ListStatTaskConversations(statDB, taskId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -376,12 +354,7 @@ func getTaskDetailV2(c *gin.Context) {
 		efficiencyRatio = &ratio
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"task":             task,
-		"conversations":    convs,
-		"time_segments":    segments,
-		"efficiency_ratio": efficiencyRatio,
-	})
+	c.JSON(http.StatusOK, TaskDetailResponse{Task: task, Conversations: convs, TimeSegments: segments, EfficiencyRatio: efficiencyRatio})
 }
 
 // callAIForTaskTitle 调用 AI 从对话记录提取任务标题（不超过100字符）
@@ -467,33 +440,28 @@ func callAIForTaskTitle(taskID string, userInputs []string) {
 // @Accept json
 // @Produce json
 // @Param taskId path string true "任务ID"
-// @Param data body object true "人工数据"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param data body UpdateTaskManualRequest true "人工数据"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
 // @Router /api/v2/tasks/{taskId}/manual [put]
 func updateTaskManualV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 	if taskId == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "taskId 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "taskId 不能为空"})
 		return
 	}
 
-	var req struct {
-		TaskRealMinutesManual          *float64 `json:"task_real_minutes_manual"`
-		TaskRealMinutesReasonManual    *string  `json:"task_real_minutes_reason_manual"`
-		TaskAncientMinutesManual       *float64 `json:"task_ancient_minutes_manual"`
-		TaskAncientMinutesReasonManual *string  `json:"task_ancient_minutes_reason_manual"`
-	}
+	var req UpdateTaskManualRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	if err := UpdateStatTaskManual(statDB, taskId, req.TaskRealMinutesManual, req.TaskRealMinutesReasonManual, req.TaskAncientMinutesManual, req.TaskAncientMinutesReasonManual); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // extractMinutesFromReason 从 reason 文本中提取分钟数
@@ -608,42 +576,33 @@ func extractMinutesFromReason(reason string) (float64, string) {
 // @Description 从任务古代工时原因中提取工时数值并更新到数据库
 // @Tags Tasks
 // @Produce json
-// @Success 200 {object} object
+// @Success 200 {object} FixAncientResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/tasks/fix-ancient-minutes [post]
 func fixAncientMinutes(c *gin.Context) {
 	rows, err := statDB.Query(`SELECT task_id, task_ancient_minutes_reason FROM tasks WHERE task_ancient_minutes IS NULL AND task_ancient_minutes_reason IS NOT NULL AND task_ancient_minutes_reason != ''`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	defer rows.Close()
 
-	type fixResult struct {
-		TaskID  string  `json:"task_id"`
-		Minutes float64 `json:"minutes"`
-		Method  string  `json:"method"`
-	}
-
-	var results []fixResult
+	var results []FixAncientResult
 	for rows.Next() {
 		var taskID, reason string
 		if err := rows.Scan(&taskID, &reason); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
 		minutes, method := extractMinutesFromReason(reason)
 		if _, err := statDB.Exec(`UPDATE tasks SET task_ancient_minutes = $1 WHERE task_id = $2`, minutes, taskID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("update task %s failed: %v", taskID, err)})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("update task %s failed: %v", taskID, err)})
 			return
 		}
-		results = append(results, fixResult{TaskID: taskID, Minutes: minutes, Method: method})
+		results = append(results, FixAncientResult{TaskID: taskID, Minutes: minutes, Method: method})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"count":   len(results),
-		"results": results,
-	})
+	c.JSON(http.StatusOK, FixAncientResponse{Status: "ok", Count: len(results), Results: results})
 }
 
 // getTaskFile GET /api/v2/tasks/file
@@ -654,7 +613,9 @@ func fixAncientMinutes(c *gin.Context) {
 // @Param taskId query string true "任务ID"
 // @Param type query string false "文件类型"
 // @Success 200 {object} object
-// @Failure 404 {object} object
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/tasks/file [get]
 func getTaskFile(c *gin.Context) {
 	typ := c.Query("type")
@@ -662,20 +623,20 @@ func getTaskFile(c *gin.Context) {
 	date := c.Query("date")
 
 	if typ != "summary" && typ != "conversation" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "type must be summary or conversation"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "type must be summary or conversation"})
 		return
 	}
 	if taskId == "" || date == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "taskId and date are required"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "taskId and date are required"})
 		return
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "date must be YYYY-MM-DD format"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "date must be YYYY-MM-DD format"})
 		return
 	}
 	if strings.Contains(taskId, "..") || strings.Contains(taskId, "/") || strings.Contains(taskId, "\\") ||
 		strings.Contains(date, "..") || strings.Contains(date, "/") || strings.Contains(date, "\\") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid characters in parameters"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid characters in parameters"})
 		return
 	}
 
@@ -697,13 +658,13 @@ func getTaskFile(c *gin.Context) {
 	}
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "文件不存在"})
 		return
 	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -716,13 +677,14 @@ func getTaskFile(c *gin.Context) {
 // @Description 使用AI从对话记录中估算任务的古代工时
 // @Tags Tasks
 // @Produce json
-// @Success 200 {object} object
-// @Failure 500 {object} object
+// @Success 200 {object} EstimateAncientResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/tasks/estimate-ancient [post]
 func estimateAncientMinutes(c *gin.Context) {
 	cfg := appConfig.AIEstimation
 	if !cfg.Enabled || cfg.APIKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "AI estimation not enabled or API key missing"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "AI estimation not enabled or API key missing"})
 		return
 	}
 
@@ -740,7 +702,7 @@ func estimateAncientMinutes(c *gin.Context) {
 
 	rows, err := statDB.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	defer rows.Close()
@@ -755,18 +717,11 @@ func estimateAncientMinutes(c *gin.Context) {
 	}
 
 	if len(taskIDs) == 0 {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "no tasks need estimation", "count": 0})
+		c.JSON(http.StatusOK, EstimateAncientResponse{Status: "ok", Total: 0, Success: 0})
 		return
 	}
 
-	type estimateResult struct {
-		TaskID  string  `json:"task_id"`
-		Minutes float64 `json:"minutes"`
-		Reason  string  `json:"reason"`
-		Error   string  `json:"error,omitempty"`
-	}
-
-	var results []estimateResult
+	var results []EstimateAncientResult
 
 	for _, tid := range taskIDs {
 		// 读取对话记录
@@ -774,7 +729,7 @@ func estimateAncientMinutes(c *gin.Context) {
 			`SELECT user_input, diff, diff_lines, upstream_tokens, downstream_tokens
 			 FROM task_conversations WHERE task_id = $1 ORDER BY start_time`, tid)
 		if err != nil {
-			results = append(results, estimateResult{TaskID: tid, Error: err.Error()})
+			results = append(results, EstimateAncientResult{TaskID: tid, Error: err.Error()})
 			continue
 		}
 
@@ -802,14 +757,14 @@ func estimateAncientMinutes(c *gin.Context) {
 		convRows.Close()
 
 		if len(userInputs) == 0 {
-			results = append(results, estimateResult{TaskID: tid, Error: "no conversation data"})
+			results = append(results, EstimateAncientResult{TaskID: tid, Error: "no conversation data"})
 			continue
 		}
 
 		// 构建 prompt
 		minutes, reason, err := callAIForAncientEstimation(userInputs, codeOutputs, totalChars, totalLines)
 		if err != nil {
-			results = append(results, estimateResult{TaskID: tid, Error: err.Error()})
+			results = append(results, EstimateAncientResult{TaskID: tid, Error: err.Error()})
 			continue
 		}
 
@@ -818,11 +773,11 @@ func estimateAncientMinutes(c *gin.Context) {
 			`UPDATE tasks SET task_ancient_minutes = $1, task_ancient_minutes_reason = $2, updated_at = NOW() WHERE task_id = $3`,
 			minutes, reason, tid)
 		if err != nil {
-			results = append(results, estimateResult{TaskID: tid, Minutes: minutes, Reason: reason, Error: "db update failed: " + err.Error()})
+			results = append(results, EstimateAncientResult{TaskID: tid, Minutes: minutes, Reason: reason, Error: "db update failed: " + err.Error()})
 			continue
 		}
 
-		results = append(results, estimateResult{TaskID: tid, Minutes: minutes, Reason: reason})
+		results = append(results, EstimateAncientResult{TaskID: tid, Minutes: minutes, Reason: reason})
 		log.Printf("AI估时完成: task=%s, minutes=%.1f", tid, minutes)
 	}
 
@@ -833,12 +788,7 @@ func estimateAncientMinutes(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"total":   len(taskIDs),
-		"success": successCount,
-		"results": results,
-	})
+	c.JSON(http.StatusOK, EstimateAncientResponse{Status: "ok", Total: len(taskIDs), Success: successCount, Results: results})
 }
 
 // callAIForAncientEstimation 调用 AI 估算传统开发时长

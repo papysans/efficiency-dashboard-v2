@@ -12,6 +12,11 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 )
 
+type IndexInfo struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
 // ESConfig ES 连接配置
 type ESConfig struct {
 	URL      string `yaml:"url"`
@@ -143,12 +148,6 @@ func (e *ESClient) SearchWithFilter(indexNames []string, filters map[string]inte
 	return e.Search(indexNames, query, from, size, sortField, sortOrder)
 }
 
-// IndexInfo 索引信息
-type IndexInfo struct {
-	Name     string `json:"name"`
-	DocCount string `json:"docCount"`
-}
-
 // GetIndices 获取匹配 pattern 的索引列表
 // 使用 _resolve/index API 替代 _cat/indices，避免权限问题
 func (e *ESClient) GetIndices(pattern string) ([]IndexInfo, error) {
@@ -181,8 +180,8 @@ func (e *ESClient) GetIndices(pattern string) ([]IndexInfo, error) {
 	result := make([]IndexInfo, 0, len(resolveResult.Indices))
 	for _, idx := range resolveResult.Indices {
 		result = append(result, IndexInfo{
-			Name:     idx.Name,
-			DocCount: "",
+			Name:  idx.Name,
+			Count: 0,
 		})
 	}
 	return result, nil

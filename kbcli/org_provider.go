@@ -14,6 +14,11 @@ type OrgInfo struct {
 	Org2     string
 	Org3     string
 	Org4     string
+	Org5     string
+	Org6     string
+	Org7     string
+	Org8     string
+	Org9     string
 }
 
 // OrgProvider 基于 CSV 文件的组织信息提供者
@@ -103,7 +108,7 @@ func (p *OrgProvider) load() error {
 	for i, col := range header {
 		colIdx[col] = i
 	}
-	requiredCols := []string{"user_id", "user_name", "org1", "org2", "org3", "org4"}
+	requiredCols := []string{"user_id", "user_name", "org1", "org2", "org3", "org4", "org5", "org6", "org7", "org8", "org9"}
 	for _, col := range requiredCols {
 		if _, ok := colIdx[col]; !ok {
 			return fmt.Errorf("CSV缺少必要列: %s", col)
@@ -128,6 +133,11 @@ func (p *OrgProvider) load() error {
 			Org2:     row[colIdx["org2"]],
 			Org3:     row[colIdx["org3"]],
 			Org4:     row[colIdx["org4"]],
+			Org5:     row[colIdx["org5"]],
+			Org6:     row[colIdx["org6"]],
+			Org7:     row[colIdx["org7"]],
+			Org8:     row[colIdx["org8"]],
+			Org9:     row[colIdx["org9"]],
 		}
 		if uid != "" {
 			userIDMap[uid] = info

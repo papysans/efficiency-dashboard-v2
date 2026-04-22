@@ -16,7 +16,9 @@ import (
 // @Produce json
 // @Param startDate query string false "开始日期"
 // @Param endDate query string false "结束日期"
-// @Success 200 {object} object
+// @Success 200 {object} DashboardSummaryResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/dashboard/summary [get]
 func getDashboardSummary(c *gin.Context) {
 	startDate := c.Query("startDate")
@@ -26,7 +28,7 @@ func getDashboardSummary(c *gin.Context) {
 	if startDate != "" {
 		startT, err := parseDateParam(startDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 			return
 		}
 		startTime = startT.Format(time.RFC3339)
@@ -34,7 +36,7 @@ func getDashboardSummary(c *gin.Context) {
 	if endDate != "" {
 		endT, err := parseDateParam(endDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 			return
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
@@ -76,7 +78,7 @@ func getDashboardSummary(c *gin.Context) {
 	var avgEfficiencyRatio *float64
 	err := statDB.QueryRow(taskQuery, taskArgs...).Scan(&totalTasks, &totalUsers, &totalRepos, &totalCost, &totalTokens, &totalAIDays, &totalRealMinutes, &avgEfficiencyRatio)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询 tasks 聚合失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 tasks 聚合失败: " + err.Error()})
 		return
 	}
 
@@ -107,7 +109,7 @@ func getDashboardSummary(c *gin.Context) {
 	var totalDiffLines int64
 	err = statDB.QueryRow(commitQuery, commitArgs...).Scan(&totalCommits, &totalDiffLines)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询 commits 聚合失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 commits 聚合失败: " + err.Error()})
 		return
 	}
 
@@ -115,21 +117,21 @@ func getDashboardSummary(c *gin.Context) {
 	var totalWorkDirs int
 	err = statDB.QueryRow("SELECT COUNT(*) FROM (SELECT DISTINCT repo_addr, repo_branch FROM commits WHERE repo_addr IS NOT NULL AND repo_addr != '') sub").Scan(&totalWorkDirs)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询 work_dirs 聚合失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 work_dirs 聚合失败: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"total_tasks":                totalTasks,
-		"total_users":                totalUsers,
-		"total_repos":                totalRepos,
-		"total_commits":              totalCommits,
-		"total_work_dirs":            totalWorkDirs,
-		"total_cost":                 totalCost,
-		"total_tokens":               totalTokens,
-		"total_diff_lines":           totalDiffLines,
-		"total_task_ancient_minutes": totalAIDays,
-		"total_real_minutes":         totalRealMinutes,
-		"avg_efficiency_ratio":       avgEfficiencyRatio,
+	c.JSON(http.StatusOK, DashboardSummaryResponse{
+		TotalTasks:              totalTasks,
+		TotalUsers:              totalUsers,
+		TotalRepos:              totalRepos,
+		TotalCommits:            totalCommits,
+		TotalWorkDirs:           totalWorkDirs,
+		TotalCost:               totalCost,
+		TotalTokens:             totalTokens,
+		TotalDiffLines:          totalDiffLines,
+		TotalTaskAncientMinutes: totalAIDays,
+		TotalRealMinutes:        totalRealMinutes,
+		AvgEfficiencyRatio:      avgEfficiencyRatio,
 	})
 }

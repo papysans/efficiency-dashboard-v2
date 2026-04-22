@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -54,7 +56,7 @@ var importRepoCmd = &cobra.Command{
 	Long:  "扫描指定repo目录下的commit JSON文件，批量写入commits表",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repoDir, _ := cmd.Flags().GetString("repo-dir")
-		outputDir, _ := cmd.Flags().GetString("output-dir")
+		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 
 		// 验证目录存在性
 		if _, err := os.Stat(repoDir); os.IsNotExist(err) {
@@ -78,7 +80,7 @@ var importRepoCmd = &cobra.Command{
 		}
 
 		// 扫描待导入文件
-		files, skipCount, err := scanRepoDir(repoDir, outputDir)
+		files, skipCount, err := scanRepoDir(repoDir, analysedDir)
 		if err != nil {
 			return fmt.Errorf("扫描repo目录失败: %w", err)
 		}
@@ -94,7 +96,7 @@ var importRepoCmd = &cobra.Command{
 		failCount := 0
 
 		for _, fileMeta := range files {
-			if err := importCommitFile(db, fileMeta, outputDir); err != nil {
+			if err := importCommitFile(db, fileMeta, analysedDir); err != nil {
 				fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", fileMeta.Path, err)
 				failCount++
 			} else {
@@ -109,7 +111,7 @@ var importRepoCmd = &cobra.Command{
 
 func init() {
 	importRepoCmd.Flags().String("repo-dir", "./repo", "repo 目录路径（必需）")
-	importRepoCmd.Flags().String("output-dir", "./analysed", "已处理文件的输出目录")
+	importRepoCmd.Flags().String("analysed-dir", "./analysed", "已处理文件的输出目录")
 	if err := importRepoCmd.MarkFlagRequired("repo-dir"); err != nil {
 		panic(err)
 	}
@@ -118,7 +120,7 @@ func init() {
 
 // scanRepoDir 扫描repo目录，返回符合条件的commit文件列表
 // 路径格式: <repo-dir>/<repo>/<branch>/<year>/<month>/<day>/<commit-id>.json
-func scanRepoDir(repoDir, outputDir string) ([]repoFileMeta, int, error) {
+func scanRepoDir(repoDir, analysedDir string) ([]repoFileMeta, int, error) {
 	var files []repoFileMeta
 	skipCount := 0
 
@@ -127,16 +129,16 @@ func scanRepoDir(repoDir, outputDir string) ([]repoFileMeta, int, error) {
 			return err
 		}
 
-		// 跳过outputDir目录（可能是analysed或其他用户指定的目录）
+		// 跳过analysedDir目录（可能是analysed或其他用户指定的目录）
 		if info.IsDir() {
 			relPath, err := filepath.Rel(repoDir, path)
 			if err != nil {
 				return err
 			}
-			outputDirRel, err := filepath.Rel(repoDir, outputDir)
+			analysedDirRel, err := filepath.Rel(repoDir, analysedDir)
 			if err == nil {
-				// 检查当前目录是否是outputDir或其子目录
-				if relPath == outputDirRel || strings.HasPrefix(relPath, outputDirRel+string(filepath.Separator)) {
+				// 检查当前目录是否是analysedDir或其子目录
+				if relPath == analysedDirRel || strings.HasPrefix(relPath, analysedDirRel+string(filepath.Separator)) {
 					return filepath.SkipDir
 				}
 			}
@@ -159,14 +161,6 @@ func scanRepoDir(repoDir, outputDir string) ([]repoFileMeta, int, error) {
 
 		matches := reRepoPath.FindStringSubmatch(relPath)
 		if matches == nil {
-			return nil // 路径格式不匹配，忽略
-		}
-
-		// 检查outputDir下是否已有对应文件，有则跳过
-		analysedPath := filepath.Join(outputDir, relPath)
-		if _, err := os.Stat(analysedPath); err == nil {
-			fmt.Printf("跳过(已处理): %s\n", path)
-			skipCount++
 			return nil
 		}
 
@@ -179,6 +173,13 @@ func scanRepoDir(repoDir, outputDir string) ([]repoFileMeta, int, error) {
 			Month:    matches[4],
 			Day:      matches[5],
 			CommitID: matches[6],
+		}
+
+		fpPath := fpPathForMeta(analysedDir, meta)
+		if _, err := os.Stat(fpPath); err == nil {
+			fmt.Printf("跳过(已处理): %s\n", path)
+			skipCount++
+			return nil
 		}
 
 		files = append(files, meta)
@@ -200,7 +201,7 @@ func importEstimateCommitAncientMinutes(diffLines int) (float64, string) {
 }
 
 // importCommitFile 导入单个commit文件
-func importCommitFile(db *sql.DB, meta repoFileMeta, outputDir string) error {
+func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
 	// 读取并解析JSON文件
 	data, err := os.ReadFile(meta.Path)
 	if err != nil {
@@ -268,24 +269,49 @@ func importCommitFile(db *sql.DB, meta repoFileMeta, outputDir string) error {
 		}
 	}
 
-	// 导入成功，拷贝文件到outputDir目录
-	analysedPath := filepath.Join(outputDir, meta.RelPath)
-	analysedParent := filepath.Dir(analysedPath)
+	// 生成代码行指纹文件
+	addedLines := extractAddedLinesFromDiff(commitData.Diff)
+	fpPath := fpPathForMeta(analysedDir, meta)
 
-	if err := os.MkdirAll(analysedParent, 0755); err != nil {
-		// 创建目录失败不影响主流程，仅记录错误
-		fmt.Fprintf(os.Stderr, "创建output目录失败 [%s]: %v\n", analysedParent, err)
+	if err := writeFingerprintsToFile(addedLines, fpPath); err != nil {
+		fmt.Fprintf(os.Stderr, "写入fp文件失败 [%s]: %v\n", fpPath, err)
 		return nil
 	}
 
-	if err := os.WriteFile(analysedPath, data, 0644); err != nil {
-		// 拼接文件失败不影响主流程，仅记录错误
-		fmt.Fprintf(os.Stderr, "拷贝文件到output目录失败 [%s]: %v\n", analysedPath, err)
-		return nil
-	}
-
-	fmt.Printf("导入成功: %s\n", commitData.CommitID)
+	fmt.Printf("导入成功: %s (新增行指纹: %d)\n", commitData.CommitID, len(addedLines))
 	return nil
+}
+
+func removeWhitespace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func writeFingerprintsToFile(addedLines []addedLine, fpPath string) error {
+	fpDir := filepath.Dir(fpPath)
+	if err := os.MkdirAll(fpDir, 0755); err != nil {
+		return fmt.Errorf("创建fp目录失败: %w", err)
+	}
+
+	var sb strings.Builder
+	for _, al := range addedLines {
+		hash := sha256.Sum256([]byte(removeWhitespace(al.FilePath + al.Content)))
+		sb.WriteString(hex.EncodeToString(hash[:]))
+		sb.WriteByte('\n')
+	}
+
+	if err := os.WriteFile(fpPath, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("写入fp文件失败: %w", err)
+	}
+	return nil
+}
+
+func fpPathForMeta(analysedDir string, meta repoFileMeta) string {
+	return filepath.Join(analysedDir, "repo", meta.Repo, meta.Branch, meta.Year, meta.Month, meta.Day, meta.CommitID+".fp")
 }
 
 // ensureImportRepoTables 确保导入repo数据所需的数据库表存在，不存在则自动创建

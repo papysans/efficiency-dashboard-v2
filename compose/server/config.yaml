@@ -27,6 +27,7 @@ stat_database:
 rawdata_dir: "/app/rawdata"
 task_dir: "/app/task"
 analysed_dir: "/app/analysed"
+org_mapping: "/app/org_mapping.csv"
 
 cors:
   allow_origins:

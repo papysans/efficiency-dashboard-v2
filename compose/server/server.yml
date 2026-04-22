@@ -4,6 +4,7 @@ services:
     restart: always
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+      - ./org_mapping.csv:/app/org_mapping.csv:ro
       - /mnt/prod_env/user-indicator/raw/task:/app/task
       - ./analysed:/app/analysed
     ports:

@@ -11,6 +11,15 @@ import (
 )
 
 // rebuildUserProductivity POST /api/v2/user-productivity/rebuild
+// @Summary 重建用户生产力数据
+// @Description 从tasks和commits表聚合数据，重新计算并写入user_productivity表
+// @Tags Users
+// @Produce json
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Success 200 {object} object
+// @Failure 400 {object} object
+// @Router /v2/users/rebuild [post]
 func rebuildUserProductivity(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
