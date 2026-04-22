@@ -547,6 +547,15 @@ func calculateImportTaskRealMinutes(conversations []taskConversation, gapThresho
 	return totalMinutes, reason
 }
 
+// calculateCost 计算 API 调用费用
+func calculateCost(model string, inTokens, outTokens int64, prices map[string]ModelPrice) float64 {
+	price, ok := prices[model]
+	if !ok {
+		return 0
+	}
+	return (float64(inTokens)/1e6)*price.InPrice + (float64(outTokens)/1e6)*price.OutPrice
+}
+
 // parseConversationFile 解析 .jsonl 文件为 conversation 列表，并计算cost（如果缺失）
 func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]taskConversation, error) {
 	f, err := os.Open(path)

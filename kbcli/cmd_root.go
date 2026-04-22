@@ -29,46 +29,8 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// reloadOrgCmd 重新加载组织信息 CSV 文件
-var reloadOrgCmd = &cobra.Command{
-	Use:   "reload-org",
-	Short: "重新加载组织信息 CSV 文件",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		orgProvider, err := NewOrgProvider(cfg.OrgCSVFile)
-		if err != nil {
-			return fmt.Errorf("加载组织信息失败: %w", err)
-		}
-		fmt.Printf("组织信息加载成功，共 %d 条记录\n", orgProvider.Count())
-		return nil
-	},
-}
-
-// validateOrgCmd 验证组织信息 CSV 文件格式
-var validateOrgCmd = &cobra.Command{
-	Use:   "validate-org",
-	Short: "验证组织信息 CSV 文件格式",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		csvFile, _ := cmd.Flags().GetString("csv-file")
-		if csvFile == "" {
-			csvFile = cfg.OrgCSVFile
-		}
-		orgProvider, err := NewOrgProvider(csvFile)
-		if err != nil {
-			return fmt.Errorf("验证失败: %w", err)
-		}
-		fmt.Printf("CSV 文件验证通过: %s\n", csvFile)
-		fmt.Printf("  user_id 条目数: %d\n", len(orgProvider.userIDMap))
-		fmt.Printf("  user_name 条目数: %d\n", len(orgProvider.userNameMap))
-		return nil
-	},
-}
-
 func init() {
 	rootCmd.PersistentFlags().String("config", "config.yaml", "配置文件路径")
-	validateOrgCmd.Flags().String("csv-file", "", "CSV 文件路径（默认使用配置文件中的路径）")
-	// rootCmd.AddCommand(analyzeCmd)
-	rootCmd.AddCommand(reloadOrgCmd)
-	rootCmd.AddCommand(validateOrgCmd)
 }
 
 // Execute 执行根命令，供 main.go 调用
