@@ -16,24 +16,12 @@ export function getEfficiency(params) {
   return request({ url: '/analysis/efficiency', method: 'get', params })
 }
 
-export function calculateEfficiency(data) {
-  return request({ url: '/analysis/efficiency/calculate', method: 'post', data })
-}
-
 export function correctEfficiency(data) {
   return request({ url: '/analysis/efficiency/correct', method: 'put', data })
 }
 
 export function getEfficiencyHistory(params) {
   return request({ url: '/analysis/efficiency/history', method: 'get', params })
-}
-
-export function getEfficiencyFile(params) {
-  return request({ url: '/analysis/efficiency/file', method: 'get', params })
-}
-
-export function updateManualDays(data) {
-  return request({ url: '/analysis/efficiency/manual-days', method: 'put', data })
 }
 
 export function getGitAnalysis(params) {
@@ -148,12 +136,8 @@ export const addRepoToProject = (projectId, data) => request({ url: `/v2/project
 export const removeRepoFromProject = (projectId, index) => request({ url: `/v2/projects/${projectId}/repos/${index}`, method: 'delete' })
 export const checkProjectConflicts = (data) => request({ url: '/v2/projects/check-conflicts', method: 'post', data })
 
-// === User Productivity API ===
-export const rebuildUsersV2 = (params) => request({ url: '/v2/users/rebuild', method: 'post', params })
-
 // === User Groups API ===
 export const createUserGroup = (data) => request({ url: '/v2/user-groups', method: 'post', data })
-export const getUserGroups = () => request({ url: '/v2/user-groups', method: 'get' })
 export const deleteUserGroup = (groupId) => request({ url: `/v2/user-groups/${groupId}`, method: 'delete' })
 export const getUserGroupDetail = (groupId, params) => request({ url: `/v2/user-groups/${groupId}`, method: 'get', params })
 

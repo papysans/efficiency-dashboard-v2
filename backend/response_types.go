@@ -13,11 +13,6 @@ type StatusResponse struct {
 	Status string `json:"status" example:"ok"`
 }
 
-type StatusCountResponse struct {
-	Status string `json:"status" example:"ok"`
-	Count  int    `json:"count" example:"10"`
-}
-
 type StatusMessageResponse struct {
 	Message string `json:"message" example:"操作成功"`
 }
@@ -34,10 +29,10 @@ type RawDataHit struct {
 }
 
 type RawDataResponse struct {
-	Total    int64         `json:"total"`
-	Page     int           `json:"page"`
-	PageSize int           `json:"pageSize"`
-	Hits     []interface{} `json:"hits"`
+	Total    int64        `json:"total"`
+	Page     int          `json:"page"`
+	PageSize int          `json:"pageSize"`
+	Hits     []RawDataHit `json:"hits"`
 }
 
 // --- VirtualGroup / Favorites ---
@@ -197,23 +192,6 @@ type AggregateKeysResponse struct {
 	Total int      `json:"total"`
 }
 
-type CalculateEfficiencyRequest struct {
-	Dimension string `json:"dimension" example:"work_dir"`
-	ID        string `json:"id" example:"project1"`
-	StartDate string `json:"startDate" example:"20260101"`
-	EndDate   string `json:"endDate" example:"20260331"`
-}
-
-type UpdateManualDaysRequest struct {
-	Dimension string  `json:"dimension" example:"work_dir"`
-	ID        string  `json:"id" example:"project1"`
-	StartDate string  `json:"startDate" example:"20260101"`
-	EndDate   string  `json:"endDate" example:"20260331"`
-	Value     float64 `json:"value" example:"5.0"`
-	Reason    string  `json:"reason" example:"修正估算"`
-	By        string  `json:"by" example:"admin"`
-}
-
 // --- Efficiency ---
 
 type AIEstimatedInfo struct {
@@ -277,11 +255,6 @@ type CorrectionHistoryItem struct {
 
 type EfficiencyHistoryResponse struct {
 	Items []CorrectionHistoryItem `json:"items"`
-}
-
-type ManualDaysResponse struct {
-	Message        string  `json:"message"`
-	UserManualDays float64 `json:"user_manual_days"`
 }
 
 // --- Org v2 ---
@@ -444,13 +417,6 @@ type GroupDetailResponse struct {
 	Summary GroupSummary      `json:"summary"`
 	Daily   []DailyDataItem   `json:"daily"`
 	Members []GroupMemberItem `json:"members"`
-}
-
-// --- User Productivity ---
-
-type RebuildResponse struct {
-	Status string `json:"status"`
-	Count  int    `json:"count"`
 }
 
 // --- User v2 ---
@@ -642,10 +608,6 @@ type RepoBranchesResponse struct {
 
 // --- User Group v2 ---
 
-type UserGroupListResponse struct {
-	Data []UserGroup `json:"data"`
-}
-
 type UserGroupMember struct {
 	UserID                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
@@ -695,12 +657,6 @@ type CreateUserGroupRequest struct {
 }
 
 // --- Task v2 ---
-
-type UpsertTaskResponse struct {
-	Status string `json:"status"`
-	TaskID string `json:"task_id"`
-	Action string `json:"action"`
-}
 
 type TaskListItem struct {
 	TaskID                         string     `json:"task_id"`
@@ -752,18 +708,6 @@ type TaskDetailResponse struct {
 	Conversations   []StatTaskConversation `json:"conversations"`
 	TimeSegments    []TimeSegment          `json:"time_segments"`
 	EfficiencyRatio *float64               `json:"efficiency_ratio"`
-}
-
-type FixAncientResult struct {
-	TaskID  string  `json:"task_id"`
-	Minutes float64 `json:"minutes"`
-	Method  string  `json:"method"`
-}
-
-type FixAncientResponse struct {
-	Status  string             `json:"status"`
-	Count   int                `json:"count"`
-	Results []FixAncientResult `json:"results"`
 }
 
 type EstimateAncientResult struct {

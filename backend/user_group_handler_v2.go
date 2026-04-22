@@ -41,24 +41,6 @@ func createUserGroupHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, group)
 }
 
-// listUserGroupsHandler GET /api/v2/user-groups
-// @Summary 获取用户组列表
-// @Description 获取所有用户组列表
-// @Tags UserGroups
-// @Produce json
-// @Success 200 {object} UserGroupListResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/user-groups [get]
-func listUserGroupsHandler(c *gin.Context) {
-	groups, err := ListUserGroups(statDB)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户组列表失败: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, UserGroupListResponse{Data: groups})
-}
-
 // deleteUserGroupHandler DELETE /api/v2/user-groups/:groupId
 // @Summary 删除用户组
 // @Description 根据用户组ID删除用户组

@@ -11,66 +11,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// upsertCommitV2 POST /api/v2/commits
-// @Summary 创建或更新提交
-// @Description 创建新提交或更新已有提交信息
-// @Tags Commits
-// @Accept json
-// @Produce json
-// @Param commit body main.StatCommit true "提交信息"
-// @Success 200 {object} StatusResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/commits [post]
-func upsertCommitV2(c *gin.Context) {
-	var commit StatCommit
-	if err := c.ShouldBindJSON(&commit); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if err := UpsertStatCommit(statDB, &commit); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
-}
-
-// batchUpsertCommitsV2 POST /api/v2/commits/batch
-// @Summary 批量添加或更新提交
-// @Description 批量添加或更新提交记录
-// @Tags Commits
-// @Accept json
-// @Produce json
-// @Param commits body []main.StatCommit true "提交列表"
-// @Success 200 {object} StatusCountResponse
-// @Failure 400 {object} ErrorResponse
-// @Router /api/v2/commits/batch [post]
-func batchUpsertCommitsV2(c *gin.Context) {
-	var commits []StatCommit
-	if err := c.ShouldBindJSON(&commits); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if len(commits) == 0 {
-		c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: 0})
-		return
-	}
-	if err := BatchUpsertStatCommits(statDB, commits); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: len(commits)})
-}
-
 // listCommitsV2 GET /api/v2/commits
 // @Summary 获取提交列表
 // @Description 按条件查询提交列表
 // @Tags Commits
 // @Produce json
 // @Param repoAddr query string true "仓库地址"
-// @Param branch query string false "分支名"
-// @Param startDate query string false "开始日期"
-// @Param endDate query string false "结束日期"
+// @Param repoBranch query string false "分支名"
+// @Param userId query string false "用户ID"
+// @Param org1 query string false "一级组织"
+// @Param org2 query string false "二级组织"
+// @Param org3 query string false "三级组织"
+// @Param org4 query string false "四级组织"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
 // @Success 200 {object} CommitListResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
@@ -453,6 +409,7 @@ func getCommitDetailV2(c *gin.Context) {
 // @Param data body UpdateCommitManualRequest true "人工数据"
 // @Success 200 {object} StatusResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/commits/{commitId}/manual [put]
 func updateCommitManualV2(c *gin.Context) {
 	commitId := c.Param("commitId")

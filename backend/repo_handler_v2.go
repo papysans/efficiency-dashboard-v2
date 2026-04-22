@@ -15,8 +15,10 @@ import (
 // @Description 按条件查询仓库列表
 // @Tags Repos
 // @Produce json
-// @Param startDate query string false "开始日期"
-// @Param endDate query string false "结束日期"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
 // @Success 200 {object} ReposListResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
@@ -108,6 +110,9 @@ func listReposV2(c *gin.Context) {
 // @Tags Repos
 // @Produce json
 // @Param repoAddr query string true "仓库地址"
+// @Param repoBranch query string false "分支名"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
 // @Success 200 {object} RepoDetailResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse

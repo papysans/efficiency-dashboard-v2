@@ -195,15 +195,12 @@ func main() {
 		api.GET("/aggregate", getAggregate)
 		api.GET("/aggregate/keys", getAggregateKeys)
 		api.GET("/analysis/efficiency", getEfficiency)
-		api.POST("/analysis/efficiency/calculate", calculateEfficiency)
 		api.PUT("/analysis/efficiency/correct", correctEfficiency)
 		api.GET("/analysis/efficiency/history", getEfficiencyHistory)
-		api.GET("/analysis/efficiency/file", getEfficiencyFile)
 		api.GET("/analysis/git", getGitAnalysis)
 		api.GET("/analysis/task-commits", getTaskCommitMappings)
 		api.GET("/analysis/code-attribution", getCodeAttribution)
 		api.GET("/analysis/code-source", getCodeSourceStats)
-		api.PUT("/analysis/efficiency/manual-days", updateUserManualDays)
 
 		// 虚拟组
 		api.POST("/virtual-groups", createVirtualGroup)
@@ -219,23 +216,17 @@ func main() {
 	{
 		v2.GET("/dashboard/summary", getDashboardSummary)
 
-		v2.POST("/tasks", upsertTaskV2)
-		v2.POST("/tasks/conversations/batch", batchUpsertConversationsV2)
 		v2.GET("/tasks", listTasksV2)
 		v2.GET("/tasks/file", getTaskFile)
 		v2.GET("/tasks/:taskId", getTaskDetailV2)
 		v2.PUT("/tasks/:taskId/manual", updateTaskManualV2)
-		v2.POST("/tasks/fix-ancient-minutes", fixAncientMinutes)
 		v2.POST("/tasks/estimate-ancient", estimateAncientMinutes)
 
-		v2.POST("/commits", upsertCommitV2)
-		v2.POST("/commits/batch", batchUpsertCommitsV2)
 		v2.GET("/commits", listCommitsV2)
 		v2.GET("/commits/:commitId", getCommitDetailV2)
 		v2.PUT("/commits/:commitId/manual", updateCommitManualV2)
 
 		v2.GET("/users", listUsersV2)
-		v2.POST("/users/rebuild", rebuildUserProductivity)
 		v2.GET("/users/:userId", getUserDetailV2)
 
 		v2.GET("/repos", listReposV2)
@@ -262,7 +253,6 @@ func main() {
 
 		// User Groups
 		v2.POST("/user-groups", createUserGroupHandler)
-		v2.GET("/user-groups", listUserGroupsHandler)
 		v2.DELETE("/user-groups/:groupId", deleteUserGroupHandler)
 		v2.GET("/user-groups/:groupId", getUserGroupDetailHandler)
 

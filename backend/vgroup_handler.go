@@ -11,6 +11,58 @@ import (
 	"github.com/lib/pq"
 )
 
+type VirtualGroupResponse struct {
+	ID         int      `json:"id"`
+	Name       string   `json:"name"`
+	Dimension  string   `json:"dimension"`
+	MemberKeys []string `json:"member_keys"`
+}
+
+type AggregateVirtualGroupResponse struct {
+	Key             string  `json:"key"`
+	Name            string  `json:"name"`
+	UserInChars     float64 `json:"user_in_chars"`
+	CodeLines       float64 `json:"code_lines"`
+	APICount        float64 `json:"api_count"`
+	APICost         float64 `json:"api_cost"`
+	APIInTokens     float64 `json:"api_in_tokens"`
+	APIOutTokens    float64 `json:"api_out_tokens"`
+	TaskCount       float64 `json:"task_count"`
+	AIEstimatedDays float64 `json:"ai_estimated_days"`
+	StartTime       string  `json:"start_time"`
+	EndTime         string  `json:"end_time"`
+	LeadTime        float64 `json:"lead_time"`
+	ProcessTime     float64 `json:"process_time"`
+}
+
+type FavoriteResponse struct {
+	ID          int    `json:"id"`
+	Dimension   string `json:"dimension"`
+	ItemKey     string `json:"item_key"`
+	DisplayName string `json:"display_name"`
+}
+
+type FavoriteItem struct {
+	ID             int    `json:"id"`
+	Dimension      string `json:"dimension"`
+	ItemKey        string `json:"item_key"`
+	DisplayName    string `json:"display_name"`
+	VirtualGroupID *int64 `json:"virtual_group_id"`
+	IsVirtual      bool   `json:"is_virtual"`
+}
+
+type CreateVirtualGroupRequest struct {
+	Name       string   `json:"name" example:"前端组"`
+	Dimension  string   `json:"dimension" example:"work_dir"`
+	MemberKeys []string `json:"member_keys"`
+}
+
+type CreateFavoriteRequest struct {
+	Dimension   string `json:"dimension" example:"work_dir"`
+	ItemKey     string `json:"item_key" example:"project1"`
+	DisplayName string `json:"display_name" example:"项目1"`
+}
+
 // createVirtualGroup 创建虚拟组
 // @Summary 创建虚拟组
 // @Description 创建新的虚拟组

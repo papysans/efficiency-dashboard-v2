@@ -1,0 +1,4113 @@
+basePath: /api
+definitions:
+  main.AIEstimatedInfo:
+    properties:
+      corrected_days:
+        type: number
+      is_corrected:
+        type: boolean
+      raw_days:
+        type: number
+      reasons:
+        items:
+          type: string
+        type: array
+    type: object
+  main.ActualTimeInfo:
+    properties:
+      end_time:
+        type: string
+      start_time:
+        type: string
+      total_code_lines:
+        type: integer
+      total_lead_time_ms:
+        type: integer
+      total_process_time_ms:
+        type: integer
+      user_count:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/main.ActualTimeUser'
+        type: array
+    type: object
+  main.ActualTimeUser:
+    properties:
+      end_time:
+        type: string
+      lead_time_ms:
+        type: integer
+      process_time_ms:
+        type: integer
+      start_time:
+        type: string
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
+  main.AddTasksRequest:
+    properties:
+      task_ids:
+        items:
+          type: string
+        type: array
+      task_ids_silica:
+        items:
+          type: number
+        type: array
+    type: object
+  main.AggregateItem:
+    properties:
+      ai_estimated_days:
+        type: number
+      api_cost:
+        type: number
+      api_count:
+        type: number
+      api_in_tokens:
+        type: number
+      api_out_tokens:
+        type: number
+      code_lines:
+        type: number
+      end_time:
+        type: string
+      key:
+        type: string
+      lead_time:
+        type: number
+      process_time:
+        type: number
+      start_time:
+        type: string
+      task_count:
+        type: number
+      user_in_chars:
+        type: number
+    type: object
+  main.AggregateKeysResponse:
+    properties:
+      keys:
+        items:
+          type: string
+        type: array
+      total:
+        type: integer
+    type: object
+  main.AggregateResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/main.AggregateItem'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  main.AggregateVirtualGroupResponse:
+    properties:
+      ai_estimated_days:
+        type: number
+      api_cost:
+        type: number
+      api_count:
+        type: number
+      api_in_tokens:
+        type: number
+      api_out_tokens:
+        type: number
+      code_lines:
+        type: number
+      end_time:
+        type: string
+      key:
+        type: string
+      lead_time:
+        type: number
+      name:
+        type: string
+      process_time:
+        type: number
+      start_time:
+        type: string
+      task_count:
+        type: number
+      user_in_chars:
+        type: number
+    type: object
+  main.CalculateEfficiencyRequest:
+    properties:
+      dimension:
+        example: work_dir
+        type: string
+      endDate:
+        example: "20260331"
+        type: string
+      id:
+        example: project1
+        type: string
+      startDate:
+        example: "20260101"
+        type: string
+    type: object
+  main.CheckProjectConflictsRequest:
+    properties:
+      commit_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  main.CodeAttributionDetail:
+    properties:
+      commit_hash:
+        type: string
+      human_lines:
+        type: integer
+      our_ai_lines:
+        type: integer
+      task_id:
+        type: string
+    type: object
+  main.CodeAttributionResponse:
+    properties:
+      details:
+        items:
+          $ref: '#/definitions/main.CodeAttributionDetail'
+        type: array
+      summary:
+        $ref: '#/definitions/main.CodeAttributionSummary'
+    type: object
+  main.CodeAttributionSummary:
+    properties:
+      total_human_lines:
+        type: integer
+      total_our_ai_lines:
+        type: integer
+    type: object
+  main.CodeSourceGroup:
+    properties:
+      ai_current:
+        $ref: '#/definitions/main.CodeSourceItem'
+      ai_other:
+        $ref: '#/definitions/main.CodeSourceItem'
+      human:
+        $ref: '#/definitions/main.CodeSourceItem'
+      unknown:
+        $ref: '#/definitions/main.CodeSourceItem'
+    type: object
+  main.CodeSourceItem:
+    properties:
+      lines:
+        type: integer
+      percentage:
+        type: number
+    type: object
+  main.CodeSourceStatsResponse:
+    properties:
+      code_source:
+        $ref: '#/definitions/main.CodeSourceGroup'
+      mapped_task_count:
+        type: integer
+    type: object
+  main.CommitDetailResponse:
+    properties:
+      commit:
+        $ref: '#/definitions/main.StatCommit'
+      downstream_tokens:
+        type: integer
+      efficiency_ratio:
+        type: number
+      related_tasks:
+        items:
+          $ref: '#/definitions/main.RelatedTask'
+        type: array
+      silica:
+        type: number
+      total_cost:
+        type: number
+      upstream_tokens:
+        type: integer
+    type: object
+  main.CommitListItem:
+    properties:
+      client_id:
+        type: string
+      comment:
+        type: string
+      commit_ancient_minutes:
+        type: number
+      commit_ancient_minutes_manual:
+        type: number
+      commit_ancient_minutes_reason:
+        type: string
+      commit_ancient_minutes_reason_manual:
+        type: string
+      commit_id:
+        type: string
+      commit_real_ai_minutes:
+        type: number
+      commit_real_ancient_minutes:
+        type: number
+      commit_real_minutes:
+        type: number
+      commit_real_minutes_manual:
+        type: number
+      commit_real_minutes_reason:
+        type: string
+      commit_real_minutes_reason_manual:
+        type: string
+      commit_time:
+        type: string
+      cost:
+        type: number
+      created_at:
+        type: string
+      diff_lines:
+        type: integer
+      downstream_tokens:
+        type: integer
+      efficiency_ratio:
+        type: number
+      git_user_email:
+        type: string
+      git_user_name:
+        type: string
+      org_display:
+        type: string
+      org1:
+        type: string
+      org2:
+        type: string
+      org3:
+        type: string
+      org4:
+        type: string
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      silica:
+        type: number
+      task_ids:
+        example: '["task1"]'
+        type: string
+      task_ids_silica:
+        example: '["1.0"]'
+        type: string
+      updated_at:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+      work_dir:
+        type: string
+    type: object
+  main.CommitListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/main.CommitListItem'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  main.CommitTimeSeriesItem:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      downstream_tokens:
+        type: integer
+      period_key:
+        type: string
+      period_label:
+        type: string
+      task_count:
+        type: integer
+      upstream_tokens:
+        type: integer
+    type: object
+  main.ConfigResponse:
+    properties:
+      traditional_dev_lines_per_day:
+        example: 100
+        type: integer
+    type: object
+  main.CorrectionHistoryItem:
+    properties:
+      corrected_at:
+        type: string
+      corrected_by:
+        type: string
+      field_name:
+        type: string
+      new_value:
+        type: string
+      old_value:
+        type: string
+      reason:
+        type: string
+    type: object
+  main.CorrectionRequest:
+    properties:
+      by:
+        type: string
+      dimension:
+        type: string
+      endDate:
+        type: string
+      field:
+        type: string
+      id:
+        type: string
+      reason:
+        type: string
+      startDate:
+        type: string
+      value:
+        type: number
+    type: object
+  main.CostInfo:
+    properties:
+      api_cost:
+        type: number
+      cost_saving:
+        type: number
+      daily_rate:
+        type: number
+      roi:
+        type: number
+    type: object
+  main.CreateFavoriteRequest:
+    properties:
+      dimension:
+        example: work_dir
+        type: string
+      display_name:
+        example: 项目1
+        type: string
+      item_key:
+        example: project1
+        type: string
+    type: object
+  main.CreateProjectRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    type: object
+  main.CreateUserGroupRequest:
+    properties:
+      name:
+        example: 前端组
+        type: string
+      org_name:
+        example: 技术部
+        type: string
+      user_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  main.CreateVirtualGroupRequest:
+    properties:
+      dimension:
+        example: work_dir
+        type: string
+      member_keys:
+        items:
+          type: string
+        type: array
+      name:
+        example: 前端组
+        type: string
+    type: object
+  main.DailyDataItem:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      date:
+        type: string
+      downstream_tokens:
+        type: integer
+      task_ancient_minutes:
+        type: number
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+    type: object
+  main.DashboardSummaryResponse:
+    properties:
+      avg_efficiency_ratio:
+        type: number
+      total_commits:
+        type: integer
+      total_cost:
+        type: number
+      total_diff_lines:
+        type: integer
+      total_real_minutes:
+        type: number
+      total_repos:
+        type: integer
+      total_task_ancient_minutes:
+        type: number
+      total_tasks:
+        type: integer
+      total_tokens:
+        type: integer
+      total_users:
+        type: integer
+      total_work_dirs:
+        type: integer
+    type: object
+  main.EfficiencyHistoryResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/main.CorrectionHistoryItem'
+        type: array
+    type: object
+  main.EfficiencyInfo:
+    properties:
+      ratio_lead:
+        type: number
+      ratio_process:
+        type: number
+      reason:
+        type: string
+    type: object
+  main.EfficiencyResponse:
+    properties:
+      actual_time:
+        $ref: '#/definitions/main.ActualTimeInfo'
+      ai_estimated:
+        $ref: '#/definitions/main.AIEstimatedInfo'
+      analysis_date:
+        type: string
+      analysis_file:
+        type: string
+      cost:
+        $ref: '#/definitions/main.CostInfo'
+      dimension:
+        type: string
+      dimension_id:
+        type: string
+      efficiency:
+        $ref: '#/definitions/main.EfficiencyInfo'
+    type: object
+  main.ErrorResponse:
+    properties:
+      error:
+        example: 参数错误
+        type: string
+    type: object
+  main.EstimateAncientResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/main.EstimateAncientResult'
+        type: array
+      status:
+        type: string
+      success:
+        type: integer
+      total:
+        type: integer
+    type: object
+  main.EstimateAncientResult:
+    properties:
+      error:
+        type: string
+      minutes:
+        type: number
+      reason:
+        type: string
+      task_id:
+        type: string
+    type: object
+  main.EstimationInfo:
+    properties:
+      final:
+        type: number
+      from_git:
+        type: number
+      from_task:
+        type: number
+    type: object
+  main.FavoriteItem:
+    properties:
+      dimension:
+        type: string
+      display_name:
+        type: string
+      id:
+        type: integer
+      is_virtual:
+        type: boolean
+      item_key:
+        type: string
+      virtual_group_id:
+        type: integer
+    type: object
+  main.FavoriteResponse:
+    properties:
+      dimension:
+        type: string
+      display_name:
+        type: string
+      id:
+        type: integer
+      item_key:
+        type: string
+    type: object
+  main.FixAncientResponse:
+    properties:
+      count:
+        type: integer
+      results:
+        items:
+          $ref: '#/definitions/main.FixAncientResult'
+        type: array
+      status:
+        type: string
+    type: object
+  main.FixAncientResult:
+    properties:
+      method:
+        type: string
+      minutes:
+        type: number
+      task_id:
+        type: string
+    type: object
+  main.GitAnalysisResponse:
+    properties:
+      analysis_date:
+        type: string
+      estimation:
+        $ref: '#/definitions/main.EstimationInfo'
+      git_analysis_file:
+        type: string
+      git_stats:
+        $ref: '#/definitions/main.GitStatsInfo'
+      repo_id:
+        type: string
+    type: object
+  main.GitStatsInfo:
+    properties:
+      commit_count:
+        type: integer
+      contributor_count:
+        type: integer
+      files_changed:
+        type: integer
+      lines_added:
+        type: integer
+      lines_deleted:
+        type: integer
+    type: object
+  main.GroupDetailResponse:
+    properties:
+      daily:
+        items:
+          $ref: '#/definitions/main.DailyDataItem'
+        type: array
+      members:
+        items:
+          $ref: '#/definitions/main.GroupMemberItem'
+        type: array
+      org_path:
+        type: string
+      summary:
+        $ref: '#/definitions/main.GroupSummary'
+    type: object
+  main.GroupMemberItem:
+    properties:
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      cost:
+        type: number
+      org1:
+        type: string
+      org2:
+        type: string
+      org3:
+        type: string
+      org4:
+        type: string
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
+  main.GroupSummary:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      downstream_tokens:
+        type: integer
+      task_ancient_minutes:
+        type: number
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+    type: object
+  main.ManualDaysResponse:
+    properties:
+      message:
+        type: string
+      user_manual_days:
+        type: number
+    type: object
+  main.OrgDataItem:
+    properties:
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      org_name:
+        type: string
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      total_cost:
+        type: number
+      total_tokens:
+        type: integer
+      user_count:
+        type: integer
+    type: object
+  main.OrgDetailResponse:
+    properties:
+      commits:
+        items:
+          $ref: '#/definitions/main.CommitTimeSeriesItem'
+        type: array
+      granularity:
+        type: string
+      members:
+        items:
+          $ref: '#/definitions/main.OrgMemberItem'
+        type: array
+      org_path:
+        type: string
+      summary:
+        $ref: '#/definitions/main.OrgSummary'
+      tasks:
+        items:
+          $ref: '#/definitions/main.TaskTimeSeriesItem'
+        type: array
+    type: object
+  main.OrgListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/main.OrgDataItem'
+        type: array
+      periods:
+        items:
+          type: string
+        type: array
+      series:
+        items:
+          $ref: '#/definitions/main.OrgSeriesItem'
+        type: array
+    type: object
+  main.OrgMemberItem:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      downstream_tokens:
+        type: integer
+      org1:
+        type: string
+      org2:
+        type: string
+      org3:
+        type: string
+      org4:
+        type: string
+      task_ancient_minutes:
+        type: number
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
+  main.OrgSeriesItem:
+    properties:
+      org_name:
+        type: string
+      periods:
+        items:
+          type: string
+        type: array
+      points:
+        items:
+          $ref: '#/definitions/main.OrgSeriesPoint'
+        type: array
+    type: object
+  main.OrgSeriesPoint:
+    properties:
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      period:
+        type: string
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      total_cost:
+        type: number
+      total_tokens:
+        type: integer
+      user_count:
+        type: integer
+    type: object
+  main.OrgSummary:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      downstream_tokens:
+        type: integer
+      task_ancient_minutes:
+        type: number
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+      user_count:
+        type: integer
+    type: object
+  main.Project:
+    properties:
+      cost:
+        type: number
+      created_at:
+        type: string
+      description:
+        type: string
+      downstream_tokens:
+        type: integer
+      end_time:
+        type: string
+      end_time_manual:
+        type: string
+      name:
+        type: string
+      project_ancient_minutes:
+        type: number
+      project_ancient_minutes_manual:
+        type: number
+      project_ancient_minutes_reason:
+        type: string
+      project_ancient_minutes_reason_manual:
+        type: string
+      project_id:
+        type: string
+      project_real_lead_minutes:
+        type: number
+      project_real_lead_minutes_manual:
+        type: number
+      project_real_lead_minutes_reason:
+        type: string
+      project_real_lead_minutes_reason_manual:
+        type: string
+      project_real_process_minutes:
+        type: number
+      project_real_process_minutes_manual:
+        type: number
+      project_real_process_minutes_reason:
+        type: string
+      project_real_process_minutes_reason_manual:
+        type: string
+      repos:
+        example: '[{"repo_addr":"https://github.com/example/repo"}]'
+        type: string
+      start_time:
+        type: string
+      start_time_manual:
+        type: string
+      task_ids:
+        example: '["task1", "task2"]'
+        type: string
+      task_ids_silica:
+        example: '["1.0", "0.5"]'
+        type: string
+      updated_at:
+        type: string
+      upstream_tokens:
+        type: integer
+    type: object
+  main.ProjectCommitItem:
+    properties:
+      comment:
+        type: string
+      commit_ancient_minutes:
+        type: number
+      commit_ancient_minutes_manual:
+        type: number
+      commit_id:
+        type: string
+      commit_real_minutes:
+        type: number
+      commit_real_minutes_manual:
+        type: number
+      commit_time:
+        type: string
+      diff_lines:
+        type: integer
+      git_user_name:
+        type: string
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      silica:
+        type: number
+      user_name:
+        type: string
+    type: object
+  main.ProjectConflict:
+    properties:
+      commit_id:
+        type: string
+      project_id:
+        type: string
+      project_name:
+        type: string
+    type: object
+  main.ProjectConflictsResponse:
+    properties:
+      conflicts:
+        items:
+          $ref: '#/definitions/main.ProjectConflict'
+        type: array
+    type: object
+  main.ProjectDetailResponse:
+    properties:
+      commits:
+        items:
+          $ref: '#/definitions/main.ProjectCommitItem'
+        type: array
+      efficiency_ratio:
+        type: number
+      project:
+        $ref: '#/definitions/main.Project'
+      tasks:
+        items:
+          $ref: '#/definitions/main.ProjectTaskItem'
+        type: array
+      user_count:
+        type: integer
+    type: object
+  main.ProjectListItem:
+    properties:
+      actual_lines_per_day:
+        type: number
+      cost:
+        type: number
+      created_at:
+        type: string
+      description:
+        type: string
+      downstream_tokens:
+        type: integer
+      efficiency_ratio:
+        type: number
+      end_time:
+        type: string
+      end_time_manual:
+        type: string
+      name:
+        type: string
+      project_ancient_minutes:
+        type: number
+      project_ancient_minutes_manual:
+        type: number
+      project_ancient_minutes_reason:
+        type: string
+      project_ancient_minutes_reason_manual:
+        type: string
+      project_id:
+        type: string
+      project_real_lead_minutes:
+        type: number
+      project_real_lead_minutes_manual:
+        type: number
+      project_real_lead_minutes_reason:
+        type: string
+      project_real_lead_minutes_reason_manual:
+        type: string
+      project_real_process_minutes:
+        type: number
+      project_real_process_minutes_manual:
+        type: number
+      project_real_process_minutes_reason:
+        type: string
+      project_real_process_minutes_reason_manual:
+        type: string
+      repo_count:
+        type: integer
+      repos:
+        type: string
+      start_time:
+        type: string
+      start_time_manual:
+        type: string
+      task_count:
+        type: integer
+      task_ids:
+        type: string
+      task_ids_silica:
+        type: string
+      total_code_lines:
+        type: integer
+      updated_at:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_count:
+        type: integer
+    type: object
+  main.ProjectListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/main.ProjectListItem'
+        type: array
+    type: object
+  main.ProjectTaskItem:
+    properties:
+      cost:
+        type: number
+      downstream_tokens:
+        type: integer
+      end_time:
+        type: string
+      silica:
+        type: number
+      start_time:
+        type: string
+      task_ancient_minutes:
+        type: number
+      task_ancient_minutes_manual:
+        type: number
+      task_id:
+        type: string
+      task_real_minutes:
+        type: number
+      task_real_minutes_manual:
+        type: number
+      title:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_name:
+        type: string
+      work_dir:
+        type: string
+    type: object
+  main.RawDataResponse:
+    properties:
+      hits:
+        items: {}
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  main.RebuildResponse:
+    properties:
+      count:
+        type: integer
+      status:
+        type: string
+    type: object
+  main.RelatedTask:
+    properties:
+      cost:
+        type: number
+      diff_lines:
+        type: integer
+      silica:
+        type: number
+      start_time:
+        type: string
+      task_id:
+        type: string
+      task_real_minutes:
+        type: number
+      user_name:
+        type: string
+    type: object
+  main.RemoveTasksRequest:
+    properties:
+      task_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  main.RepoBranchesResponse:
+    properties:
+      branches:
+        items:
+          type: string
+        type: array
+    type: object
+  main.RepoCommitItem:
+    properties:
+      client_id:
+        type: string
+      comment:
+        type: string
+      commit_ancient_minutes:
+        type: number
+      commit_ancient_minutes_manual:
+        type: number
+      commit_ancient_minutes_reason:
+        type: string
+      commit_ancient_minutes_reason_manual:
+        type: string
+      commit_id:
+        type: string
+      commit_real_ai_minutes:
+        type: number
+      commit_real_ancient_minutes:
+        type: number
+      commit_real_minutes:
+        type: number
+      commit_real_minutes_manual:
+        type: number
+      commit_real_minutes_reason:
+        type: string
+      commit_real_minutes_reason_manual:
+        type: string
+      commit_time:
+        type: string
+      cost:
+        type: number
+      created_at:
+        type: string
+      diff_lines:
+        type: integer
+      downstream_tokens:
+        type: integer
+      efficiency_ratio:
+        type: number
+      git_user_email:
+        type: string
+      git_user_name:
+        type: string
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      silica:
+        type: number
+      task_ids:
+        example: '["task1"]'
+        type: string
+      task_ids_silica:
+        example: '["1.0"]'
+        type: string
+      updated_at:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+      work_dir:
+        type: string
+    type: object
+  main.RepoDetailResponse:
+    properties:
+      branches:
+        items:
+          type: string
+        type: array
+      commits:
+        items:
+          $ref: '#/definitions/main.RepoCommitItem'
+        type: array
+      efficiency:
+        $ref: '#/definitions/main.RepoEfficiency'
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      summary:
+        $ref: '#/definitions/main.RepoSummary'
+      tasks:
+        items:
+          $ref: '#/definitions/main.StatTask'
+        type: array
+    type: object
+  main.RepoEfficiency:
+    properties:
+      efficiency_ratio:
+        type: number
+      repo_ancient_minutes:
+        type: number
+      repo_ancient_minutes_reason:
+        type: string
+      repo_real_minutes:
+        type: number
+      repo_real_minutes_reason:
+        type: string
+    type: object
+  main.RepoFilter:
+    properties:
+      end_time:
+        type: string
+      exclude_commits:
+        items:
+          type: string
+        type: array
+      include_only_commits:
+        items:
+          type: string
+        type: array
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      start_time:
+        type: string
+    type: object
+  main.RepoListItem:
+    properties:
+      commit_count:
+        type: integer
+      efficiency_ratio:
+        type: number
+      end_time:
+        type: string
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      start_time:
+        type: string
+      sum_ancient_minutes:
+        type: number
+      sum_real_minutes:
+        type: number
+      task_count:
+        type: integer
+    type: object
+  main.RepoSummary:
+    properties:
+      commit_count:
+        type: integer
+      task_count:
+        type: integer
+    type: object
+  main.ReposListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/main.RepoListItem'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  main.StatCommit:
+    properties:
+      client_id:
+        type: string
+      comment:
+        type: string
+      commit_ancient_minutes:
+        type: number
+      commit_ancient_minutes_manual:
+        type: number
+      commit_ancient_minutes_reason:
+        type: string
+      commit_ancient_minutes_reason_manual:
+        type: string
+      commit_id:
+        type: string
+      commit_real_ai_minutes:
+        type: number
+      commit_real_ancient_minutes:
+        type: number
+      commit_real_minutes:
+        type: number
+      commit_real_minutes_manual:
+        type: number
+      commit_real_minutes_reason:
+        type: string
+      commit_real_minutes_reason_manual:
+        type: string
+      commit_time:
+        type: string
+      created_at:
+        type: string
+      diff_lines:
+        type: integer
+      git_user_email:
+        type: string
+      git_user_name:
+        type: string
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      task_ids:
+        example: '["task1", "task2"]'
+        type: string
+      task_ids_silica:
+        example: '["task1", "task2"]'
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+      user_name:
+        type: string
+      work_dir:
+        type: string
+    type: object
+  main.StatTask:
+    properties:
+      caller:
+        type: string
+      client_id:
+        type: string
+      client_ide:
+        type: string
+      client_os:
+        type: string
+      client_os_version:
+        type: string
+      client_version:
+        type: string
+      cost:
+        type: number
+      created_at:
+        type: string
+      diff_lines:
+        type: integer
+      downstream_tokens:
+        type: integer
+      efficiency_ratio:
+        type: number
+      end_time:
+        type: string
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      start_time:
+        type: string
+      task_ancient_minutes:
+        type: number
+      task_ancient_minutes_manual:
+        type: number
+      task_ancient_minutes_reason:
+        type: string
+      task_ancient_minutes_reason_manual:
+        type: string
+      task_id:
+        type: string
+      task_real_minutes:
+        type: number
+      task_real_minutes_manual:
+        type: number
+      task_real_minutes_reason:
+        type: string
+      task_real_minutes_reason_manual:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+      work_dir:
+        type: string
+      work_dir_id:
+        type: string
+    type: object
+  main.StatTaskConversation:
+    properties:
+      cost:
+        type: number
+      created_at:
+        type: string
+      diff:
+        type: string
+      diff_lines:
+        type: integer
+      downstream_tokens:
+        type: integer
+      end_time:
+        type: string
+      error_code:
+        type: string
+      error_reason:
+        type: string
+      id:
+        type: integer
+      mode:
+        type: string
+      model:
+        type: string
+      process_time:
+        type: integer
+      process_ttft:
+        type: integer
+      prompt_mode:
+        type: string
+      request_content:
+        type: string
+      request_id:
+        type: string
+      response_content:
+        type: string
+      sender:
+        type: string
+      start_time:
+        type: string
+      task_id:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_input:
+        type: string
+    type: object
+  main.StatusCountResponse:
+    properties:
+      count:
+        example: 10
+        type: integer
+      status:
+        example: ok
+        type: string
+    type: object
+  main.StatusMessageResponse:
+    properties:
+      message:
+        example: 操作成功
+        type: string
+    type: object
+  main.StatusResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  main.TaskCommitMappingItem:
+    properties:
+      code_source:
+        type: string
+      commit_hash:
+        type: string
+      match_reason:
+        type: string
+      match_score:
+        type: number
+      task_id:
+        type: string
+      user_id:
+        type: string
+    type: object
+  main.TaskCommitMappingsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/main.TaskCommitMappingItem'
+        type: array
+    type: object
+  main.TaskDetailResponse:
+    properties:
+      conversations:
+        items:
+          $ref: '#/definitions/main.StatTaskConversation'
+        type: array
+      efficiency_ratio:
+        type: number
+      task:
+        $ref: '#/definitions/main.StatTask'
+      time_segments:
+        items:
+          $ref: '#/definitions/main.TimeSegment'
+        type: array
+    type: object
+  main.TaskListItem:
+    properties:
+      caller:
+        type: string
+      client_id:
+        type: string
+      client_ide:
+        type: string
+      client_os:
+        type: string
+      client_os_version:
+        type: string
+      client_version:
+        type: string
+      cost:
+        type: number
+      created_at:
+        type: string
+      diff_lines:
+        type: integer
+      downstream_tokens:
+        type: integer
+      efficiency_ratio:
+        type: number
+      end_time:
+        type: string
+      org1:
+        type: string
+      org2:
+        type: string
+      org3:
+        type: string
+      org4:
+        type: string
+      repo_addr:
+        type: string
+      repo_branch:
+        type: string
+      start_time:
+        type: string
+      task_ancient_minutes:
+        type: number
+      task_ancient_minutes_manual:
+        type: number
+      task_ancient_minutes_reason:
+        type: string
+      task_ancient_minutes_reason_manual:
+        type: string
+      task_id:
+        type: string
+      task_real_minutes:
+        type: number
+      task_real_minutes_manual:
+        type: number
+      task_real_minutes_reason:
+        type: string
+      task_real_minutes_reason_manual:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+      work_dir:
+        type: string
+      work_dir_id:
+        type: string
+    type: object
+  main.TaskListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/main.TaskListItem'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      total:
+        type: integer
+    type: object
+  main.TaskTimeSeriesItem:
+    properties:
+      commit_count:
+        type: integer
+      cost:
+        type: number
+      downstream_tokens:
+        type: integer
+      period_key:
+        type: string
+      period_label:
+        type: string
+      task_ancient_minutes:
+        type: number
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+    type: object
+  main.TimeSegment:
+    properties:
+      conv_count:
+        type: integer
+      end:
+        type: string
+      start:
+        type: string
+    type: object
+  main.UpdateCommitManualRequest:
+    properties:
+      commit_ancient_minutes_manual:
+        type: number
+      commit_ancient_minutes_reason_manual:
+        type: string
+      commit_real_minutes_manual:
+        type: number
+      commit_real_minutes_reason_manual:
+        type: string
+    type: object
+  main.UpdateManualDaysRequest:
+    properties:
+      by:
+        example: admin
+        type: string
+      dimension:
+        example: work_dir
+        type: string
+      endDate:
+        example: "20260331"
+        type: string
+      id:
+        example: project1
+        type: string
+      reason:
+        example: 修正估算
+        type: string
+      startDate:
+        example: "20260101"
+        type: string
+      value:
+        example: 5
+        type: number
+    type: object
+  main.UpdateProjectManualRequest:
+    properties:
+      end_time_manual:
+        type: string
+      project_ancient_minutes_manual:
+        type: number
+      project_ancient_minutes_reason_manual:
+        type: string
+      project_real_lead_minutes_manual:
+        type: number
+      project_real_lead_minutes_reason_manual:
+        type: string
+      project_real_process_minutes_manual:
+        type: number
+      project_real_process_minutes_reason_manual:
+        type: string
+      start_time_manual:
+        type: string
+    type: object
+  main.UpdateProjectRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      repos:
+        type: string
+      task_ids:
+        type: string
+      task_ids_silica:
+        type: string
+    type: object
+  main.UpdateTaskManualRequest:
+    properties:
+      task_ancient_minutes_manual:
+        type: number
+      task_ancient_minutes_reason_manual:
+        type: string
+      task_real_minutes_manual:
+        type: number
+      task_real_minutes_reason_manual:
+        type: string
+    type: object
+  main.UpdateTaskSilicaRequest:
+    properties:
+      silica:
+        type: number
+      task_id:
+        type: string
+    type: object
+  main.UpsertTaskResponse:
+    properties:
+      action:
+        type: string
+      status:
+        type: string
+      task_id:
+        type: string
+    type: object
+  main.UserDetailResponse:
+    properties:
+      commits:
+        items:
+          $ref: '#/definitions/main.CommitTimeSeriesItem'
+        type: array
+      daily:
+        items:
+          $ref: '#/definitions/main.UserProductivity'
+        type: array
+      granularity:
+        type: string
+      summary:
+        $ref: '#/definitions/main.UserDetailSummary'
+      tasks:
+        items:
+          $ref: '#/definitions/main.TaskTimeSeriesItem'
+        type: array
+      total:
+        type: integer
+    type: object
+  main.UserDetailSummary:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      day_count:
+        type: integer
+      downstream_tokens:
+        type: integer
+      task_ancient_minutes:
+        type: number
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
+  main.UserGroup:
+    properties:
+      created_at:
+        type: string
+      group_id:
+        type: string
+      name:
+        type: string
+      org_name:
+        type: string
+      updated_at:
+        type: string
+      user_ids:
+        example: '["user1", "user2"]'
+        type: string
+    type: object
+  main.UserGroupDetailResponse:
+    properties:
+      group:
+        $ref: '#/definitions/main.UserGroup'
+      members:
+        items:
+          $ref: '#/definitions/main.UserGroupMember'
+        type: array
+      summary:
+        $ref: '#/definitions/main.UserGroupSummary'
+    type: object
+  main.UserGroupListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/main.UserGroup'
+        type: array
+    type: object
+  main.UserGroupMember:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      day_count:
+        type: integer
+      downstream_tokens:
+        type: integer
+      task_ancient_minutes:
+        type: number
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
+  main.UserGroupSummary:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      day_count:
+        type: integer
+      downstream_tokens:
+        type: integer
+      task_ancient_minutes:
+        type: number
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+    type: object
+  main.UserListItem:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      day_count:
+        type: integer
+      downstream_tokens:
+        type: integer
+      group_id:
+        type: string
+      is_virtual_group:
+        type: boolean
+      org_display:
+        type: string
+      org_name:
+        type: string
+      org1:
+        type: string
+      org2:
+        type: string
+      org3:
+        type: string
+      org4:
+        type: string
+      task_ancient_minutes:
+        type: number
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
+  main.UserProductivity:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_ids:
+        example: '["commit1"]'
+        type: string
+      commit_real_ai_minutes:
+        type: number
+      commit_real_ancient_minutes:
+        type: number
+      commit_real_minutes:
+        type: number
+      cost:
+        type: number
+      create_time:
+        type: string
+      created_at:
+        type: string
+      downstream_tokens:
+        type: integer
+      task_ancient_minutes:
+        type: number
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_ids:
+        example: '["task1"]'
+        type: string
+      task_real_minutes:
+        type: number
+      updated_at:
+        type: string
+      upstream_tokens:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+      user_productivity_id:
+        type: string
+      work_dir_ids:
+        example: '["dir1"]'
+        type: string
+    type: object
+  main.UserSeriesItem:
+    properties:
+      periods:
+        items:
+          type: string
+        type: array
+      points:
+        items:
+          $ref: '#/definitions/main.UserSeriesPoint'
+        type: array
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
+  main.UserSeriesPoint:
+    properties:
+      commit_ancient_minutes:
+        type: number
+      commit_count:
+        type: integer
+      commit_diff_lines:
+        type: integer
+      commit_efficiency_ratio:
+        type: number
+      commit_real_minutes:
+        type: number
+      period:
+        type: string
+      task_ancient_minutes:
+        type: number
+      task_count:
+        type: integer
+      task_diff_lines:
+        type: integer
+      task_efficiency_ratio:
+        type: number
+      task_real_minutes:
+        type: number
+      total_cost:
+        type: number
+      total_tokens:
+        type: integer
+    type: object
+  main.UsersListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/main.UserListItem'
+        type: array
+      page:
+        type: integer
+      pageSize:
+        type: integer
+      periods:
+        items:
+          type: string
+        type: array
+      series:
+        items:
+          $ref: '#/definitions/main.UserSeriesItem'
+        type: array
+      total:
+        type: integer
+    type: object
+  main.VirtualGroupResponse:
+    properties:
+      dimension:
+        type: string
+      id:
+        type: integer
+      member_keys:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+    type: object
+host: localhost:9990
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: 效率仪表盘后端API，提供任务、提交、用户、仓库、项目、组织等数据管理接口
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Efficiency Dashboard API
+  version: "1.0"
+paths:
+  /aggregate:
+    get:
+      description: 按维度（work_dir/repo/user/org1-4）聚合查询ES任务数据，返回各维度的统计指标
+      parameters:
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      - description: 聚合维度(work_dir/repo/user/org1/org2/org3/org4)
+        in: query
+        name: dimension
+        required: true
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.AggregateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 维度聚合查询
+      tags:
+      - Aggregate
+  /aggregate/keys:
+    get:
+      description: 按维度返回key列表，用于下拉提示，可选关键词过滤
+      parameters:
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      - description: 聚合维度(work_dir/repo/user/org1/org2/org3/org4)
+        in: query
+        name: dimension
+        required: true
+        type: string
+      - description: 搜索关键词
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.AggregateKeysResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取维度key列表
+      tags:
+      - Aggregate
+  /analysis/code-attribution:
+    get:
+      description: 查询指定仓库和日期范围内的代码归属分析，统计AI和人工代码行数
+      parameters:
+      - description: 仓库ID
+        in: query
+        name: repo_id
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.CodeAttributionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取代码归属分析
+      tags:
+      - Attribution
+  /analysis/code-source:
+    get:
+      description: 查询指定仓库的代码来源分布统计（AI当前/Human/AI其他/未知）
+      parameters:
+      - description: 仓库ID
+        in: query
+        name: repo_id
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.CodeSourceStatsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取代码来源统计
+      tags:
+      - Attribution
+  /analysis/efficiency:
+    get:
+      description: 根据维度和ID查询提效分析结果，优先从PG缓存获取，无缓存时从ES实时计算
+      parameters:
+      - description: 维度(work_dir或repo)
+        in: query
+        name: dimension
+        required: true
+        type: string
+      - description: 维度ID
+        in: query
+        name: id
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.EfficiencyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取提效分析结果
+      tags:
+      - Efficiency
+  /analysis/efficiency/calculate:
+    post:
+      consumes:
+      - application/json
+      description: 强制重新计算指定维度和ID的提效分析结果，包含AI综合评估，并持久化到PG
+      parameters:
+      - description: 计算参数
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.CalculateEfficiencyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.EfficiencyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 计算提效分析
+      tags:
+      - Efficiency
+  /analysis/efficiency/correct:
+    put:
+      consumes:
+      - application/json
+      description: 纠正AI估算天数等字段，记录纠正历史，并重新计算提效比例
+      parameters:
+      - description: 纠正请求
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.CorrectionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.EfficiencyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 纠正提效分析数据
+      tags:
+      - Efficiency
+  /analysis/efficiency/file:
+    get:
+      description: 根据维度、ID和日期获取提效分析的原始JSON文件内容
+      parameters:
+      - description: 维度(work_dir或repo)
+        in: query
+        name: dimension
+        required: true
+        type: string
+      - description: 维度ID
+        in: query
+        name: id
+        required: true
+        type: string
+      - description: 日期(YYYYMMDD)
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.EfficiencyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取提效分析文件
+      tags:
+      - Efficiency
+  /analysis/efficiency/history:
+    get:
+      description: 查询指定维度和ID的纠正历史记录
+      parameters:
+      - description: 维度(work_dir或repo)
+        in: query
+        name: dimension
+        required: true
+        type: string
+      - description: 维度ID
+        in: query
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.EfficiencyHistoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取纠正历史
+      tags:
+      - Efficiency
+  /analysis/efficiency/manual-days:
+    put:
+      consumes:
+      - application/json
+      description: 更新指定维度和ID的用户人工天数，需提供原因和操作人
+      parameters:
+      - description: 更新参数
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateManualDaysRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ManualDaysResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 更新用户人工天数
+      tags:
+      - Efficiency
+  /analysis/git:
+    get:
+      description: 根据仓库ID查询Git分析结果，包含提交统计和AI估算信息
+      parameters:
+      - description: 仓库ID
+        in: query
+        name: repo_id
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.GitAnalysisResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取Git分析结果
+      tags:
+      - Git
+  /analysis/task-commits:
+    get:
+      description: 查询指定仓库和日期范围内的任务与提交的映射关系
+      parameters:
+      - description: 仓库ID
+        in: query
+        name: repo_id
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.TaskCommitMappingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取任务-提交映射
+      tags:
+      - Attribution
+  /api/favorites:
+    get:
+      description: 按条件查询收藏列表
+      parameters:
+      - description: 维度过滤
+        in: query
+        name: dimension
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/main.FavoriteItem'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取收藏列表
+      tags:
+      - Favorites
+    post:
+      consumes:
+      - application/json
+      description: 添加新的收藏
+      parameters:
+      - description: 收藏信息
+        in: body
+        name: favorite
+        required: true
+        schema:
+          $ref: '#/definitions/main.CreateFavoriteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/main.FavoriteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 添加收藏
+      tags:
+      - Favorites
+  /api/favorites/{id}:
+    delete:
+      description: 根据收藏ID取消收藏
+      parameters:
+      - description: 收藏ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusMessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 取消收藏
+      tags:
+      - Favorites
+  /api/requests:
+    get:
+      description: 从Elasticsearch中查询原始请求数据列表
+      parameters:
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - default: '@timestamp'
+        description: 排序字段
+        in: query
+        name: sortField
+        type: string
+      - default: desc
+        description: 排序方向
+        in: query
+        name: sortOrder
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.RawDataResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 查询原始请求数据
+      tags:
+      - ES
+  /api/v2/commits:
+    get:
+      description: 按条件查询提交列表
+      parameters:
+      - description: 仓库地址
+        in: query
+        name: repoAddr
+        required: true
+        type: string
+      - description: 分支名
+        in: query
+        name: repoBranch
+        type: string
+      - description: 用户ID
+        in: query
+        name: userId
+        type: string
+      - description: 一级组织
+        in: query
+        name: org1
+        type: string
+      - description: 二级组织
+        in: query
+        name: org2
+        type: string
+      - description: 三级组织
+        in: query
+        name: org3
+        type: string
+      - description: 四级组织
+        in: query
+        name: org4
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.CommitListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取提交列表
+      tags:
+      - Commits
+    post:
+      consumes:
+      - application/json
+      description: 创建新提交或更新已有提交信息
+      parameters:
+      - description: 提交信息
+        in: body
+        name: commit
+        required: true
+        schema:
+          $ref: '#/definitions/main.StatCommit'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 创建或更新提交
+      tags:
+      - Commits
+  /api/v2/commits/{commitId}:
+    get:
+      description: 根据提交ID获取提交详细信息
+      parameters:
+      - description: 提交ID
+        in: path
+        name: commitId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.CommitDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取提交详情
+      tags:
+      - Commits
+  /api/v2/commits/{commitId}/manual:
+    put:
+      consumes:
+      - application/json
+      description: 更新提交的人工修改数据
+      parameters:
+      - description: 提交ID
+        in: path
+        name: commitId
+        required: true
+        type: string
+      - description: 人工数据
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateCommitManualRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 更新提交人工数据
+      tags:
+      - Commits
+  /api/v2/commits/batch:
+    post:
+      consumes:
+      - application/json
+      description: 批量添加或更新提交记录
+      parameters:
+      - description: 提交列表
+        in: body
+        name: commits
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/main.StatCommit'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusCountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 批量添加或更新提交
+      tags:
+      - Commits
+  /api/v2/config:
+    get:
+      description: 获取前端所需的全局配置信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ConfigResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取全局配置
+      tags:
+      - Config
+  /api/v2/dashboard/summary:
+    get:
+      description: 获取仪表盘的汇总统计数据
+      parameters:
+      - description: 开始日期
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.DashboardSummaryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取仪表盘汇总信息
+      tags:
+      - Dashboard
+  /api/v2/group:
+    get:
+      description: 根据org1-org4维度查询组织分组详情，包含汇总、每日数据和成员列表
+      parameters:
+      - description: 一级组织
+        in: query
+        name: org1
+        type: string
+      - description: 二级组织
+        in: query
+        name: org2
+        type: string
+      - description: 三级组织
+        in: query
+        name: org3
+        type: string
+      - description: 四级组织
+        in: query
+        name: org4
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.GroupDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取组织分组详情
+      tags:
+      - Orgs
+  /api/v2/orgs:
+    get:
+      description: 按组织层级查询各组织的效率汇总数据，可选时间序列
+      parameters:
+      - default: org1
+        description: 组织层级(org1/org2/org3/org4)
+        in: query
+        name: level
+        type: string
+      - description: 父级组织路径(用/分隔)
+        in: query
+        name: parent
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      - description: 时间粒度(day/week/month/year)
+        in: query
+        name: granularity
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.OrgListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取组织列表
+      tags:
+      - Orgs
+  /api/v2/orgs/detail:
+    get:
+      description: 根据组织路径查询组织详情，包含汇总数据、提交/任务时间序列、成员列表
+      parameters:
+      - description: 组织路径(用/分隔，如 org1/org2)
+        in: query
+        name: org_path
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      - default: day
+        description: 时间粒度(day/week/month/year)
+        in: query
+        name: granularity
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.OrgDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取组织详情
+      tags:
+      - Orgs
+  /api/v2/projects:
+    get:
+      description: 获取所有项目列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ProjectListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取项目列表
+      tags:
+      - Projects
+    post:
+      consumes:
+      - application/json
+      description: 创建新项目
+      parameters:
+      - description: 项目信息
+        in: body
+        name: project
+        required: true
+        schema:
+          $ref: '#/definitions/main.CreateProjectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.Project'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 创建项目
+      tags:
+      - Projects
+  /api/v2/projects/{projectId}:
+    delete:
+      description: 根据项目ID删除项目
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 删除项目
+      tags:
+      - Projects
+    get:
+      description: 根据项目ID获取项目详细信息
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ProjectDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取项目详情
+      tags:
+      - Projects
+    put:
+      consumes:
+      - application/json
+      description: 更新项目信息
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: 项目信息
+        in: body
+        name: project
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateProjectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 更新项目
+      tags:
+      - Projects
+  /api/v2/projects/{projectId}/manual:
+    put:
+      consumes:
+      - application/json
+      description: 更新项目的人工修改数据
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: 人工数据
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateProjectManualRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 更新项目人工数据
+      tags:
+      - Projects
+  /api/v2/projects/{projectId}/repos:
+    post:
+      consumes:
+      - application/json
+      description: 向项目添加仓库
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: 仓库信息
+        in: body
+        name: repo
+        required: true
+        schema:
+          $ref: '#/definitions/main.RepoFilter'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 为项目添加仓库
+      tags:
+      - Projects
+  /api/v2/projects/{projectId}/repos/{index}:
+    delete:
+      description: 从项目中移除指定索引的仓库
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: 仓库索引
+        in: path
+        name: index
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 从项目移除仓库
+      tags:
+      - Projects
+  /api/v2/projects/{projectId}/tasks:
+    delete:
+      description: 从项目中移除所有任务
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: 任务ID列表
+        in: body
+        name: tasks
+        required: true
+        schema:
+          $ref: '#/definitions/main.RemoveTasksRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 从项目移除任务
+      tags:
+      - Projects
+    post:
+      consumes:
+      - application/json
+      description: 向项目添加多个任务
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: 任务ID列表
+        in: body
+        name: tasks
+        required: true
+        schema:
+          $ref: '#/definitions/main.AddTasksRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 为项目添加任务
+      tags:
+      - Projects
+  /api/v2/projects/{projectId}/tasks/silica:
+    put:
+      consumes:
+      - application/json
+      description: 更新项目中任务的二氧化硅数据
+      parameters:
+      - description: 项目ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: 二氧化硅数据
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateTaskSilicaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 更新项目任务二氧化硅数据
+      tags:
+      - Projects
+  /api/v2/projects/check-conflicts:
+    post:
+      consumes:
+      - application/json
+      description: 检查项目中任务或仓库的冲突情况
+      parameters:
+      - description: 检查数据
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.CheckProjectConflictsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ProjectConflictsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 检查项目冲突
+      tags:
+      - Projects
+  /api/v2/repos:
+    get:
+      description: 按条件查询仓库列表
+      parameters:
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ReposListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取仓库列表
+      tags:
+      - Repos
+  /api/v2/repos/branches:
+    get:
+      description: 根据仓库地址获取所有分支
+      parameters:
+      - description: 仓库地址
+        in: query
+        name: repoAddr
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.RepoBranchesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取仓库分支列表
+      tags:
+      - Repos
+  /api/v2/repos/detail:
+    get:
+      description: 根据仓库地址获取仓库详细信息
+      parameters:
+      - description: 仓库地址
+        in: query
+        name: repoAddr
+        required: true
+        type: string
+      - description: 分支名
+        in: query
+        name: repoBranch
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.RepoDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取仓库详情
+      tags:
+      - Repos
+  /api/v2/tasks:
+    get:
+      description: 按条件查询任务列表，支持日期范围过滤
+      parameters:
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      - description: 用户ID
+        in: query
+        name: userId
+        type: string
+      - description: 工作目录ID
+        in: query
+        name: workDirId
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.TaskListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取任务列表
+      tags:
+      - Tasks
+    post:
+      consumes:
+      - application/json
+      description: 创建新任务或更新已有任务信息
+      parameters:
+      - description: 任务信息
+        in: body
+        name: task
+        required: true
+        schema:
+          $ref: '#/definitions/main.StatTask'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.UpsertTaskResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/main.UpsertTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 创建或更新任务
+      tags:
+      - Tasks
+  /api/v2/tasks/{taskId}:
+    get:
+      description: 根据任务ID获取任务详细信息
+      parameters:
+      - description: 任务ID
+        in: path
+        name: taskId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.TaskDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取任务详情
+      tags:
+      - Tasks
+  /api/v2/tasks/{taskId}/manual:
+    put:
+      consumes:
+      - application/json
+      description: 更新任务的人工修改数据
+      parameters:
+      - description: 任务ID
+        in: path
+        name: taskId
+        required: true
+        type: string
+      - description: 人工数据
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/main.UpdateTaskManualRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 更新任务人工数据
+      tags:
+      - Tasks
+  /api/v2/tasks/conversations/batch:
+    post:
+      consumes:
+      - application/json
+      description: 批量添加或更新任务的对话记录
+      parameters:
+      - description: 对话记录列表
+        in: body
+        name: conversations
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/main.StatTaskConversation'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusCountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 批量添加或更新任务对话
+      tags:
+      - Tasks
+  /api/v2/tasks/estimate-ancient:
+    post:
+      description: 使用AI从对话记录中估算任务的古代工时
+      parameters:
+      - description: 指定单个任务ID
+        in: query
+        name: taskId
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.EstimateAncientResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 估算古代工时
+      tags:
+      - Tasks
+  /api/v2/tasks/file:
+    get:
+      description: 获取任务的原始文件内容
+      parameters:
+      - description: 任务ID
+        in: query
+        name: taskId
+        required: true
+        type: string
+      - description: 文件类型
+        in: query
+        name: type
+        type: string
+      - description: 日期(YYYY-MM-DD)
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.EfficiencyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取任务文件
+      tags:
+      - Tasks
+  /api/v2/tasks/fix-ancient-minutes:
+    post:
+      description: 从任务古代工时原因中提取工时数值并更新到数据库
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.FixAncientResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 修复古代工时数据
+      tags:
+      - Tasks
+  /api/v2/user-groups:
+    get:
+      description: 获取所有用户组列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.UserGroupListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取用户组列表
+      tags:
+      - UserGroups
+    post:
+      consumes:
+      - application/json
+      description: 创建新的用户组
+      parameters:
+      - description: 用户组信息
+        in: body
+        name: group
+        required: true
+        schema:
+          $ref: '#/definitions/main.CreateUserGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.UserGroup'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 创建用户组
+      tags:
+      - UserGroups
+  /api/v2/user-groups/{groupId}:
+    delete:
+      description: 根据用户组ID删除用户组
+      parameters:
+      - description: 用户组ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 删除用户组
+      tags:
+      - UserGroups
+    get:
+      description: 根据用户组ID获取用户组详细信息
+      parameters:
+      - description: 用户组ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.UserGroupDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取用户组详情
+      tags:
+      - UserGroups
+  /api/v2/users:
+    get:
+      description: 按条件查询用户列表，支持日期范围过滤
+      parameters:
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      - description: 一级组织
+        in: query
+        name: org1
+        type: string
+      - description: 二级组织
+        in: query
+        name: org2
+        type: string
+      - description: 三级组织
+        in: query
+        name: org3
+        type: string
+      - description: 四级组织
+        in: query
+        name: org4
+        type: string
+      - description: 时间粒度(day/week/month/year)
+        in: query
+        name: granularity
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.UsersListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取用户列表
+      tags:
+      - Users
+  /api/v2/users/{userId}:
+    get:
+      description: 根据用户ID获取用户详细信息
+      parameters:
+      - description: 用户ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        type: string
+      - default: day
+        description: 时间粒度(day/week/month/year)
+        in: query
+        name: granularity
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.UserDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取用户详情
+      tags:
+      - Users
+  /api/v2/users/rebuild:
+    post:
+      description: 从tasks和commits表聚合数据，重新计算并写入user_productivity表
+      parameters:
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.RebuildResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 重建用户生产力数据
+      tags:
+      - Users
+  /api/virtual-groups:
+    post:
+      consumes:
+      - application/json
+      description: 创建新的虚拟组
+      parameters:
+      - description: 虚拟组信息
+        in: body
+        name: group
+        required: true
+        schema:
+          $ref: '#/definitions/main.CreateVirtualGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/main.VirtualGroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 创建虚拟组
+      tags:
+      - VirtualGroups
+  /api/virtual-groups/{id}/aggregate:
+    get:
+      description: 根据虚拟组ID聚合查询ES数据，返回虚拟组的汇总统计指标
+      parameters:
+      - description: 虚拟组ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        required: true
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.AggregateVirtualGroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 聚合虚拟组数据
+      tags:
+      - VirtualGroups
+swagger: "2.0"

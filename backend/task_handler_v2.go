@@ -9,9 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -99,86 +97,17 @@ func joinStrings(ss []string, sep string) string {
 	return result
 }
 
-// upsertTaskV2 POST /api/v2/tasks
-// @Summary 创建或更新任务
-// @Description 创建新任务或更新已有任务信息
-// @Tags Tasks
-// @Accept json
-// @Produce json
-// @Param task body StatTask true "任务信息"
-// @Success 200 {object} UpsertTaskResponse
-// @Success 201 {object} UpsertTaskResponse
-// @Failure 400 {object} ErrorResponse
-// @Router /api/v2/tasks [post]
-func upsertTaskV2(c *gin.Context) {
-	var task StatTask
-	if err := c.ShouldBindJSON(&task); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	// 验证必填字段
-	if strings.TrimSpace(task.TaskID) == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "task_id 不能为空"})
-		return
-	}
-
-	// 幂等性保障：先查询记录是否存在
-	existingTask, err := GetStatTask(statDB, task.TaskID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询任务失败: " + err.Error()})
-		return
-	}
-
-	// 执行 upsert 操作
-	if err := UpsertStatTask(statDB, &task); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	// 返回操作结果
-	if existingTask != nil {
-		c.JSON(http.StatusOK, UpsertTaskResponse{Status: "updated", TaskID: task.TaskID, Action: "记录已更新"})
-	} else {
-		c.JSON(http.StatusCreated, UpsertTaskResponse{Status: "created", TaskID: task.TaskID, Action: "新记录已创建"})
-	}
-}
-
-// batchUpsertConversationsV2 POST /api/v2/tasks/conversations/batch
-// @Summary 批量添加或更新任务对话
-// @Description 批量添加或更新任务的对话记录
-// @Tags Tasks
-// @Accept json
-// @Produce json
-// @Param conversations body []StatTaskConversation true "对话记录列表"
-// @Success 200 {object} StatusCountResponse
-// @Failure 400 {object} ErrorResponse
-// @Router /api/v2/tasks/conversations/batch [post]
-func batchUpsertConversationsV2(c *gin.Context) {
-	var convs []StatTaskConversation
-	if err := c.ShouldBindJSON(&convs); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if len(convs) == 0 {
-		c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: 0})
-		return
-	}
-	if err := BatchInsertStatTaskConversations(statDB, convs); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, StatusCountResponse{Status: "ok", Count: len(convs)})
-}
-
 // listTasksV2 GET /api/v2/tasks
 // @Summary 获取任务列表
 // @Description 按条件查询任务列表，支持日期范围过滤
 // @Tags Tasks
 // @Produce json
-// @Param startDate query string false "开始日期"
-// @Param endDate query string false "结束日期"
-// @Param dimension query string false "维度过滤"
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Param userId query string false "用户ID"
+// @Param workDirId query string false "工作目录ID"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
 // @Success 200 {object} TaskListResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
@@ -443,6 +372,7 @@ func callAIForTaskTitle(taskID string, userInputs []string) {
 // @Param data body UpdateTaskManualRequest true "人工数据"
 // @Success 200 {object} StatusResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/tasks/{taskId}/manual [put]
 func updateTaskManualV2(c *gin.Context) {
 	taskId := c.Param("taskId")
@@ -464,147 +394,6 @@ func updateTaskManualV2(c *gin.Context) {
 	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
-// extractMinutesFromReason 从 reason 文本中提取分钟数
-func extractMinutesFromReason(reason string) (float64, string) {
-	// a) 综合评估行
-	re := regexp.MustCompile(`综合评估[:：]\s*(\d+\.?\d*)\s*人天`)
-	if m := re.FindStringSubmatch(reason); m != nil {
-		v, _ := strconv.ParseFloat(m[1], 64)
-		return v * 480, "综合评估:" + m[1] + "人天"
-	}
-
-	// b) 人天格式
-	re = regexp.MustCompile(`(\d+\.?\d*)\s*人天`)
-	if m := re.FindStringSubmatch(reason); m != nil {
-		v, _ := strconv.ParseFloat(m[1], 64)
-		return v * 480, m[1] + "人天"
-	}
-
-	// c) 工作日格式
-	re = regexp.MustCompile(`(\d+\.?\d*)\s*个?工作日`)
-	if m := re.FindStringSubmatch(reason); m != nil {
-		v, _ := strconv.ParseFloat(m[1], 64)
-		return v * 480, m[1] + "工作日"
-	}
-
-	// d) 天格式（排除无关词）
-	reDays := regexp.MustCompile(`(\d+\.?\d*)\s*天`)
-	dayMatches := reDays.FindAllStringSubmatch(reason, -1)
-	dayMatchIndices := reDays.FindAllStringIndex(reason, -1)
-	var validDayValues []float64
-	for i, m := range dayMatches {
-		idx := dayMatchIndices[i]
-		// 排除"每天"
-		if idx[0] > 0 {
-			rBefore := []rune(reason[:idx[0]])
-			if len(rBefore) > 0 && rBefore[len(rBefore)-1] == '每' {
-				continue
-			}
-		}
-		// 排除"天前"、"天内"
-		after := reason[idx[1]:]
-		rAfter := []rune(after)
-		if len(rAfter) > 0 && (rAfter[0] == '前' || rAfter[0] == '内') {
-			continue
-		}
-		v, _ := strconv.ParseFloat(m[1], 64)
-		validDayValues = append(validDayValues, v)
-	}
-	if len(validDayValues) > 0 {
-		hasChaijie := strings.Contains(reason, "拆解")
-		if hasChaijie || len(validDayValues) > 1 {
-			var total float64
-			for _, v := range validDayValues {
-				total += v
-			}
-			return total * 480, fmt.Sprintf("工作量拆解:%.1f天", total)
-		}
-		return validDayValues[0] * 480, fmt.Sprintf("%.1f天", validDayValues[0])
-	}
-
-	// e) 小时格式
-	re = regexp.MustCompile(`(\d+\.?\d*)\s*小时`)
-	if m := re.FindStringSubmatch(reason); m != nil {
-		v, _ := strconv.ParseFloat(m[1], 64)
-		return v * 60, m[1] + "小时"
-	}
-
-	// f) 半小时
-	if strings.Contains(reason, "半小时") {
-		return 30, "半小时"
-	}
-
-	// g) 分钟格式
-	re = regexp.MustCompile(`(\d+\.?\d*)\s*分钟`)
-	if m := re.FindStringSubmatch(reason); m != nil {
-		v, _ := strconv.ParseFloat(m[1], 64)
-		return v, m[1] + "分钟"
-	}
-
-	// h) 几分钟
-	if strings.Contains(reason, "几分钟") {
-		return 5, "几分钟"
-	}
-
-	// i) 0人天/0天
-	if strings.Contains(reason, "0人天") || strings.Contains(reason, "所需人天为 0") || strings.Contains(reason, "所需人天为0") || strings.Contains(reason, "人天数为0") || strings.Contains(reason, "人天数为 0") {
-		return 0, "0人天"
-	}
-
-	// j) 关键词估算
-	if strings.Contains(reason, "极低") || strings.Contains(reason, "极小") || strings.Contains(reason, "极简") {
-		return 5, "关键词估算:极小"
-	}
-	if strings.Contains(reason, "简单") || strings.Contains(reason, "轻量") || strings.Contains(reason, "基础") {
-		return 30, "关键词估算:简单"
-	}
-	if strings.Contains(reason, "低") || strings.Contains(reason, "较小") || strings.Contains(reason, "较少") || strings.Contains(reason, "日常") {
-		return 60, "关键词估算:较低"
-	}
-	if strings.Contains(reason, "中等") || strings.Contains(reason, "适中") {
-		return 240, "关键词估算:中等"
-	}
-	if strings.Contains(reason, "复杂") || strings.Contains(reason, "较高") || strings.Contains(reason, "高") {
-		return 480, "关键词估算:复杂"
-	}
-
-	return 60, "默认估算"
-}
-
-// fixAncientMinutes POST /api/v2/tasks/fix-ancient-minutes
-// @Summary 修复古代工时数据
-// @Description 从任务古代工时原因中提取工时数值并更新到数据库
-// @Tags Tasks
-// @Produce json
-// @Success 200 {object} FixAncientResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/tasks/fix-ancient-minutes [post]
-func fixAncientMinutes(c *gin.Context) {
-	rows, err := statDB.Query(`SELECT task_id, task_ancient_minutes_reason FROM tasks WHERE task_ancient_minutes IS NULL AND task_ancient_minutes_reason IS NOT NULL AND task_ancient_minutes_reason != ''`)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	defer rows.Close()
-
-	var results []FixAncientResult
-	for rows.Next() {
-		var taskID, reason string
-		if err := rows.Scan(&taskID, &reason); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-			return
-		}
-		minutes, method := extractMinutesFromReason(reason)
-		if _, err := statDB.Exec(`UPDATE tasks SET task_ancient_minutes = $1 WHERE task_id = $2`, minutes, taskID); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("update task %s failed: %v", taskID, err)})
-			return
-		}
-		results = append(results, FixAncientResult{TaskID: taskID, Minutes: minutes, Method: method})
-	}
-
-	c.JSON(http.StatusOK, FixAncientResponse{Status: "ok", Count: len(results), Results: results})
-}
-
 // getTaskFile GET /api/v2/tasks/file
 // @Summary 获取任务文件
 // @Description 获取任务的原始文件内容
@@ -612,7 +401,8 @@ func fixAncientMinutes(c *gin.Context) {
 // @Produce json
 // @Param taskId query string true "任务ID"
 // @Param type query string false "文件类型"
-// @Success 200 {object} object
+// @Param date query string true "日期(YYYY-MM-DD)"
+// @Success 200 {object} EfficiencyResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
@@ -677,6 +467,7 @@ func getTaskFile(c *gin.Context) {
 // @Description 使用AI从对话记录中估算任务的古代工时
 // @Tags Tasks
 // @Produce json
+// @Param taskId query string false "指定单个任务ID"
 // @Success 200 {object} EstimateAncientResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse

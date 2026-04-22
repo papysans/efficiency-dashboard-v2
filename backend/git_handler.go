@@ -17,6 +17,7 @@ import (
 // @Param endDate query string false "结束日期(YYYYMMDD)"
 // @Success 200 {object} GitAnalysisResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /analysis/git [get]
 func getGitAnalysis(c *gin.Context) {
 	repoID := c.Query("repo_id")

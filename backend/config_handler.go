@@ -13,6 +13,7 @@ type ConfigResponse struct {
 // @Tags Config
 // @Produce json
 // @Success 200 {object} ConfigResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/config [get]
 func getConfigV2(c *gin.Context) {
 	c.JSON(200, ConfigResponse{

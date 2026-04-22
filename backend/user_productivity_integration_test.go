@@ -27,11 +27,9 @@ func setupUserProductivityTestRouter(t *testing.T) (*gin.Engine, *sql.DB) {
 
 	r := gin.New()
 	v2 := r.Group("/api/v2")
-	v2.POST("/user-productivity/rebuild", rebuildUserProductivity)
 	v2.GET("/users", listUsersV2)
 	v2.GET("/users/:userId", getUserDetailV2)
 	v2.POST("/user-groups", createUserGroupHandler)
-	v2.GET("/user-groups", listUserGroupsHandler)
 	v2.DELETE("/user-groups/:groupId", deleteUserGroupHandler)
 	v2.GET("/user-groups/:groupId", getUserGroupDetailHandler)
 
@@ -181,173 +179,9 @@ func TestUserGroupDB_TableAndIndexes(t *testing.T) {
 // 验证从 tasks/commits 聚合 + 效率比计算 + upsert
 // ============================================================
 
-func TestRebuildUserProductivity_Normal(t *testing.T) {
-	r, tdb := setupUserProductivityTestRouter(t)
-	defer tdb.Close()
-
-	ts := fmt.Sprintf("%d", time.Now().UnixNano())
-	userID := "test-user-rebuild-" + ts
-	testDate := time.Date(2099, 1, 15, 10, 0, 0, 0, time.UTC)
-
-	// 插入两条 tasks 测试数据（同一天、同一用户）
-	taskID1 := "test-task-rebuild-1-" + ts
-	taskID2 := "test-task-rebuild-2-" + ts
-	_, err := tdb.Exec(`INSERT INTO tasks (task_id, user_id, user_name, start_time, diff_lines,
-		upstream_tokens, downstream_tokens, cost, task_real_minutes, task_ancient_minutes, work_dir_id)
-		VALUES ($1, $2, 'TestUser', $3, 100, 5000, 3000, 0.5, 30, 120, 'wd-1')`,
-		taskID1, userID, testDate)
-	if err != nil {
-		t.Fatalf("插入 task1 失败: %v", err)
-	}
-	defer tdb.Exec(`DELETE FROM tasks WHERE task_id = $1`, taskID1)
-
-	_, err = tdb.Exec(`INSERT INTO tasks (task_id, user_id, user_name, start_time, diff_lines,
-		upstream_tokens, downstream_tokens, cost, task_real_minutes, task_ancient_minutes, work_dir_id)
-		VALUES ($1, $2, 'TestUser', $3, 50, 2000, 1500, 0.3, 20, 80, 'wd-2')`,
-		taskID2, userID, testDate.Add(2*time.Hour))
-	if err != nil {
-		t.Fatalf("插入 task2 失败: %v", err)
-	}
-	defer tdb.Exec(`DELETE FROM tasks WHERE task_id = $1`, taskID2)
-
-	// 插入一条 commit 测试数据（同一天、同一用户）
-	commitID := "test-commit-rebuild-" + ts
-	_, err = tdb.Exec(`INSERT INTO commits (commit_id, user_id, commit_time, diff_lines,
-		commit_ancient_minutes, commit_real_ai_minutes, commit_real_ancient_minutes, commit_real_minutes,
-		repo_addr, repo_branch)
-		VALUES ($1, $2, $3, 200, 300, 10, 15, 60, 'test-repo', 'main')`,
-		commitID, userID, testDate.Add(3*time.Hour))
-	if err != nil {
-		t.Fatalf("插入 commit 失败: %v", err)
-	}
-	defer tdb.Exec(`DELETE FROM commits WHERE commit_id = $1`, commitID)
-
-	// 清理可能残留的 user_productivity 数据
-	defer tdb.Exec(`DELETE FROM user_productivity WHERE user_id = $1`, userID)
-
-	// 调用 rebuild API
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/api/v2/user-productivity/rebuild?startDate=20990115&endDate=20990115", nil)
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("HTTP status = %d, want 200, body: %s", w.Code, w.Body.String())
-	}
-
-	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["status"] != "ok" {
-		t.Errorf("status = %v, want ok", resp["status"])
-	}
-	count, ok := resp["count"].(float64)
-	if !ok || count < 1 {
-		t.Errorf("count = %v, want >= 1", resp["count"])
-	}
-
-	// 验证数据库中的聚合结果
-	expectedID := userID + "_20990115"
-	var taskDiffLines int
-	var upTokens, downTokens int64
-	var costVal, taskRealMin, taskAncientMin float64
-	var taskEffRatio, commitEffRatio sql.NullFloat64
-	var commitDiffLines int
-	var commitRealMin, commitAncientMin float64
-
-	err = tdb.QueryRow(`SELECT task_diff_lines, upstream_tokens, downstream_tokens, cost,
-		task_real_minutes, task_ancient_minutes, task_efficiency_ratio,
-		commit_diff_lines, commit_real_minutes, commit_ancient_minutes, commit_efficiency_ratio
-		FROM user_productivity WHERE user_productivity_id = $1`, expectedID).
-		Scan(&taskDiffLines, &upTokens, &downTokens, &costVal,
-			&taskRealMin, &taskAncientMin, &taskEffRatio,
-			&commitDiffLines, &commitRealMin, &commitAncientMin, &commitEffRatio)
-	if err != nil {
-		t.Fatalf("查询 user_productivity 聚合结果失败: %v", err)
-	}
-
-	// 验证 task 聚合: 100+50=150 diff_lines, 5000+2000=7000 upstream, 3000+1500=4500 downstream
-	if taskDiffLines != 150 {
-		t.Errorf("task_diff_lines = %d, want 150", taskDiffLines)
-	}
-	if upTokens != 7000 {
-		t.Errorf("upstream_tokens = %d, want 7000", upTokens)
-	}
-	if downTokens != 4500 {
-		t.Errorf("downstream_tokens = %d, want 4500", downTokens)
-	}
-	// cost: 0.5+0.3=0.8
-	if costVal < 0.79 || costVal > 0.81 {
-		t.Errorf("cost = %f, want ~0.8", costVal)
-	}
-	// task_real_minutes: 30+20=50, task_ancient_minutes: 120+80=200
-	if taskRealMin != 50 {
-		t.Errorf("task_real_minutes = %f, want 50", taskRealMin)
-	}
-	if taskAncientMin != 200 {
-		t.Errorf("task_ancient_minutes = %f, want 200", taskAncientMin)
-	}
-	// task_efficiency_ratio: round(200/50 * 100) = 400
-	if taskEffRatio.Valid && taskEffRatio.Float64 != 400 {
-		t.Errorf("task_efficiency_ratio = %v, want 400", taskEffRatio.Float64)
-	}
-
-	// 验证 commit 聚合
-	if commitDiffLines != 200 {
-		t.Errorf("commit_diff_lines = %d, want 200", commitDiffLines)
-	}
-	if commitRealMin != 60 {
-		t.Errorf("commit_real_minutes = %f, want 60", commitRealMin)
-	}
-	if commitAncientMin != 300 {
-		t.Errorf("commit_ancient_minutes = %f, want 300", commitAncientMin)
-	}
-	// commit_efficiency_ratio: round(300/60 * 100) = 500
-	if commitEffRatio.Valid && commitEffRatio.Float64 != 500 {
-		t.Errorf("commit_efficiency_ratio = %v, want 500", commitEffRatio.Float64)
-	}
-}
-
-// ============================================================
-// UP-API-02: POST /api/v2/user-productivity/rebuild 缺少参数返回 400
-// ============================================================
-
-func TestRebuildUserProductivity_MissingParams(t *testing.T) {
-	r, tdb := setupUserProductivityTestRouter(t)
-	defer tdb.Close()
-
-	// 缺少两个参数
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/api/v2/user-productivity/rebuild", nil)
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("无参数时 HTTP status = %d, want 400", w.Code)
-	}
-
-	// 只有 startDate
-	w = httptest.NewRecorder()
-	req, _ = http.NewRequest("POST", "/api/v2/user-productivity/rebuild?startDate=20990101", nil)
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("只有 startDate 时 HTTP status = %d, want 400", w.Code)
-	}
-
-	// 日期格式错误
-	w = httptest.NewRecorder()
-	req, _ = http.NewRequest("POST", "/api/v2/user-productivity/rebuild?startDate=bad&endDate=20990101", nil)
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("日期格式错误时 HTTP status = %d, want 400", w.Code)
-	}
-}
-
-// ============================================================
-// UP-API-03: GET /api/v2/user-productivity 列表汇总 + 分页 + 日期过滤
 // ============================================================
 
 func TestListUserProductivitySummary_Normal(t *testing.T) {
-	r, tdb := setupUserProductivityTestRouter(t)
-	defer tdb.Close()
-
-	ts := fmt.Sprintf("%d", time.Now().UnixNano())
 	userID := "test-user-list-" + ts
 	testDate := time.Date(2099, 3, 10, 0, 0, 0, 0, time.UTC)
 
@@ -649,59 +483,6 @@ func TestCreateUserGroup_MissingParams(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("空 user_ids 时 HTTP status = %d, want 400", w.Code)
-	}
-}
-
-// ============================================================
-// UP-API-06: GET /api/v2/user-groups 列表返回
-// ============================================================
-
-func TestListUserGroups_Normal(t *testing.T) {
-	r, tdb := setupUserProductivityTestRouter(t)
-	defer tdb.Close()
-
-	ts := fmt.Sprintf("%d", time.Now().UnixNano())
-
-	// 创建测试组
-	group, err := CreateUserGroup(tdb, "test-list-group-"+ts, "", []string{"u1", "u2"})
-	if err != nil {
-		t.Fatalf("创建测试组失败: %v", err)
-	}
-	defer tdb.Exec(`DELETE FROM user_groups WHERE group_id = $1`, group.GroupID)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v2/user-groups", nil)
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("HTTP status = %d, want 200, body: %s", w.Code, w.Body.String())
-	}
-
-	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
-
-	data, ok := resp["data"].([]interface{})
-	if !ok {
-		t.Fatal("响应缺少 data 数组")
-	}
-
-	// 查找测试组
-	var found bool
-	for _, item := range data {
-		m, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if m["group_id"] == group.GroupID {
-			found = true
-			if m["name"] != "test-list-group-"+ts {
-				t.Errorf("name = %v, want test-list-group-%s", m["name"], ts)
-			}
-			break
-		}
-	}
-	if !found {
-		t.Errorf("列表中未找到 group_id=%s", group.GroupID)
 	}
 }
 

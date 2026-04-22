@@ -790,51 +790,6 @@ func ListCodeAttributions(db *sql.DB, repoID string, startDate, endDate string) 
 	return list, rows.Err()
 }
 
-// UpdateUserManualDays 更新用户手动填写的人天数，并写入 correction_history 审计记录
-func UpdateUserManualDays(db *sql.DB, dimension, id string, analysisDate, startDate, endDate string, days float64, reason, by string) error {
-	now := time.Now()
-	if dimension == "work_dir" {
-		_, err := db.Exec(`
-			UPDATE project_metrics
-			SET user_manual_days = $1, user_manual_days_reason = $2,
-				user_manual_days_by = $3, user_manual_days_at = $4,
-				updated_at = CURRENT_TIMESTAMP
-			WHERE project_id = $5 AND analysis_date = $6
-				AND query_start_date = $7 AND query_end_date = $8`,
-			days, reason, by, now,
-			id, analysisDate, startDate, endDate,
-		)
-		if err != nil {
-			return fmt.Errorf("更新 project_metrics user_manual_days 失败: %w", err)
-		}
-	} else {
-		_, err := db.Exec(`
-			UPDATE repo_metrics
-			SET user_manual_days = $1, user_manual_days_reason = $2,
-				user_manual_days_by = $3, user_manual_days_at = $4,
-				updated_at = CURRENT_TIMESTAMP
-			WHERE repo_id = $5 AND analysis_date = $6
-				AND query_start_date = $7 AND query_end_date = $8`,
-			days, reason, by, now,
-			id, analysisDate, startDate, endDate,
-		)
-		if err != nil {
-			return fmt.Errorf("更新 repo_metrics user_manual_days 失败: %w", err)
-		}
-	}
-
-	h := &CorrectionHistory{
-		Dimension:   dimension,
-		DimensionID: id,
-		FieldName:   "user_manual_days",
-		NewValue:    ptrString(fmt.Sprintf("%.2f", days)),
-		Reason:      ptrString(reason),
-		CorrectedBy: ptrString(by),
-	}
-	h.AnalysisDate, _ = time.Parse("2006-01-02", analysisDate)
-	return InsertCorrectionHistory(db, h)
-}
-
 // ============================================================
 // costrict_stat 数据库 - StatTask / StatTaskConversation
 // ============================================================
@@ -945,59 +900,6 @@ func scanStatTaskConversation(s rowScanner, m *StatTaskConversation) error {
 }
 
 // --- stat tasks CRUD ---
-
-// UpsertStatTask 插入或更新 stat tasks 记录
-func UpsertStatTask(db *sql.DB, t *StatTask) error {
-	_, err := db.Exec(`
-		INSERT INTO tasks (
-			task_id, user_id, user_name, client_id, client_ide, client_version, client_os, client_os_version,
-			caller, repo_addr, repo_branch, work_dir, work_dir_id,
-			diff_lines,
-			start_time, end_time, upstream_tokens, downstream_tokens, cost,
-			task_real_minutes, task_real_minutes_reason,
-			task_real_minutes_manual, task_real_minutes_reason_manual,
-			task_ancient_minutes, task_ancient_minutes_reason,
-			task_ancient_minutes_manual, task_ancient_minutes_reason_manual,
-			efficiency_ratio, title
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8,
-			$9, $10, $11, $12, $13,
-			$14,
-			$15, $16, $17, $18, $19,
-			$20, $21,
-			$22, $23,
-			$24, $25,
-			$26, $27,
-			$28, $29
-		)
-		ON CONFLICT(task_id) DO UPDATE SET
-			user_id = $2, user_name = $3, client_id = $4, client_ide = $5, client_version = $6,
-			client_os = $7, client_os_version = $8, caller = $9,
-			repo_addr = $10, repo_branch = $11, work_dir = $12, work_dir_id = $13,
-			diff_lines = $14,
-			start_time = $15, end_time = $16, upstream_tokens = $17, downstream_tokens = $18,
-			cost = $19,
-			task_real_minutes = $20, task_real_minutes_reason = $21,
-			task_real_minutes_manual = $22, task_real_minutes_reason_manual = $23,
-			task_ancient_minutes = $24, task_ancient_minutes_reason = $25,
-			task_ancient_minutes_manual = $26, task_ancient_minutes_reason_manual = $27,
-			efficiency_ratio = $28, title = COALESCE($29, tasks.title),
-			updated_at = CURRENT_TIMESTAMP`,
-		t.TaskID, t.UserID, t.UserName, t.ClientID, t.ClientIDE, t.ClientVersion, t.ClientOS, t.ClientOSVersion,
-		t.Caller, t.RepoAddr, t.RepoBranch, t.WorkDir, t.WorkDirID,
-		t.DiffLines,
-		t.StartTime, t.EndTime, t.UpstreamTokens, t.DownstreamTokens, t.Cost,
-		t.TaskRealMinutes, t.TaskRealMinutesReason,
-		t.TaskRealMinutesManual, t.TaskRealMinutesReasonManual,
-		t.TaskAncientMinutes, t.TaskAncientMinutesReason,
-		t.TaskAncientMinutesManual, t.TaskAncientMinutesReasonManual,
-		t.EfficiencyRatio, t.Title,
-	)
-	if err != nil {
-		return fmt.Errorf("upsert stat tasks 失败: %w", err)
-	}
-	return nil
-}
 
 // GetStatTask 查询单条 stat tasks 记录，不存在返回 nil, nil
 func GetStatTask(db *sql.DB, taskID string) (*StatTask, error) {
@@ -1167,48 +1069,6 @@ func UpdateStatTaskManual(db *sql.DB, taskID string, realManual *float64, realRe
 
 // --- stat task_conversations CRUD ---
 
-// BatchInsertStatTaskConversations 批量插入 stat task_conversations，使用事务
-func BatchInsertStatTaskConversations(db *sql.DB, convs []StatTaskConversation) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("批量插入 stat task_conversations 失败: %w", err)
-	}
-
-	for i := range convs {
-		c := &convs[i]
-		_, err := tx.Exec(`
-			INSERT INTO task_conversations (
-				task_id, request_id, sender, prompt_mode, mode, model,
-				start_time, end_time, process_time, process_ttft,
-				upstream_tokens, downstream_tokens, cost,
-				request_content, response_content, user_input, diff, diff_lines,
-				error_code, error_reason
-			) VALUES (
-				$1, $2, $3, $4, $5, $6,
-				$7, $8, $9, $10,
-				$11, $12, $13,
-				$14, $15, $16, $17, $18,
-				$19, $20
-			)
-			ON CONFLICT(task_id, request_id) DO NOTHING`,
-			c.TaskID, c.RequestID, c.Sender, c.PromptMode, c.Mode, c.Model,
-			c.StartTime, c.EndTime, c.ProcessTime, c.ProcessTTFT,
-			c.UpstreamTokens, c.DownstreamTokens, c.Cost,
-			c.RequestContent, c.ResponseContent, c.UserInput, c.Diff, c.DiffLines,
-			c.ErrorCode, c.ErrorReason,
-		)
-		if err != nil {
-			tx.Rollback()
-			return fmt.Errorf("批量插入 stat task_conversations 失败: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交批量插入 stat task_conversations 事务失败: %w", err)
-	}
-	return nil
-}
-
 // ListStatTaskConversations 按 task_id 查询 stat task_conversations 列表
 func ListStatTaskConversations(db *sql.DB, taskID string) ([]StatTaskConversation, error) {
 	rows, err := db.Query(fmt.Sprintf(`
@@ -1315,58 +1175,6 @@ func scanStatCommit(s rowScanner, m *StatCommit) error {
 }
 
 // --- stat commits CRUD ---
-
-// UpsertStatCommit 插入或更新 stat commits 记录
-func UpsertStatCommit(db *sql.DB, c *StatCommit) error {
-	_, err := db.Exec(`
-		INSERT INTO commits (
-			commit_id, commit_time, repo_addr, repo_branch,
-			git_user_name, git_user_email, user_id, user_name, client_id, work_dir,
-			diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason,
-			commit_ancient_minutes_manual, commit_ancient_minutes_reason_manual,
-			task_ids, task_ids_silica,
-			commit_real_ai_minutes, commit_real_ancient_minutes,
-			commit_real_minutes, commit_real_minutes_reason,
-			commit_real_minutes_manual, commit_real_minutes_reason_manual,
-			comment
-		) VALUES (
-			$1, $2, $3, $4,
-			$5, $6, $7, $8, $9, $10,
-			$11, $12, $13,
-			$14, $15,
-			$16, $17,
-			$18, $19,
-			$20, $21,
-			$22, $23,
-			$24
-		)
-		ON CONFLICT(commit_id) DO UPDATE SET
-			commit_time = $2, repo_addr = $3, repo_branch = $4,
-			git_user_name = $5, git_user_email = $6, user_id = $7, user_name = $8,
-			client_id = $9, work_dir = $10,
-			diff_lines = $11, commit_ancient_minutes = $12, commit_ancient_minutes_reason = $13,
-			commit_ancient_minutes_manual = $14, commit_ancient_minutes_reason_manual = $15,
-			task_ids = $16, task_ids_silica = $17,
-			commit_real_ai_minutes = $18, commit_real_ancient_minutes = $19,
-			commit_real_minutes = $20, commit_real_minutes_reason = $21,
-			commit_real_minutes_manual = $22, commit_real_minutes_reason_manual = $23,
-			comment = $24,
-			updated_at = CURRENT_TIMESTAMP`,
-		c.CommitID, c.CommitTime, c.RepoAddr, c.RepoBranch,
-		c.GitUserName, c.GitUserEmail, c.UserID, c.UserName, c.ClientID, c.WorkDir,
-		c.DiffLines, c.CommitAncientMinutes, c.CommitAncientMinutesReason,
-		c.CommitAncientMinutesManual, c.CommitAncientMinutesReasonManual,
-		jsonRawToString(c.TaskIDs), jsonRawToString(c.TaskIDsSilica),
-		c.CommitRealAIMinutes, c.CommitRealAncientMinutes,
-		c.CommitRealMinutes, c.CommitRealMinutesReason,
-		c.CommitRealMinutesManual, c.CommitRealMinutesReasonManual,
-		c.Comment,
-	)
-	if err != nil {
-		return fmt.Errorf("upsert stat commits 失败: %w", err)
-	}
-	return nil
-}
 
 // GetStatCommitByID 查询单条 stat commits 记录，不存在返回 nil, nil
 func GetStatCommitByID(db *sql.DB, commitID string) (*StatCommit, error) {
@@ -1503,71 +1311,6 @@ func CountStatCommits(db *sql.DB, repoAddr, repoBranch, userID, startTime, endTi
 		return 0, fmt.Errorf("统计 stat commits 总数失败: %w", err)
 	}
 	return count, nil
-}
-
-// BatchUpsertStatCommits 在事务中批量插入或更新 stat commits
-func BatchUpsertStatCommits(db *sql.DB, commits []StatCommit) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("批量upsert stat commits 失败: %w", err)
-	}
-
-	for i := range commits {
-		c := &commits[i]
-		_, err := tx.Exec(`
-			INSERT INTO commits (
-				commit_id, commit_time, repo_addr, repo_branch,
-				git_user_name, git_user_email, user_id, user_name, client_id, work_dir,
-				diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason,
-				commit_ancient_minutes_manual, commit_ancient_minutes_reason_manual,
-				task_ids, task_ids_silica,
-				commit_real_ai_minutes, commit_real_ancient_minutes,
-				commit_real_minutes, commit_real_minutes_reason,
-				commit_real_minutes_manual, commit_real_minutes_reason_manual,
-				comment
-			) VALUES (
-				$1, $2, $3, $4,
-				$5, $6, $7, $8, $9, $10,
-				$11, $12, $13,
-				$14, $15,
-				$16, $17,
-				$18, $19,
-				$20, $21,
-				$22, $23,
-				$24
-			)
-			ON CONFLICT(commit_id) DO UPDATE SET
-				commit_time = $2, repo_addr = $3, repo_branch = $4,
-				git_user_name = $5, git_user_email = $6, user_id = $7, user_name = $8,
-				client_id = $9, work_dir = $10,
-				diff_lines = $11, commit_ancient_minutes = $12, commit_ancient_minutes_reason = $13,
-				commit_ancient_minutes_manual = $14, commit_ancient_minutes_reason_manual = $15,
-				task_ids = $16, task_ids_silica = $17,
-				commit_real_ai_minutes = $18, commit_real_ancient_minutes = $19,
-				commit_real_minutes = $20, commit_real_minutes_reason = $21,
-				commit_real_minutes_manual = $22, commit_real_minutes_reason_manual = $23,
-				comment = $24,
-				updated_at = CURRENT_TIMESTAMP`,
-			c.CommitID, c.CommitTime, c.RepoAddr, c.RepoBranch,
-			c.GitUserName, c.GitUserEmail, c.UserID, c.UserName, c.ClientID, c.WorkDir,
-			c.DiffLines, c.CommitAncientMinutes, c.CommitAncientMinutesReason,
-			c.CommitAncientMinutesManual, c.CommitAncientMinutesReasonManual,
-			jsonRawToString(c.TaskIDs), jsonRawToString(c.TaskIDsSilica),
-			c.CommitRealAIMinutes, c.CommitRealAncientMinutes,
-			c.CommitRealMinutes, c.CommitRealMinutesReason,
-			c.CommitRealMinutesManual, c.CommitRealMinutesReasonManual,
-			c.Comment,
-		)
-		if err != nil {
-			tx.Rollback()
-			return fmt.Errorf("批量upsert stat commits 失败: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交批量upsert stat commits 事务失败: %w", err)
-	}
-	return nil
 }
 
 // UpdateStatCommitManual 更新 stat commits 的人工修正字段
@@ -2193,16 +1936,6 @@ func CountUserProductivity(db *sql.DB, userId, startTime, endTime string) (int, 
 		return 0, fmt.Errorf("统计 user_productivity 总数失败: %w", err)
 	}
 	return count, nil
-}
-
-// DeleteUserProductivityByDate 按 create_time 范围删除 user_productivity 数据
-func DeleteUserProductivityByDate(db *sql.DB, startDate, endDate string) error {
-	_, err := db.Exec(`DELETE FROM user_productivity WHERE create_time >= $1 AND create_time <= $2`,
-		startDate, endDate)
-	if err != nil {
-		return fmt.Errorf("删除 user_productivity 失败: %w", err)
-	}
-	return nil
 }
 
 // --- user_groups 表结构 ---
