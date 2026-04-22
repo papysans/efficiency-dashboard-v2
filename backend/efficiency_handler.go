@@ -526,18 +526,13 @@ func getEfficiency(c *gin.Context) {
 // @Tags Efficiency
 // @Accept json
 // @Produce json
-// @Param data body object true "计算参数" example({"dimension":"work_dir","id":"project1","startDate":"20260101","endDate":"20260331"})
+// @Param data body CalculateEfficiencyRequest true "计算参数"
 // @Success 200 {object} EfficiencyResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /analysis/efficiency/calculate [post]
 func calculateEfficiency(c *gin.Context) {
-	var req struct {
-		Dimension string `json:"dimension"`
-		ID        string `json:"id"`
-		StartDate string `json:"startDate"`
-		EndDate   string `json:"endDate"`
-	}
+	var req CalculateEfficiencyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求参数解析失败"})
 		return
@@ -941,7 +936,7 @@ func getEfficiencyHistory(c *gin.Context) {
 // @Param dimension query string true "维度(work_dir或repo)"
 // @Param id query string true "维度ID"
 // @Param date query string true "日期(YYYYMMDD)"
-// @Success 200 {object} object
+// @Success 200 {object} EfficiencyResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
@@ -987,21 +982,13 @@ func getEfficiencyFile(c *gin.Context) {
 // @Tags Efficiency
 // @Accept json
 // @Produce json
-// @Param data body object true "更新参数" example({"dimension":"work_dir","id":"project1","startDate":"20260101","endDate":"20260331","value":5.0,"reason":"修正估算","by":"admin"})
+// @Param data body UpdateManualDaysRequest true "更新参数"
 // @Success 200 {object} ManualDaysResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /analysis/efficiency/manual-days [put]
 func updateUserManualDays(c *gin.Context) {
-	var req struct {
-		Dimension string  `json:"dimension"`
-		ID        string  `json:"id"`
-		StartDate string  `json:"startDate"`
-		EndDate   string  `json:"endDate"`
-		Value     float64 `json:"value"`
-		Reason    string  `json:"reason"`
-		By        string  `json:"by"`
-	}
+	var req UpdateManualDaysRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求参数解析失败"})
 		return

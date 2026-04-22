@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -18,17 +17,13 @@ import (
 // @Tags VirtualGroups
 // @Accept json
 // @Produce json
-// @Param group body object true "虚拟组信息"
+// @Param group body CreateVirtualGroupRequest true "虚拟组信息"
 // @Success 201 {object} VirtualGroupResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/virtual-groups [post]
 func createVirtualGroup(c *gin.Context) {
-	var req struct {
-		Name       string   `json:"name"`
-		Dimension  string   `json:"dimension"`
-		MemberKeys []string `json:"member_keys"`
-	}
+	var req CreateVirtualGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求参数解析失败"})
 		return
@@ -79,89 +74,6 @@ func createVirtualGroup(c *gin.Context) {
 	c.JSON(http.StatusCreated, VirtualGroupResponse{ID: id, Name: req.Name, Dimension: req.Dimension, MemberKeys: req.MemberKeys})
 }
 
-// listVirtualGroups 查询虚拟组列表
-// @Summary 获取虚拟组列表
-// @Description 按条件查询虚拟组列表
-// @Tags VirtualGroups
-// @Produce json
-// @Param dimension query string false "维度过滤"
-// @Success 200 {array} VirtualGroupItem
-// @Failure 500 {object} ErrorResponse
-// @Router /api/virtual-groups [get]
-func listVirtualGroups(c *gin.Context) {
-	dimension := strings.TrimSpace(c.Query("dimension"))
-
-	var rows *sql.Rows
-	var err error
-	if dimension != "" {
-		rows, err = db.Query(
-			`SELECT id, name, dimension, member_keys, created_at, updated_at FROM virtual_groups WHERE dimension=$1 ORDER BY id`,
-			dimension,
-		)
-	} else {
-		rows, err = db.Query(
-			`SELECT id, name, dimension, member_keys, created_at, updated_at FROM virtual_groups ORDER BY id`,
-		)
-	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("查询虚拟组失败: %v", err)})
-		return
-	}
-	defer rows.Close()
-
-	items := make([]VirtualGroupItem, 0)
-	for rows.Next() {
-		var id int
-		var name, dim string
-		var memberKeys []string
-		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&id, &name, &dim, pq.Array(&memberKeys), &createdAt, &updatedAt); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("扫描虚拟组数据失败: %v", err)})
-			return
-		}
-		items = append(items, VirtualGroupItem{ID: id, Name: name, Dimension: dim, MemberKeys: memberKeys, CreatedAt: createdAt, UpdatedAt: updatedAt})
-	}
-	if err := rows.Err(); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("遍历虚拟组数据失败: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusOK, items)
-}
-
-// deleteVirtualGroup 删除虚拟组
-// @Summary 删除虚拟组
-// @Description 根据虚拟组ID删除虚拟组
-// @Tags VirtualGroups
-// @Produce json
-// @Param id path string true "虚拟组ID"
-// @Success 200 {object} StatusMessageResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/virtual-groups/{id} [delete]
-func deleteVirtualGroup(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "无效的虚拟组 ID"})
-		return
-	}
-
-	result, err := db.Exec(`DELETE FROM virtual_groups WHERE id=$1`, id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("删除虚拟组失败: %v", err)})
-		return
-	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "虚拟组不存在"})
-		return
-	}
-
-	c.JSON(http.StatusOK, StatusMessageResponse{Message: "删除成功"})
-}
-
 // aggregateVirtualGroup 聚合虚拟组数据
 // @Summary 聚合虚拟组数据
 // @Description 根据虚拟组ID聚合查询ES数据，返回虚拟组的汇总统计指标
@@ -174,7 +86,7 @@ func deleteVirtualGroup(c *gin.Context) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /virtual-groups/{id}/aggregate [get]
+// @Router /api/virtual-groups/{id}/aggregate [get]
 func aggregateVirtualGroup(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
@@ -254,18 +166,14 @@ func aggregateVirtualGroup(c *gin.Context) {
 // @Tags Favorites
 // @Accept json
 // @Produce json
-// @Param favorite body object true "收藏信息"
+// @Param favorite body CreateFavoriteRequest true "收藏信息"
 // @Success 201 {object} FavoriteResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/favorites [post]
 func createFavorite(c *gin.Context) {
-	var req struct {
-		Dimension   string `json:"dimension"`
-		ItemKey     string `json:"item_key"`
-		DisplayName string `json:"display_name"`
-	}
+	var req CreateFavoriteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求参数解析失败"})
 		return

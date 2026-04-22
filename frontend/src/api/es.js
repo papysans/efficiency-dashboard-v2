@@ -1,27 +1,11 @@
 import request from './index'
 
-export function getIndices() {
-  return request({ url: '/indices', method: 'get' })
-}
-
 export function getRequests(params) {
   return request({ url: '/requests', method: 'get', params })
 }
 
-export function getTasks(params) {
-  return request({ url: '/tasks', method: 'get', params })
-}
-
-export function getTasksSummary(params) {
-  return request({ url: '/tasks/summary', method: 'get', params })
-}
-
 export function getAggregate(params) {
   return request({ url: '/aggregate', method: 'get', params })
-}
-
-export function getAggregateSummary(params) {
-  return request({ url: '/aggregate/summary', method: 'get', params })
 }
 
 export function getAggregateKeys(params) {
@@ -56,14 +40,6 @@ export function getGitAnalysis(params) {
   return request({ url: '/analysis/git', method: 'get', params })
 }
 
-export function triggerGitAnalysis(data) {
-  return request({ url: '/analysis/git/analyze', method: 'post', data })
-}
-
-export function getGitCommits(params) {
-  return request({ url: '/analysis/git/commits', method: 'get', params })
-}
-
 export function getTaskCommitMappings(params) {
   return request({ url: '/analysis/task-commits', method: 'get', params })
 }
@@ -78,14 +54,6 @@ export function getCodeSourceStats(params) {
 
 export function createVirtualGroup(data) {
   return request({ url: '/virtual-groups', method: 'post', data })
-}
-
-export function getVirtualGroups(params) {
-  return request({ url: '/virtual-groups', method: 'get', params })
-}
-
-export function deleteVirtualGroup(id) {
-  return request({ url: `/virtual-groups/${id}`, method: 'delete' })
 }
 
 export function getVirtualGroupAggregate(id, params) {

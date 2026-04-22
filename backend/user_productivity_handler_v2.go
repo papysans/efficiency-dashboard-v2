@@ -17,9 +17,10 @@ import (
 // @Produce json
 // @Param startDate query string true "开始日期(YYYYMMDD)"
 // @Param endDate query string true "结束日期(YYYYMMDD)"
-// @Success 200 {object} object
-// @Failure 400 {object} object
-// @Router /v2/users/rebuild [post]
+// @Success 200 {object} RebuildResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/users/rebuild [post]
 func rebuildUserProductivity(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -237,5 +238,5 @@ func rebuildUserProductivity(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "count": len(mergeMap)})
+	c.JSON(http.StatusOK, RebuildResponse{Status: "ok", Count: len(mergeMap)})
 }

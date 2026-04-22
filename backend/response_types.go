@@ -24,11 +24,6 @@ type StatusMessageResponse struct {
 
 // --- ES Handler ---
 
-type IndicesResponse struct {
-	Request []IndexInfo `json:"request"`
-	Task    []IndexInfo `json:"task"`
-}
-
 type RawDataHit struct {
 	ID        string                 `json:"_id"`
 	Source    map[string]interface{} `json:"_source"`
@@ -52,15 +47,6 @@ type VirtualGroupResponse struct {
 	Name       string   `json:"name"`
 	Dimension  string   `json:"dimension"`
 	MemberKeys []string `json:"member_keys"`
-}
-
-type VirtualGroupItem struct {
-	ID         int       `json:"id"`
-	Name       string    `json:"name"`
-	Dimension  string    `json:"dimension"`
-	MemberKeys []string  `json:"member_keys"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type AggregateVirtualGroupResponse struct {
@@ -94,6 +80,18 @@ type FavoriteItem struct {
 	DisplayName    string `json:"display_name"`
 	VirtualGroupID *int64 `json:"virtual_group_id"`
 	IsVirtual      bool   `json:"is_virtual"`
+}
+
+type CreateVirtualGroupRequest struct {
+	Name       string   `json:"name" example:"前端组"`
+	Dimension  string   `json:"dimension" example:"work_dir"`
+	MemberKeys []string `json:"member_keys"`
+}
+
+type CreateFavoriteRequest struct {
+	Dimension   string `json:"dimension" example:"work_dir"`
+	ItemKey     string `json:"item_key" example:"project1"`
+	DisplayName string `json:"display_name" example:"项目1"`
 }
 
 // --- Attribution ---
@@ -169,27 +167,6 @@ type GitAnalysisResponse struct {
 	GitAnalysisFile *string         `json:"git_analysis_file,omitempty"`
 }
 
-type GitAnalysisSaveResponse struct {
-	Message string `json:"message"`
-	RepoID  string `json:"repo_id"`
-}
-
-type GitCommitItem struct {
-	CommitHash   string `json:"commit_hash"`
-	AuthorName   string `json:"author_name"`
-	AuthorEmail  string `json:"author_email"`
-	CommitDate   string `json:"commit_date"`
-	Message      string `json:"message"`
-	FilesChanged int    `json:"files_changed,omitempty"`
-	Insertions   int    `json:"insertions,omitempty"`
-	Deletions    int    `json:"deletions,omitempty"`
-}
-
-type GitCommitsResponse struct {
-	Commits []GitCommitItem `json:"commits"`
-	RepoID  string          `json:"repo_id"`
-}
-
 // --- Aggregate ---
 
 type AggregateItem struct {
@@ -215,34 +192,26 @@ type AggregateResponse struct {
 	Items    []AggregateItem `json:"items"`
 }
 
-type AggregateSummaryResponse struct {
-	Dimension            string  `json:"dimension"`
-	BucketCount          int     `json:"bucket_count"`
-	TotalTaskCount       float64 `json:"total_task_count"`
-	TotalAPICount        float64 `json:"total_api_count"`
-	TotalAPICost         float64 `json:"total_api_cost"`
-	TotalAIEstimatedDays float64 `json:"total_ai_estimated_days"`
-}
-
 type AggregateKeysResponse struct {
 	Keys  []string `json:"keys"`
 	Total int      `json:"total"`
 }
 
-// --- Tasks v1 ---
-
-type TasksV1Response struct {
-	Total    int64         `json:"total"`
-	Page     int           `json:"page"`
-	PageSize int           `json:"pageSize"`
-	Hits     []interface{} `json:"hits"`
+type CalculateEfficiencyRequest struct {
+	Dimension string `json:"dimension" example:"work_dir"`
+	ID        string `json:"id" example:"project1"`
+	StartDate string `json:"startDate" example:"20260101"`
+	EndDate   string `json:"endDate" example:"20260331"`
 }
 
-type TasksSummaryV1Response struct {
-	TaskCount      float64 `json:"task_count"`
-	TotalAPICount  float64 `json:"total_api_count"`
-	TotalAPICost   float64 `json:"total_api_cost"`
-	TotalAIEstDays float64 `json:"total_ai_estimated_days"`
+type UpdateManualDaysRequest struct {
+	Dimension string  `json:"dimension" example:"work_dir"`
+	ID        string  `json:"id" example:"project1"`
+	StartDate string  `json:"startDate" example:"20260101"`
+	EndDate   string  `json:"endDate" example:"20260331"`
+	Value     float64 `json:"value" example:"5.0"`
+	Reason    string  `json:"reason" example:"修正估算"`
+	By        string  `json:"by" example:"admin"`
 }
 
 // --- Efficiency ---
@@ -390,7 +359,7 @@ type OrgMemberItem struct {
 	Cost                  float64 `json:"cost"`
 }
 
-type TimeSeriesItem struct {
+type CommitTimeSeriesItem struct {
 	PeriodKey             string  `json:"period_key"`
 	PeriodLabel           string  `json:"period_label"`
 	CommitCount           int     `json:"commit_count"`
@@ -419,12 +388,12 @@ type TaskTimeSeriesItem struct {
 }
 
 type OrgDetailResponse struct {
-	OrgPath     string               `json:"org_path"`
-	Summary     OrgSummary           `json:"summary"`
-	Commits     []TimeSeriesItem     `json:"commits"`
-	Tasks       []TaskTimeSeriesItem `json:"tasks"`
-	Members     []OrgMemberItem      `json:"members"`
-	Granularity string               `json:"granularity"`
+	OrgPath     string                 `json:"org_path"`
+	Summary     OrgSummary             `json:"summary"`
+	Commits     []CommitTimeSeriesItem `json:"commits"`
+	Tasks       []TaskTimeSeriesItem   `json:"tasks"`
+	Members     []OrgMemberItem        `json:"members"`
+	Granularity string                 `json:"granularity"`
 }
 
 type GroupSummary struct {
@@ -565,12 +534,12 @@ type UserDetailSummary struct {
 }
 
 type UserDetailResponse struct {
-	Summary     UserDetailSummary    `json:"summary"`
-	Daily       []UserProductivity   `json:"daily"`
-	Commits     []TimeSeriesItem     `json:"commits"`
-	Tasks       []TaskTimeSeriesItem `json:"tasks"`
-	Total       int                  `json:"total"`
-	Granularity string               `json:"granularity"`
+	Summary     UserDetailSummary      `json:"summary"`
+	Daily       []UserProductivity     `json:"daily"`
+	Commits     []CommitTimeSeriesItem `json:"commits"`
+	Tasks       []TaskTimeSeriesItem   `json:"tasks"`
+	Total       int                    `json:"total"`
+	Granularity string                 `json:"granularity"`
 }
 
 // --- Dashboard ---
@@ -717,6 +686,12 @@ type UserGroupDetailResponse struct {
 	Group   *UserGroup        `json:"group"`
 	Summary UserGroupSummary  `json:"summary"`
 	Members []UserGroupMember `json:"members"`
+}
+
+type CreateUserGroupRequest struct {
+	Name    string   `json:"name" example:"前端组"`
+	OrgName string   `json:"org_name" example:"技术部"`
+	UserIDs []string `json:"user_ids"`
 }
 
 // --- Task v2 ---
@@ -936,7 +911,16 @@ type CheckProjectConflictsRequest struct {
 	CommitIDs []string `json:"commit_ids"`
 }
 
-type UpdateProjectManualRequest map[string]interface{}
+type UpdateProjectManualRequest struct {
+	ProjectAncientMinutesManual           *float64   `json:"project_ancient_minutes_manual"`
+	ProjectAncientMinutesReasonManual     *string    `json:"project_ancient_minutes_reason_manual"`
+	ProjectRealProcessMinutesManual       *float64   `json:"project_real_process_minutes_manual"`
+	ProjectRealProcessMinutesReasonManual *string    `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealLeadMinutesManual          *float64   `json:"project_real_lead_minutes_manual"`
+	ProjectRealLeadMinutesReasonManual    *string    `json:"project_real_lead_minutes_reason_manual"`
+	StartTimeManual                       *time.Time `json:"start_time_manual"`
+	EndTimeManual                         *time.Time `json:"end_time_manual"`
+}
 
 type RepoFilter struct {
 	RepoAddr           string   `json:"repo_addr"`

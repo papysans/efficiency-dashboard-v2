@@ -1905,31 +1905,53 @@ func DeleteProject(db *sql.DB, projectID string) error {
 }
 
 // UpdateProjectManual 动态更新虚拟项目的人工修正字段
-func UpdateProjectManual(db *sql.DB, projectID string, fields map[string]interface{}) error {
-	allowed := map[string]bool{
-		"project_ancient_minutes_manual":             true,
-		"project_ancient_minutes_reason_manual":      true,
-		"project_real_process_minutes_manual":        true,
-		"project_real_process_minutes_reason_manual": true,
-		"project_real_lead_minutes_manual":           true,
-		"project_real_lead_minutes_reason_manual":    true,
-		"start_time_manual":                          true,
-		"end_time_manual":                            true,
-	}
-
+func UpdateProjectManual(db *sql.DB, projectID string, req UpdateProjectManualRequest) error {
 	var setClauses []string
 	var args []interface{}
 	args = append(args, projectID)
 	argIdx := 2
 
-	for k, v := range fields {
-		if !allowed[k] {
-			return fmt.Errorf("不允许更新字段: %s", k)
-		}
-		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", k, argIdx))
-		args = append(args, v)
+	if req.ProjectAncientMinutesManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("project_ancient_minutes_manual = $%d", argIdx))
+		args = append(args, *req.ProjectAncientMinutesManual)
 		argIdx++
 	}
+	if req.ProjectAncientMinutesReasonManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("project_ancient_minutes_reason_manual = $%d", argIdx))
+		args = append(args, *req.ProjectAncientMinutesReasonManual)
+		argIdx++
+	}
+	if req.ProjectRealProcessMinutesManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("project_real_process_minutes_manual = $%d", argIdx))
+		args = append(args, *req.ProjectRealProcessMinutesManual)
+		argIdx++
+	}
+	if req.ProjectRealProcessMinutesReasonManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("project_real_process_minutes_reason_manual = $%d", argIdx))
+		args = append(args, *req.ProjectRealProcessMinutesReasonManual)
+		argIdx++
+	}
+	if req.ProjectRealLeadMinutesManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("project_real_lead_minutes_manual = $%d", argIdx))
+		args = append(args, *req.ProjectRealLeadMinutesManual)
+		argIdx++
+	}
+	if req.ProjectRealLeadMinutesReasonManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("project_real_lead_minutes_reason_manual = $%d", argIdx))
+		args = append(args, *req.ProjectRealLeadMinutesReasonManual)
+		argIdx++
+	}
+	if req.StartTimeManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("start_time_manual = $%d", argIdx))
+		args = append(args, *req.StartTimeManual)
+		argIdx++
+	}
+	if req.EndTimeManual != nil {
+		setClauses = append(setClauses, fmt.Sprintf("end_time_manual = $%d", argIdx))
+		args = append(args, *req.EndTimeManual)
+		argIdx++
+	}
+
 	if len(setClauses) == 0 {
 		return fmt.Errorf("没有需要更新的字段")
 	}

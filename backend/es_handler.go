@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,33 +28,6 @@ func getDefaultString(c *gin.Context, key, defaultVal string) string {
 }
 
 // --- Handler ---
-
-// getIndices 获取 ES 索引列表，区分 request/task 索引
-// @Summary 获取ES索引列表
-// @Description 获取Elasticsearch中匹配的索引列表，区分request和task索引
-// @Tags ES
-// @Produce json
-// @Success 200 {object} IndicesResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/indices [get]
-func getIndices(c *gin.Context) {
-	indices, err := esClient.GetIndices(ESIndexPattern)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	var requestIndices, taskIndices []IndexInfo
-	for _, idx := range indices {
-		if strings.Contains(idx.Name, "_request_") {
-			requestIndices = append(requestIndices, idx)
-		} else if strings.Contains(idx.Name, "_task_") {
-			taskIndices = append(taskIndices, idx)
-		}
-	}
-
-	c.JSON(http.StatusOK, IndicesResponse{Request: requestIndices, Task: taskIndices})
-}
 
 // getRawData 查询原始请求数据
 // @Summary 查询原始请求数据

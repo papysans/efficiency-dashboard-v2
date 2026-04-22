@@ -128,9 +128,10 @@ func filterUsersByParent(parent string) []*OrgMapping {
 // @Param startDate query string false "开始日期(YYYYMMDD)"
 // @Param endDate query string false "结束日期(YYYYMMDD)"
 // @Param granularity query string false "时间粒度(day/week/month/year)"
-// @Success 200 {object} object
-// @Failure 400 {object} object
-// @Router /v2/orgs [get]
+// @Success 200 {object} OrgListResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/orgs [get]
 func listOrgV2(c *gin.Context) {
 	level := c.Query("level")
 	parent := c.Query("parent")
@@ -146,7 +147,7 @@ func listOrgV2(c *gin.Context) {
 	if startDate != "" {
 		startT, err := parseDateParam(startDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 			return
 		}
 		startTime = startT.Format(time.RFC3339)
@@ -154,7 +155,7 @@ func listOrgV2(c *gin.Context) {
 	if endDate != "" {
 		endT, err := parseDateParam(endDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 			return
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
@@ -163,7 +164,7 @@ func listOrgV2(c *gin.Context) {
 	// 从 orgMappings 筛选符合 parent 条件的用户
 	users := filterUsersByParent(parent)
 	if len(users) == 0 {
-		c.JSON(http.StatusOK, gin.H{"data": []gin.H{}, "series": []gin.H{}})
+		c.JSON(http.StatusOK, OrgListResponse{Data: []OrgDataItem{}, Series: []OrgSeriesItem{}})
 		return
 	}
 
@@ -186,7 +187,7 @@ func listOrgV2(c *gin.Context) {
 	}
 
 	if len(groupMap) == 0 {
-		c.JSON(http.StatusOK, gin.H{"data": []gin.H{}, "series": []gin.H{}})
+		c.JSON(http.StatusOK, OrgListResponse{Data: []OrgDataItem{}, Series: []OrgSeriesItem{}})
 		return
 	}
 
@@ -244,7 +245,7 @@ func listOrgV2(c *gin.Context) {
 
 	prodRows, err := statDB.Query(prodQuery, prodArgs...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询 user_productivity 聚合失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 user_productivity 聚合失败: " + err.Error()})
 		return
 	}
 	defer prodRows.Close()
@@ -256,7 +257,7 @@ func listOrgV2(c *gin.Context) {
 		var cost, taskRealMin, taskAncientMin, commitRealMin, commitAncientMin float64
 		if err := prodRows.Scan(&uid, &taskCount, &commitCount, &taskDiffLines, &commitDiffLines,
 			&upTokens, &downTokens, &cost, &taskRealMin, &taskAncientMin, &commitRealMin, &commitAncientMin); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "扫描 user_productivity 行失败: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "扫描 user_productivity 行失败: " + err.Error()})
 			return
 		}
 		userAggMap[uid] = &userProdAgg{
@@ -304,7 +305,7 @@ func listOrgV2(c *gin.Context) {
 		orgAggMap[orgName] = oa
 	}
 
-	data := make([]gin.H, 0, len(orgAggMap))
+	data := make([]OrgDataItem, 0, len(orgAggMap))
 	for orgName, oa := range orgAggMap {
 		var taskEffRatio, commitEffRatio float64
 		if oa.taskRealMin > 0 {
@@ -313,23 +314,20 @@ func listOrgV2(c *gin.Context) {
 		if oa.commitRealMin > 0 {
 			commitEffRatio = math.Round(oa.commitAncientMin / oa.commitRealMin * 100)
 		}
-		data = append(data, gin.H{
-			"org_name":                orgName,
-			"user_count":              oa.userCount,
-			"task_count":              oa.taskCount,
-			"commit_count":            oa.commitCount,
-			"task_diff_lines":         oa.taskDiffLines,
-			"commit_diff_lines":       oa.commitDiffLines,
-			"task_efficiency_ratio":   taskEffRatio,
-			"commit_efficiency_ratio": commitEffRatio,
-			"total_tokens":            oa.upTokens + oa.downTokens,
-			"total_cost":              oa.cost,
+		data = append(data, OrgDataItem{
+			OrgName: orgName, UserCount: oa.userCount,
+			TaskCount: oa.taskCount, CommitCount: oa.commitCount,
+			TaskDiffLines: oa.taskDiffLines, CommitDiffLines: oa.commitDiffLines,
+			TaskEfficiencyRatio:   taskEffRatio,
+			CommitEfficiencyRatio: commitEffRatio,
+			TotalTokens:           oa.upTokens + oa.downTokens,
+			TotalCost:             oa.cost,
 		})
 	}
 
 	// 如果不需要时间序列，直接返回
 	if granularity == "" {
-		c.JSON(http.StatusOK, gin.H{"data": data, "series": []gin.H{}})
+		c.JSON(http.StatusOK, OrgListResponse{Data: data, Series: []OrgSeriesItem{}})
 		return
 	}
 
@@ -396,7 +394,7 @@ func listOrgV2(c *gin.Context) {
 
 	sRows, err := statDB.Query(seriesQuery, seriesArgs...)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"data": data, "series": []gin.H{}})
+		c.JSON(http.StatusOK, OrgListResponse{Data: data, Series: []OrgSeriesItem{}})
 		return
 	}
 	defer sRows.Close()
@@ -544,9 +542,9 @@ func listOrgV2(c *gin.Context) {
 	sort.Strings(orgNames)
 
 	// 构建 series：每个 org 一条记录，包含按 period 排列的数据点
-	series := make([]gin.H, 0, len(orgNames))
+	series := make([]OrgSeriesItem, 0, len(orgNames))
 	for _, orgName := range orgNames {
-		points := make([]gin.H, 0, len(allPeriods))
+		points := make([]OrgSeriesPoint, 0, len(allPeriods))
 		for _, period := range allPeriods {
 			pk := periodOrgKey{period: period, orgName: orgName}
 			pa := periodOrgMap[pk]
@@ -570,27 +568,24 @@ func listOrgV2(c *gin.Context) {
 					commitEffRatio = math.Round(pa.commitAncientMin / pa.commitRealMin * 100)
 				}
 			}
-			points = append(points, gin.H{
-				"period":                  period,
-				"user_count":              userCount,
-				"task_count":              taskCount,
-				"commit_count":            commitCount,
-				"task_diff_lines":         taskDiff,
-				"commit_diff_lines":       commitDiff,
-				"task_efficiency_ratio":   taskEffRatio,
-				"commit_efficiency_ratio": commitEffRatio,
-				"total_tokens":            upTok + downTok,
-				"total_cost":              cost,
+			points = append(points, OrgSeriesPoint{
+				Period: period, UserCount: userCount,
+				TaskCount: taskCount, CommitCount: commitCount,
+				TaskDiffLines: taskDiff, CommitDiffLines: commitDiff,
+				TaskEfficiencyRatio:   taskEffRatio,
+				CommitEfficiencyRatio: commitEffRatio,
+				TotalTokens:           upTok + downTok,
+				TotalCost:             cost,
 			})
 		}
-		series = append(series, gin.H{
-			"org_name": orgName,
-			"periods":  allPeriods,
-			"points":   points,
+		series = append(series, OrgSeriesItem{
+			OrgName: orgName,
+			Periods: allPeriods,
+			Points:  points,
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": data, "series": series, "periods": allPeriods})
+	c.JSON(http.StatusOK, OrgListResponse{Data: data, Series: series, Periods: allPeriods})
 }
 
 // getOrgDetailV2 GET /api/v2/orgs/detail
@@ -603,9 +598,10 @@ func listOrgV2(c *gin.Context) {
 // @Param startDate query string false "开始日期(YYYYMMDD)"
 // @Param endDate query string false "结束日期(YYYYMMDD)"
 // @Param granularity query string false "时间粒度(day/week/month/year)" default(day)
-// @Success 200 {object} object
-// @Failure 400 {object} object
-// @Router /v2/orgs/detail [get]
+// @Success 200 {object} OrgDetailResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/orgs/detail [get]
 func getOrgDetailV2(c *gin.Context) {
 	orgPath := c.Query("org_path")
 	startDate := c.Query("startDate")
@@ -616,7 +612,7 @@ func getOrgDetailV2(c *gin.Context) {
 	}
 
 	if orgPath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "org_path 不能为空"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "org_path 不能为空"})
 		return
 	}
 
@@ -624,7 +620,7 @@ func getOrgDetailV2(c *gin.Context) {
 	if startDate != "" {
 		startT, err := parseDateParam(startDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 			return
 		}
 		startTime = startT.Format(time.RFC3339)
@@ -632,7 +628,7 @@ func getOrgDetailV2(c *gin.Context) {
 	if endDate != "" {
 		endT, err := parseDateParam(endDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 			return
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
@@ -655,13 +651,13 @@ func getOrgDetailV2(c *gin.Context) {
 		}
 	}
 
-	empty := gin.H{
-		"org_path":    orgPath,
-		"summary":     gin.H{},
-		"commits":     []gin.H{},
-		"tasks":       []gin.H{},
-		"members":     []gin.H{},
-		"granularity": granularity,
+	empty := OrgDetailResponse{
+		OrgPath:     orgPath,
+		Summary:     OrgSummary{},
+		Commits:     []CommitTimeSeriesItem{},
+		Tasks:       []TaskTimeSeriesItem{},
+		Members:     []OrgMemberItem{},
+		Granularity: granularity,
 	}
 	if len(matchedUsers) == 0 {
 		c.JSON(http.StatusOK, empty)
@@ -809,23 +805,23 @@ func getOrgDetailV2(c *gin.Context) {
 	if sumCommitRealMin > 0 {
 		sumCommitEffRatio = math.Round(sumCommitAncientMin / sumCommitRealMin * 100)
 	}
-	summary := gin.H{
-		"user_count":              len(matchedUsers),
-		"task_diff_lines":         sumTaskDiffLines,
-		"commit_diff_lines":       sumCommitDiffLines,
-		"task_real_minutes":       sumTaskRealMin,
-		"task_ancient_minutes":    sumTaskAncientMin,
-		"task_efficiency_ratio":   sumTaskEffRatio,
-		"commit_real_minutes":     sumCommitRealMin,
-		"commit_ancient_minutes":  sumCommitAncientMin,
-		"commit_efficiency_ratio": sumCommitEffRatio,
-		"upstream_tokens":         sumUpTokens,
-		"downstream_tokens":       sumDownTokens,
-		"cost":                    sumCost,
+	summary := OrgSummary{
+		UserCount:             len(matchedUsers),
+		TaskDiffLines:         sumTaskDiffLines,
+		CommitDiffLines:       sumCommitDiffLines,
+		TaskRealMinutes:       sumTaskRealMin,
+		TaskAncientMinutes:    sumTaskAncientMin,
+		TaskEfficiencyRatio:   sumTaskEffRatio,
+		CommitRealMinutes:     sumCommitRealMin,
+		CommitAncientMinutes:  sumCommitAncientMin,
+		CommitEfficiencyRatio: sumCommitEffRatio,
+		UpstreamTokens:        sumUpTokens,
+		DownstreamTokens:      sumDownTokens,
+		Cost:                  sumCost,
 	}
 
 	// 构建 members 列表
-	membersResult := make([]gin.H, 0, len(memberMap))
+	membersResult := make([]OrgMemberItem, 0, len(memberMap))
 	for _, ma := range memberMap {
 		var taskEffRatio, commitEffRatio float64
 		if ma.taskRealMin > 0 {
@@ -834,34 +830,30 @@ func getOrgDetailV2(c *gin.Context) {
 		if ma.commitRealMin > 0 {
 			commitEffRatio = math.Round(ma.commitAncientMin / ma.commitRealMin * 100)
 		}
-		membersResult = append(membersResult, gin.H{
-			"user_id":                 ma.userID,
-			"user_name":               ma.userName,
-			"org1":                    ma.org1,
-			"org2":                    ma.org2,
-			"org3":                    ma.org3,
-			"org4":                    ma.org4,
-			"task_diff_lines":         ma.taskDiffLines,
-			"commit_diff_lines":       ma.commitDiffLines,
-			"task_real_minutes":       ma.taskRealMin,
-			"task_ancient_minutes":    ma.taskAncientMin,
-			"task_efficiency_ratio":   taskEffRatio,
-			"commit_real_minutes":     ma.commitRealMin,
-			"commit_ancient_minutes":  ma.commitAncientMin,
-			"commit_efficiency_ratio": commitEffRatio,
-			"upstream_tokens":         ma.upTokens,
-			"downstream_tokens":       ma.downTokens,
-			"cost":                    ma.cost,
+		membersResult = append(membersResult, OrgMemberItem{
+			UserID: ma.userID, UserName: ma.userName,
+			Org1: ma.org1, Org2: ma.org2, Org3: ma.org3, Org4: ma.org4,
+			TaskDiffLines:         ma.taskDiffLines,
+			CommitDiffLines:       ma.commitDiffLines,
+			TaskRealMinutes:       ma.taskRealMin,
+			TaskAncientMinutes:    ma.taskAncientMin,
+			TaskEfficiencyRatio:   taskEffRatio,
+			CommitRealMinutes:     ma.commitRealMin,
+			CommitAncientMinutes:  ma.commitAncientMin,
+			CommitEfficiencyRatio: commitEffRatio,
+			UpstreamTokens:        ma.upTokens,
+			DownstreamTokens:      ma.downTokens,
+			Cost:                  ma.cost,
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"org_path":    orgPath,
-		"summary":     summary,
-		"commits":     commitsList,
-		"tasks":       tasksList,
-		"members":     membersResult,
-		"granularity": granularity,
+	c.JSON(http.StatusOK, OrgDetailResponse{
+		OrgPath:     orgPath,
+		Summary:     summary,
+		Commits:     commitsList,
+		Tasks:       tasksList,
+		Members:     membersResult,
+		Granularity: granularity,
 	})
 }
 
@@ -876,9 +868,10 @@ func getOrgDetailV2(c *gin.Context) {
 // @Param org4 query string false "四级组织"
 // @Param startDate query string false "开始日期(YYYYMMDD)"
 // @Param endDate query string false "结束日期(YYYYMMDD)"
-// @Success 200 {object} object
-// @Failure 400 {object} object
-// @Router /v2/group [get]
+// @Success 200 {object} GroupDetailResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/group [get]
 func getGroupDetailV2(c *gin.Context) {
 	org1 := c.Query("org1")
 	org2 := c.Query("org2")
@@ -891,7 +884,7 @@ func getGroupDetailV2(c *gin.Context) {
 	if startDate != "" {
 		startT, err := parseDateParam(startDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "startDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 			return
 		}
 		startTime = startT.Format(time.RFC3339)
@@ -899,7 +892,7 @@ func getGroupDetailV2(c *gin.Context) {
 	if endDate != "" {
 		endT, err := parseDateParam(endDate)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "endDate 格式错误: " + err.Error()})
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 			return
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
@@ -936,11 +929,11 @@ func getGroupDetailV2(c *gin.Context) {
 	orgPath := strings.Join(orgParts, " / ")
 
 	if len(matchedUsers) == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"org_path": orgPath,
-			"summary":  gin.H{},
-			"daily":    []gin.H{},
-			"members":  []gin.H{},
+		c.JSON(http.StatusOK, GroupDetailResponse{
+			OrgPath: orgPath,
+			Summary: GroupSummary{},
+			Daily:   []DailyDataItem{},
+			Members: []GroupMemberItem{},
 		})
 		return
 	}
@@ -1045,7 +1038,7 @@ func getGroupDetailV2(c *gin.Context) {
 	}
 	sort.Strings(dates)
 
-	dailyResult := make([]gin.H, 0, len(dates))
+	dailyResult := make([]DailyDataItem, 0, len(dates))
 	for _, date := range dates {
 		da := dailyMap[date]
 		var taskEffRatio, commitEffRatio float64
@@ -1055,19 +1048,19 @@ func getGroupDetailV2(c *gin.Context) {
 		if da.commitRealMin > 0 {
 			commitEffRatio = math.Round(da.commitAncientMin / da.commitRealMin * 100)
 		}
-		dailyResult = append(dailyResult, gin.H{
-			"date":                    date,
-			"task_diff_lines":         da.taskDiffLines,
-			"commit_diff_lines":       da.commitDiffLines,
-			"task_real_minutes":       da.taskRealMin,
-			"task_ancient_minutes":    da.taskAncientMin,
-			"task_efficiency_ratio":   taskEffRatio,
-			"commit_real_minutes":     da.commitRealMin,
-			"commit_ancient_minutes":  da.commitAncientMin,
-			"commit_efficiency_ratio": commitEffRatio,
-			"upstream_tokens":         da.upTokens,
-			"downstream_tokens":       da.downTokens,
-			"cost":                    da.cost,
+		dailyResult = append(dailyResult, DailyDataItem{
+			Date:                  date,
+			TaskDiffLines:         da.taskDiffLines,
+			CommitDiffLines:       da.commitDiffLines,
+			TaskRealMinutes:       da.taskRealMin,
+			TaskAncientMinutes:    da.taskAncientMin,
+			TaskEfficiencyRatio:   taskEffRatio,
+			CommitRealMinutes:     da.commitRealMin,
+			CommitAncientMinutes:  da.commitAncientMin,
+			CommitEfficiencyRatio: commitEffRatio,
+			UpstreamTokens:        da.upTokens,
+			DownstreamTokens:      da.downTokens,
+			Cost:                  da.cost,
 		})
 	}
 
@@ -1095,22 +1088,22 @@ func getGroupDetailV2(c *gin.Context) {
 		sumCommitEffRatio = math.Round(sumCommitAncientMin / sumCommitRealMin * 100)
 	}
 
-	summary := gin.H{
-		"task_diff_lines":         sumTaskDiffLines,
-		"commit_diff_lines":       sumCommitDiffLines,
-		"task_real_minutes":       sumTaskRealMin,
-		"task_ancient_minutes":    sumTaskAncientMin,
-		"task_efficiency_ratio":   sumTaskEffRatio,
-		"commit_real_minutes":     sumCommitRealMin,
-		"commit_ancient_minutes":  sumCommitAncientMin,
-		"commit_efficiency_ratio": sumCommitEffRatio,
-		"upstream_tokens":         sumUpTokens,
-		"downstream_tokens":       sumDownTokens,
-		"cost":                    sumCost,
+	summary := GroupSummary{
+		TaskDiffLines:         sumTaskDiffLines,
+		CommitDiffLines:       sumCommitDiffLines,
+		TaskRealMinutes:       sumTaskRealMin,
+		TaskAncientMinutes:    sumTaskAncientMin,
+		TaskEfficiencyRatio:   sumTaskEffRatio,
+		CommitRealMinutes:     sumCommitRealMin,
+		CommitAncientMinutes:  sumCommitAncientMin,
+		CommitEfficiencyRatio: sumCommitEffRatio,
+		UpstreamTokens:        sumUpTokens,
+		DownstreamTokens:      sumDownTokens,
+		Cost:                  sumCost,
 	}
 
 	// 构建 members 列表
-	membersResult := make([]gin.H, 0, len(memberMap))
+	membersResult := make([]GroupMemberItem, 0, len(memberMap))
 	for _, ma := range memberMap {
 		var taskEffRatio, commitEffRatio float64
 		if ma.taskRealMin > 0 {
@@ -1119,25 +1112,21 @@ func getGroupDetailV2(c *gin.Context) {
 		if ma.commitRealMin > 0 {
 			commitEffRatio = math.Round(ma.commitAncientMin / ma.commitRealMin * 100)
 		}
-		membersResult = append(membersResult, gin.H{
-			"user_id":                 ma.userID,
-			"user_name":               ma.userName,
-			"org1":                    ma.org1,
-			"org2":                    ma.org2,
-			"org3":                    ma.org3,
-			"org4":                    ma.org4,
-			"task_diff_lines":         ma.taskDiffLines,
-			"commit_diff_lines":       ma.commitDiffLines,
-			"task_efficiency_ratio":   taskEffRatio,
-			"commit_efficiency_ratio": commitEffRatio,
-			"cost":                    ma.cost,
+		membersResult = append(membersResult, GroupMemberItem{
+			UserID: ma.userID, UserName: ma.userName,
+			Org1: ma.org1, Org2: ma.org2, Org3: ma.org3, Org4: ma.org4,
+			TaskDiffLines:         ma.taskDiffLines,
+			CommitDiffLines:       ma.commitDiffLines,
+			TaskEfficiencyRatio:   taskEffRatio,
+			CommitEfficiencyRatio: commitEffRatio,
+			Cost:                  ma.cost,
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"org_path": orgPath,
-		"summary":  summary,
-		"daily":    dailyResult,
-		"members":  membersResult,
+	c.JSON(http.StatusOK, GroupDetailResponse{
+		OrgPath: orgPath,
+		Summary: summary,
+		Daily:   dailyResult,
+		Members: membersResult,
 	})
 }

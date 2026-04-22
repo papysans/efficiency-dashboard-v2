@@ -191,12 +191,8 @@ func main() {
 
 	api := r.Group("/api")
 	{
-		api.GET("/indices", getIndices)
 		api.GET("/requests", getRawData)
-		api.GET("/tasks", getTasks)
-		api.GET("/tasks/summary", getTasksSummary)
 		api.GET("/aggregate", getAggregate)
-		api.GET("/aggregate/summary", getAggregateSummary)
 		api.GET("/aggregate/keys", getAggregateKeys)
 		api.GET("/analysis/efficiency", getEfficiency)
 		api.POST("/analysis/efficiency/calculate", calculateEfficiency)
@@ -204,8 +200,6 @@ func main() {
 		api.GET("/analysis/efficiency/history", getEfficiencyHistory)
 		api.GET("/analysis/efficiency/file", getEfficiencyFile)
 		api.GET("/analysis/git", getGitAnalysis)
-		api.POST("/analysis/git/analyze", triggerGitAnalysis)
-		api.GET("/analysis/git/commits", getGitCommits)
 		api.GET("/analysis/task-commits", getTaskCommitMappings)
 		api.GET("/analysis/code-attribution", getCodeAttribution)
 		api.GET("/analysis/code-source", getCodeSourceStats)
@@ -213,8 +207,6 @@ func main() {
 
 		// 虚拟组
 		api.POST("/virtual-groups", createVirtualGroup)
-		api.GET("/virtual-groups", listVirtualGroups)
-		api.DELETE("/virtual-groups/:id", deleteVirtualGroup)
 		api.GET("/virtual-groups/:id/aggregate", aggregateVirtualGroup)
 
 		// 收藏

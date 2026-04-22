@@ -16,16 +16,13 @@ import (
 // @Tags UserGroups
 // @Accept json
 // @Produce json
-// @Param group body object true "用户组信息"
-// @Success 200 {object} object
-// @Failure 400 {object} object
+// @Param group body CreateUserGroupRequest true "用户组信息"
+// @Success 200 {object} UserGroup
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/user-groups [post]
 func createUserGroupHandler(c *gin.Context) {
-	var req struct {
-		Name    string   `json:"name"`
-		OrgName string   `json:"org_name"`
-		UserIDs []string `json:"user_ids"`
-	}
+	var req CreateUserGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体解析失败: " + err.Error()})
 		return
@@ -49,7 +46,8 @@ func createUserGroupHandler(c *gin.Context) {
 // @Description 获取所有用户组列表
 // @Tags UserGroups
 // @Produce json
-// @Success 200 {object} object
+// @Success 200 {object} UserGroupListResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/user-groups [get]
 func listUserGroupsHandler(c *gin.Context) {
 	groups, err := ListUserGroups(statDB)
@@ -58,7 +56,7 @@ func listUserGroupsHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": groups})
+	c.JSON(http.StatusOK, UserGroupListResponse{Data: groups})
 }
 
 // deleteUserGroupHandler DELETE /api/v2/user-groups/:groupId
@@ -67,8 +65,9 @@ func listUserGroupsHandler(c *gin.Context) {
 // @Tags UserGroups
 // @Produce json
 // @Param groupId path string true "用户组ID"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Success 200 {object} StatusResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/user-groups/{groupId} [delete]
 func deleteUserGroupHandler(c *gin.Context) {
 	groupId := c.Param("groupId")
@@ -83,7 +82,7 @@ func deleteUserGroupHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
 // getUserGroupDetailHandler GET /api/v2/user-groups/:groupId
@@ -92,8 +91,12 @@ func deleteUserGroupHandler(c *gin.Context) {
 // @Tags UserGroups
 // @Produce json
 // @Param groupId path string true "用户组ID"
-// @Success 200 {object} object
-// @Failure 404 {object} object
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Success 200 {object} UserGroupDetailResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v2/user-groups/{groupId} [get]
 func getUserGroupDetailHandler(c *gin.Context) {
 	groupId := c.Param("groupId")
@@ -142,7 +145,7 @@ func getUserGroupDetailHandler(c *gin.Context) {
 	var groupCost, groupTaskRealMin, groupTaskAncientMin float64
 	var groupCommitAncientMin, groupCommitRealMin float64
 
-	members := make([]gin.H, 0, len(userIDs))
+	members := make([]UserGroupMember, 0, len(userIDs))
 	for _, uid := range userIDs {
 		daily, err := ListUserProductivity(statDB, uid, startTime, endTime, 1, 100000)
 		if err != nil {
@@ -211,23 +214,17 @@ func getUserGroupDetailHandler(c *gin.Context) {
 			commitEffRatio = math.Round(commitAncientMin / commitRealMin * 100)
 		}
 
-		members = append(members, gin.H{
-			"user_id":                 uid,
-			"user_name":               userName,
-			"day_count":               dayCount,
-			"task_count":              taskCount,
-			"commit_count":            commitCount,
-			"task_diff_lines":         taskDiffLines,
-			"upstream_tokens":         upTokens,
-			"downstream_tokens":       downTokens,
-			"cost":                    cost,
-			"task_real_minutes":       taskRealMin,
-			"task_ancient_minutes":    taskAncientMin,
-			"task_efficiency_ratio":   taskEffRatio,
-			"commit_diff_lines":       commitDiffLines,
-			"commit_ancient_minutes":  commitAncientMin,
-			"commit_real_minutes":     commitRealMin,
-			"commit_efficiency_ratio": commitEffRatio,
+		members = append(members, UserGroupMember{
+			UserID: uid, UserName: userName, DayCount: dayCount,
+			TaskCount: taskCount, CommitCount: commitCount,
+			TaskDiffLines: taskDiffLines, UpstreamTokens: upTokens,
+			DownstreamTokens: downTokens, Cost: cost,
+			TaskRealMinutes: taskRealMin, TaskAncientMinutes: taskAncientMin,
+			TaskEfficiencyRatio:   taskEffRatio,
+			CommitDiffLines:       commitDiffLines,
+			CommitAncientMinutes:  commitAncientMin,
+			CommitRealMinutes:     commitRealMin,
+			CommitEfficiencyRatio: commitEffRatio,
 		})
 
 		// 累加到组级汇总
@@ -253,26 +250,22 @@ func getUserGroupDetailHandler(c *gin.Context) {
 		groupCommitEffRatio = math.Round(groupCommitAncientMin / groupCommitRealMin * 100)
 	}
 
-	groupSummary := gin.H{
-		"day_count":               groupDayCount,
-		"task_count":              groupTaskCount,
-		"commit_count":            groupCommitCount,
-		"task_diff_lines":         groupTaskDiffLines,
-		"upstream_tokens":         groupUpTokens,
-		"downstream_tokens":       groupDownTokens,
-		"cost":                    groupCost,
-		"task_real_minutes":       groupTaskRealMin,
-		"task_ancient_minutes":    groupTaskAncientMin,
-		"task_efficiency_ratio":   groupTaskEffRatio,
-		"commit_diff_lines":       groupCommitDiffLines,
-		"commit_ancient_minutes":  groupCommitAncientMin,
-		"commit_real_minutes":     groupCommitRealMin,
-		"commit_efficiency_ratio": groupCommitEffRatio,
+	groupSummary := UserGroupSummary{
+		DayCount: groupDayCount, TaskCount: groupTaskCount,
+		CommitCount: groupCommitCount, TaskDiffLines: groupTaskDiffLines,
+		UpstreamTokens: groupUpTokens, DownstreamTokens: groupDownTokens,
+		Cost: groupCost, TaskRealMinutes: groupTaskRealMin,
+		TaskAncientMinutes:    groupTaskAncientMin,
+		TaskEfficiencyRatio:   groupTaskEffRatio,
+		CommitDiffLines:       groupCommitDiffLines,
+		CommitAncientMinutes:  groupCommitAncientMin,
+		CommitRealMinutes:     groupCommitRealMin,
+		CommitEfficiencyRatio: groupCommitEffRatio,
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"group":   group,
-		"summary": groupSummary,
-		"members": members,
+	c.JSON(http.StatusOK, UserGroupDetailResponse{
+		Group:   group,
+		Summary: groupSummary,
+		Members: members,
 	})
 }
