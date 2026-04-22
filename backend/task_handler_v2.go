@@ -16,6 +16,79 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type TaskListItem struct {
+	TaskID                         string     `json:"task_id"`
+	Title                          *string    `json:"title"`
+	UserID                         *string    `json:"user_id"`
+	UserName                       *string    `json:"user_name"`
+	ClientID                       *string    `json:"client_id"`
+	ClientIDE                      *string    `json:"client_ide"`
+	ClientVersion                  *string    `json:"client_version"`
+	ClientOS                       *string    `json:"client_os"`
+	ClientOSVersion                *string    `json:"client_os_version"`
+	Caller                         *string    `json:"caller"`
+	RepoAddr                       *string    `json:"repo_addr"`
+	RepoBranch                     *string    `json:"repo_branch"`
+	WorkDir                        *string    `json:"work_dir"`
+	WorkDirID                      *string    `json:"work_dir_id"`
+	StartTime                      *time.Time `json:"start_time"`
+	EndTime                        *time.Time `json:"end_time"`
+	UpstreamTokens                 *int64     `json:"upstream_tokens"`
+	DownstreamTokens               *int64     `json:"downstream_tokens"`
+	Cost                           *float64   `json:"cost"`
+	DiffLines                      *int       `json:"diff_lines"`
+	TaskAncientMinutes             *float64   `json:"task_ancient_minutes"`
+	TaskAncientMinutesReason       *string    `json:"task_ancient_minutes_reason"`
+	TaskAncientMinutesManual       *float64   `json:"task_ancient_minutes_manual"`
+	TaskAncientMinutesReasonManual *string    `json:"task_ancient_minutes_reason_manual"`
+	TaskRealMinutes                *float64   `json:"task_real_minutes"`
+	TaskRealMinutesReason          *string    `json:"task_real_minutes_reason"`
+	TaskRealMinutesManual          *float64   `json:"task_real_minutes_manual"`
+	TaskRealMinutesReasonManual    *string    `json:"task_real_minutes_reason_manual"`
+	CreatedAt                      *time.Time `json:"created_at"`
+	UpdatedAt                      *time.Time `json:"updated_at"`
+	EfficiencyRatio                *float64   `json:"efficiency_ratio"`
+	Org1                           string     `json:"org1"`
+	Org2                           string     `json:"org2"`
+	Org3                           string     `json:"org3"`
+	Org4                           string     `json:"org4"`
+}
+
+type TaskListResponse struct {
+	Total    int            `json:"total"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"pageSize"`
+	Data     []TaskListItem `json:"data"`
+}
+
+type TaskDetailResponse struct {
+	Task            *StatTask              `json:"task"`
+	Conversations   []StatTaskConversation `json:"conversations"`
+	TimeSegments    []TimeSegment          `json:"time_segments"`
+	EfficiencyRatio *float64               `json:"efficiency_ratio"`
+}
+
+type EstimateAncientResult struct {
+	TaskID  string  `json:"task_id"`
+	Minutes float64 `json:"minutes"`
+	Reason  string  `json:"reason"`
+	Error   string  `json:"error,omitempty"`
+}
+
+type EstimateAncientResponse struct {
+	Status  string                  `json:"status"`
+	Total   int                     `json:"total"`
+	Success int                     `json:"success"`
+	Results []EstimateAncientResult `json:"results"`
+}
+
+type UpdateTaskManualRequest struct {
+	TaskRealMinutesManual          *float64 `json:"task_real_minutes_manual"`
+	TaskRealMinutesReasonManual    *string  `json:"task_real_minutes_reason_manual"`
+	TaskAncientMinutesManual       *float64 `json:"task_ancient_minutes_manual"`
+	TaskAncientMinutesReasonManual *string  `json:"task_ancient_minutes_reason_manual"`
+}
+
 // TimeSegment 表示一个连续的工作时间片段
 type TimeSegment struct {
 	Start     time.Time `json:"start"`

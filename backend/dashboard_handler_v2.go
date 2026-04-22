@@ -9,6 +9,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type DashboardSummaryResponse struct {
+	TotalTasks              int      `json:"total_tasks"`
+	TotalUsers              int      `json:"total_users"`
+	TotalRepos              int      `json:"total_repos"`
+	TotalCommits            int      `json:"total_commits"`
+	TotalWorkDirs           int      `json:"total_work_dirs"`
+	TotalCost               float64  `json:"total_cost"`
+	TotalTokens             int64    `json:"total_tokens"`
+	TotalDiffLines          int64    `json:"total_diff_lines"`
+	TotalTaskAncientMinutes float64  `json:"total_task_ancient_minutes"`
+	TotalRealMinutes        float64  `json:"total_real_minutes"`
+	AvgEfficiencyRatio      *float64 `json:"avg_efficiency_ratio"`
+}
+
 // getDashboardSummary GET /api/v2/dashboard/summary
 // @Summary 获取仪表盘汇总信息
 // @Description 获取仪表盘的汇总统计数据

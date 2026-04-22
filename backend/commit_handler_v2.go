@@ -11,6 +11,79 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type CommitListItem struct {
+	CommitID                         string          `json:"commit_id"`
+	CommitTime                       *time.Time      `json:"commit_time"`
+	RepoAddr                         *string         `json:"repo_addr"`
+	RepoBranch                       *string         `json:"repo_branch"`
+	GitUserName                      *string         `json:"git_user_name"`
+	GitUserEmail                     *string         `json:"git_user_email"`
+	UserID                           *string         `json:"user_id"`
+	UserName                         *string         `json:"user_name"`
+	ClientID                         *string         `json:"client_id"`
+	WorkDir                          *string         `json:"work_dir"`
+	DiffLines                        *int            `json:"diff_lines"`
+	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
+	CommitAncientMinutesReason       *string         `json:"commit_ancient_minutes_reason"`
+	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
+	CommitAncientMinutesReasonManual *string         `json:"commit_ancient_minutes_reason_manual"`
+	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
+	CommitRealMinutesReason          *string         `json:"commit_real_minutes_reason"`
+	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
+	CommitRealMinutesReasonManual    *string         `json:"commit_real_minutes_reason_manual"`
+	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
+	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
+	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
+	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
+	Comment                          *string         `json:"comment"`
+	CreatedAt                        *time.Time      `json:"created_at"`
+	UpdatedAt                        *time.Time      `json:"updated_at"`
+	Cost                             float64         `json:"cost"`
+	UpstreamTokens                   int64           `json:"upstream_tokens"`
+	DownstreamTokens                 int64           `json:"downstream_tokens"`
+	Silica                           *float64        `json:"silica"`
+	EfficiencyRatio                  *float64        `json:"efficiency_ratio"`
+	Org1                             string          `json:"org1"`
+	Org2                             string          `json:"org2"`
+	Org3                             string          `json:"org3"`
+	Org4                             string          `json:"org4"`
+	OrgDisplay                       string          `json:"org_display"`
+}
+
+type CommitListResponse struct {
+	Total    int              `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"pageSize"`
+	Data     []CommitListItem `json:"data"`
+}
+
+type RelatedTask struct {
+	TaskID          string     `json:"task_id"`
+	UserName        *string    `json:"user_name"`
+	StartTime       *time.Time `json:"start_time"`
+	TaskRealMinutes *float64   `json:"task_real_minutes"`
+	Silica          *float64   `json:"silica"`
+	Cost            *float64   `json:"cost"`
+	DiffLines       *int       `json:"diff_lines"`
+}
+
+type UpdateCommitManualRequest struct {
+	CommitAncientMinutesManual       *float64 `json:"commit_ancient_minutes_manual"`
+	CommitAncientMinutesReasonManual *string  `json:"commit_ancient_minutes_reason_manual"`
+	CommitRealMinutesManual          *float64 `json:"commit_real_minutes_manual"`
+	CommitRealMinutesReasonManual    *string  `json:"commit_real_minutes_reason_manual"`
+}
+
+type CommitDetailResponse struct {
+	Commit           *StatCommit   `json:"commit"`
+	RelatedTasks     []RelatedTask `json:"related_tasks"`
+	EfficiencyRatio  *float64      `json:"efficiency_ratio"`
+	TotalCost        float64       `json:"total_cost"`
+	Silica           *float64      `json:"silica"`
+	UpstreamTokens   int64         `json:"upstream_tokens"`
+	DownstreamTokens int64         `json:"downstream_tokens"`
+}
+
 // listCommitsV2 GET /api/v2/commits
 // @Summary 获取提交列表
 // @Description 按条件查询提交列表

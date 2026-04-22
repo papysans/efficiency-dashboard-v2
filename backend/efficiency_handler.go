@@ -12,6 +12,69 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type AIEstimatedInfo struct {
+	RawDays       float64  `json:"raw_days"`
+	CorrectedDays *float64 `json:"corrected_days"`
+	IsCorrected   bool     `json:"is_corrected"`
+	Reasons       []string `json:"reasons"`
+}
+
+type ActualTimeUser struct {
+	UserID        string `json:"user_id"`
+	UserName      string `json:"user_name"`
+	StartTime     string `json:"start_time"`
+	EndTime       string `json:"end_time"`
+	LeadTimeMs    int64  `json:"lead_time_ms"`
+	ProcessTimeMs int64  `json:"process_time_ms"`
+}
+
+type ActualTimeInfo struct {
+	TotalLeadTimeMs    int64            `json:"total_lead_time_ms"`
+	TotalProcessTimeMs int64            `json:"total_process_time_ms"`
+	TotalCodeLines     int64            `json:"total_code_lines"`
+	UserCount          int              `json:"user_count"`
+	StartTime          string           `json:"start_time"`
+	EndTime            string           `json:"end_time"`
+	Users              []ActualTimeUser `json:"users"`
+}
+
+type EfficiencyInfo struct {
+	RatioLead    float64 `json:"ratio_lead"`
+	RatioProcess float64 `json:"ratio_process"`
+	Reason       string  `json:"reason"`
+}
+
+type CostInfo struct {
+	APICost    float64 `json:"api_cost"`
+	DailyRate  float64 `json:"daily_rate"`
+	CostSaving float64 `json:"cost_saving"`
+	ROI        float64 `json:"roi"`
+}
+
+type EfficiencyResponse struct {
+	Dimension    string          `json:"dimension"`
+	DimensionID  string          `json:"dimension_id"`
+	AnalysisDate string          `json:"analysis_date"`
+	AIEstimated  AIEstimatedInfo `json:"ai_estimated"`
+	ActualTime   ActualTimeInfo  `json:"actual_time"`
+	Efficiency   EfficiencyInfo  `json:"efficiency"`
+	Cost         CostInfo        `json:"cost"`
+	AnalysisFile string          `json:"analysis_file"`
+}
+
+type CorrectionHistoryItem struct {
+	FieldName   string  `json:"field_name"`
+	OldValue    *string `json:"old_value,omitempty"`
+	NewValue    *string `json:"new_value,omitempty"`
+	Reason      *string `json:"reason,omitempty"`
+	CorrectedBy *string `json:"corrected_by,omitempty"`
+	CorrectedAt *string `json:"corrected_at,omitempty"`
+}
+
+type EfficiencyHistoryResponse struct {
+	Items []CorrectionHistoryItem `json:"items"`
+}
+
 // userTaskInfo 单个用户的任务聚合信息
 type userTaskInfo struct {
 	UserID      string

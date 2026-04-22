@@ -339,7 +339,7 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 	}
 	defer f.Close()
 
-	taskMatchedLines := make(map[string]int)
+	taskMatchedLines := make(map[string]float64)
 	totalLines := 0
 
 	scanner := bufio.NewScanner(f)
@@ -352,8 +352,9 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 		totalLines++
 
 		if taskIDs, ok := hashToTaskIDs[line]; ok {
+			share := 1.0 / float64(len(taskIDs))
 			for taskID := range taskIDs {
-				taskMatchedLines[taskID]++
+				taskMatchedLines[taskID] += share
 			}
 		}
 	}
@@ -367,7 +368,7 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 
 	var result []taskSilica
 	for taskID, matchedLines := range taskMatchedLines {
-		silica := float64(matchedLines) / float64(totalLines)
+		silica := matchedLines / float64(totalLines)
 		result = append(result, taskSilica{TaskID: taskID, Silica: silica})
 	}
 

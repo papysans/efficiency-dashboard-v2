@@ -13,6 +13,93 @@ import (
 	"github.com/lib/pq"
 )
 
+type UserListItem struct {
+	UserID                string  `json:"user_id"`
+	UserName              string  `json:"user_name"`
+	DayCount              int     `json:"day_count"`
+	TaskCount             int     `json:"task_count"`
+	CommitCount           int     `json:"commit_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	Org1                  string  `json:"org1"`
+	Org2                  string  `json:"org2"`
+	Org3                  string  `json:"org3"`
+	Org4                  string  `json:"org4"`
+	OrgDisplay            string  `json:"org_display"`
+	IsVirtualGroup        bool    `json:"is_virtual_group"`
+	OrgName               string  `json:"org_name"`
+	GroupID               string  `json:"group_id,omitempty"`
+}
+
+type UserSeriesPoint struct {
+	Period                string  `json:"period"`
+	TaskCount             int     `json:"task_count"`
+	CommitCount           int     `json:"commit_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	TotalTokens           int64   `json:"total_tokens"`
+	TotalCost             float64 `json:"total_cost"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+}
+
+type UserSeriesItem struct {
+	UserID   string            `json:"user_id"`
+	UserName string            `json:"user_name"`
+	Periods  []string          `json:"periods"`
+	Points   []UserSeriesPoint `json:"points"`
+}
+
+type UsersListResponse struct {
+	Total    int              `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"pageSize"`
+	Data     []UserListItem   `json:"data"`
+	Series   []UserSeriesItem `json:"series"`
+	Periods  []string         `json:"periods"`
+}
+
+type UserDetailSummary struct {
+	UserID                string  `json:"user_id"`
+	UserName              string  `json:"user_name"`
+	DayCount              int     `json:"day_count"`
+	TaskCount             int     `json:"task_count"`
+	CommitCount           int     `json:"commit_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+}
+
+type UserDetailResponse struct {
+	Summary     UserDetailSummary      `json:"summary"`
+	Daily       []UserProductivity     `json:"daily"`
+	Commits     []CommitTimeSeriesItem `json:"commits"`
+	Tasks       []TaskTimeSeriesItem   `json:"tasks"`
+	Total       int                    `json:"total"`
+	Granularity string                 `json:"granularity"`
+}
+
 // listUsersV2 GET /api/v2/users
 // @Summary 获取用户列表
 // @Description 按条件查询用户列表，支持日期范围过滤

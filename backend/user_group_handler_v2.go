@@ -10,6 +10,54 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type UserGroupMember struct {
+	UserID                string  `json:"user_id"`
+	UserName              string  `json:"user_name"`
+	DayCount              int     `json:"day_count"`
+	TaskCount             int     `json:"task_count"`
+	CommitCount           int     `json:"commit_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+}
+
+type UserGroupSummary struct {
+	DayCount              int     `json:"day_count"`
+	TaskCount             int     `json:"task_count"`
+	CommitCount           int     `json:"commit_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+}
+
+type UserGroupDetailResponse struct {
+	Group   *UserGroup        `json:"group"`
+	Summary UserGroupSummary  `json:"summary"`
+	Members []UserGroupMember `json:"members"`
+}
+
+type CreateUserGroupRequest struct {
+	Name    string   `json:"name" example:"前端组"`
+	OrgName string   `json:"org_name" example:"技术部"`
+	UserIDs []string `json:"user_ids"`
+}
+
 // createUserGroupHandler POST /api/v2/user-groups
 // @Summary 创建用户组
 // @Description 创建新的用户组

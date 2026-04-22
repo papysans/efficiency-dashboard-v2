@@ -326,52 +326,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/analysis/efficiency/calculate": {
-            "post": {
-                "description": "强制重新计算指定维度和ID的提效分析结果，包含AI综合评估，并持久化到PG",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Efficiency"
-                ],
-                "summary": "计算提效分析",
-                "parameters": [
-                    {
-                        "description": "计算参数",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/main.CalculateEfficiencyRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.EfficiencyResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/analysis/efficiency/correct": {
             "put": {
                 "description": "纠正AI估算天数等字段，记录纠正历史，并重新计算提效比例",
@@ -394,67 +348,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/main.CorrectionRequest"
                         }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.EfficiencyResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/analysis/efficiency/file": {
-            "get": {
-                "description": "根据维度、ID和日期获取提效分析的原始JSON文件内容",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Efficiency"
-                ],
-                "summary": "获取提效分析文件",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "维度(work_dir或repo)",
-                        "name": "dimension",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "维度ID",
-                        "name": "id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "日期(YYYYMMDD)",
-                        "name": "date",
-                        "in": "query",
-                        "required": true
                     }
                 ],
                 "responses": {
@@ -516,52 +409,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/main.EfficiencyHistoryResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/analysis/efficiency/manual-days": {
-            "put": {
-                "description": "更新指定维度和ID的用户人工天数，需提供原因和操作人",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Efficiency"
-                ],
-                "summary": "更新用户人工天数",
-                "parameters": [
-                    {
-                        "description": "更新参数",
-                        "name": "data",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/main.UpdateManualDaysRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.ManualDaysResponse"
                         }
                     },
                     "400": {
@@ -982,99 +829,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/main.CommitListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "description": "创建新提交或更新已有提交信息",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Commits"
-                ],
-                "summary": "创建或更新提交",
-                "parameters": [
-                    {
-                        "description": "提交信息",
-                        "name": "commit",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/main.StatCommit"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.StatusResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v2/commits/batch": {
-            "post": {
-                "description": "批量添加或更新提交记录",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Commits"
-                ],
-                "summary": "批量添加或更新提交",
-                "parameters": [
-                    {
-                        "description": "提交列表",
-                        "name": "commits",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/main.StatCommit"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.StatusCountResponse"
                         }
                     },
                     "400": {
@@ -2246,105 +2000,6 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "post": {
-                "description": "创建新任务或更新已有任务信息",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Tasks"
-                ],
-                "summary": "创建或更新任务",
-                "parameters": [
-                    {
-                        "description": "任务信息",
-                        "name": "task",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/main.StatTask"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.UpsertTaskResponse"
-                        }
-                    },
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/main.UpsertTaskResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v2/tasks/conversations/batch": {
-            "post": {
-                "description": "批量添加或更新任务的对话记录",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Tasks"
-                ],
-                "summary": "批量添加或更新任务对话",
-                "parameters": [
-                    {
-                        "description": "对话记录列表",
-                        "name": "conversations",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/main.StatTaskConversation"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.StatusCountResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
             }
         },
         "/api/v2/tasks/estimate-ancient": {
@@ -2436,32 +2091,6 @@ const docTemplate = `{
                         "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v2/tasks/fix-ancient-minutes": {
-            "post": {
-                "description": "从任务古代工时原因中提取工时数值并更新到数据库",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Tasks"
-                ],
-                "summary": "修复古代工时数据",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.FixAncientResponse"
                         }
                     },
                     "500": {
@@ -2568,30 +2197,6 @@ const docTemplate = `{
             }
         },
         "/api/v2/user-groups": {
-            "get": {
-                "description": "获取所有用户组列表",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "UserGroups"
-                ],
-                "summary": "获取用户组列表",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.UserGroupListResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            },
             "post": {
                 "description": "创建新的用户组",
                 "consumes": [
@@ -2808,54 +2413,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/main.UsersListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v2/users/rebuild": {
-            "post": {
-                "description": "从tasks和commits表聚合数据，重新计算并写入user_productivity表",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Users"
-                ],
-                "summary": "重建用户生产力数据",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "开始日期(YYYYMMDD)",
-                        "name": "startDate",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "结束日期(YYYYMMDD)",
-                        "name": "endDate",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.RebuildResponse"
                         }
                     },
                     "400": {
@@ -3259,27 +2816,6 @@ const docTemplate = `{
                 },
                 "user_in_chars": {
                     "type": "number"
-                }
-            }
-        },
-        "main.CalculateEfficiencyRequest": {
-            "type": "object",
-            "properties": {
-                "dimension": {
-                    "type": "string",
-                    "example": "work_dir"
-                },
-                "endDate": {
-                    "type": "string",
-                    "example": "20260331"
-                },
-                "id": {
-                    "type": "string",
-                    "example": "project1"
-                },
-                "startDate": {
-                    "type": "string",
-                    "example": "20260101"
                 }
             }
         },
@@ -3954,37 +3490,6 @@ const docTemplate = `{
                 }
             }
         },
-        "main.FixAncientResponse": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer"
-                },
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/main.FixAncientResult"
-                    }
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "main.FixAncientResult": {
-            "type": "object",
-            "properties": {
-                "method": {
-                    "type": "string"
-                },
-                "minutes": {
-                    "type": "number"
-                },
-                "task_id": {
-                    "type": "string"
-                }
-            }
-        },
         "main.GitAnalysisResponse": {
             "type": "object",
             "properties": {
@@ -4121,17 +3626,6 @@ const docTemplate = `{
                 },
                 "upstream_tokens": {
                     "type": "integer"
-                }
-            }
-        },
-        "main.ManualDaysResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string"
-                },
-                "user_manual_days": {
-                    "type": "number"
                 }
             }
         },
@@ -4723,12 +4217,36 @@ const docTemplate = `{
                 }
             }
         },
+        "main.RawDataHit": {
+            "type": "object",
+            "properties": {
+                "@timestamp": {},
+                "_id": {
+                    "type": "string"
+                },
+                "_index": {
+                    "type": "string"
+                },
+                "_score": {
+                    "type": "number"
+                },
+                "_source": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "_type": {
+                    "type": "string"
+                }
+            }
+        },
         "main.RawDataResponse": {
             "type": "object",
             "properties": {
                 "hits": {
                     "type": "array",
-                    "items": {}
+                    "items": {
+                        "$ref": "#/definitions/main.RawDataHit"
+                    }
                 },
                 "page": {
                     "type": "integer"
@@ -4738,17 +4256,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
-                }
-            }
-        },
-        "main.RebuildResponse": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
                 }
             }
         },
@@ -5301,19 +4808,6 @@ const docTemplate = `{
                 }
             }
         },
-        "main.StatusCountResponse": {
-            "type": "object",
-            "properties": {
-                "count": {
-                    "type": "integer",
-                    "example": 10
-                },
-                "status": {
-                    "type": "string",
-                    "example": "ok"
-                }
-            }
-        },
         "main.StatusMessageResponse": {
             "type": "object",
             "properties": {
@@ -5588,39 +5082,6 @@ const docTemplate = `{
                 }
             }
         },
-        "main.UpdateManualDaysRequest": {
-            "type": "object",
-            "properties": {
-                "by": {
-                    "type": "string",
-                    "example": "admin"
-                },
-                "dimension": {
-                    "type": "string",
-                    "example": "work_dir"
-                },
-                "endDate": {
-                    "type": "string",
-                    "example": "20260331"
-                },
-                "id": {
-                    "type": "string",
-                    "example": "project1"
-                },
-                "reason": {
-                    "type": "string",
-                    "example": "修正估算"
-                },
-                "startDate": {
-                    "type": "string",
-                    "example": "20260101"
-                },
-                "value": {
-                    "type": "number",
-                    "example": 5
-                }
-            }
-        },
         "main.UpdateProjectManualRequest": {
             "type": "object",
             "properties": {
@@ -5692,20 +5153,6 @@ const docTemplate = `{
             "properties": {
                 "silica": {
                     "type": "number"
-                },
-                "task_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "main.UpsertTaskResponse": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
                 },
                 "task_id": {
                     "type": "string"
@@ -5835,17 +5282,6 @@ const docTemplate = `{
                 },
                 "summary": {
                     "$ref": "#/definitions/main.UserGroupSummary"
-                }
-            }
-        },
-        "main.UserGroupListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/main.UserGroup"
-                    }
                 }
             }
         },

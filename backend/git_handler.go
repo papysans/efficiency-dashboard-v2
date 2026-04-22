@@ -7,6 +7,28 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type GitStatsInfo struct {
+	CommitCount      *int   `json:"commit_count,omitempty"`
+	ContributorCount *int   `json:"contributor_count,omitempty"`
+	LinesAdded       *int64 `json:"lines_added,omitempty"`
+	LinesDeleted     *int64 `json:"lines_deleted,omitempty"`
+	FilesChanged     *int   `json:"files_changed,omitempty"`
+}
+
+type EstimationInfo struct {
+	FromTask *float64 `json:"from_task,omitempty"`
+	FromGit  *float64 `json:"from_git,omitempty"`
+	Final    *float64 `json:"final,omitempty"`
+}
+
+type GitAnalysisResponse struct {
+	RepoID          string          `json:"repo_id"`
+	AnalysisDate    string          `json:"analysis_date"`
+	GitStats        *GitStatsInfo   `json:"git_stats"`
+	Estimation      *EstimationInfo `json:"estimation"`
+	GitAnalysisFile *string         `json:"git_analysis_file,omitempty"`
+}
+
 // getGitAnalysis GET /api/analysis/git
 // @Summary 获取Git分析结果
 // @Description 根据仓库ID查询Git分析结果，包含提交统计和AI估算信息

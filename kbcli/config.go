@@ -94,7 +94,10 @@ func LoadConfig(filename string) (*Config, error) {
 		config.StatDatabase.User = "postgres"
 	}
 	if config.StatDatabase.Password == "" {
-		config.StatDatabase.Password = "1"
+		config.StatDatabase.Password = os.Getenv("PGPASSWORD")
+	}
+	if config.StatDatabase.Password == "" {
+		config.StatDatabase.Password = os.Getenv("STAT_DB_PASSWORD")
 	}
 	if config.StatDatabase.DBName == "" {
 		config.StatDatabase.DBName = "costrict_stat"

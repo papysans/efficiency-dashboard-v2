@@ -10,6 +10,34 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type AggregateItem struct {
+	Key             string  `json:"key"`
+	UserInChars     float64 `json:"user_in_chars"`
+	CodeLines       float64 `json:"code_lines"`
+	APICount        float64 `json:"api_count"`
+	APICost         float64 `json:"api_cost"`
+	APIInTokens     float64 `json:"api_in_tokens"`
+	APIOutTokens    float64 `json:"api_out_tokens"`
+	TaskCount       float64 `json:"task_count"`
+	AIEstimatedDays float64 `json:"ai_estimated_days"`
+	StartTime       string  `json:"start_time"`
+	EndTime         string  `json:"end_time"`
+	LeadTime        float64 `json:"lead_time"`
+	ProcessTime     float64 `json:"process_time"`
+}
+
+type AggregateResponse struct {
+	Total    int             `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"pageSize"`
+	Items    []AggregateItem `json:"items"`
+}
+
+type AggregateKeysResponse struct {
+	Keys  []string `json:"keys"`
+	Total int      `json:"total"`
+}
+
 // 维度到 ES 字段的映射（普通 terms）
 var dimensionFieldMap = map[string]string{
 	"work_dir": "project_id",

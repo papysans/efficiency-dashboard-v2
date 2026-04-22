@@ -14,6 +14,166 @@ import (
 	"github.com/lib/pq"
 )
 
+type OrgDataItem struct {
+	OrgName               string  `json:"org_name"`
+	UserCount             int     `json:"user_count"`
+	TaskCount             int     `json:"task_count"`
+	CommitCount           int     `json:"commit_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	TotalTokens           int64   `json:"total_tokens"`
+	TotalCost             float64 `json:"total_cost"`
+}
+
+type OrgSeriesPoint struct {
+	Period                string  `json:"period"`
+	UserCount             int     `json:"user_count"`
+	TaskCount             int     `json:"task_count"`
+	CommitCount           int     `json:"commit_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	TotalTokens           int64   `json:"total_tokens"`
+	TotalCost             float64 `json:"total_cost"`
+}
+
+type OrgSeriesItem struct {
+	OrgName string           `json:"org_name"`
+	Periods []string         `json:"periods"`
+	Points  []OrgSeriesPoint `json:"points"`
+}
+
+type OrgListResponse struct {
+	Data    []OrgDataItem   `json:"data"`
+	Series  []OrgSeriesItem `json:"series"`
+	Periods []string        `json:"periods,omitempty"`
+}
+
+type OrgSummary struct {
+	UserCount             int     `json:"user_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+}
+
+type OrgMemberItem struct {
+	UserID                string  `json:"user_id"`
+	UserName              string  `json:"user_name"`
+	Org1                  string  `json:"org1"`
+	Org2                  string  `json:"org2"`
+	Org3                  string  `json:"org3"`
+	Org4                  string  `json:"org4"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+}
+
+type CommitTimeSeriesItem struct {
+	PeriodKey             string  `json:"period_key"`
+	PeriodLabel           string  `json:"period_label"`
+	CommitCount           int     `json:"commit_count"`
+	TaskCount             int     `json:"task_count"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+}
+
+type TaskTimeSeriesItem struct {
+	PeriodKey           string  `json:"period_key"`
+	PeriodLabel         string  `json:"period_label"`
+	TaskCount           int     `json:"task_count"`
+	CommitCount         int     `json:"commit_count"`
+	TaskDiffLines       int     `json:"task_diff_lines"`
+	TaskRealMinutes     float64 `json:"task_real_minutes"`
+	TaskAncientMinutes  float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio float64 `json:"task_efficiency_ratio"`
+	UpstreamTokens      int64   `json:"upstream_tokens"`
+	DownstreamTokens    int64   `json:"downstream_tokens"`
+	Cost                float64 `json:"cost"`
+}
+
+type OrgDetailResponse struct {
+	OrgPath     string                 `json:"org_path"`
+	Summary     OrgSummary             `json:"summary"`
+	Commits     []CommitTimeSeriesItem `json:"commits"`
+	Tasks       []TaskTimeSeriesItem   `json:"tasks"`
+	Members     []OrgMemberItem        `json:"members"`
+	Granularity string                 `json:"granularity"`
+}
+
+type GroupSummary struct {
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+}
+
+type DailyDataItem struct {
+	Date                  string  `json:"date"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskRealMinutes       float64 `json:"task_real_minutes"`
+	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitRealMinutes     float64 `json:"commit_real_minutes"`
+	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	UpstreamTokens        int64   `json:"upstream_tokens"`
+	DownstreamTokens      int64   `json:"downstream_tokens"`
+	Cost                  float64 `json:"cost"`
+}
+
+type GroupMemberItem struct {
+	UserID                string  `json:"user_id"`
+	UserName              string  `json:"user_name"`
+	Org1                  string  `json:"org1"`
+	Org2                  string  `json:"org2"`
+	Org3                  string  `json:"org3"`
+	Org4                  string  `json:"org4"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
+	Cost                  float64 `json:"cost"`
+}
+
+type GroupDetailResponse struct {
+	OrgPath string            `json:"org_path"`
+	Summary GroupSummary      `json:"summary"`
+	Daily   []DailyDataItem   `json:"daily"`
+	Members []GroupMemberItem `json:"members"`
+}
+
 // OrgMapping 组织架构映射
 type OrgMapping struct {
 	UserID       string

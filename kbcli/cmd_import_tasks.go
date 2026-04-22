@@ -65,6 +65,10 @@ type taskConversation struct {
 type flexString string
 
 func (f *flexString) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*f = ""
+		return nil
+	}
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
 		*f = flexString(s)

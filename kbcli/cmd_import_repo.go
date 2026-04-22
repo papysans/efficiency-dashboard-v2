@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/spf13/cobra"
 )
@@ -50,6 +50,15 @@ type repoFileMeta struct {
 var (
 	reRepoPath = regexp.MustCompile(`^([^/]+)/([^/]+)/(\d{4})/(\d{2})/(\d{2})/([^/]+)\.json$`)
 )
+
+// isPostgresUndefinedColumn 判断是否为 PostgreSQL "列不存在"错误（SQLSTATE 42703）
+func isPostgresUndefinedColumn(err error) bool {
+	if pqErr, ok := err.(*pq.Error); ok {
+		return pqErr.Code == "42703"
+	}
+	return false
+}
+
 var importRepoCmd = &cobra.Command{
 	Use:   "import-repo",
 	Short: "导入客户端上报的repo数据到commits表",
@@ -353,8 +362,12 @@ func ensureImportRepoTables(db *sql.DB) error {
 		return fmt.Errorf("创建commits表失败: %w", err)
 	}
 
-	// 兼容旧表：将 work_path 列重命名为 work_dir
-	db.Exec(`ALTER TABLE commits RENAME COLUMN work_path TO work_dir`)
+	// 兼容旧表：将 work_path 列重命名为 work_dir（仅忽略"列不存在"错误）
+	if _, err := db.Exec(`ALTER TABLE commits RENAME COLUMN work_path TO work_dir`); err != nil {
+		if !isPostgresUndefinedColumn(err) {
+			return fmt.Errorf("重命名work_path列失败: %w", err)
+		}
+	}
 
 	// 创建 repos 表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS repos (

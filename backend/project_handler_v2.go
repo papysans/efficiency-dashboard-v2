@@ -12,6 +12,148 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type ProjectListItem struct {
+	ProjectID                             string          `json:"project_id"`
+	Name                                  string          `json:"name"`
+	Description                           *string         `json:"description"`
+	Repos                                 json.RawMessage `json:"repos" swaggertype:"string"`
+	TaskIDs                               json.RawMessage `json:"task_ids" swaggertype:"string"`
+	TaskIDsSilica                         json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
+	StartTime                             *time.Time      `json:"start_time"`
+	EndTime                               *time.Time      `json:"end_time"`
+	StartTimeManual                       *time.Time      `json:"start_time_manual"`
+	EndTimeManual                         *time.Time      `json:"end_time_manual"`
+	UpstreamTokens                        *int64          `json:"upstream_tokens"`
+	DownstreamTokens                      *int64          `json:"downstream_tokens"`
+	Cost                                  *float64        `json:"cost"`
+	ProjectAncientMinutes                 *float64        `json:"project_ancient_minutes"`
+	ProjectAncientMinutesReason           *string         `json:"project_ancient_minutes_reason"`
+	ProjectAncientMinutesManual           *float64        `json:"project_ancient_minutes_manual"`
+	ProjectAncientMinutesReasonManual     *string         `json:"project_ancient_minutes_reason_manual"`
+	ProjectRealProcessMinutes             *float64        `json:"project_real_process_minutes"`
+	ProjectRealProcessMinutesReason       *string         `json:"project_real_process_minutes_reason"`
+	ProjectRealProcessMinutesManual       *float64        `json:"project_real_process_minutes_manual"`
+	ProjectRealProcessMinutesReasonManual *string         `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealLeadMinutes                *float64        `json:"project_real_lead_minutes"`
+	ProjectRealLeadMinutesReason          *string         `json:"project_real_lead_minutes_reason"`
+	ProjectRealLeadMinutesManual          *float64        `json:"project_real_lead_minutes_manual"`
+	ProjectRealLeadMinutesReasonManual    *string         `json:"project_real_lead_minutes_reason_manual"`
+	CreatedAt                             *time.Time      `json:"created_at"`
+	UpdatedAt                             *time.Time      `json:"updated_at"`
+	RepoCount                             int             `json:"repo_count"`
+	TaskCount                             int             `json:"task_count"`
+	UserCount                             int             `json:"user_count"`
+	TotalCodeLines                        int64           `json:"total_code_lines"`
+	ActualLinesPerDay                     *float64        `json:"actual_lines_per_day"`
+	EfficiencyRatio                       *float64        `json:"efficiency_ratio"`
+}
+
+type ProjectListResponse struct {
+	Data []ProjectListItem `json:"data"`
+}
+
+type ProjectCommitItem struct {
+	CommitID                   string     `json:"commit_id"`
+	CommitTime                 *time.Time `json:"commit_time"`
+	RepoAddr                   string     `json:"repo_addr"`
+	RepoBranch                 string     `json:"repo_branch"`
+	UserName                   *string    `json:"user_name"`
+	GitUserName                *string    `json:"git_user_name"`
+	DiffLines                  *int       `json:"diff_lines"`
+	Comment                    *string    `json:"comment"`
+	CommitAncientMinutes       *float64   `json:"commit_ancient_minutes"`
+	CommitAncientMinutesManual *float64   `json:"commit_ancient_minutes_manual"`
+	CommitRealMinutes          *float64   `json:"commit_real_minutes"`
+	CommitRealMinutesManual    *float64   `json:"commit_real_minutes_manual"`
+	Silica                     *float64   `json:"silica"`
+}
+
+type ProjectTaskItem struct {
+	TaskID                   string     `json:"task_id"`
+	UserName                 *string    `json:"user_name"`
+	StartTime                *time.Time `json:"start_time"`
+	EndTime                  *time.Time `json:"end_time"`
+	UpstreamTokens           *int64     `json:"upstream_tokens"`
+	DownstreamTokens         *int64     `json:"downstream_tokens"`
+	Cost                     *float64   `json:"cost"`
+	TaskAncientMinutes       *float64   `json:"task_ancient_minutes"`
+	TaskAncientMinutesManual *float64   `json:"task_ancient_minutes_manual"`
+	TaskRealMinutes          *float64   `json:"task_real_minutes"`
+	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
+	Title                    *string    `json:"title"`
+	WorkDir                  *string    `json:"work_dir"`
+	Silica                   float64    `json:"silica"`
+}
+
+type ProjectDetailResponse struct {
+	Project         *Project            `json:"project"`
+	Commits         []ProjectCommitItem `json:"commits"`
+	Tasks           []ProjectTaskItem   `json:"tasks"`
+	EfficiencyRatio *float64            `json:"efficiency_ratio"`
+	UserCount       int                 `json:"user_count"`
+}
+
+type ProjectConflict struct {
+	CommitID    string `json:"commit_id"`
+	ProjectID   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+}
+
+type ProjectConflictsResponse struct {
+	Conflicts []ProjectConflict `json:"conflicts"`
+}
+
+type CreateProjectRequest struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+}
+
+type UpdateProjectRequest struct {
+	Name          string          `json:"name"`
+	Description   *string         `json:"description"`
+	Repos         json.RawMessage `json:"repos" swaggertype:"string"`
+	TaskIDs       json.RawMessage `json:"task_ids" swaggertype:"string"`
+	TaskIDsSilica json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
+}
+
+type AddTasksRequest struct {
+	TaskIDs       []string  `json:"task_ids"`
+	TaskIDsSilica []float64 `json:"task_ids_silica"`
+}
+
+type RemoveTasksRequest struct {
+	TaskIDs []string `json:"task_ids"`
+}
+
+type UpdateTaskSilicaRequest struct {
+	TaskID string  `json:"task_id"`
+	Silica float64 `json:"silica"`
+}
+
+type CheckProjectConflictsRequest struct {
+	CommitIDs []string `json:"commit_ids"`
+}
+
+type UpdateProjectManualRequest struct {
+	ProjectAncientMinutesManual           *float64   `json:"project_ancient_minutes_manual"`
+	ProjectAncientMinutesReasonManual     *string    `json:"project_ancient_minutes_reason_manual"`
+	ProjectRealProcessMinutesManual       *float64   `json:"project_real_process_minutes_manual"`
+	ProjectRealProcessMinutesReasonManual *string    `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealLeadMinutesManual          *float64   `json:"project_real_lead_minutes_manual"`
+	ProjectRealLeadMinutesReasonManual    *string    `json:"project_real_lead_minutes_reason_manual"`
+	StartTimeManual                       *time.Time `json:"start_time_manual"`
+	EndTimeManual                         *time.Time `json:"end_time_manual"`
+}
+
+type RepoFilter struct {
+	RepoAddr           string   `json:"repo_addr"`
+	RepoBranch         string   `json:"repo_branch"`
+	StartTime          *string  `json:"start_time"`
+	EndTime            *string  `json:"end_time"`
+	ExcludeCommits     []string `json:"exclude_commits"`
+	IncludeOnlyCommits []string `json:"include_only_commits"`
+}
+
 // collectProjectCommits 根据 project 的 repos 配置收集去重后的 commits
 func collectProjectCommits(project *Project) (map[string]*StatCommit, error) {
 	var repos []RepoFilter

@@ -7,6 +7,53 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type TaskCommitMappingItem struct {
+	TaskID      string   `json:"task_id"`
+	CommitHash  string   `json:"commit_hash"`
+	CodeSource  string   `json:"code_source"`
+	UserID      *string  `json:"user_id,omitempty"`
+	MatchScore  *float64 `json:"match_score,omitempty"`
+	MatchReason *string  `json:"match_reason,omitempty"`
+}
+
+type TaskCommitMappingsResponse struct {
+	Items []TaskCommitMappingItem `json:"items"`
+}
+
+type CodeAttributionSummary struct {
+	TotalOurAILines int64 `json:"total_our_ai_lines"`
+	TotalHumanLines int64 `json:"total_human_lines"`
+}
+
+type CodeAttributionDetail struct {
+	CommitHash string  `json:"commit_hash"`
+	OurAILines int64   `json:"our_ai_lines"`
+	HumanLines int64   `json:"human_lines"`
+	TaskID     *string `json:"task_id,omitempty"`
+}
+
+type CodeAttributionResponse struct {
+	Summary CodeAttributionSummary  `json:"summary"`
+	Details []CodeAttributionDetail `json:"details"`
+}
+
+type CodeSourceItem struct {
+	Lines      int64   `json:"lines"`
+	Percentage float64 `json:"percentage"`
+}
+
+type CodeSourceGroup struct {
+	AICurrent CodeSourceItem `json:"ai_current"`
+	Human     CodeSourceItem `json:"human"`
+	AIOther   CodeSourceItem `json:"ai_other"`
+	Unknown   CodeSourceItem `json:"unknown"`
+}
+
+type CodeSourceStatsResponse struct {
+	CodeSource      CodeSourceGroup `json:"code_source"`
+	MappedTaskCount int             `json:"mapped_task_count"`
+}
+
 // getTaskCommitMappings GET /api/analysis/task-commits
 // @Summary 获取任务-提交映射
 // @Description 查询指定仓库和日期范围内的任务与提交的映射关系
