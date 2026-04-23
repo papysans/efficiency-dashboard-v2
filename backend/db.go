@@ -32,6 +32,11 @@ func InitDB(cfg DatabaseConfig) (*sql.DB, error) {
 // EnsureStatSchema 确保 costrict_stat 数据库的表结构存在
 // 使用 CREATE TABLE IF NOT EXISTS 实现幂等，每次启动时调用
 func EnsureStatSchema(db *sql.DB) error {
+	// 启用 pgcrypto 扩展（gen_random_uuid 函数需要）
+	if _, err := db.Exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto`); err != nil {
+		return fmt.Errorf("启用 pgcrypto 扩展失败: %w", err)
+	}
+
 	stmts := []string{
 		// tasks 表
 		`CREATE TABLE IF NOT EXISTS tasks (

@@ -130,6 +130,11 @@ func getAllDates(db *sql.DB) ([]string, error) {
 }
 
 func ensureEfficiencyTables(db *sql.DB) error {
+	// 启用 pgcrypto 扩展（gen_random_uuid 函数需要）
+	if _, err := db.Exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto`); err != nil {
+		return fmt.Errorf("启用 pgcrypto 扩展失败: %w", err)
+	}
+
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS user_productivity (
 		user_productivity_id VARCHAR(100) PRIMARY KEY,
 		create_time TIMESTAMPTZ,

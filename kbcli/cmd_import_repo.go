@@ -411,7 +411,7 @@ func ensureImportRepoTables(db *sql.DB) error {
 		commit_real_minutes_reason TEXT,
 		commit_real_minutes_manual FLOAT8,
 		commit_real_minutes_reason_manual TEXT,
-		comment VARCHAR(150),
+		comment TEXT,
 		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 	)`)

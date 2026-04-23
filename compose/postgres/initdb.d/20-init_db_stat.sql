@@ -3,6 +3,9 @@
 -- 切换到 costrict_stat 数据库
 \connect costrict_stat
 
+-- 启用 pgcrypto 扩展（gen_random_uuid 函数需要）
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS tasks (
     task_id VARCHAR(500) PRIMARY KEY,
     user_id VARCHAR(255),
@@ -99,7 +102,7 @@ CREATE TABLE IF NOT EXISTS commits (
     commit_real_minutes_reason TEXT,
     commit_real_minutes_manual FLOAT8,
     commit_real_minutes_reason_manual TEXT,
-    comment VARCHAR(150),
+    comment TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
