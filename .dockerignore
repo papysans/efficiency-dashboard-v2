@@ -1,0 +1,15 @@
+.git
+.cospec
+.claude
+.roo
+.vscode
+.gitignore
+tests
+README.md
+Dockerfile
+.dockerignore
+**/*.test
+**/tmp
+frontend
+task
+tools

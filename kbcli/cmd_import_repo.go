@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/spf13/cobra"
 )
 
-// RepoCommitData 客户端上报的commit数据解析结构
 type RepoCommitData struct {
 	CommitID     string `json:"commit_id"`
 	CommitTime   string `json:"commit_time"`
@@ -28,17 +27,16 @@ type RepoCommitData struct {
 	UserID       string `json:"user_id"`
 	UserName     string `json:"user_name"`
 	ClientID     string `json:"client_id"`
-	WorkPath     string `json:"work_path,omitempty"` // 被work_dir替代的旧字段
-	WorkDir      string `json:"work_dir,omitempty"`  // 兼容字段
+	WorkPath     string `json:"work_path,omitempty"`
+	WorkDir      string `json:"work_dir,omitempty"`
 	Comment      string `json:"comment"`
 	DiffLines    int    `json:"diff_lines"`
-	Diff         string `json:"diff"` // 不入库
+	Diff         string `json:"diff"`
 }
 
-// repoFileMeta 扫描到的文件元信息
 type repoFileMeta struct {
-	Path     string // 绝对路径
-	RelPath  string // 相对于repoDir的路径
+	Path     string
+	RelPath  string
 	Repo     string
 	Branch   string
 	Year     string
@@ -47,17 +45,7 @@ type repoFileMeta struct {
 	CommitID string
 }
 
-var (
-	reRepoPath = regexp.MustCompile(`^([^/]+)/([^/]+)/(\d{4})/(\d{2})/(\d{2})/([^/]+)\.json$`)
-)
-
-// isPostgresUndefinedColumn 判断是否为 PostgreSQL "列不存在"错误（SQLSTATE 42703）
-func isPostgresUndefinedColumn(err error) bool {
-	if pqErr, ok := err.(*pq.Error); ok {
-		return pqErr.Code == "42703"
-	}
-	return false
-}
+var reRepoPath = regexp.MustCompile(`^([^/]+)/([^/]+)/(\d{4})/(\d{2})/(\d{2})/([^/]+)\.json$`)
 
 var importRepoCmd = &cobra.Command{
 	Use:   "import-repo",
@@ -67,30 +55,19 @@ var importRepoCmd = &cobra.Command{
 		repoDir, _ := cmd.Flags().GetString("repo-dir")
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 
-		// 验证目录存在性
 		if _, err := os.Stat(repoDir); os.IsNotExist(err) {
 			return fmt.Errorf("repo目录不存在: %s", repoDir)
 		}
 
-		// 连接数据库
-		db, err := sql.Open("postgres", cfg.StatDatabase.DSN())
+		db, err := openGormDB(cfg.StatDatabase.DSN())
 		if err != nil {
 			return fmt.Errorf("连接数据库失败: %w", err)
 		}
-		defer db.Close()
-
-		if err := db.Ping(); err != nil {
-			return fmt.Errorf("数据库连接测试失败: %w", err)
-		}
-
-		// 自动建表：确保 commits 和 repos 表存在
-		if err := ensureImportRepoTables(db); err != nil {
-			return fmt.Errorf("自动建表失败: %w", err)
-		}
+		sqlDB, _ := db.DB()
+		defer sqlDB.Close()
 
 		force, _ := cmd.Flags().GetBool("force")
 
-		// 扫描待导入文件
 		files, skipCount, err := scanRepoDir(repoDir, analysedDir, force)
 		if err != nil {
 			return fmt.Errorf("扫描repo目录失败: %w", err)
@@ -107,7 +84,7 @@ var importRepoCmd = &cobra.Command{
 		failCount := 0
 
 		for _, fileMeta := range files {
-			if err := importCommitFile(db, fileMeta, analysedDir); err != nil {
+			if err := importCommitFileGorm(db, fileMeta, analysedDir); err != nil {
 				fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", fileMeta.Path, err)
 				failCount++
 			} else {
@@ -117,7 +94,7 @@ var importRepoCmd = &cobra.Command{
 
 		fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
 
-		if err := aggregateCommitsToRepos(db); err != nil {
+		if err := aggregateCommitsToReposGorm(db); err != nil {
 			fmt.Fprintf(os.Stderr, "警告: commits聚合到repos失败: %v\n", err)
 		}
 
@@ -135,8 +112,6 @@ func init() {
 	rootCmd.AddCommand(importRepoCmd)
 }
 
-// scanRepoDir 扫描repo目录，返回符合条件的commit文件列表
-// 路径格式: <repo-dir>/<repo>/<branch>/<year>/<month>/<day>/<commit-id>.json
 func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, error) {
 	var files []repoFileMeta
 	skipCount := 0
@@ -146,7 +121,6 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 			return err
 		}
 
-		// 跳过analysedDir目录（可能是analysed或其他用户指定的目录）
 		if info.IsDir() {
 			relPath, err := filepath.Rel(repoDir, path)
 			if err != nil {
@@ -154,7 +128,6 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 			}
 			analysedDirRel, err := filepath.Rel(repoDir, analysedDir)
 			if err == nil {
-				// 检查当前目录是否是analysedDir或其子目录
 				if relPath == analysedDirRel || strings.HasPrefix(relPath, analysedDirRel+string(filepath.Separator)) {
 					return filepath.SkipDir
 				}
@@ -162,18 +135,15 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 			return nil
 		}
 
-		// 只处理.json文件
 		if !strings.HasSuffix(info.Name(), ".json") {
 			return nil
 		}
 
-		// 解析路径格式
 		relPath, err := filepath.Rel(repoDir, path)
 		if err != nil {
 			return err
 		}
 
-		// 转换路径分隔符为/以匹配正则
 		relPath = filepath.ToSlash(relPath)
 
 		matches := reRepoPath.FindStringSubmatch(relPath)
@@ -219,9 +189,7 @@ func importEstimateCommitAncientMinutes(diffLines int) (float64, string) {
 	return minutes, fmt.Sprintf("基于diff_lines=%d估算(1.5分钟/行)", diffLines)
 }
 
-// importCommitFile 导入单个commit文件
-func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
-	// 读取并解析JSON文件
+func importCommitFileGorm(db *gorm.DB, meta repoFileMeta, analysedDir string) error {
 	data, err := os.ReadFile(meta.Path)
 	if err != nil {
 		return fmt.Errorf("读取文件失败: %w", err)
@@ -232,7 +200,6 @@ func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
 		return fmt.Errorf("解析JSON失败: %w", err)
 	}
 
-	// 验证必填字段
 	if commitData.CommitID == "" {
 		return fmt.Errorf("commit_id为空")
 	}
@@ -240,61 +207,57 @@ func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
 		return fmt.Errorf("commit_time为空")
 	}
 
-	// 兼容处理 work_path/work_dir 字段
 	workDir := commitData.WorkDir
 	if workDir == "" {
 		workDir = commitData.WorkPath
 	}
 
-	// 解析commit_time
 	commitTime, err := time.Parse(time.RFC3339, commitData.CommitTime)
 	if err != nil {
 		return fmt.Errorf("解析commit_time失败: %w", err)
 	}
 
-	// 执行UPSERT插入commits表
-	_, err = db.Exec(`INSERT INTO commits (
-		commit_id, commit_time, repo_addr, repo_branch,
-		git_user_name, git_user_email, user_id, user_name,
-		client_id, work_dir, comment, diff_lines,
-		updated_at
-	) VALUES (
-		$1, $2, $3, $4,
-		$5, $6, $7, $8,
-		$9, $10, $11, $12,
-		CURRENT_TIMESTAMP
-	) ON CONFLICT (commit_id) DO UPDATE SET
-		commit_time = EXCLUDED.commit_time,
-		repo_addr = EXCLUDED.repo_addr,
-		repo_branch = EXCLUDED.repo_branch,
-		git_user_name = EXCLUDED.git_user_name,
-		git_user_email = EXCLUDED.git_user_email,
-		user_id = EXCLUDED.user_id,
-		user_name = EXCLUDED.user_name,
-		client_id = EXCLUDED.client_id,
-		work_dir = EXCLUDED.work_dir,
-		comment = EXCLUDED.comment,
-		diff_lines = EXCLUDED.diff_lines,
-		updated_at = CURRENT_TIMESTAMP`,
-		commitData.CommitID, commitTime, commitData.RepoAddr, commitData.RepoBranch,
-		commitData.GitUserName, commitData.GitUserEmail, commitData.UserID, commitData.UserName,
-		commitData.ClientID, workDir, commitData.Comment, commitData.DiffLines,
-	)
-
-	if err != nil {
-		return fmt.Errorf("写入commits表失败: %w", err)
+	commit := Commit{
+		CommitID:     commitData.CommitID,
+		CommitTime:   &commitTime,
+		RepoAddr:     commitData.RepoAddr,
+		RepoBranch:   commitData.RepoBranch,
+		GitUserName:  commitData.GitUserName,
+		GitUserEmail: commitData.GitUserEmail,
+		UserID:       commitData.UserID,
+		UserName:     commitData.UserName,
+		ClientID:     commitData.ClientID,
+		WorkDir:      workDir,
+		Comment:      commitData.Comment,
+		DiffLines:    commitData.DiffLines,
 	}
 
-	// 估算 commit_ancient_minutes（基于diff_lines的启发式算法）
+	result := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "commit_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"commit_time", "repo_addr", "repo_branch",
+			"git_user_name", "git_user_email", "user_id", "user_name",
+			"client_id", "work_dir", "comment", "diff_lines", "updated_at",
+		}),
+	}).Create(&commit)
+	if result.Error != nil {
+		return fmt.Errorf("写入commits表失败: %w", result.Error)
+	}
+
 	ancientMinutes, ancientReason := importEstimateCommitAncientMinutes(commitData.DiffLines)
-	if _, err := db.Exec(`UPDATE commits SET commit_ancient_minutes = $1, commit_ancient_minutes_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE commit_id = $3 AND commit_ancient_minutes IS NULL AND commit_ancient_minutes_manual IS NULL`,
-		ancientMinutes, ancientReason, commitData.CommitID); err != nil {
+	ancientMinutesPtr := &ancientMinutes
+	ancientReasonPtr := &ancientReason
+	if err := db.Model(&Commit{}).
+		Where("commit_id = ? AND commit_ancient_minutes IS NULL AND commit_ancient_minutes_manual IS NULL", commitData.CommitID).
+		Updates(map[string]interface{}{
+			"commit_ancient_minutes":        ancientMinutesPtr,
+			"commit_ancient_minutes_reason": ancientReasonPtr,
+		}).Error; err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 更新commit_ancient_minutes失败 [%s]: %v\n", commitData.CommitID, err)
 	} else {
 		fmt.Printf("  commit_ancient_minutes=%.1f (%s)\n", ancientMinutes, ancientReason)
 	}
 
-	// 生成代码行指纹文件
 	addedLines := extractAddedLinesFromDiff(commitData.Diff)
 	fpPath := fpPathForMeta(analysedDir, meta)
 
@@ -306,42 +269,47 @@ func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
 	return nil
 }
 
-func aggregateCommitsToRepos(db *sql.DB) error {
-	rows, err := db.Query(`SELECT repo_addr, repo_branch, array_agg(commit_id ORDER BY commit_time), min(commit_time), max(commit_time) FROM commits GROUP BY repo_addr, repo_branch`)
-	if err != nil {
+func aggregateCommitsToReposGorm(db *gorm.DB) error {
+	type aggRow struct {
+		RepoAddr   string
+		RepoBranch string
+		CommitIDs  []string
+		StartTime  *time.Time
+		EndTime    *time.Time
+	}
+
+	var rows []aggRow
+	if err := db.Raw(`SELECT repo_addr, repo_branch, array_agg(commit_id ORDER BY commit_time), min(commit_time), max(commit_time) FROM commits GROUP BY repo_addr, repo_branch`).Scan(&rows).Error; err != nil {
 		return fmt.Errorf("查询commits聚合失败: %w", err)
 	}
-	defer rows.Close()
 
 	count := 0
-	for rows.Next() {
-		var repoAddr string
-		var repoBranch string
-		var commitIDs []string
-		var startTime, endTime *time.Time
-		if err := rows.Scan(&repoAddr, &repoBranch, pq.Array(&commitIDs), &startTime, &endTime); err != nil {
-			return fmt.Errorf("读取聚合结果失败: %w", err)
+	for _, row := range rows {
+		repoID := toPathSafeID(row.RepoAddr) + "--" + toPathSafeID(row.RepoBranch)
+		commitIDsJSON, _ := json.Marshal(row.CommitIDs)
+
+		repo := Repo{
+			RepoID:     repoID,
+			RepoAddr:   row.RepoAddr,
+			RepoBranch: row.RepoBranch,
+			StartTime:  row.StartTime,
+			EndTime:    row.EndTime,
+			CommitIDs:  StringJSON(commitIDsJSON),
 		}
 
-		repoID := toPathSafeID(repoAddr) + "--" + toPathSafeID(repoBranch)
-		commitIDsJSON, _ := json.Marshal(commitIDs)
-
-		_, err = db.Exec(`INSERT INTO repos (repo_id, repo_addr, repo_branch, start_time, end_time, commit_ids, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-			ON CONFLICT (repo_addr, repo_branch) DO UPDATE SET
-				commit_ids = $6,
-				start_time = COALESCE($4, repos.start_time),
-				end_time = COALESCE($5, repos.end_time),
-				updated_at = CURRENT_TIMESTAMP`,
-			repoID, repoAddr, repoBranch, startTime, endTime, string(commitIDsJSON))
-		if err != nil {
-			return fmt.Errorf("写入repos表失败 [%s %s]: %w", repoAddr, repoBranch, err)
+		result := db.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "repo_addr"}, {Name: "repo_branch"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"commit_ids": string(repo.CommitIDs),
+				"start_time": gorm.Expr("COALESCE(?, repos.start_time)", repo.StartTime),
+				"end_time":   gorm.Expr("COALESCE(?, repos.end_time)", repo.EndTime),
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+			}),
+		}).Create(&repo)
+		if result.Error != nil {
+			return fmt.Errorf("写入repos表失败 [%s %s]: %w", row.RepoAddr, row.RepoBranch, result.Error)
 		}
 		count++
-	}
-
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("遍历聚合结果失败: %w", err)
 	}
 
 	fmt.Printf("repos聚合完成: 更新 %d 个repo记录\n", count)
@@ -378,83 +346,4 @@ func writeFingerprintsToFile(addedLines []addedLine, fpPath string) error {
 
 func fpPathForMeta(analysedDir string, meta repoFileMeta) string {
 	return filepath.Join(analysedDir, "repo", meta.Repo, meta.Branch, meta.Year, meta.Month, meta.Day, meta.CommitID+".fp")
-}
-
-// ensureImportRepoTables 确保导入repo数据所需的数据库表存在，不存在则自动创建
-func ensureImportRepoTables(db *sql.DB) error {
-	// 创建 commits 表
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS commits (
-		commit_id VARCHAR(500) PRIMARY KEY,
-		commit_time TIMESTAMPTZ,
-		repo_addr TEXT,
-		repo_branch VARCHAR(500),
-		git_user_name VARCHAR(255),
-		git_user_email VARCHAR(255),
-		user_id VARCHAR(255),
-		user_name VARCHAR(255),
-		client_id VARCHAR(255),
-		work_dir TEXT,
-		diff_lines INT,
-		commit_ancient_minutes FLOAT8,
-		commit_ancient_minutes_reason TEXT,
-		commit_ancient_minutes_manual FLOAT8,
-		commit_ancient_minutes_reason_manual TEXT,
-		task_ids JSONB,
-		task_ids_silica JSONB,
-		upstream_tokens BIGINT,
-		downstream_tokens BIGINT,
-		cost FLOAT8,
-		silica FLOAT8,
-		commit_real_ai_minutes FLOAT8,
-		commit_real_ancient_minutes FLOAT8,
-		commit_real_minutes FLOAT8,
-		commit_real_minutes_reason TEXT,
-		commit_real_minutes_manual FLOAT8,
-		commit_real_minutes_reason_manual TEXT,
-		comment TEXT,
-		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-	)`)
-	if err != nil {
-		return fmt.Errorf("创建commits表失败: %w", err)
-	}
-
-	// 兼容旧表：将 work_path 列重命名为 work_dir（仅忽略"列不存在"错误）
-	if _, err := db.Exec(`ALTER TABLE commits RENAME COLUMN work_path TO work_dir`); err != nil {
-		if !isPostgresUndefinedColumn(err) {
-			return fmt.Errorf("重命名work_path列失败: %w", err)
-		}
-	}
-
-	// 创建 repos 表
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS repos (
-		repo_id VARCHAR(500) PRIMARY KEY,
-		repo_addr TEXT NOT NULL,
-		repo_branch VARCHAR(500) NOT NULL,
-		start_time TIMESTAMPTZ,
-		end_time TIMESTAMPTZ,
-		commit_ids JSONB DEFAULT '[]',
-		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-	)`)
-	if err != nil {
-		return fmt.Errorf("创建repos表失败: %w", err)
-	}
-
-	// 创建索引（IF NOT EXISTS 保证幂等）
-	indexes := []string{
-		`CREATE INDEX IF NOT EXISTS idx_commits_repo_addr ON commits(repo_addr)`,
-		`CREATE INDEX IF NOT EXISTS idx_commits_repo_addr_branch ON commits(repo_addr, repo_branch)`,
-		`CREATE INDEX IF NOT EXISTS idx_commits_user_id ON commits(user_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_commits_commit_time ON commits(commit_time)`,
-		`CREATE INDEX IF NOT EXISTS idx_repos_repo_addr ON repos(repo_addr)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch)`,
-	}
-	for _, idx := range indexes {
-		if _, err := db.Exec(idx); err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 创建索引失败(可忽略): %v\n", err)
-		}
-	}
-
-	return nil
 }

@@ -155,3 +155,7 @@ cython_debug/
 # Temporary files and directories
 tmp/
 tmp/**/
+
+.cospec/
+tools/
+task/

@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/spf13/cobra"
 )
 
-// taskSummary task_summary.json 解析结构
 type taskSummary struct {
 	TaskID        string `json:"task_id"`
 	UserID        string `json:"user_id"`
@@ -37,7 +36,6 @@ type taskSummary struct {
 	DiffLines     int    `json:"diff_lines"`
 }
 
-// taskConversation task_conversation.jsonl 每行解析结构
 type taskConversation struct {
 	Sender           string     `json:"sender"`
 	RequestID        string     `json:"request_id"`
@@ -58,8 +56,7 @@ type taskConversation struct {
 	DiffLines        int64      `json:"diff_lines"`
 	ErrorCode        flexString `json:"error_code"`
 	ErrorReason      flexString `json:"error_reason"`
-	// 内部使用的计算字段
-	calculatedCost float64 // 计算得出的cost（如果原始cost为0或缺失）
+	calculatedCost   float64
 }
 
 type flexString string
@@ -182,8 +179,6 @@ var (
 	reImportMultiDash = regexp.MustCompile(`-{2,}`)
 )
 
-// importGenerateWorkDirID 根据 clientID 和 workDir 生成工作目录唯一标识
-// 算法与 backend/id_utils.go 中的 generateWorkDirID 一致
 func importGenerateWorkDirID(clientID, workDir string) string {
 	prefix := clientID
 	if len(prefix) > 6 {
@@ -220,28 +215,17 @@ var importTasksCmd = &cobra.Command{
 		summaryDir := filepath.Join(taskDir, "summary")
 		conversationDir := filepath.Join(taskDir, "conversation")
 
-		// 检查 summary 目录是否存在
 		if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
 			return fmt.Errorf("summary目录不存在: %s", summaryDir)
 		}
 
-		// 连接数据库
-		db, err := sql.Open("postgres", cfg.StatDatabase.DSN())
+		db, err := openGormDB(cfg.StatDatabase.DSN())
 		if err != nil {
 			return fmt.Errorf("连接数据库失败: %w", err)
 		}
-		defer db.Close()
+		sqlDB, _ := db.DB()
+		defer sqlDB.Close()
 
-		if err := db.Ping(); err != nil {
-			return fmt.Errorf("数据库连接测试失败: %w", err)
-		}
-
-		// 自动建表：确保 tasks 和 task_conversations 表存在
-		if err := ensureImportTables(db); err != nil {
-			return fmt.Errorf("自动建表失败: %w", err)
-		}
-
-		// 扫描所有 summary JSON 文件
 		var summaryFiles []string
 		err = filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -286,7 +270,7 @@ var importTasksCmd = &cobra.Command{
 			convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
 			conversationPath := filepath.Join(conversationDir, convRelPath)
 
-			if err := importSingleTask(db, summaryPath, conversationPath, fpPath); err != nil {
+			if err := importSingleTaskGorm(db, summaryPath, conversationPath, fpPath); err != nil {
 				fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", summaryPath, err)
 				failCount++
 			} else {
@@ -306,8 +290,7 @@ func init() {
 	rootCmd.AddCommand(importTasksCmd)
 }
 
-// importSingleTask 导入单个 task
-func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) error {
+func importSingleTaskGorm(db *gorm.DB, summaryPath, conversationPath, fpPath string) error {
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
 		return fmt.Errorf("读取summary文件失败: %w", err)
@@ -332,7 +315,7 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 
 	rec := calcTaskRecord(&summary, conversations)
 
-	_, err = db.Exec(`INSERT INTO tasks (
+	if err := db.Exec(`INSERT INTO tasks (
 		task_id, user_id, user_name, client_id, client_ide, client_version,
 		client_os, client_os_version, caller,
 		repo_addr, repo_branch, work_dir, work_dir_id,
@@ -380,8 +363,7 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 		rec.StartTime, rec.EndTime, rec.UpstreamTokens, rec.DownstreamTokens, rec.Cost,
 		rec.TaskRealMinutes, rec.TaskRealMinutesRsn,
 		rec.TaskAncientMinutes, rec.TaskAncientMinutesRsn,
-	)
-	if err != nil {
+	).Error; err != nil {
 		return fmt.Errorf("写入tasks表失败: %w", err)
 	}
 
@@ -393,7 +375,7 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 	}
 
 	if len(conversations) > 0 {
-		if err := saveConversations(db, rec.TaskID, conversations); err != nil {
+		if err := saveConversationsGorm(db, rec.TaskID, conversations); err != nil {
 			return fmt.Errorf("保存conversations失败: %w", err)
 		}
 	}
@@ -411,144 +393,61 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 	return nil
 }
 
-func saveConversations(db *sql.DB, taskID string, conversations []taskConversation) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
+func saveConversationsGorm(db *gorm.DB, taskID string, conversations []taskConversation) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, conv := range conversations {
+			var convStartTime, convEndTime *time.Time
+			if conv.StartTime != "" {
+				if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
+					convStartTime = &t
+				}
+			}
+			if conv.EndTime != "" {
+				if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
+					convEndTime = &t
+				}
+			}
 
-	for _, conv := range conversations {
-		var convStartTime, convEndTime *time.Time
-		if conv.StartTime != "" {
-			if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
-				convStartTime = &t
+			tc := TaskConversation{
+				TaskID:           taskID,
+				RequestID:        conv.RequestID,
+				Sender:           conv.Sender,
+				PromptMode:       conv.PromptMode,
+				Mode:             conv.Mode,
+				Model:            conv.Model,
+				StartTime:        convStartTime,
+				EndTime:          convEndTime,
+				ProcessTime:      conv.ProcessTime,
+				ProcessTTFT:      conv.ProcessTTFT,
+				UpstreamTokens:   conv.UpstreamTokens,
+				DownstreamTokens: conv.DownstreamTokens,
+				Cost:             conv.Cost,
+				RequestContent:   conv.RequestContent,
+				ResponseContent:  conv.ResponseContent,
+				UserInput:        conv.UserInput,
+				Diff:             "",
+				DiffLines:        conv.DiffLines,
+				ErrorCode:        stringPtrToStr(flexStrPtr(conv.ErrorCode)),
+				ErrorReason:      stringPtrToStr(flexStrPtr(conv.ErrorReason)),
+			}
+
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "task_id"}, {Name: "request_id"}},
+				DoNothing: true,
+			}).Create(&tc)
+			if result.Error != nil {
+				return fmt.Errorf("写入task_conversations表失败: %w", result.Error)
 			}
 		}
-		if conv.EndTime != "" {
-			if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
-				convEndTime = &t
-			}
-		}
-
-		_, err = tx.Exec(`INSERT INTO task_conversations (
-			task_id, request_id, sender, prompt_mode, mode, model,
-			start_time, end_time, process_time, process_ttft,
-			upstream_tokens, downstream_tokens, cost,
-			request_content, response_content, user_input,
-			diff, diff_lines,
-			error_code, error_reason
-		) VALUES (
-			$1, $2, $3, $4, $5, $6,
-			$7, $8, $9, $10,
-			$11, $12, $13,
-			$14, $15, $16,
-			'', $17,
-			$18, $19
-		) ON CONFLICT (task_id, request_id) DO NOTHING`,
-			taskID, conv.RequestID, conv.Sender, conv.PromptMode, conv.Mode, conv.Model,
-			convStartTime, convEndTime, conv.ProcessTime, conv.ProcessTTFT,
-			conv.UpstreamTokens, conv.DownstreamTokens, conv.Cost,
-			conv.RequestContent, conv.ResponseContent, conv.UserInput,
-			conv.DiffLines,
-			flexStrPtr(conv.ErrorCode), flexStrPtr(conv.ErrorReason),
-		)
-		if err != nil {
-			tx.Rollback()
-			return fmt.Errorf("写入task_conversations表失败: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交事务失败: %w", err)
-	}
-	return nil
+		return nil
+	})
 }
 
-// ensureImportTables 确保导入所需的数据库表存在，不存在则自动创建
-func ensureImportTables(db *sql.DB) error {
-	// 创建 tasks 表
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS tasks (
-		task_id VARCHAR(500) PRIMARY KEY,
-		user_id VARCHAR(255),
-		user_name VARCHAR(255),
-		client_id VARCHAR(255),
-		client_ide VARCHAR(100),
-		client_version VARCHAR(100),
-		client_os VARCHAR(100),
-		client_os_version VARCHAR(100),
-		caller VARCHAR(100),
-		repo_addr TEXT,
-		repo_branch VARCHAR(500),
-		work_dir TEXT,
-		work_dir_id VARCHAR(500),
-		diff_lines INT,
-		start_time TIMESTAMPTZ,
-		end_time TIMESTAMPTZ,
-		upstream_tokens BIGINT,
-		downstream_tokens BIGINT,
-		cost FLOAT8,
-		task_real_minutes FLOAT8,
-		task_real_minutes_reason TEXT,
-		task_real_minutes_manual FLOAT8,
-		task_real_minutes_reason_manual TEXT,
-		task_ancient_minutes FLOAT8,
-		task_ancient_minutes_reason TEXT,
-		task_ancient_minutes_manual FLOAT8,
-		task_ancient_minutes_reason_manual TEXT,
-		efficiency_ratio FLOAT8,
-		title VARCHAR(200),
-		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-	)`)
-	if err != nil {
-		return fmt.Errorf("创建tasks表失败: %w", err)
+func stringPtrToStr(p *string) string {
+	if p == nil {
+		return ""
 	}
-
-	// 创建 task_conversations 表
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS task_conversations (
-		id SERIAL PRIMARY KEY,
-		task_id VARCHAR(500) NOT NULL,
-		request_id VARCHAR(500) NOT NULL,
-		sender VARCHAR(50),
-		prompt_mode VARCHAR(50),
-		mode VARCHAR(100),
-		model VARCHAR(200),
-		start_time TIMESTAMPTZ,
-		end_time TIMESTAMPTZ,
-		process_time BIGINT,
-		process_ttft BIGINT,
-		upstream_tokens BIGINT,
-		downstream_tokens BIGINT,
-		cost FLOAT8,
-		request_content TEXT,
-		response_content TEXT,
-		user_input TEXT,
-		diff TEXT,
-		diff_lines BIGINT,
-		error_code VARCHAR(100),
-		error_reason TEXT,
-		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-		UNIQUE(task_id, request_id)
-	)`)
-	if err != nil {
-		return fmt.Errorf("创建task_conversations表失败: %w", err)
-	}
-
-	// 创建索引（IF NOT EXISTS 保证幂等）
-	indexes := []string{
-		`CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_tasks_work_dir_id ON tasks(work_dir_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_tasks_start_time ON tasks(start_time)`,
-		`CREATE INDEX IF NOT EXISTS idx_task_conversations_task_id ON task_conversations(task_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_task_conversations_start_time ON task_conversations(start_time)`,
-	}
-	for _, idx := range indexes {
-		if _, err := db.Exec(idx); err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 创建索引失败(可忽略): %v\n", err)
-		}
-	}
-
-	return nil
+	return *p
 }
 
 func importEstimateAncientMinutes(diffLines int) (float64, string) {
@@ -614,7 +513,6 @@ func calculateImportTaskRealMinutes(conversations []taskConversation, gapThresho
 	return totalMinutes, reason
 }
 
-// calculateCost 计算 API 调用费用
 func calculateCost(model string, inTokens, outTokens int64, prices map[string]ModelPrice) float64 {
 	price, ok := prices[model]
 	if !ok {
@@ -623,7 +521,6 @@ func calculateCost(model string, inTokens, outTokens int64, prices map[string]Mo
 	return (float64(inTokens)/1e6)*price.InPrice + (float64(outTokens)/1e6)*price.OutPrice
 }
 
-// parseConversationFile 解析 .jsonl 文件为 conversation 列表，并计算cost（如果缺失）
 func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]taskConversation, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -646,7 +543,6 @@ func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]ta
 			return nil, fmt.Errorf("第%d行JSON解析失败: %w", lineNum, err)
 		}
 
-		// 计算cost：如果原始cost为0或缺失，则根据tokens计算
 		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
 			conv.calculatedCost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
 			if conv.calculatedCost > 0 {

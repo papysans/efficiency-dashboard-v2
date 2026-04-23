@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"gorm.io/gorm"
 
 	"github.com/spf13/cobra"
 )
@@ -49,19 +48,12 @@ var silicaCmd = &cobra.Command{
 		taskFPDir := filepath.Join(analysedDir, "task", "summary")
 		repoFPDir := filepath.Join(analysedDir, "repo")
 
-		db, err := sql.Open("postgres", cfg.StatDatabase.DSN())
+		db, err := openGormDB(cfg.StatDatabase.DSN())
 		if err != nil {
 			return fmt.Errorf("连接数据库失败: %w", err)
 		}
-		defer db.Close()
-
-		if err := db.Ping(); err != nil {
-			return fmt.Errorf("数据库连接测试失败: %w", err)
-		}
-
-		if err := ensureSilicaColumns(db); err != nil {
-			return fmt.Errorf("确保commits表字段失败: %w", err)
-		}
+		sqlDB, _ := db.DB()
+		defer sqlDB.Close()
 
 		idx, err := buildSilicaIndex(taskFPDir)
 		if err != nil {
@@ -83,19 +75,18 @@ var silicaCmd = &cobra.Command{
 			commitID := strings.TrimSuffix(filepath.Base(fpFile), ".fp")
 
 			if !reprocess {
-				var taskIDsJSON string
-				err := db.QueryRow(`SELECT task_ids FROM commits WHERE commit_id = $1`, commitID).Scan(&taskIDsJSON)
-				if err == nil && taskIDsJSON != "" && taskIDsJSON != "null" && taskIDsJSON != "[]" {
-					skipCount++
-					continue
+				var commit Commit
+				if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
+					if string(commit.TaskIDs) != "" && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
+						skipCount++
+						continue
+					}
 				}
 			}
 
-			var repoAddr, userID string
-			var commitTime time.Time
-			err := db.QueryRow(`SELECT repo_addr, user_id, commit_time FROM commits WHERE commit_id = $1`, commitID).Scan(&repoAddr, &userID, &commitTime)
-			if err != nil {
-				if err == sql.ErrNoRows {
+			var commit Commit
+			if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
 					fmt.Fprintf(os.Stderr, "警告: commit不存在于数据库 [%s]\n", commitID)
 					skipCount++
 					continue
@@ -105,7 +96,11 @@ var silicaCmd = &cobra.Command{
 				continue
 			}
 
-			gk := groupKey{repoAddr: repoAddr, userID: userID}
+			gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserID}
+			commitTime := time.Time{}
+			if commit.CommitTime != nil {
+				commitTime = *commit.CommitTime
+			}
 			candidateHashes := idx.buildCandidateHashIndex(gk, commitTime)
 
 			taskIDSilica, totalLines, err := computeCommitSilica(fpFile, candidateHashes)
@@ -116,11 +111,14 @@ var silicaCmd = &cobra.Command{
 			}
 
 			if len(taskIDSilica) == 0 {
-				_, err := db.Exec(`UPDATE commits SET task_ids = '[]'::jsonb, task_ids_silica = '[]'::jsonb, silica = 0,
-				commit_real_ai_minutes = 0, commit_real_ancient_minutes = COALESCE(commit_ancient_minutes, 0),
-				commit_real_minutes = COALESCE(commit_ancient_minutes, 0),
-				updated_at = CURRENT_TIMESTAMP WHERE commit_id = $1`, commitID)
-				if err != nil {
+				if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+					"task_ids":                    "[]",
+					"task_ids_silica":             "[]",
+					"silica":                      0,
+					"commit_real_ai_minutes":      0,
+					"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
+					"commit_real_minutes":         gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
+				}).Error; err != nil {
 					fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
 					failCount++
 				} else {
@@ -138,18 +136,20 @@ var silicaCmd = &cobra.Command{
 				totalSilica += ts.Silica
 			}
 
-			commitRealAIMinutes, commitRealAncientMinutes := calcCommitDerivedMinutes(db, taskIDSilica)
+			commitRealAIMinutes, commitRealAncientMinutes := calcCommitDerivedMinutesGorm(db, taskIDSilica)
 			commitRealMinutes := commitRealAIMinutes + commitRealAncientMinutes
 
 			taskIDsJSON, _ := json.Marshal(taskIDList)
 			silicaJSON, _ := json.Marshal(silicaList)
 
-			if _, err := db.Exec(`UPDATE commits SET task_ids = $1::jsonb, task_ids_silica = $2::jsonb, silica = $3,
-			commit_real_ai_minutes = $4, commit_real_ancient_minutes = $5, commit_real_minutes = $6,
-			updated_at = CURRENT_TIMESTAMP WHERE commit_id = $7`,
-				string(taskIDsJSON), string(silicaJSON), totalSilica,
-				commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes,
-				commitID); err != nil {
+			if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+				"task_ids":                    string(taskIDsJSON),
+				"task_ids_silica":             string(silicaJSON),
+				"silica":                      totalSilica,
+				"commit_real_ai_minutes":      commitRealAIMinutes,
+				"commit_real_ancient_minutes": commitRealAncientMinutes,
+				"commit_real_minutes":         commitRealMinutes,
+			}).Error; err != nil {
 				fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
 				failCount++
 			} else {
@@ -174,20 +174,6 @@ func init() {
 	silicaCmd.Flags().String("analysed-dir", "./analysed", "已分析文件目录路径")
 	silicaCmd.Flags().Bool("reprocess", false, "重新处理已计算过的commit")
 	rootCmd.AddCommand(silicaCmd)
-}
-
-func ensureSilicaColumns(db *sql.DB) error {
-	alterations := []string{
-		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'commits' AND column_name = 'task_ids') THEN ALTER TABLE commits ADD COLUMN task_ids JSONB; END IF; END $$`,
-		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'commits' AND column_name = 'task_ids_silica') THEN ALTER TABLE commits ADD COLUMN task_ids_silica JSONB; END IF; END $$`,
-		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'commits' AND column_name = 'silica') THEN ALTER TABLE commits ADD COLUMN silica FLOAT8 DEFAULT 0; END IF; END $$`,
-	}
-	for _, sql := range alterations {
-		if _, err := db.Exec(sql); err != nil {
-			return fmt.Errorf("执行ALTER TABLE失败: %w", err)
-		}
-	}
-	return nil
 }
 
 func buildSilicaIndex(taskFPDir string) (*silicaIndex, error) {
@@ -387,19 +373,19 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 	return result, totalLines, nil
 }
 
-func calcCommitDerivedMinutes(db *sql.DB, taskIDSilica []taskSilica) (float64, float64) {
+func calcCommitDerivedMinutesGorm(db *gorm.DB, taskIDSilica []taskSilica) (float64, float64) {
 	var aiMinutes, ancientMinutes float64
 	for _, ts := range taskIDSilica {
-		var realMin, ancientMin float64
-		err := db.QueryRow(`SELECT COALESCE(task_real_minutes_manual, task_real_minutes), COALESCE(task_ancient_minutes_manual, task_ancient_minutes) FROM tasks WHERE task_id = $1`, ts.TaskID).Scan(&realMin, &ancientMin)
-		if err != nil {
-			if err != sql.ErrNoRows {
+		var task Task
+		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes").
+			Where("task_id = ?", ts.TaskID).First(&task).Error; err != nil {
+			if err != gorm.ErrRecordNotFound {
 				fmt.Fprintf(os.Stderr, "查询task分钟数失败 [%s]: %v\n", ts.TaskID, err)
 			}
 			continue
 		}
-		aiMinutes += realMin * ts.Silica
-		ancientMinutes += ancientMin * (1 - ts.Silica)
+		aiMinutes += task.TaskRealMinutes * ts.Silica
+		ancientMinutes += task.TaskAncientMinutes * (1 - ts.Silica)
 	}
 	return aiMinutes, ancientMinutes
 }
