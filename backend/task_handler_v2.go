@@ -475,7 +475,7 @@ func updateTaskManualV2(c *gin.Context) {
 // @Param taskId query string true "任务ID"
 // @Param type query string false "文件类型"
 // @Param date query string true "日期(YYYY-MM-DD)"
-// @Success 200 {object} EfficiencyResponse
+// @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse

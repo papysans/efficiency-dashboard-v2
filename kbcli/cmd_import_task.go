@@ -340,7 +340,6 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 		start_time, end_time, upstream_tokens, downstream_tokens, cost,
 		task_real_minutes, task_real_minutes_reason,
 		task_ancient_minutes, task_ancient_minutes_reason,
-		efficiency_ratio,
 		updated_at
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
@@ -350,10 +349,9 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 		$15, $16, $17, $18, $19,
 		$20, $21,
 		$22, $23,
-		CASE WHEN $20 > 0 AND $22 > 0 THEN $22 / $20 * 100 ELSE NULL END,
 		CURRENT_TIMESTAMP
 	) ON CONFLICT (task_id) DO UPDATE SET
-		user_id = EXCLUDED.user_id, user_name = EXCLUDED.user_name,
+		user_id = EXCLUDED.user_id,
 		client_id = EXCLUDED.client_id, client_ide = EXCLUDED.client_ide,
 		client_version = EXCLUDED.client_version,
 		client_os = EXCLUDED.client_os, client_os_version = EXCLUDED.client_os_version,

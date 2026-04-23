@@ -13,13 +13,6 @@ type ModelPrice struct {
 	OutPrice float64 `yaml:"out_price"`
 }
 
-// ESConfig Elasticsearch 连接配置
-type ESConfig struct {
-	URL      string `yaml:"url"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-}
-
 // DatabaseConfig 数据库连接配置
 type DatabaseConfig struct {
 	Host     string `yaml:"host"`
@@ -48,14 +41,13 @@ type AIEstimationConfig struct {
 
 // Config 全局配置结构
 type Config struct {
-	Elasticsearch ESConfig              `yaml:"elasticsearch"`
-	ModelPrices   map[string]ModelPrice `yaml:"model_prices"`
-	RawDataDir    string                `yaml:"rawdata_dir"`
-	OrgCSVFile    string                `yaml:"org_csv_file"`
-	AIEstimation  AIEstimationConfig    `yaml:"ai_estimation"`
-	BackendURL    string                `yaml:"backend_url"`
-	HTTPProxy     string                `yaml:"http_proxy"`
-	StatDatabase  DatabaseConfig        `yaml:"stat_database"`
+	ModelPrices  map[string]ModelPrice `yaml:"model_prices"`
+	RawDataDir   string                `yaml:"rawdata_dir"`
+	OrgCSVFile   string                `yaml:"org_csv_file"`
+	AIEstimation AIEstimationConfig    `yaml:"ai_estimation"`
+	BackendURL   string                `yaml:"backend_url"`
+	HTTPProxy    string                `yaml:"http_proxy"`
+	StatDatabase DatabaseConfig        `yaml:"stat_database"`
 }
 
 // LoadConfig 从 YAML 文件加载配置

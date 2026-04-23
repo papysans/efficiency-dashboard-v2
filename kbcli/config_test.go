@@ -36,15 +36,6 @@ rawdata_dir: "../rawdata"
 		t.Fatalf("LoadConfig 返回错误: %v", err)
 	}
 
-	if cfg.Elasticsearch.URL != "https://127.0.0.1:9200" {
-		t.Errorf("ES URL: want https://127.0.0.1:9200, got %s", cfg.Elasticsearch.URL)
-	}
-	if cfg.Elasticsearch.Username != "testuser" {
-		t.Errorf("ES Username: want testuser, got %s", cfg.Elasticsearch.Username)
-	}
-	if cfg.Elasticsearch.Password != "testpass" {
-		t.Errorf("ES Password: want testpass, got %s", cfg.Elasticsearch.Password)
-	}
 	if len(cfg.ModelPrices) != 2 {
 		t.Errorf("ModelPrices count: want 2, got %d", len(cfg.ModelPrices))
 	}

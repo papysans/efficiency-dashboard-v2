@@ -45,14 +45,13 @@ type Config struct {
 	Server struct {
 		Port int `yaml:"port"`
 	} `yaml:"server"`
-	Elasticsearch ESConfig       `yaml:"elasticsearch"`
-	Database      DatabaseConfig `yaml:"database"`
-	StatDatabase  DatabaseConfig `yaml:"stat_database"`
-	RawDataDir    string         `yaml:"rawdata_dir"`
-	TaskDir       string         `yaml:"task_dir"`
-	AnalysedDir   string         `yaml:"analysed_dir"`
-	OrgMapping    string         `yaml:"org_mapping"`
-	CORS          struct {
+	Database     DatabaseConfig `yaml:"database"`
+	StatDatabase DatabaseConfig `yaml:"stat_database"`
+	RawDataDir   string         `yaml:"rawdata_dir"`
+	TaskDir      string         `yaml:"task_dir"`
+	AnalysedDir  string         `yaml:"analysed_dir"`
+	OrgMapping   string         `yaml:"org_mapping"`
+	CORS         struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
 	AIEstimation struct {
@@ -71,7 +70,6 @@ type Config struct {
 }
 
 var appConfig Config
-var esClient *ESClient
 var db *sql.DB
 var statDB *sql.DB
 
@@ -79,11 +77,6 @@ func loadConfig(path string) (Config, error) {
 	var cfg Config
 	// 默认值
 	cfg.Server.Port = 9990
-	cfg.Elasticsearch = ESConfig{
-		URL:      "https://127.0.0.1:9200",
-		Username: "costrict",
-		Password: "costrict",
-	}
 	cfg.Database = DatabaseConfig{
 		Host:     "localhost",
 		Port:     5432,
@@ -131,14 +124,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
-
-	// 初始化 ES 客户端
-	esClient, err = NewESClient(appConfig.Elasticsearch)
-	if err != nil {
-		// log.Fatalf("ES客户端初始化失败: %v", err)
-		log.Printf("ES客户端初始化失败: %v", err)
-	}
-	log.Println("ES客户端连接成功")
 
 	// 初始化 PG 数据库连接
 	db, err = InitDB(appConfig.Database)
@@ -190,19 +175,6 @@ func main() {
 	}))
 
 	api := r.Group("/api")
-	{
-		api.GET("/requests", getRawData)
-		api.GET("/aggregate", getAggregate)
-		api.GET("/aggregate/keys", getAggregateKeys)
-		api.GET("/analysis/efficiency", getEfficiency)
-		api.PUT("/analysis/efficiency/correct", correctEfficiency)
-		api.GET("/analysis/efficiency/history", getEfficiencyHistory)
-		api.GET("/analysis/git", getGitAnalysis)
-		api.GET("/analysis/task-commits", getTaskCommitMappings)
-		api.GET("/analysis/code-attribution", getCodeAttribution)
-		api.GET("/analysis/code-source", getCodeSourceStats)
-
-	}
 
 	v2 := api.Group("/v2")
 	{
