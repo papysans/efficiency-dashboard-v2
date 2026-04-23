@@ -534,140 +534,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/favorites": {
-            "get": {
-                "description": "按条件查询收藏列表",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Favorites"
-                ],
-                "summary": "获取收藏列表",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "维度过滤",
-                        "name": "dimension",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/main.FavoriteItem"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "description": "添加新的收藏",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Favorites"
-                ],
-                "summary": "添加收藏",
-                "parameters": [
-                    {
-                        "description": "收藏信息",
-                        "name": "favorite",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/main.CreateFavoriteRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/main.FavoriteResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/favorites/{id}": {
-            "delete": {
-                "description": "根据收藏ID取消收藏",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Favorites"
-                ],
-                "summary": "取消收藏",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "收藏ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.StatusMessageResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/requests": {
             "get": {
                 "description": "从Elasticsearch中查询原始请求数据列表",
@@ -2495,113 +2361,6 @@ const docTemplate = `{
                     }
                 }
             }
-        },
-        "/api/virtual-groups": {
-            "post": {
-                "description": "创建新的虚拟组",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "VirtualGroups"
-                ],
-                "summary": "创建虚拟组",
-                "parameters": [
-                    {
-                        "description": "虚拟组信息",
-                        "name": "group",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/main.CreateVirtualGroupRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/main.VirtualGroupResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/virtual-groups/{id}/aggregate": {
-            "get": {
-                "description": "根据虚拟组ID聚合查询ES数据，返回虚拟组的汇总统计指标",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "VirtualGroups"
-                ],
-                "summary": "聚合虚拟组数据",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "虚拟组ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "开始日期(YYYYMMDD)",
-                        "name": "startDate",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "结束日期(YYYYMMDD)",
-                        "name": "endDate",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.AggregateVirtualGroupResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
@@ -2769,53 +2528,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
-                }
-            }
-        },
-        "main.AggregateVirtualGroupResponse": {
-            "type": "object",
-            "properties": {
-                "ai_estimated_days": {
-                    "type": "number"
-                },
-                "api_cost": {
-                    "type": "number"
-                },
-                "api_count": {
-                    "type": "number"
-                },
-                "api_in_tokens": {
-                    "type": "number"
-                },
-                "api_out_tokens": {
-                    "type": "number"
-                },
-                "code_lines": {
-                    "type": "number"
-                },
-                "end_time": {
-                    "type": "string"
-                },
-                "key": {
-                    "type": "string"
-                },
-                "lead_time": {
-                    "type": "number"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "process_time": {
-                    "type": "number"
-                },
-                "start_time": {
-                    "type": "string"
-                },
-                "task_count": {
-                    "type": "number"
-                },
-                "user_in_chars": {
-                    "type": "number"
                 }
             }
         },
@@ -3191,23 +2903,6 @@ const docTemplate = `{
                 }
             }
         },
-        "main.CreateFavoriteRequest": {
-            "type": "object",
-            "properties": {
-                "dimension": {
-                    "type": "string",
-                    "example": "work_dir"
-                },
-                "display_name": {
-                    "type": "string",
-                    "example": "项目1"
-                },
-                "item_key": {
-                    "type": "string",
-                    "example": "project1"
-                }
-            }
-        },
         "main.CreateProjectRequest": {
             "type": "object",
             "properties": {
@@ -3235,25 +2930,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                }
-            }
-        },
-        "main.CreateVirtualGroupRequest": {
-            "type": "object",
-            "properties": {
-                "dimension": {
-                    "type": "string",
-                    "example": "work_dir"
-                },
-                "member_keys": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "name": {
-                    "type": "string",
-                    "example": "前端组"
                 }
             }
         },
@@ -3447,46 +3123,6 @@ const docTemplate = `{
                 },
                 "from_task": {
                     "type": "number"
-                }
-            }
-        },
-        "main.FavoriteItem": {
-            "type": "object",
-            "properties": {
-                "dimension": {
-                    "type": "string"
-                },
-                "display_name": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "is_virtual": {
-                    "type": "boolean"
-                },
-                "item_key": {
-                    "type": "string"
-                },
-                "virtual_group_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "main.FavoriteResponse": {
-            "type": "object",
-            "properties": {
-                "dimension": {
-                    "type": "string"
-                },
-                "display_name": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "item_key": {
-                    "type": "string"
                 }
             }
         },
@@ -4808,15 +4444,6 @@ const docTemplate = `{
                 }
             }
         },
-        "main.StatusMessageResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "example": "操作成功"
-                }
-            }
-        },
         "main.StatusResponse": {
             "type": "object",
             "properties": {
@@ -5632,26 +5259,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
-                }
-            }
-        },
-        "main.VirtualGroupResponse": {
-            "type": "object",
-            "properties": {
-                "dimension": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "member_keys": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "name": {
-                    "type": "string"
                 }
             }
         }

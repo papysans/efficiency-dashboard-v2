@@ -179,14 +179,14 @@ func main() {
 	// CORS 配置
 	corsOrigins := appConfig.CORS.AllowOrigins
 	if len(corsOrigins) == 0 {
-		corsOrigins = []string{"http://localhost:8880"}
+		corsOrigins = []string{"*"}
 	}
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 	}))
 
 	api := r.Group("/api")
@@ -202,14 +202,6 @@ func main() {
 		api.GET("/analysis/code-attribution", getCodeAttribution)
 		api.GET("/analysis/code-source", getCodeSourceStats)
 
-		// 虚拟组
-		api.POST("/virtual-groups", createVirtualGroup)
-		api.GET("/virtual-groups/:id/aggregate", aggregateVirtualGroup)
-
-		// 收藏
-		api.POST("/favorites", createFavorite)
-		api.GET("/favorites", listFavorites)
-		api.DELETE("/favorites/:id", deleteFavorite)
 	}
 
 	v2 := api.Group("/v2")

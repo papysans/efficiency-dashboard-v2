@@ -31,8 +31,7 @@ org_mapping: "/app/org_mapping.csv"
 
 cors:
   allow_origins:
-    - "http://localhost:8880"
-    - "http://localhost:8090"
+    - "*"
 
 ai_estimation:
   enabled: true

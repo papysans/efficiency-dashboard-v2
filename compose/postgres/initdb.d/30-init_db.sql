@@ -163,27 +163,6 @@ BEGIN
     END IF;
 END $$;
 
--- 虚拟组
-CREATE TABLE IF NOT EXISTS virtual_groups (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
-    dimension VARCHAR(20) NOT NULL,  -- project/repo/user/org1/org2/org3/org4
-    member_keys TEXT[] NOT NULL,     -- PostgreSQL 数组
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 收藏
-CREATE TABLE IF NOT EXISTS favorites (
-    id SERIAL PRIMARY KEY,
-    dimension VARCHAR(20) NOT NULL,
-    item_key VARCHAR(500) NOT NULL,     -- 真实key 或 "vg_{id}" 表示虚拟组
-    display_name VARCHAR(200),
-    virtual_group_id INTEGER REFERENCES virtual_groups(id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(dimension, item_key)
-);
-
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'repo_metrics' AND column_name = 'our_ai_code_lines') THEN

@@ -28,8 +28,8 @@ type RepoCommitData struct {
 	UserID       string `json:"user_id"`
 	UserName     string `json:"user_name"`
 	ClientID     string `json:"client_id"`
-	WorkPath     string `json:"work_path,omitempty"`
-	WorkDir      string `json:"work_dir,omitempty"` // 兼容字段
+	WorkPath     string `json:"work_path,omitempty"` // 被work_dir替代的旧字段
+	WorkDir      string `json:"work_dir,omitempty"`  // 兼容字段
 	Comment      string `json:"comment"`
 	DiffLines    int    `json:"diff_lines"`
 	Diff         string `json:"diff"` // 不入库
@@ -88,8 +88,10 @@ var importRepoCmd = &cobra.Command{
 			return fmt.Errorf("自动建表失败: %w", err)
 		}
 
+		force, _ := cmd.Flags().GetBool("force")
+
 		// 扫描待导入文件
-		files, skipCount, err := scanRepoDir(repoDir, analysedDir)
+		files, skipCount, err := scanRepoDir(repoDir, analysedDir, force)
 		if err != nil {
 			return fmt.Errorf("扫描repo目录失败: %w", err)
 		}
@@ -114,6 +116,11 @@ var importRepoCmd = &cobra.Command{
 		}
 
 		fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
+
+		if err := aggregateCommitsToRepos(db); err != nil {
+			fmt.Fprintf(os.Stderr, "警告: commits聚合到repos失败: %v\n", err)
+		}
+
 		return nil
 	},
 }
@@ -121,6 +128,7 @@ var importRepoCmd = &cobra.Command{
 func init() {
 	importRepoCmd.Flags().String("repo-dir", "./repo", "repo 目录路径（必需）")
 	importRepoCmd.Flags().String("analysed-dir", "./analysed", "已处理文件的输出目录")
+	importRepoCmd.Flags().BoolP("force", "f", false, "强制重新导入，忽略fp文件的短路判断")
 	if err := importRepoCmd.MarkFlagRequired("repo-dir"); err != nil {
 		panic(err)
 	}
@@ -129,7 +137,7 @@ func init() {
 
 // scanRepoDir 扫描repo目录，返回符合条件的commit文件列表
 // 路径格式: <repo-dir>/<repo>/<branch>/<year>/<month>/<day>/<commit-id>.json
-func scanRepoDir(repoDir, analysedDir string) ([]repoFileMeta, int, error) {
+func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, error) {
 	var files []repoFileMeta
 	skipCount := 0
 
@@ -184,11 +192,13 @@ func scanRepoDir(repoDir, analysedDir string) ([]repoFileMeta, int, error) {
 			CommitID: matches[6],
 		}
 
-		fpPath := fpPathForMeta(analysedDir, meta)
-		if _, err := os.Stat(fpPath); err == nil {
-			fmt.Printf("跳过(已处理): %s\n", path)
-			skipCount++
-			return nil
+		if !force {
+			fpPath := fpPathForMeta(analysedDir, meta)
+			if _, err := os.Stat(fpPath); err == nil {
+				fmt.Printf("跳过(已处理): %s\n", path)
+				skipCount++
+				return nil
+			}
 		}
 
 		files = append(files, meta)
@@ -255,6 +265,14 @@ func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
 		CURRENT_TIMESTAMP
 	) ON CONFLICT (commit_id) DO UPDATE SET
 		commit_time = EXCLUDED.commit_time,
+		repo_addr = EXCLUDED.repo_addr,
+		repo_branch = EXCLUDED.repo_branch,
+		git_user_name = EXCLUDED.git_user_name,
+		git_user_email = EXCLUDED.git_user_email,
+		user_id = EXCLUDED.user_id,
+		user_name = EXCLUDED.user_name,
+		client_id = EXCLUDED.client_id,
+		work_dir = EXCLUDED.work_dir,
 		comment = EXCLUDED.comment,
 		diff_lines = EXCLUDED.diff_lines,
 		updated_at = CURRENT_TIMESTAMP`,
@@ -268,14 +286,12 @@ func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
 	}
 
 	// 估算 commit_ancient_minutes（基于diff_lines的启发式算法）
-	if commitData.DiffLines > 0 {
-		ancientMinutes, ancientReason := importEstimateCommitAncientMinutes(commitData.DiffLines)
-		if _, err := db.Exec(`UPDATE commits SET commit_ancient_minutes = $1, commit_ancient_minutes_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE commit_id = $3 AND commit_ancient_minutes IS NULL AND commit_ancient_minutes_manual IS NULL`,
-			ancientMinutes, ancientReason, commitData.CommitID); err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 更新commit_ancient_minutes失败 [%s]: %v\n", commitData.CommitID, err)
-		} else {
-			fmt.Printf("  commit_ancient_minutes=%.1f (%s)\n", ancientMinutes, ancientReason)
-		}
+	ancientMinutes, ancientReason := importEstimateCommitAncientMinutes(commitData.DiffLines)
+	if _, err := db.Exec(`UPDATE commits SET commit_ancient_minutes = $1, commit_ancient_minutes_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE commit_id = $3 AND commit_ancient_minutes IS NULL AND commit_ancient_minutes_manual IS NULL`,
+		ancientMinutes, ancientReason, commitData.CommitID); err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 更新commit_ancient_minutes失败 [%s]: %v\n", commitData.CommitID, err)
+	} else {
+		fmt.Printf("  commit_ancient_minutes=%.1f (%s)\n", ancientMinutes, ancientReason)
 	}
 
 	// 生成代码行指纹文件
@@ -283,11 +299,52 @@ func importCommitFile(db *sql.DB, meta repoFileMeta, analysedDir string) error {
 	fpPath := fpPathForMeta(analysedDir, meta)
 
 	if err := writeFingerprintsToFile(addedLines, fpPath); err != nil {
-		fmt.Fprintf(os.Stderr, "写入fp文件失败 [%s]: %v\n", fpPath, err)
-		return nil
+		return fmt.Errorf("写入fp文件失败 [%s]: %w", fpPath, err)
 	}
 
 	fmt.Printf("导入成功: %s (新增行指纹: %d)\n", commitData.CommitID, len(addedLines))
+	return nil
+}
+
+func aggregateCommitsToRepos(db *sql.DB) error {
+	rows, err := db.Query(`SELECT repo_addr, repo_branch, array_agg(commit_id ORDER BY commit_time), min(commit_time), max(commit_time) FROM commits GROUP BY repo_addr, repo_branch`)
+	if err != nil {
+		return fmt.Errorf("查询commits聚合失败: %w", err)
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var repoAddr string
+		var repoBranch string
+		var commitIDs []string
+		var startTime, endTime *time.Time
+		if err := rows.Scan(&repoAddr, &repoBranch, pq.Array(&commitIDs), &startTime, &endTime); err != nil {
+			return fmt.Errorf("读取聚合结果失败: %w", err)
+		}
+
+		repoID := toPathSafeID(repoAddr) + "--" + toPathSafeID(repoBranch)
+		commitIDsJSON, _ := json.Marshal(commitIDs)
+
+		_, err = db.Exec(`INSERT INTO repos (repo_id, repo_addr, repo_branch, start_time, end_time, commit_ids, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+			ON CONFLICT (repo_addr, repo_branch) DO UPDATE SET
+				commit_ids = $6,
+				start_time = COALESCE($4, repos.start_time),
+				end_time = COALESCE($5, repos.end_time),
+				updated_at = CURRENT_TIMESTAMP`,
+			repoID, repoAddr, repoBranch, startTime, endTime, string(commitIDsJSON))
+		if err != nil {
+			return fmt.Errorf("写入repos表失败 [%s %s]: %w", repoAddr, repoBranch, err)
+		}
+		count++
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("遍历聚合结果失败: %w", err)
+	}
+
+	fmt.Printf("repos聚合完成: 更新 %d 个repo记录\n", count)
 	return nil
 }
 
@@ -391,7 +448,7 @@ func ensureImportRepoTables(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_commits_user_id ON commits(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_commits_commit_time ON commits(commit_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_repos_repo_addr ON repos(repo_addr)`,
-		`CREATE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch)`,
 	}
 	for _, idx := range indexes {
 		if _, err := db.Exec(idx); err != nil {

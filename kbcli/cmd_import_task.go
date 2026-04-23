@@ -90,6 +90,93 @@ func flexStrPtr(s flexString) *string {
 	return &str
 }
 
+type taskRecord struct {
+	TaskID                string
+	UserID                string
+	UserName              string
+	ClientID              string
+	ClientIDE             string
+	ClientVersion         string
+	ClientOS              string
+	ClientOSVer           string
+	Caller                string
+	RepoAddr              string
+	RepoBranch            string
+	WorkDir               string
+	WorkDirID             string
+	DiffLines             int
+	StartTime             *time.Time
+	EndTime               *time.Time
+	UpstreamTokens        int64
+	DownstreamTokens      int64
+	Cost                  float64
+	TaskRealMinutes       float64
+	TaskRealMinutesRsn    string
+	TaskAncientMinutes    float64
+	TaskAncientMinutesRsn string
+}
+
+func calcTaskRecord(summary *taskSummary, conversations []taskConversation) taskRecord {
+	rec := taskRecord{
+		TaskID:        summary.TaskID,
+		UserID:        summary.UserID,
+		UserName:      summary.UserName,
+		ClientID:      summary.ClientID,
+		ClientIDE:     summary.ClientIDE,
+		ClientVersion: summary.ClientVersion,
+		ClientOS:      summary.ClientOS,
+		ClientOSVer:   summary.ClientOSVer,
+		Caller:        summary.Caller,
+		RepoAddr:      summary.RepoAddr,
+		RepoBranch:    summary.RepoBranch,
+		WorkDir:       summary.WorkDir,
+		WorkDirID:     importGenerateWorkDirID(summary.ClientID, summary.WorkDir),
+		DiffLines:     summary.DiffLines,
+	}
+
+	var startTime, endTime *time.Time
+	var totalUpstream, totalDownstream int64
+	var totalCost float64
+
+	for _, conv := range conversations {
+		if conv.StartTime != "" {
+			if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
+				if startTime == nil || t.Before(*startTime) {
+					startTime = &t
+				}
+			}
+		}
+		if conv.EndTime != "" {
+			if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
+				if endTime == nil || t.After(*endTime) {
+					endTime = &t
+				}
+			}
+		}
+		totalUpstream += conv.UpstreamTokens
+		totalDownstream += conv.DownstreamTokens
+		totalCost += conv.Cost
+	}
+
+	rec.StartTime = startTime
+	rec.EndTime = endTime
+	rec.UpstreamTokens = totalUpstream
+	rec.DownstreamTokens = totalDownstream
+	rec.Cost = totalCost
+
+	realMinutes, realReason := calculateImportTaskRealMinutes(conversations, 30, 5)
+	rec.TaskRealMinutes = realMinutes
+	rec.TaskRealMinutesRsn = realReason
+
+	if summary.DiffLines > 0 || len(conversations) > 0 {
+		ancientMinutes, ancientReason := importEstimateAncientMinutes(summary.DiffLines)
+		rec.TaskAncientMinutes = ancientMinutes
+		rec.TaskAncientMinutesRsn = ancientReason
+	}
+
+	return rec
+}
+
 var (
 	reImportNonSafe   = regexp.MustCompile(`[^a-z0-9\-]`)
 	reImportMultiDash = regexp.MustCompile(`-{2,}`)
@@ -124,7 +211,7 @@ func importGenerateWorkDirID(clientID, workDir string) string {
 }
 
 var importTasksCmd = &cobra.Command{
-	Use:   "import-tasks",
+	Use:   "import-task",
 	Short: "导入 task 数据到 costrict_stat 数据库",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskDir, _ := cmd.Flags().GetString("task-dir")
@@ -178,6 +265,8 @@ var importTasksCmd = &cobra.Command{
 		failCount := 0
 		skipCount := 0
 
+		force, _ := cmd.Flags().GetBool("force")
+
 		for _, summaryPath := range summaryFiles {
 			relPath, err := filepath.Rel(summaryDir, summaryPath)
 			if err != nil {
@@ -187,10 +276,12 @@ var importTasksCmd = &cobra.Command{
 			}
 			fpRelPath := strings.TrimSuffix(relPath, ".json") + ".fp"
 			fpPath := filepath.Join(analysedDir, "task", "summary", fpRelPath)
-			if _, err := os.Stat(fpPath); err == nil {
-				fmt.Printf("跳过(fp已存在): %s\n", summaryPath)
-				skipCount++
-				continue
+			if !force {
+				if _, err := os.Stat(fpPath); err == nil {
+					fmt.Printf("跳过(fp已存在): %s\n", summaryPath)
+					skipCount++
+					continue
+				}
 			}
 			convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
 			conversationPath := filepath.Join(conversationDir, convRelPath)
@@ -211,12 +302,12 @@ var importTasksCmd = &cobra.Command{
 func init() {
 	importTasksCmd.Flags().String("task-dir", "./task", "task 目录路径")
 	importTasksCmd.Flags().String("analysed-dir", "./analysed", "输出目录路径")
+	importTasksCmd.Flags().BoolP("force", "f", false, "强制重新导入，忽略fp文件的短路判断")
 	rootCmd.AddCommand(importTasksCmd)
 }
 
 // importSingleTask 导入单个 task
 func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) error {
-	// 解析 summary JSON
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
 		return fmt.Errorf("读取summary文件失败: %w", err)
@@ -231,7 +322,6 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 		return fmt.Errorf("task_id为空")
 	}
 
-	// 解析 conversation（传入modelPrices用于计算cost）
 	var conversations []taskConversation
 	if _, err := os.Stat(conversationPath); err == nil {
 		conversations, err = parseConversationFile(conversationPath, cfg.ModelPrices)
@@ -240,41 +330,17 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 		}
 	}
 
-	// 从 conversation 累加计算聚合字段
-	var startTime, endTime *time.Time
-	var totalUpstream, totalDownstream int64
-	var totalCost float64
+	rec := calcTaskRecord(&summary, conversations)
 
-	for _, conv := range conversations {
-		if conv.StartTime != "" {
-			if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
-				if startTime == nil || t.Before(*startTime) {
-					startTime = &t
-				}
-			}
-		}
-		if conv.EndTime != "" {
-			if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
-				if endTime == nil || t.After(*endTime) {
-					endTime = &t
-				}
-			}
-		}
-		totalUpstream += conv.UpstreamTokens
-		totalDownstream += conv.DownstreamTokens
-		totalCost += conv.Cost
-	}
-
-	// 生成 work_dir_id
-	workDirID := importGenerateWorkDirID(summary.ClientID, summary.WorkDir)
-
-	// 写入 tasks 表（排除diff字段）
 	_, err = db.Exec(`INSERT INTO tasks (
 		task_id, user_id, user_name, client_id, client_ide, client_version,
 		client_os, client_os_version, caller,
 		repo_addr, repo_branch, work_dir, work_dir_id,
 		diff_lines,
 		start_time, end_time, upstream_tokens, downstream_tokens, cost,
+		task_real_minutes, task_real_minutes_reason,
+		task_ancient_minutes, task_ancient_minutes_reason,
+		efficiency_ratio,
 		updated_at
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
@@ -282,6 +348,9 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 		$10, $11, $12, $13,
 		$14,
 		$15, $16, $17, $18, $19,
+		$20, $21,
+		$22, $23,
+		CASE WHEN $20 > 0 AND $22 > 0 THEN $22 / $20 * 100 ELSE NULL END,
 		CURRENT_TIMESTAMP
 	) ON CONFLICT (task_id) DO UPDATE SET
 		user_id = EXCLUDED.user_id, user_name = EXCLUDED.user_name,
@@ -295,105 +364,105 @@ func importSingleTask(db *sql.DB, summaryPath, conversationPath, fpPath string) 
 		start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time,
 		upstream_tokens = EXCLUDED.upstream_tokens, downstream_tokens = EXCLUDED.downstream_tokens,
 		cost = EXCLUDED.cost,
+		task_real_minutes = CASE WHEN tasks.task_real_minutes IS NULL AND tasks.task_real_minutes_manual IS NULL THEN EXCLUDED.task_real_minutes ELSE tasks.task_real_minutes END,
+		task_real_minutes_reason = CASE WHEN tasks.task_real_minutes IS NULL AND tasks.task_real_minutes_manual IS NULL THEN EXCLUDED.task_real_minutes_reason ELSE tasks.task_real_minutes_reason END,
+		task_ancient_minutes = CASE WHEN tasks.task_ancient_minutes IS NULL AND tasks.task_ancient_minutes_manual IS NULL THEN EXCLUDED.task_ancient_minutes ELSE tasks.task_ancient_minutes END,
+		task_ancient_minutes_reason = CASE WHEN tasks.task_ancient_minutes IS NULL AND tasks.task_ancient_minutes_manual IS NULL THEN EXCLUDED.task_ancient_minutes_reason ELSE tasks.task_ancient_minutes_reason END,
+		efficiency_ratio = CASE
+			WHEN COALESCE(tasks.task_real_minutes_manual, tasks.task_real_minutes) > 0 AND COALESCE(tasks.task_ancient_minutes_manual, tasks.task_ancient_minutes) > 0
+			THEN COALESCE(tasks.task_ancient_minutes_manual, tasks.task_ancient_minutes) / COALESCE(tasks.task_real_minutes_manual, tasks.task_real_minutes) * 100
+			ELSE NULL
+		END,
 		updated_at = CURRENT_TIMESTAMP`,
-		summary.TaskID, summary.UserID, summary.UserName,
-		summary.ClientID, summary.ClientIDE, summary.ClientVersion,
-		summary.ClientOS, summary.ClientOSVer, summary.Caller,
-		summary.RepoAddr, summary.RepoBranch, summary.WorkDir, workDirID,
-		summary.DiffLines,
-		startTime, endTime, totalUpstream, totalDownstream, totalCost,
+		rec.TaskID, rec.UserID, rec.UserName,
+		rec.ClientID, rec.ClientIDE, rec.ClientVersion,
+		rec.ClientOS, rec.ClientOSVer, rec.Caller,
+		rec.RepoAddr, rec.RepoBranch, rec.WorkDir, rec.WorkDirID,
+		rec.DiffLines,
+		rec.StartTime, rec.EndTime, rec.UpstreamTokens, rec.DownstreamTokens, rec.Cost,
+		rec.TaskRealMinutes, rec.TaskRealMinutesRsn,
+		rec.TaskAncientMinutes, rec.TaskAncientMinutesRsn,
 	)
 	if err != nil {
 		return fmt.Errorf("写入tasks表失败: %w", err)
 	}
 
-	// 事务批量写入 task_conversations 表
+	if rec.TaskRealMinutes > 0 {
+		fmt.Printf("  task_real_minutes=%.1f (%s)\n", rec.TaskRealMinutes, rec.TaskRealMinutesRsn)
+	}
+	if rec.TaskAncientMinutes > 0 {
+		fmt.Printf("  task_ancient_minutes=%.1f (%s)\n", rec.TaskAncientMinutes, rec.TaskAncientMinutesRsn)
+	}
+
 	if len(conversations) > 0 {
-		tx, err := db.Begin()
-		if err != nil {
-			return fmt.Errorf("开启事务失败: %w", err)
-		}
-
-		for _, conv := range conversations {
-			var convStartTime, convEndTime *time.Time
-			if conv.StartTime != "" {
-				if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
-					convStartTime = &t
-				}
-			}
-			if conv.EndTime != "" {
-				if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
-					convEndTime = &t
-				}
-			}
-
-			_, err = tx.Exec(`INSERT INTO task_conversations (
-				task_id, request_id, sender, prompt_mode, mode, model,
-				start_time, end_time, process_time, process_ttft,
-				upstream_tokens, downstream_tokens, cost,
-				request_content, response_content, user_input,
-				diff, diff_lines,
-				error_code, error_reason
-			) VALUES (
-				$1, $2, $3, $4, $5, $6,
-				$7, $8, $9, $10,
-				$11, $12, $13,
-				$14, $15, $16,
-				$17, $18,
-				$19, $20
-			) ON CONFLICT (task_id, request_id) DO NOTHING`,
-				summary.TaskID, conv.RequestID, conv.Sender, conv.PromptMode, conv.Mode, conv.Model,
-				convStartTime, convEndTime, conv.ProcessTime, conv.ProcessTTFT,
-				conv.UpstreamTokens, conv.DownstreamTokens, conv.Cost,
-				conv.RequestContent, conv.ResponseContent, conv.UserInput,
-				conv.Diff, conv.DiffLines,
-				flexStrPtr(conv.ErrorCode), flexStrPtr(conv.ErrorReason),
-			)
-			if err != nil {
-				tx.Rollback()
-				return fmt.Errorf("写入task_conversations表失败: %w", err)
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("提交事务失败: %w", err)
+		if err := saveConversations(db, rec.TaskID, conversations); err != nil {
+			return fmt.Errorf("保存conversations失败: %w", err)
 		}
 	}
 
-	// 计算 task_real_minutes（基于对话时间戳的时间片段算法）
-	realMinutes, realReason := calculateImportTaskRealMinutes(conversations, 30, 5)
-	if realMinutes > 0 {
-		if _, err := db.Exec(`UPDATE tasks SET task_real_minutes = $1, task_real_minutes_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE task_id = $3 AND task_real_minutes IS NULL AND task_real_minutes_manual IS NULL`,
-			realMinutes, realReason, summary.TaskID); err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 更新task_real_minutes失败 [%s]: %v\n", summary.TaskID, err)
-		} else {
-			fmt.Printf("  task_real_minutes=%.1f (%s)\n", realMinutes, realReason)
-		}
-	}
-
-	// 估算 task_ancient_minutes（基于diff_lines的启发式算法）
-	if summary.DiffLines > 0 || len(conversations) > 0 {
-		ancientMinutes, ancientReason := importEstimateAncientMinutes(summary.DiffLines)
-		if _, err := db.Exec(`UPDATE tasks SET task_ancient_minutes = $1, task_ancient_minutes_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE task_id = $3 AND task_ancient_minutes IS NULL AND task_ancient_minutes_manual IS NULL`,
-			ancientMinutes, ancientReason, summary.TaskID); err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 更新task_ancient_minutes失败 [%s]: %v\n", summary.TaskID, err)
-		} else {
-			fmt.Printf("  task_ancient_minutes=%.1f (%s)\n", ancientMinutes, ancientReason)
-		}
-	}
-
-	// 生成代码行指纹文件
 	if err := generateFingerprintFile(&summary, conversations, fpPath); err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 生成指纹文件失败 [%s]: %v\n", summary.TaskID, err)
+		fmt.Fprintf(os.Stderr, "警告: 生成指纹文件失败 [%s]: %v\n", rec.TaskID, err)
 	}
 
-	// 生成silica命令需要的task摘要JSON文件
 	silicaJSONPath := strings.TrimSuffix(fpPath, ".fp") + ".json"
-	if err := generateSilicaSummaryFile(&summary, startTime, silicaJSONPath); err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 生成silica摘要文件失败 [%s]: %v\n", summary.TaskID, err)
+	if err := generateSilicaSummaryFile(&summary, rec.StartTime, silicaJSONPath); err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 生成silica摘要文件失败 [%s]: %v\n", rec.TaskID, err)
 	}
 
-	fmt.Printf("导入成功: %s\n", summary.TaskID)
+	fmt.Printf("导入成功: %s\n", rec.TaskID)
+	return nil
+}
+
+func saveConversations(db *sql.DB, taskID string, conversations []taskConversation) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("开启事务失败: %w", err)
+	}
+
+	for _, conv := range conversations {
+		var convStartTime, convEndTime *time.Time
+		if conv.StartTime != "" {
+			if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
+				convStartTime = &t
+			}
+		}
+		if conv.EndTime != "" {
+			if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
+				convEndTime = &t
+			}
+		}
+
+		_, err = tx.Exec(`INSERT INTO task_conversations (
+			task_id, request_id, sender, prompt_mode, mode, model,
+			start_time, end_time, process_time, process_ttft,
+			upstream_tokens, downstream_tokens, cost,
+			request_content, response_content, user_input,
+			diff, diff_lines,
+			error_code, error_reason
+		) VALUES (
+			$1, $2, $3, $4, $5, $6,
+			$7, $8, $9, $10,
+			$11, $12, $13,
+			$14, $15, $16,
+			'', $17,
+			$18, $19
+		) ON CONFLICT (task_id, request_id) DO NOTHING`,
+			taskID, conv.RequestID, conv.Sender, conv.PromptMode, conv.Mode, conv.Model,
+			convStartTime, convEndTime, conv.ProcessTime, conv.ProcessTTFT,
+			conv.UpstreamTokens, conv.DownstreamTokens, conv.Cost,
+			conv.RequestContent, conv.ResponseContent, conv.UserInput,
+			conv.DiffLines,
+			flexStrPtr(conv.ErrorCode), flexStrPtr(conv.ErrorReason),
+		)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("写入task_conversations表失败: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交事务失败: %w", err)
+	}
 	return nil
 }
 

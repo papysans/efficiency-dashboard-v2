@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS repos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_repos_repo_addr ON repos(repo_addr);
-CREATE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch);
 
 -- projects 表（虚拟项目）
 CREATE TABLE IF NOT EXISTS projects (
@@ -198,3 +198,33 @@ CREATE TABLE IF NOT EXISTS user_groups (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_groups_name ON user_groups(name);
+
+-- org_productivity 表（组织生产力预聚合，分级统计）
+CREATE TABLE IF NOT EXISTS org_productivity (
+    org_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    org_name VARCHAR(500),
+    org_level INT DEFAULT 1,
+    create_time TIMESTAMPTZ,
+    user_ids JSONB,
+    user_names JSONB,
+    task_diff_lines INT,
+    upstream_tokens BIGINT,
+    downstream_tokens BIGINT,
+    cost FLOAT8,
+    task_real_minutes FLOAT8,
+    task_ancient_minutes FLOAT8,
+    task_efficiency_ratio FLOAT8,
+    commit_diff_lines INT,
+    commit_ancient_minutes FLOAT8,
+    commit_real_ai_minutes FLOAT8,
+    commit_real_ancient_minutes FLOAT8,
+    commit_real_minutes FLOAT8,
+    commit_efficiency_ratio FLOAT8,
+    user_count INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_productivity_org_name ON org_productivity(org_name);
+CREATE INDEX IF NOT EXISTS idx_org_productivity_org_level ON org_productivity(org_level);
+CREATE INDEX IF NOT EXISTS idx_org_productivity_create_time ON org_productivity(create_time);

@@ -109,37 +109,6 @@ definitions:
       total:
         type: integer
     type: object
-  main.AggregateVirtualGroupResponse:
-    properties:
-      ai_estimated_days:
-        type: number
-      api_cost:
-        type: number
-      api_count:
-        type: number
-      api_in_tokens:
-        type: number
-      api_out_tokens:
-        type: number
-      code_lines:
-        type: number
-      end_time:
-        type: string
-      key:
-        type: string
-      lead_time:
-        type: number
-      name:
-        type: string
-      process_time:
-        type: number
-      start_time:
-        type: string
-      task_count:
-        type: number
-      user_in_chars:
-        type: number
-    type: object
   main.CheckProjectConflictsRequest:
     properties:
       commit_ids:
@@ -384,18 +353,6 @@ definitions:
       roi:
         type: number
     type: object
-  main.CreateFavoriteRequest:
-    properties:
-      dimension:
-        example: work_dir
-        type: string
-      display_name:
-        example: 项目1
-        type: string
-      item_key:
-        example: project1
-        type: string
-    type: object
   main.CreateProjectRequest:
     properties:
       description:
@@ -415,19 +372,6 @@ definitions:
         items:
           type: string
         type: array
-    type: object
-  main.CreateVirtualGroupRequest:
-    properties:
-      dimension:
-        example: work_dir
-        type: string
-      member_keys:
-        items:
-          type: string
-        type: array
-      name:
-        example: 前端组
-        type: string
     type: object
   main.DailyDataItem:
     properties:
@@ -554,32 +498,6 @@ definitions:
         type: number
       from_task:
         type: number
-    type: object
-  main.FavoriteItem:
-    properties:
-      dimension:
-        type: string
-      display_name:
-        type: string
-      id:
-        type: integer
-      is_virtual:
-        type: boolean
-      item_key:
-        type: string
-      virtual_group_id:
-        type: integer
-    type: object
-  main.FavoriteResponse:
-    properties:
-      dimension:
-        type: string
-      display_name:
-        type: string
-      id:
-        type: integer
-      item_key:
-        type: string
     type: object
   main.GitAnalysisResponse:
     properties:
@@ -1451,12 +1369,6 @@ definitions:
       user_input:
         type: string
     type: object
-  main.StatusMessageResponse:
-    properties:
-      message:
-        example: 操作成功
-        type: string
-    type: object
   main.StatusResponse:
     properties:
       status:
@@ -1996,19 +1908,6 @@ definitions:
       total:
         type: integer
     type: object
-  main.VirtualGroupResponse:
-    properties:
-      dimension:
-        type: string
-      id:
-        type: integer
-      member_keys:
-        items:
-          type: string
-        type: array
-      name:
-        type: string
-    type: object
 host: localhost:9990
 info:
   contact:
@@ -2365,94 +2264,6 @@ paths:
       summary: 获取任务-提交映射
       tags:
       - Attribution
-  /api/favorites:
-    get:
-      description: 按条件查询收藏列表
-      parameters:
-      - description: 维度过滤
-        in: query
-        name: dimension
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/main.FavoriteItem'
-            type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: 获取收藏列表
-      tags:
-      - Favorites
-    post:
-      consumes:
-      - application/json
-      description: 添加新的收藏
-      parameters:
-      - description: 收藏信息
-        in: body
-        name: favorite
-        required: true
-        schema:
-          $ref: '#/definitions/main.CreateFavoriteRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/main.FavoriteResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: 添加收藏
-      tags:
-      - Favorites
-  /api/favorites/{id}:
-    delete:
-      description: 根据收藏ID取消收藏
-      parameters:
-      - description: 收藏ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/main.StatusMessageResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: 取消收藏
-      tags:
-      - Favorites
   /api/requests:
     get:
       description: 从Elasticsearch中查询原始请求数据列表
@@ -3665,75 +3476,4 @@ paths:
       summary: 获取用户详情
       tags:
       - Users
-  /api/virtual-groups:
-    post:
-      consumes:
-      - application/json
-      description: 创建新的虚拟组
-      parameters:
-      - description: 虚拟组信息
-        in: body
-        name: group
-        required: true
-        schema:
-          $ref: '#/definitions/main.CreateVirtualGroupRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/main.VirtualGroupResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: 创建虚拟组
-      tags:
-      - VirtualGroups
-  /api/virtual-groups/{id}/aggregate:
-    get:
-      description: 根据虚拟组ID聚合查询ES数据，返回虚拟组的汇总统计指标
-      parameters:
-      - description: 虚拟组ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: 开始日期(YYYYMMDD)
-        in: query
-        name: startDate
-        required: true
-        type: string
-      - description: 结束日期(YYYYMMDD)
-        in: query
-        name: endDate
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/main.AggregateVirtualGroupResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: 聚合虚拟组数据
-      tags:
-      - VirtualGroups
 swagger: "2.0"

@@ -232,7 +232,7 @@ ON CONFLICT (task_id, request_id) DO NOTHING;
 -- 注意：commits 表 PK 为 commit_id，无 repo_id 列
 
 -- repo-costrict-main 的 commits
-INSERT INTO commits (commit_id, commit_time, repo_addr, repo_branch, git_user_name, git_user_email, user_id, user_name, client_id, work_path, diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason)
+INSERT INTO commits (commit_id, commit_time, repo_addr, repo_branch, git_user_name, git_user_email, user_id, user_name, client_id, work_dir, diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason)
 VALUES
   ('commit-001', '2026-03-05T10:00:00', 'https://github.com/zgsm-ai/costrict.git', 'main', 'zhangsan', 'zhangsan@example.com', 'user-003', 'zhangsan-gh', 'client-c1', '/Users/zhangsan/costrict', 135, 96, '认证模块新增，包含JWT和bcrypt集成'),
   ('commit-002', '2026-03-08T16:00:00', 'https://github.com/zgsm-ai/costrict.git', 'main', 'lisi', 'lisi@example.com', 'user-004', 'lisi-dev', 'client-d1', 'D:/projects/costrict', 250, 144, '用户模块重构，拆分service和repository'),
@@ -241,7 +241,7 @@ VALUES
 ON CONFLICT (commit_id) DO NOTHING;
 
 -- repo-kanban-dev 的 commits
-INSERT INTO commits (commit_id, commit_time, repo_addr, repo_branch, git_user_name, git_user_email, user_id, user_name, client_id, work_path, diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason)
+INSERT INTO commits (commit_id, commit_time, repo_addr, repo_branch, git_user_name, git_user_email, user_id, user_name, client_id, work_dir, diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason)
 VALUES
   ('commit-005', '2026-03-14T11:00:00', 'https://github.com/zgsm-ai/kanban.git', 'dev', 'zhangsan', 'zhangsan@example.com', 'user-001', '138xxxx0001', 'client-a2', '/home/dev/kanban', 160, 96, '看板拖拽功能实现'),
   ('commit-006', '2026-03-18T15:00:00', 'https://github.com/zgsm-ai/kanban.git', 'dev', 'zhangsan', 'zhangsan@example.com', 'user-003', 'zhangsan-gh', 'client-c2', '/Users/zhangsan/kanban', 200, 120, '数据聚合接口和缓存层'),
@@ -250,7 +250,7 @@ VALUES
 ON CONFLICT (commit_id) DO NOTHING;
 
 -- repo-webapp-master 的 commits
-INSERT INTO commits (commit_id, commit_time, repo_addr, repo_branch, git_user_name, git_user_email, user_id, user_name, client_id, work_path, diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason)
+INSERT INTO commits (commit_id, commit_time, repo_addr, repo_branch, git_user_name, git_user_email, user_id, user_name, client_id, work_dir, diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason)
 VALUES
   ('commit-009', '2026-03-24T10:00:00', 'https://gitee.com/example/webapp.git', 'master', 'zhangsan', 'zhangsan@example.com', 'user-001', '138xxxx0001', 'client-a3', '/home/dev/webapp', 110, 72, '用户注册流程实现'),
   ('commit-010', '2026-03-28T12:00:00', 'https://gitee.com/example/webapp.git', 'master', 'zhangsan', 'zhangsan@example.com', 'user-003', 'zhangsan-gh', 'client-c3', '/Users/zhangsan/webapp', 260, 168, '支付模块集成，含回调处理'),

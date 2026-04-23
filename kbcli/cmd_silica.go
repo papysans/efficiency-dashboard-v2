@@ -116,7 +116,11 @@ var silicaCmd = &cobra.Command{
 			}
 
 			if len(taskIDSilica) == 0 {
-				if _, err := db.Exec(`UPDATE commits SET task_ids = '[]'::jsonb, task_ids_silica = '[]'::jsonb, silica = 0, updated_at = CURRENT_TIMESTAMP WHERE commit_id = $1`, commitID); err != nil {
+				_, err := db.Exec(`UPDATE commits SET task_ids = '[]'::jsonb, task_ids_silica = '[]'::jsonb, silica = 0,
+				commit_real_ai_minutes = 0, commit_real_ancient_minutes = COALESCE(commit_ancient_minutes, 0),
+				commit_real_minutes = COALESCE(commit_ancient_minutes, 0),
+				updated_at = CURRENT_TIMESTAMP WHERE commit_id = $1`, commitID)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
 					failCount++
 				} else {
@@ -134,16 +138,24 @@ var silicaCmd = &cobra.Command{
 				totalSilica += ts.Silica
 			}
 
+			commitRealAIMinutes, commitRealAncientMinutes := calcCommitDerivedMinutes(db, taskIDSilica)
+			commitRealMinutes := commitRealAIMinutes + commitRealAncientMinutes
+
 			taskIDsJSON, _ := json.Marshal(taskIDList)
 			silicaJSON, _ := json.Marshal(silicaList)
 
-			if _, err := db.Exec(`UPDATE commits SET task_ids = $1::jsonb, task_ids_silica = $2::jsonb, silica = $3, updated_at = CURRENT_TIMESTAMP WHERE commit_id = $4`,
-				string(taskIDsJSON), string(silicaJSON), totalSilica, commitID); err != nil {
+			if _, err := db.Exec(`UPDATE commits SET task_ids = $1::jsonb, task_ids_silica = $2::jsonb, silica = $3,
+			commit_real_ai_minutes = $4, commit_real_ancient_minutes = $5, commit_real_minutes = $6,
+			updated_at = CURRENT_TIMESTAMP WHERE commit_id = $7`,
+				string(taskIDsJSON), string(silicaJSON), totalSilica,
+				commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes,
+				commitID); err != nil {
 				fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
 				failCount++
 			} else {
 				matched := countMatchedLines(fpFile, candidateHashes)
-				fmt.Printf("  %s: silica=%.4f (%d/%d行匹配), candidates=%d, tasks=%v\n", commitID, totalSilica, matched, totalLines, len(idx.taskMetas[gk]), taskIDList)
+				fmt.Printf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin\n",
+					commitID, totalSilica, matched, totalLines, commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes)
 				successCount++
 			}
 		}
@@ -373,6 +385,23 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 	}
 
 	return result, totalLines, nil
+}
+
+func calcCommitDerivedMinutes(db *sql.DB, taskIDSilica []taskSilica) (float64, float64) {
+	var aiMinutes, ancientMinutes float64
+	for _, ts := range taskIDSilica {
+		var realMin, ancientMin float64
+		err := db.QueryRow(`SELECT COALESCE(task_real_minutes_manual, task_real_minutes), COALESCE(task_ancient_minutes_manual, task_ancient_minutes) FROM tasks WHERE task_id = $1`, ts.TaskID).Scan(&realMin, &ancientMin)
+		if err != nil {
+			if err != sql.ErrNoRows {
+				fmt.Fprintf(os.Stderr, "查询task分钟数失败 [%s]: %v\n", ts.TaskID, err)
+			}
+			continue
+		}
+		aiMinutes += realMin * ts.Silica
+		ancientMinutes += ancientMin * (1 - ts.Silica)
+	}
+	return aiMinutes, ancientMinutes
 }
 
 func countMatchedLines(fpPath string, hashToTaskIDs map[string]map[string]bool) int {

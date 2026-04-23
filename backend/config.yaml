@@ -27,7 +27,7 @@ task_dir: "../task"
 
 cors:
   allow_origins:
-    - "http://localhost:8880"
+    - "*"
 
 ai_estimation:
   enabled: true

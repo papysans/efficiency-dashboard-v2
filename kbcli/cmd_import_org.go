@@ -65,7 +65,7 @@ var importOrgCmd = &cobra.Command{
 	Use:   "import-org",
 	Short: "从源数据库导入用户组织信息到 costrict_stat.user_org 表及 CSV 文件",
 	Long: `从源数据库的 auth.auth_users 和 quota_manager.employee_department 表读取数据，
-	按 employee_number 关联，将 dept_full_level_names 拆分为 org1~org4，
+	按 employee_number 关联，将 dept_full_level_names 拆分为 org1~org9，
 	写入目标数据库的 user_org 表并导出 CSV 文件。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fromDSN, _ := cmd.Flags().GetString("from-db")
