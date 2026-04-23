@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -8,16 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
+	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-
-	"github.com/spf13/cobra"
 )
 
 type userTaskAgg struct {
 	UserID             string
-	TaskIDs            []string
-	WorkDirIDs         []string
+	TaskIDs            StringJSON
+	WorkDirIDs         StringJSON
 	TaskDiffLines      int64
 	UpstreamTokens     int64
 	DownstreamTokens   int64
@@ -28,7 +29,7 @@ type userTaskAgg struct {
 
 type userCommitAgg struct {
 	UserID                   string
-	CommitIDs                []string
+	CommitIDs                StringJSON
 	CommitDiffLines          int64
 	CommitAncientMinutes     float64
 	CommitRealAIMinutes      float64
@@ -165,15 +166,15 @@ func calculateUserProductivityGorm(db *gorm.DB, dateStr string) (int, error) {
 				userName = commitUserNameMap[uid]
 			}
 
-			var taskIDs, workDirIDs, commitIDs []string
+			var taskIDsJSON, workDirIDsJSON, commitIDsJSON []byte
 			var taskDiffLines, upstreamTokens, downstreamTokens int64
 			var cost, taskRealMinutes, taskAncientMinutes float64
 			var commitDiffLines int64
 			var commitAncientMinutes, commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes float64
 
 			if ta != nil {
-				taskIDs = ta.TaskIDs
-				workDirIDs = ta.WorkDirIDs
+				taskIDsJSON = defaultSliceJSON(ta.TaskIDs)
+				workDirIDsJSON = defaultSliceJSON(ta.WorkDirIDs)
 				taskDiffLines = ta.TaskDiffLines
 				upstreamTokens = ta.UpstreamTokens
 				downstreamTokens = ta.DownstreamTokens
@@ -182,7 +183,7 @@ func calculateUserProductivityGorm(db *gorm.DB, dateStr string) (int, error) {
 				taskAncientMinutes = ta.TaskAncientMinutes
 			}
 			if ca != nil {
-				commitIDs = ca.CommitIDs
+				commitIDsJSON = defaultSliceJSON(ca.CommitIDs)
 				commitDiffLines = ca.CommitDiffLines
 				commitAncientMinutes = ca.CommitAncientMinutes
 				commitRealAIMinutes = ca.CommitRealAIMinutes
@@ -193,9 +194,15 @@ func calculateUserProductivityGorm(db *gorm.DB, dateStr string) (int, error) {
 			taskEffRatio := calcEfficiencyRatio(taskAncientMinutes, taskRealMinutes)
 			commitEffRatio := calcEfficiencyRatio(commitAncientMinutes, commitRealMinutes)
 
-			taskIDsJSON, _ := json.Marshal(defaultSlice(taskIDs))
-			workDirIDsJSON, _ := json.Marshal(defaultSlice(workDirIDs))
-			commitIDsJSON, _ := json.Marshal(defaultSlice(commitIDs))
+			if taskIDsJSON == nil {
+				taskIDsJSON = []byte("[]")
+			}
+			if workDirIDsJSON == nil {
+				workDirIDsJSON = []byte("[]")
+			}
+			if commitIDsJSON == nil {
+				commitIDsJSON = []byte("[]")
+			}
 
 			createTime, _ := time.Parse("20060102", dateStr)
 			createTime = time.Date(createTime.Year(), createTime.Month(), createTime.Day(), 0, 0, 0, 0, time.UTC)
@@ -296,7 +303,7 @@ func calculateOrgProductivityGorm(db *gorm.DB, dateStr string) (int, error) {
 					COALESCE(SUM(commit_real_minutes), 0)
 				FROM user_productivity
 				WHERE user_id = ANY(?) AND create_time = ?
-			`, node.UserIDs, createTime).Scan(&agg).Error; err != nil {
+			`, pq.Array(node.UserIDs), createTime).Scan(&agg).Error; err != nil {
 				return fmt.Errorf("查询组织聚合数据失败 [%s]: %w", node.OrgName, err)
 			}
 
@@ -307,6 +314,7 @@ func calculateOrgProductivityGorm(db *gorm.DB, dateStr string) (int, error) {
 			userNamesJSON, _ := json.Marshal(node.UserNames)
 
 			op := OrgProductivity{
+				OrgID:                newUUID(),
 				OrgName:              node.OrgName,
 				OrgLevel:             node.Level,
 				CreateTime:           &createTime,
@@ -432,8 +440,8 @@ func loadUserNamesGorm(db *gorm.DB) (map[string]string, error) {
 func aggregateTasksByUserGorm(db *gorm.DB, dateStr string) (map[string]*userTaskAgg, error) {
 	type row struct {
 		UserID             string
-		TaskIDs            []string
-		WorkDirIDs         []string
+		TaskIDs            StringJSON
+		WorkDirIDs         StringJSON
 		TaskDiffLines      int64
 		UpstreamTokens     int64
 		DownstreamTokens   int64
@@ -446,8 +454,8 @@ func aggregateTasksByUserGorm(db *gorm.DB, dateStr string) (map[string]*userTask
 	if err := db.Raw(`
 		SELECT
 			user_id,
-			COALESCE(array_agg(task_id), '{}'),
-			COALESCE(array_agg(DISTINCT work_dir_id) FILTER (WHERE work_dir_id IS NOT NULL AND work_dir_id != ''), '{}'),
+			COALESCE(array_to_json(array_agg(task_id)), '[]'),
+			COALESCE(array_to_json(array_agg(DISTINCT work_dir_id) FILTER (WHERE work_dir_id IS NOT NULL AND work_dir_id != '')), '[]'),
 			COALESCE(SUM(diff_lines), 0),
 			COALESCE(SUM(upstream_tokens), 0),
 			COALESCE(SUM(downstream_tokens), 0),
@@ -481,7 +489,7 @@ func aggregateTasksByUserGorm(db *gorm.DB, dateStr string) (map[string]*userTask
 func aggregateCommitsByUserGorm(db *gorm.DB, dateStr string) (map[string]*userCommitAgg, error) {
 	type row struct {
 		UserID                   string
-		CommitIDs                []string
+		CommitIDs                StringJSON
 		CommitDiffLines          int64
 		CommitAncientMinutes     float64
 		CommitRealAIMinutes      float64
@@ -493,7 +501,7 @@ func aggregateCommitsByUserGorm(db *gorm.DB, dateStr string) (map[string]*userCo
 	if err := db.Raw(`
 		SELECT
 			user_id,
-			COALESCE(array_agg(commit_id), '{}'),
+			COALESCE(array_to_json(array_agg(commit_id)), '[]'),
 			COALESCE(SUM(diff_lines), 0),
 			COALESCE(SUM(COALESCE(commit_ancient_minutes_manual, commit_ancient_minutes)), 0),
 			COALESCE(SUM(commit_real_ai_minutes), 0),
@@ -521,6 +529,14 @@ func aggregateCommitsByUserGorm(db *gorm.DB, dateStr string) (map[string]*userCo
 	return result, nil
 }
 
+func newUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 func calcEfficiencyRatio(ancientMinutes, realMinutes float64) float64 {
 	if ancientMinutes > 0 && realMinutes > 0 && !math.IsInf(realMinutes, 0) {
 		return (ancientMinutes / realMinutes) * 100
@@ -528,11 +544,11 @@ func calcEfficiencyRatio(ancientMinutes, realMinutes float64) float64 {
 	return 0
 }
 
-func defaultSlice(s []string) []string {
-	if s == nil {
-		return []string{}
+func defaultSliceJSON(j StringJSON) []byte {
+	if j == "" || j == "null" {
+		return []byte("[]")
 	}
-	return s
+	return []byte(j)
 }
 
 func uniqueStrings(s []string) []string {
