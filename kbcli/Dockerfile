@@ -19,6 +19,8 @@ RUN cd /app/kbcli && \
     go build -ldflags="-s -w -X 'main.SoftwareVer=${VERSION}'" -o /app/bin/kbcli *.go && \
     chmod 755 /app/bin/kbcli
 
+RUN chmod +x /app/kbcli/scripts/*.sh
+
 FROM alpine:3.21 AS runtime
 
 ENV env prod
@@ -28,8 +30,6 @@ WORKDIR /app
 # 安装cron和必要的工具
 RUN apk add --no-cache dcron tzdata
 COPY --from=builder /app/bin/kbcli /app/bin/kbcli
-COPY ./kbcli/scripts /app/scripts
-
-RUN chmod +x /app/scripts/*.sh
+COPY --from=builder /app/kbcli/scripts /app/scripts
 
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
