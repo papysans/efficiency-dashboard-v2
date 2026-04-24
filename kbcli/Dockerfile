@@ -16,8 +16,8 @@ COPY ./kbcli /app/kbcli
 
 RUN cd /app/kbcli && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w -X 'main.SoftwareVer=${VERSION}'" -o /app/kbcli *.go && \
-    chmod 755 /app/kbcli
+    go build -ldflags="-s -w -X 'main.SoftwareVer=${VERSION}'" -o /app/bin/kbcli *.go && \
+    chmod 755 /app/bin/kbcli
 
 FROM alpine:3.21 AS runtime
 
@@ -27,13 +27,9 @@ WORKDIR /app
 
 # 安装cron和必要的工具
 RUN apk add --no-cache dcron tzdata
-
-COPY --from=builder /app/kbcli /app/kbcli
-
-# 复制crontab相关脚本
+COPY --from=builder /app/bin/kbcli /app/bin/kbcli
 COPY ./kbcli/scripts /app/scripts
 
-RUN chmod +x /app/kbcli
 RUN chmod +x /app/scripts/*.sh
 
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]

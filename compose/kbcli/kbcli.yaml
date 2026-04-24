@@ -1,0 +1,13 @@
+services:
+  kbcli:
+    image: ${IMAGE_KBCLI}
+    restart: always
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - /mnt/prod_env/user-indicator/raw/task:/app/task
+      - /mnt/prod_env/user-indicator/raw/repo:/app/repo
+      - ./analysed:/app/analysed
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      - efficiency

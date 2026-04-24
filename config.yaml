@@ -23,7 +23,6 @@ model_prices:
     in_price: 0.0
     out_price: 0.0
 
-
 task_dir: "/mnt/prod_env/user-indicator/raw/task"
 repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
 analysed_dir: "./analysed"
