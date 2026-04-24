@@ -34,6 +34,7 @@ COPY --from=builder /app/kbcli /app/kbcli
 COPY ./kbcli/scripts /app/scripts
 
 # 设置脚本可执行权限
+RUN chmod +x /app/kbcli
 RUN chmod +x /app/scripts/*.sh
 
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
