@@ -50,7 +50,6 @@ type Config struct {
 	RawDataDir   string         `yaml:"rawdata_dir"`
 	TaskDir      string         `yaml:"task_dir"`
 	AnalysedDir  string         `yaml:"analysed_dir"`
-	OrgMapping   string         `yaml:"org_mapping"`
 	CORS         struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
@@ -96,7 +95,6 @@ func loadConfig(path string) (Config, error) {
 	cfg.RawDataDir = "../rawdata"
 	cfg.TaskDir = "../task"
 	cfg.AnalysedDir = "../task"
-	cfg.OrgMapping = "../org_mapping.csv"
 	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}
 	cfg.TaskRealMinutes.GapThresholdMinutes = 30
 	cfg.TaskRealMinutes.ExtensionMinutes = 5
@@ -150,9 +148,13 @@ func main() {
 		log.Println("costrict_stat 数据库表结构检查完成")
 	}
 
-	// 加载 org_mapping.csv
-	if err := LoadOrgMapping(appConfig.OrgMapping); err != nil {
-		log.Printf("警告: 加载 org_mapping.csv 失败: %v", err)
+	// 从 user_org 表加载组织映射
+	if statDB != nil {
+		if err := LoadOrgMappingFromDB(statDB); err != nil {
+			log.Printf("警告: 从 user_org 表加载组织映射失败: %v", err)
+		} else {
+			log.Printf("已从 user_org 表加载 %d 条组织映射", len(orgMappings))
+		}
 	}
 
 	r := gin.Default()

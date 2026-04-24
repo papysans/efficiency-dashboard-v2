@@ -94,10 +94,6 @@ var importRepoCmd = &cobra.Command{
 
 		fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
 
-		if err := aggregateCommitsToReposGorm(db); err != nil {
-			fmt.Fprintf(os.Stderr, "警告: commits聚合到repos失败: %v\n", err)
-		}
-
 		return nil
 	},
 }
@@ -218,18 +214,20 @@ func importCommitFileGorm(db *gorm.DB, meta repoFileMeta, analysedDir string) er
 	}
 
 	commit := Commit{
-		CommitID:     commitData.CommitID,
-		CommitTime:   &commitTime,
-		RepoAddr:     commitData.RepoAddr,
-		RepoBranch:   commitData.RepoBranch,
-		GitUserName:  commitData.GitUserName,
-		GitUserEmail: commitData.GitUserEmail,
-		UserID:       commitData.UserID,
-		UserName:     commitData.UserName,
-		ClientID:     commitData.ClientID,
-		WorkDir:      workDir,
-		Comment:      commitData.Comment,
-		DiffLines:    commitData.DiffLines,
+		CommitID:      commitData.CommitID,
+		CommitTime:    &commitTime,
+		RepoAddr:      commitData.RepoAddr,
+		RepoBranch:    commitData.RepoBranch,
+		GitUserName:   commitData.GitUserName,
+		GitUserEmail:  commitData.GitUserEmail,
+		UserID:        commitData.UserID,
+		UserName:      commitData.UserName,
+		ClientID:      commitData.ClientID,
+		WorkDir:       workDir,
+		Comment:       commitData.Comment,
+		DiffLines:     commitData.DiffLines,
+		TaskIDs:       StringJSON("[]"),
+		TaskIDsSilica: StringJSON("[]"),
 	}
 
 	result := db.Clauses(clause.OnConflict{
@@ -266,53 +264,6 @@ func importCommitFileGorm(db *gorm.DB, meta repoFileMeta, analysedDir string) er
 	}
 
 	fmt.Printf("导入成功: %s (新增行指纹: %d)\n", commitData.CommitID, len(addedLines))
-	return nil
-}
-
-func aggregateCommitsToReposGorm(db *gorm.DB) error {
-	type aggRow struct {
-		RepoAddr   string
-		RepoBranch string
-		CommitIDs  []string
-		StartTime  *time.Time
-		EndTime    *time.Time
-	}
-
-	var rows []aggRow
-	if err := db.Raw(`SELECT repo_addr, repo_branch, array_agg(commit_id ORDER BY commit_time), min(commit_time), max(commit_time) FROM commits GROUP BY repo_addr, repo_branch`).Scan(&rows).Error; err != nil {
-		return fmt.Errorf("查询commits聚合失败: %w", err)
-	}
-
-	count := 0
-	for _, row := range rows {
-		repoID := toPathSafeID(row.RepoAddr) + "--" + toPathSafeID(row.RepoBranch)
-		commitIDsJSON, _ := json.Marshal(row.CommitIDs)
-
-		repo := Repo{
-			RepoID:     repoID,
-			RepoAddr:   row.RepoAddr,
-			RepoBranch: row.RepoBranch,
-			StartTime:  row.StartTime,
-			EndTime:    row.EndTime,
-			CommitIDs:  StringJSON(commitIDsJSON),
-		}
-
-		result := db.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "repo_addr"}, {Name: "repo_branch"}},
-			DoUpdates: clause.Assignments(map[string]interface{}{
-				"commit_ids": string(repo.CommitIDs),
-				"start_time": gorm.Expr("COALESCE(?, repos.start_time)", repo.StartTime),
-				"end_time":   gorm.Expr("COALESCE(?, repos.end_time)", repo.EndTime),
-				"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
-			}),
-		}).Create(&repo)
-		if result.Error != nil {
-			return fmt.Errorf("写入repos表失败 [%s %s]: %w", row.RepoAddr, row.RepoBranch, result.Error)
-		}
-		count++
-	}
-
-	fmt.Printf("repos聚合完成: 更新 %d 个repo记录\n", count)
 	return nil
 }
 

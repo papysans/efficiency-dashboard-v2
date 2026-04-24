@@ -118,6 +118,9 @@ var silicaCmd = &cobra.Command{
 					"commit_real_ai_minutes":      0,
 					"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
 					"commit_real_minutes":         gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
+					"upstream_tokens":             0,
+					"downstream_tokens":           0,
+					"cost":                        0,
 				}).Error; err != nil {
 					fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
 					failCount++
@@ -136,7 +139,7 @@ var silicaCmd = &cobra.Command{
 				totalSilica += ts.Silica
 			}
 
-			commitRealAIMinutes, commitRealAncientMinutes := calcCommitDerivedMinutesGorm(db, taskIDSilica)
+			commitRealAIMinutes, commitRealAncientMinutes, upstreamTokens, downstreamTokens, cost := calcCommitDerivedMinutesGorm(db, taskIDSilica)
 			commitRealMinutes := commitRealAIMinutes + commitRealAncientMinutes
 
 			taskIDsJSON, _ := json.Marshal(taskIDList)
@@ -149,6 +152,9 @@ var silicaCmd = &cobra.Command{
 				"commit_real_ai_minutes":      commitRealAIMinutes,
 				"commit_real_ancient_minutes": commitRealAncientMinutes,
 				"commit_real_minutes":         commitRealMinutes,
+				"upstream_tokens":             upstreamTokens,
+				"downstream_tokens":           downstreamTokens,
+				"cost":                        cost,
 			}).Error; err != nil {
 				fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
 				failCount++
@@ -373,21 +379,26 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 	return result, totalLines, nil
 }
 
-func calcCommitDerivedMinutesGorm(db *gorm.DB, taskIDSilica []taskSilica) (float64, float64) {
+func calcCommitDerivedMinutesGorm(db *gorm.DB, taskIDSilica []taskSilica) (float64, float64, int64, int64, float64) {
 	var aiMinutes, ancientMinutes float64
+	var upstreamTokens, downstreamTokens int64
+	var cost float64
 	for _, ts := range taskIDSilica {
 		var task Task
-		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes").
+		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes, upstream_tokens, downstream_tokens, cost").
 			Where("task_id = ?", ts.TaskID).First(&task).Error; err != nil {
 			if err != gorm.ErrRecordNotFound {
-				fmt.Fprintf(os.Stderr, "查询task分钟数失败 [%s]: %v\n", ts.TaskID, err)
+				fmt.Fprintf(os.Stderr, "查询task数据失败 [%s]: %v\n", ts.TaskID, err)
 			}
 			continue
 		}
 		aiMinutes += task.TaskRealMinutes * ts.Silica
 		ancientMinutes += task.TaskAncientMinutes * (1 - ts.Silica)
+		upstreamTokens += task.UpstreamTokens
+		downstreamTokens += task.DownstreamTokens
+		cost += task.Cost
 	}
-	return aiMinutes, ancientMinutes
+	return aiMinutes, ancientMinutes, upstreamTokens, downstreamTokens, cost
 }
 
 func countMatchedLines(fpPath string, hashToTaskIDs map[string]map[string]bool) int {

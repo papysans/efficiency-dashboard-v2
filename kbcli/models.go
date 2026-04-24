@@ -62,19 +62,6 @@ type Commit struct {
 
 func (Commit) TableName() string { return "commits" }
 
-type Repo struct {
-	RepoID     string     `gorm:"primaryKey;type:varchar(500)" json:"repo_id"`
-	RepoAddr   string     `gorm:"type:text;not null;uniqueIndex:idx_repos_repo_addr_branch" json:"repo_addr"`
-	RepoBranch string     `gorm:"type:varchar(500);not null;uniqueIndex:idx_repos_repo_addr_branch" json:"repo_branch"`
-	StartTime  *time.Time `gorm:"type:timestamptz" json:"start_time"`
-	EndTime    *time.Time `gorm:"type:timestamptz" json:"end_time"`
-	CommitIDs  StringJSON `gorm:"type:jsonb;default:'[]'" json:"commit_ids"`
-	CreatedAt  time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt  time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-func (Repo) TableName() string { return "repos" }
-
 type Task struct {
 	TaskID                      string     `gorm:"primaryKey;type:varchar(500)" json:"task_id"`
 	UserID                      string     `gorm:"type:varchar(255);index" json:"user_id"`
@@ -288,7 +275,6 @@ func autoMigrate(db *gorm.DB) error {
 		&Task{},
 		&TaskConversation{},
 		&Commit{},
-		&Repo{},
 		&Project{},
 		&UserProductivity{},
 		&OrgProductivity{},

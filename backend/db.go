@@ -38,6 +38,28 @@ func EnsureStatSchema(db *sql.DB) error {
 	}
 
 	stmts := []string{
+		// user_org 表
+		`CREATE TABLE IF NOT EXISTS user_org (
+			user_id VARCHAR(255) PRIMARY KEY,
+			user_name VARCHAR(255),
+			org1 VARCHAR(255),
+			org2 VARCHAR(255),
+			org3 VARCHAR(255),
+			org4 VARCHAR(255),
+			org5 VARCHAR(255),
+			org6 VARCHAR(255),
+			org7 VARCHAR(255),
+			org8 VARCHAR(255),
+			org9 VARCHAR(255),
+			git_user_name VARCHAR(255),
+			git_user_email VARCHAR(255),
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_org_user_name ON user_org(user_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_org_git_user_name ON user_org(git_user_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_org_git_user_email ON user_org(git_user_email)`,
+
 		// tasks 表
 		`CREATE TABLE IF NOT EXISTS tasks (
 			task_id VARCHAR(500) PRIMARY KEY,
@@ -142,20 +164,6 @@ func EnsureStatSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_commits_repo_addr_branch ON commits(repo_addr, repo_branch)`,
 		`CREATE INDEX IF NOT EXISTS idx_commits_user_id ON commits(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_commits_commit_time ON commits(commit_time)`,
-
-		// repos 表
-		`CREATE TABLE IF NOT EXISTS repos (
-			repo_id VARCHAR(500) PRIMARY KEY,
-			repo_addr TEXT NOT NULL,
-			repo_branch VARCHAR(500) NOT NULL,
-			start_time TIMESTAMPTZ,
-			end_time TIMESTAMPTZ,
-			commit_ids JSONB DEFAULT '[]',
-			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_repos_repo_addr ON repos(repo_addr)`,
-		`CREATE INDEX IF NOT EXISTS idx_repos_repo_addr_branch ON repos(repo_addr, repo_branch)`,
 
 		// projects 表（虚拟项目）
 		`CREATE TABLE IF NOT EXISTS projects (

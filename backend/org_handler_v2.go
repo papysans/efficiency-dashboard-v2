@@ -1,11 +1,10 @@
 package main
 
 import (
-	"encoding/csv"
+	"database/sql"
 	"fmt"
 	"math"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -182,6 +181,11 @@ type OrgMapping struct {
 	Org2         string
 	Org3         string
 	Org4         string
+	Org5         string
+	Org6         string
+	Org7         string
+	Org8         string
+	Org9         string
 	GitUserName  string
 	GitUserEmail string
 }
@@ -189,46 +193,28 @@ type OrgMapping struct {
 // orgMappings 全局组织映射表，key=user_id
 var orgMappings map[string]*OrgMapping
 
-// LoadOrgMapping 从 CSV 加载组织映射到全局 map
-func LoadOrgMapping(csvPath string) error {
+// LoadOrgMappingFromDB 从 user_org 表加载组织映射到全局 map
+func LoadOrgMappingFromDB(db *sql.DB) error {
 	orgMappings = make(map[string]*OrgMapping)
 
-	f, err := os.Open(csvPath)
+	rows, err := db.Query(`SELECT user_id, user_name, org1, org2, org3, org4, org5, org6, org7, org8, org9, git_user_name, git_user_email FROM user_org`)
 	if err != nil {
-		// 文件不存在或无法打开，不报错，map 为空即可
-		return nil
+		return fmt.Errorf("查询 user_org 表失败: %w", err)
 	}
-	defer f.Close()
+	defer rows.Close()
 
-	reader := csv.NewReader(f)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil
-	}
-
-	// 跳过表头行
-	for i := 1; i < len(records); i++ {
-		row := records[i]
-		if len(row) < 8 {
+	for rows.Next() {
+		var m OrgMapping
+		if err := rows.Scan(&m.UserID, &m.UserName, &m.Org1, &m.Org2, &m.Org3, &m.Org4, &m.Org5, &m.Org6, &m.Org7, &m.Org8, &m.Org9, &m.GitUserName, &m.GitUserEmail); err != nil {
+			return fmt.Errorf("扫描 user_org 行失败: %w", err)
+		}
+		if m.UserID == "" {
 			continue
 		}
-		userID := strings.TrimSpace(row[0])
-		if userID == "" {
-			continue
-		}
-		orgMappings[userID] = &OrgMapping{
-			UserID:       userID,
-			UserName:     strings.TrimSpace(row[1]),
-			Org1:         strings.TrimSpace(row[2]),
-			Org2:         strings.TrimSpace(row[3]),
-			Org3:         strings.TrimSpace(row[4]),
-			Org4:         strings.TrimSpace(row[5]),
-			GitUserName:  strings.TrimSpace(row[6]),
-			GitUserEmail: strings.TrimSpace(row[7]),
-		}
+		orgMappings[m.UserID] = &m
 	}
 
-	return nil
+	return rows.Err()
 }
 
 // getOrgValue 根据 level 获取 OrgMapping 中对应的 org 值
@@ -242,6 +228,16 @@ func getOrgValue(m *OrgMapping, level string) string {
 		return m.Org3
 	case "org4":
 		return m.Org4
+	case "org5":
+		return m.Org5
+	case "org6":
+		return m.Org6
+	case "org7":
+		return m.Org7
+	case "org8":
+		return m.Org8
+	case "org9":
+		return m.Org9
 	default:
 		return ""
 	}
@@ -1058,21 +1054,16 @@ func getGroupDetailV2(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 
-	// 按 org1/org2/org3/org4 从 orgMappings 筛选用户，逐级匹配非空参数
+	// 按组织层级从 orgMappings 筛选用户，逐级匹配非空参数
 	var matchedUsers []*OrgMapping
+	orgParams := []string{org1, org2, org3, org4}
 	for _, m := range orgMappings {
 		match := true
-		if org1 != "" && m.Org1 != org1 {
-			match = false
-		}
-		if org2 != "" && m.Org2 != org2 {
-			match = false
-		}
-		if org3 != "" && m.Org3 != org3 {
-			match = false
-		}
-		if org4 != "" && m.Org4 != org4 {
-			match = false
+		for i, p := range orgParams {
+			if p != "" && getOrgValue(m, fmt.Sprintf("org%d", i+1)) != p {
+				match = false
+				break
+			}
 		}
 		if match {
 			matchedUsers = append(matchedUsers, m)
@@ -1081,7 +1072,7 @@ func getGroupDetailV2(c *gin.Context) {
 
 	// 拼接 org_path（过滤空值后用" / "连接）
 	var orgParts []string
-	for _, v := range []string{org1, org2, org3, org4} {
+	for _, v := range orgParams {
 		if v != "" {
 			orgParts = append(orgParts, v)
 		}
