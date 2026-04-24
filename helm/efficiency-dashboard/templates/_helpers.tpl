@@ -60,23 +60,6 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Elasticsearch labels
-*/}}
-{{- define "efficiency-dashboard.elasticsearch.labels" -}}
-helm.sh/chart: {{ include "efficiency-dashboard.chart" . }}
-{{ include "efficiency-dashboard.elasticsearch.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-{{- end }}
-
-{{- define "efficiency-dashboard.elasticsearch.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "efficiency-dashboard.name" . }}-elasticsearch
-app.kubernetes.io/instance: {{ .Release.Name }}
-{{- end }}
-
-{{/*
 PostgreSQL labels
 */}}
 {{- define "efficiency-dashboard.postgresql.labels" -}}
@@ -124,5 +107,22 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{- define "efficiency-dashboard.portal.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "efficiency-dashboard.name" . }}-portal
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+kbcli labels
+*/}}
+{{- define "efficiency-dashboard.kbcli.labels" -}}
+helm.sh/chart: {{ include "efficiency-dashboard.chart" . }}
+{{ include "efficiency-dashboard.kbcli.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{- define "efficiency-dashboard.kbcli.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "efficiency-dashboard.name" . }}-kbcli
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

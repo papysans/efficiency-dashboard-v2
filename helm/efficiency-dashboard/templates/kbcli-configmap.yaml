@@ -1,0 +1,109 @@
+{{- if .Values.kbcli.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "efficiency-dashboard.fullname" . }}-kbcli-config
+  labels:
+    {{- include "efficiency-dashboard.kbcli.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    database:
+      {{- if .Values.postgresql.enabled }}
+      host: "{{ include "efficiency-dashboard.fullname" . }}-postgresql"
+      port: 5432
+      user: {{ .Values.postgresql.auth.user | quote }}
+      password: {{ .Values.postgresql.auth.password | quote }}
+      dbname: {{ .Values.postgresql.auth.database | quote }}
+      sslmode: "disable"
+      {{- else }}
+      host: {{ .Values.kbcli.externalDatabase.host | quote }}
+      port: {{ .Values.kbcli.externalDatabase.port }}
+      user: {{ .Values.kbcli.externalDatabase.user | quote }}
+      password: {{ .Values.kbcli.externalDatabase.password | quote }}
+      dbname: {{ .Values.kbcli.externalDatabase.dbname | quote }}
+      sslmode: {{ .Values.kbcli.externalDatabase.sslmode | quote }}
+      {{- end }}
+
+    model_prices:
+      GLM-4.7:
+        in_price: 0.5
+        out_price: 1.0
+      GLM-5:
+        in_price: 1.0
+        out_price: 2.0
+      Kimi-K2.5-Moonshot:
+        in_price: 1.0
+        out_price: 2.0
+      MiniMax-M2.1:
+        in_price: 0.5
+        out_price: 1.0
+      Auto:
+        in_price: 0.0
+        out_price: 0.0
+
+    rawdata_dir: "./rawdata"
+    {{- if .Values.kbcli.volumes.taskDir.enabled }}
+    {{- if .Values.kbcli.volumes.taskDir.pvcEnabled }}
+    task_dir: "/app/task"
+    {{- else }}
+    task_dir: {{ .Values.kbcli.volumes.taskDir.hostPath | quote }}
+    {{- end }}
+    {{- else }}
+    task_dir: "/app/task"
+    {{- end }}
+    {{- if .Values.kbcli.volumes.repoDir.enabled }}
+    {{- if .Values.kbcli.volumes.repoDir.pvcEnabled }}
+    repo_dir: "/app/repo"
+    {{- else }}
+    repo_dir: {{ .Values.kbcli.volumes.repoDir.hostPath | quote }}
+    {{- end }}
+    {{- else }}
+    repo_dir: "/app/repo"
+    {{- end }}
+    {{- if .Values.kbcli.volumes.analysedDir.enabled }}
+    {{- if .Values.kbcli.volumes.analysedDir.pvcEnabled }}
+    analysed_dir: "/app/analysed"
+    {{- else }}
+    analysed_dir: "/app/analysed"
+    {{- end }}
+    {{- else }}
+    analysed_dir: "/app/analysed"
+    {{- end }}
+    org_csv_file: "/app/analysed/org_mapping.csv"
+    indicator_dsn: {{ .Values.kbcli.indicatorDSN | quote }}
+
+    http_proxy: {{ .Values.kbcli.httpProxy | quote }}
+
+    stat_database:
+      {{- if .Values.postgresql.enabled }}
+      host: "{{ include "efficiency-dashboard.fullname" . }}-postgresql"
+      port: 5432
+      user: {{ .Values.postgresql.auth.user | quote }}
+      password: {{ .Values.postgresql.auth.password | quote }}
+      dbname: {{ .Values.postgresql.auth.statDatabase | quote }}
+      sslmode: "disable"
+      {{- else }}
+      host: {{ .Values.kbcli.externalDatabase.host | quote }}
+      port: {{ .Values.kbcli.externalDatabase.port }}
+      user: {{ .Values.kbcli.externalDatabase.user | quote }}
+      password: {{ .Values.kbcli.externalDatabase.password | quote }}
+      dbname: {{ .Values.kbcli.externalDatabase.statDbname | quote }}
+      sslmode: {{ .Values.kbcli.externalDatabase.sslmode | quote }}
+      {{- end }}
+
+    ai_estimation:
+      enabled: {{ .Values.kbcli.aiEstimation.enabled }}
+      api_key: {{ .Values.kbcli.aiEstimation.apiKey | quote }}
+      base_url: {{ .Values.kbcli.aiEstimation.baseUrl | quote }}
+      model: {{ .Values.kbcli.aiEstimation.model | quote }}
+      timeout_ms: {{ .Values.kbcli.aiEstimation.timeoutMs }}
+      {{- if .Values.kbcli.aiEstimation.prompt }}
+      prompt: {{ .Values.kbcli.aiEstimation.prompt | quote }}
+      {{- end }}
+
+    {{- if .Values.server.enabled }}
+    backend_url: "http://{{ include "efficiency-dashboard.fullname" . }}-server:9990"
+    {{- else }}
+    backend_url: "http://{{ .Values.kbcli.externalBackend.host }}:{{ .Values.kbcli.externalBackend.port }}"
+    {{- end }}
+{{- end }}

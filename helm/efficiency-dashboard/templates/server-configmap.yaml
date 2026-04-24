@@ -10,17 +10,6 @@ data:
     server:
       port: 9990
 
-    elasticsearch:
-      {{- if .Values.elasticsearch.enabled }}
-      url: "http://{{ include "efficiency-dashboard.fullname" . }}-elasticsearch:9200"
-      username: "elastic"
-      password: {{ .Values.elasticsearch.password | quote }}
-      {{- else }}
-      url: {{ .Values.server.externalElasticsearch.url | quote }}
-      username: {{ .Values.server.externalElasticsearch.username | quote }}
-      password: {{ .Values.server.externalElasticsearch.password | quote }}
-      {{- end }}
-
     database:
       {{- if .Values.postgresql.enabled }}
       host: "{{ include "efficiency-dashboard.fullname" . }}-postgresql"

@@ -6,13 +6,6 @@ database:
   dbname: report
   sslmode: disable
 
-elasticsearch:
-  url: "http://127.0.0.1:9200"
-  username: "elastic"
-  password: "costrict"
-  # username: "costrict"
-  # password: "costrict"
-
 model_prices:
   GLM-4.7:
     in_price: 0.5
@@ -30,13 +23,15 @@ model_prices:
     in_price: 0.0
     out_price: 0.0
 
-rawdata_dir: "./rawdata"
 
+rawdata_dir: "./rawdata"
+task_dir: "/mnt/prod_env/user-indicator/raw/task"
+repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
+analysed_dir: "./analysed"
+org_csv_file: "./analysed/org_mapping.csv"
+indicator_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
 # HTTP 代理（用于 git clone 等网络操作）
 http_proxy: "http://127.0.0.1:7890"
-
-org_csv_file: "./org_mapping.csv"
-
 
 stat_database:
   host: 127.0.0.1

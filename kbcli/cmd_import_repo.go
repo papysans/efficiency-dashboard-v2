@@ -47,6 +47,47 @@ type repoFileMeta struct {
 
 var reRepoPath = regexp.MustCompile(`^([^/]+)/([^/]+)/(\d{4})/(\d{2})/(\d{2})/([^/]+)\.json$`)
 
+func runImportRepo(repoDir, analysedDir string, force bool) error {
+	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
+		return fmt.Errorf("repo目录不存在: %s", repoDir)
+	}
+
+	db, err := openGormDB(cfg.StatDatabase.DSN())
+	if err != nil {
+		return fmt.Errorf("连接数据库失败: %w", err)
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+
+	files, skipCount, err := scanRepoDir(repoDir, analysedDir, force)
+	if err != nil {
+		return fmt.Errorf("扫描repo目录失败: %w", err)
+	}
+
+	if len(files) == 0 {
+		fmt.Println("没有找到待导入的commit文件")
+		return nil
+	}
+
+	fmt.Printf("找到 %d 个待导入的commit文件\n", len(files))
+
+	successCount := 0
+	failCount := 0
+
+	for _, fileMeta := range files {
+		if err := importCommitFileGorm(db, fileMeta, analysedDir); err != nil {
+			fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", fileMeta.Path, err)
+			failCount++
+		} else {
+			successCount++
+		}
+	}
+
+	fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
+
+	return nil
+}
+
 var importRepoCmd = &cobra.Command{
 	Use:   "import-repo",
 	Short: "导入客户端上报的repo数据到commits表",
@@ -54,57 +95,23 @@ var importRepoCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repoDir, _ := cmd.Flags().GetString("repo-dir")
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
-
-		if _, err := os.Stat(repoDir); os.IsNotExist(err) {
-			return fmt.Errorf("repo目录不存在: %s", repoDir)
-		}
-
-		db, err := openGormDB(cfg.StatDatabase.DSN())
-		if err != nil {
-			return fmt.Errorf("连接数据库失败: %w", err)
-		}
-		sqlDB, _ := db.DB()
-		defer sqlDB.Close()
-
 		force, _ := cmd.Flags().GetBool("force")
 
-		files, skipCount, err := scanRepoDir(repoDir, analysedDir, force)
-		if err != nil {
-			return fmt.Errorf("扫描repo目录失败: %w", err)
+		if repoDir == "" {
+			repoDir = cfg.RepoDir
+		}
+		if analysedDir == "" {
+			analysedDir = cfg.AnalysedDir
 		}
 
-		if len(files) == 0 {
-			fmt.Println("没有找到待导入的commit文件")
-			return nil
-		}
-
-		fmt.Printf("找到 %d 个待导入的commit文件\n", len(files))
-
-		successCount := 0
-		failCount := 0
-
-		for _, fileMeta := range files {
-			if err := importCommitFileGorm(db, fileMeta, analysedDir); err != nil {
-				fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", fileMeta.Path, err)
-				failCount++
-			} else {
-				successCount++
-			}
-		}
-
-		fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
-
-		return nil
+		return runImportRepo(repoDir, analysedDir, force)
 	},
 }
 
 func init() {
-	importRepoCmd.Flags().String("repo-dir", "./repo", "repo 目录路径（必需）")
+	importRepoCmd.Flags().String("repo-dir", "", "repo 目录路径")
 	importRepoCmd.Flags().String("analysed-dir", "./analysed", "已处理文件的输出目录")
 	importRepoCmd.Flags().BoolP("force", "f", false, "强制重新导入，忽略fp文件的短路判断")
-	if err := importRepoCmd.MarkFlagRequired("repo-dir"); err != nil {
-		panic(err)
-	}
 	rootCmd.AddCommand(importRepoCmd)
 }
 

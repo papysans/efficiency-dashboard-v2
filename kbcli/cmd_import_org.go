@@ -39,6 +39,109 @@ func extractDBName(dsn string) string {
 	return ""
 }
 
+func runImportOrg(fromDSN, csvFile string) error {
+	authDSN := replaceDBName(fromDSN, "auth")
+	authDB, err := openSQLDB(authDSN)
+	if err != nil {
+		return fmt.Errorf("连接 auth 数据库失败: %w", err)
+	}
+	defer authDB.Close()
+	fmt.Println("auth 数据库连接成功")
+
+	quotaDSN := replaceDBName(fromDSN, "quota_manager")
+	quotaDB, err := openSQLDB(quotaDSN)
+	if err != nil {
+		return fmt.Errorf("连接 quota_manager 数据库失败: %w", err)
+	}
+	defer quotaDB.Close()
+	fmt.Println("quota_manager 数据库连接成功")
+
+	userRows, err := authDB.Query(`
+		SELECT id, name, github_name, email, employee_number
+		FROM auth_users
+		WHERE employee_number IS NOT NULL AND employee_number != ''
+		ORDER BY name
+	`)
+	if err != nil {
+		return fmt.Errorf("查询 auth_users 失败: %w", err)
+	}
+	defer userRows.Close()
+
+	deptRows, err := quotaDB.Query(`SELECT employee_number, dept_full_level_names FROM employee_department`)
+	if err != nil {
+		return fmt.Errorf("查询 employee_department 失败: %w", err)
+	}
+	defer deptRows.Close()
+
+	deptMap := make(map[string]string)
+	for deptRows.Next() {
+		var empNum, deptFullLevelNames sql.NullString
+		if err := deptRows.Scan(&empNum, &deptFullLevelNames); err != nil {
+			return fmt.Errorf("读取部门数据失败: %w", err)
+		}
+		if empNum.Valid {
+			deptMap[empNum.String] = deptFullLevelNames.String
+		}
+	}
+	if err := deptRows.Err(); err != nil {
+		return fmt.Errorf("遍历部门数据失败: %w", err)
+	}
+
+	var userOrgs []UserOrg
+	for userRows.Next() {
+		var userID, userName, gitUserName, gitUserEmail string
+		var empNum sql.NullString
+		if err := userRows.Scan(&userID, &userName, &gitUserName, &gitUserEmail, &empNum); err != nil {
+			return fmt.Errorf("读取用户数据失败: %w", err)
+		}
+
+		org := UserOrg{
+			UserID:       userID,
+			UserName:     userName,
+			GitUserName:  gitUserName,
+			GitUserEmail: gitUserEmail,
+		}
+
+		if empNum.Valid {
+			if deptFullLevelNames, ok := deptMap[empNum.String]; ok {
+				parts := strings.Split(deptFullLevelNames, ",")
+				orgFields := []*string{&org.Org1, &org.Org2, &org.Org3, &org.Org4, &org.Org5, &org.Org6, &org.Org7, &org.Org8, &org.Org9}
+				for i, p := range parts {
+					if i >= len(orgFields) {
+						break
+					}
+					*orgFields[i] = strings.TrimSpace(p)
+				}
+			}
+		}
+		userOrgs = append(userOrgs, org)
+	}
+	if err := userRows.Err(); err != nil {
+		return fmt.Errorf("遍历用户数据失败: %w", err)
+	}
+	fmt.Printf("查询到 %d 条用户组织记录\n", len(userOrgs))
+
+	if err := writeOrgCSV(csvFile, userOrgs); err != nil {
+		return fmt.Errorf("写入CSV文件失败: %w", err)
+	}
+	fmt.Printf("CSV 文件已写入: %s\n", csvFile)
+
+	gormDB, err := openGormDB(cfg.StatDatabase.DSN())
+	if err != nil {
+		return fmt.Errorf("连接目标数据库失败: %w", err)
+	}
+	sqlDB, _ := gormDB.DB()
+	defer sqlDB.Close()
+	fmt.Println("目标数据库连接成功")
+
+	if err := saveUserOrgsGorm(gormDB, userOrgs); err != nil {
+		return fmt.Errorf("写入user_org表失败: %w", err)
+	}
+	fmt.Printf("已写入 %d 条记录到 user_org 表\n", len(userOrgs))
+
+	return nil
+}
+
 var importOrgCmd = &cobra.Command{
 	Use:   "import-org",
 	Short: "从源数据库导入用户组织信息到 costrict_stat.user_org 表及 CSV 文件",
@@ -50,118 +153,19 @@ var importOrgCmd = &cobra.Command{
 		csvFile, _ := cmd.Flags().GetString("csv-file")
 
 		if fromDSN == "" {
-			return fmt.Errorf("必须指定 --from-db 参数")
+			fromDSN = cfg.IndicatorDSN
+		}
+		if csvFile == "" {
+			csvFile = cfg.OrgCSVFile
 		}
 
-		authDSN := replaceDBName(fromDSN, "auth")
-		authDB, err := openSQLDB(authDSN)
-		if err != nil {
-			return fmt.Errorf("连接 auth 数据库失败: %w", err)
-		}
-		defer authDB.Close()
-		fmt.Println("auth 数据库连接成功")
-
-		quotaDSN := replaceDBName(fromDSN, "quota_manager")
-		quotaDB, err := openSQLDB(quotaDSN)
-		if err != nil {
-			return fmt.Errorf("连接 quota_manager 数据库失败: %w", err)
-		}
-		defer quotaDB.Close()
-		fmt.Println("quota_manager 数据库连接成功")
-
-		userRows, err := authDB.Query(`
-			SELECT id, name, github_name, email, employee_number
-			FROM auth_users
-			WHERE employee_number IS NOT NULL AND employee_number != ''
-			ORDER BY name
-		`)
-		if err != nil {
-			return fmt.Errorf("查询 auth_users 失败: %w", err)
-		}
-		defer userRows.Close()
-
-		deptRows, err := quotaDB.Query(`SELECT employee_number, dept_full_level_names FROM employee_department`)
-		if err != nil {
-			return fmt.Errorf("查询 employee_department 失败: %w", err)
-		}
-		defer deptRows.Close()
-
-		deptMap := make(map[string]string)
-		for deptRows.Next() {
-			var empNum, deptFullLevelNames sql.NullString
-			if err := deptRows.Scan(&empNum, &deptFullLevelNames); err != nil {
-				return fmt.Errorf("读取部门数据失败: %w", err)
-			}
-			if empNum.Valid {
-				deptMap[empNum.String] = deptFullLevelNames.String
-			}
-		}
-		if err := deptRows.Err(); err != nil {
-			return fmt.Errorf("遍历部门数据失败: %w", err)
-		}
-
-		var userOrgs []UserOrg
-		for userRows.Next() {
-			var userID, userName, gitUserName, gitUserEmail string
-			var empNum sql.NullString
-			if err := userRows.Scan(&userID, &userName, &gitUserName, &gitUserEmail, &empNum); err != nil {
-				return fmt.Errorf("读取用户数据失败: %w", err)
-			}
-
-			org := UserOrg{
-				UserID:       userID,
-				UserName:     userName,
-				GitUserName:  gitUserName,
-				GitUserEmail: gitUserEmail,
-			}
-
-			if empNum.Valid {
-				if deptFullLevelNames, ok := deptMap[empNum.String]; ok {
-					parts := strings.Split(deptFullLevelNames, ",")
-					orgFields := []*string{&org.Org1, &org.Org2, &org.Org3, &org.Org4, &org.Org5, &org.Org6, &org.Org7, &org.Org8, &org.Org9}
-					for i, p := range parts {
-						if i >= len(orgFields) {
-							break
-						}
-						*orgFields[i] = strings.TrimSpace(p)
-					}
-				}
-			}
-			userOrgs = append(userOrgs, org)
-		}
-		if err := userRows.Err(); err != nil {
-			return fmt.Errorf("遍历用户数据失败: %w", err)
-		}
-		fmt.Printf("查询到 %d 条用户组织记录\n", len(userOrgs))
-
-		if err := writeOrgCSV(csvFile, userOrgs); err != nil {
-			return fmt.Errorf("写入CSV文件失败: %w", err)
-		}
-		fmt.Printf("CSV 文件已写入: %s\n", csvFile)
-
-		gormDB, err := openGormDB(cfg.StatDatabase.DSN())
-		if err != nil {
-			return fmt.Errorf("连接目标数据库失败: %w", err)
-		}
-		sqlDB, _ := gormDB.DB()
-		defer sqlDB.Close()
-		fmt.Println("目标数据库连接成功")
-
-		if err := saveUserOrgsGorm(gormDB, userOrgs); err != nil {
-			return fmt.Errorf("写入user_org表失败: %w", err)
-		}
-		fmt.Printf("已写入 %d 条记录到 user_org 表\n", len(userOrgs))
-
-		return nil
+		return runImportOrg(fromDSN, csvFile)
 	},
 }
 
 func init() {
 	importOrgCmd.Flags().String("from-db", "", "源数据库DSN")
-	importOrgCmd.Flags().String("csv-file", "./org_mapping.csv", "导出CSV文件路径")
-	if err := importOrgCmd.MarkFlagRequired("from-db"); err != nil {
-		panic(err)
-	}
+	importOrgCmd.Flags().String("csv-file", "", "导出CSV文件路径")
 	rootCmd.AddCommand(importOrgCmd)
 }
 

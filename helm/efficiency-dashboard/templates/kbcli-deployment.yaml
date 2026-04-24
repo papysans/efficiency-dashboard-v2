@@ -1,0 +1,114 @@
+{{- if .Values.kbcli.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "efficiency-dashboard.fullname" . }}-kbcli
+  labels:
+    {{- include "efficiency-dashboard.kbcli.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.kbcli.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "efficiency-dashboard.kbcli.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "efficiency-dashboard.kbcli.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "efficiency-dashboard.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.postgresql.enabled }}
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.global.imageRegistry }}postgres:14"
+          command: ['sh', '-c', 'until pg_isready -h {{ include "efficiency-dashboard.fullname" . }}-postgresql -p 5432 -U {{ .Values.postgresql.auth.user }}; do echo waiting for postgres; sleep 2; done']
+      {{- end }}
+      containers:
+        - name: kbcli
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.kbcli.image.repository }}:{{ .Values.kbcli.image.tag }}"
+          imagePullPolicy: {{ .Values.kbcli.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone }}
+          command: ["/app/kbcli"]
+          args: ["import", "--config", "/app/config.yaml"]
+          resources:
+            {{- toYaml .Values.kbcli.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            {{- if .Values.kbcli.volumes.taskDir.enabled }}
+            {{- if .Values.kbcli.volumes.taskDir.pvcEnabled }}
+            - name: task-data
+              mountPath: /app/task
+            {{- else }}
+            - name: task-host
+              mountPath: {{ .Values.kbcli.volumes.taskDir.hostPath | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.kbcli.volumes.repoDir.enabled }}
+            {{- if .Values.kbcli.volumes.repoDir.pvcEnabled }}
+            - name: repo-data
+              mountPath: /app/repo
+            {{- else }}
+            - name: repo-host
+              mountPath: {{ .Values.kbcli.volumes.repoDir.hostPath | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.kbcli.volumes.analysedDir.enabled }}
+            {{- if .Values.kbcli.volumes.analysedDir.pvcEnabled }}
+            - name: analysed-data
+              mountPath: /app/analysed
+            {{- else }}
+            - name: analysed-empty
+              mountPath: /app/analysed
+            {{- end }}
+            {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "efficiency-dashboard.fullname" . }}-kbcli-config
+        {{- if .Values.kbcli.volumes.taskDir.enabled }}
+        {{- if not .Values.kbcli.volumes.taskDir.pvcEnabled }}
+        - name: task-host
+          hostPath:
+            path: {{ .Values.kbcli.volumes.taskDir.hostPath }}
+            type: Directory
+        {{- end }}
+        {{- end }}
+        {{- if .Values.kbcli.volumes.repoDir.enabled }}
+        {{- if not .Values.kbcli.volumes.repoDir.pvcEnabled }}
+        - name: repo-host
+          hostPath:
+            path: {{ .Values.kbcli.volumes.repoDir.hostPath }}
+            type: Directory
+        {{- end }}
+        {{- end }}
+        {{- if .Values.kbcli.volumes.analysedDir.enabled }}
+        {{- if not .Values.kbcli.volumes.analysedDir.pvcEnabled }}
+        - name: analysed-empty
+          emptyDir: {}
+        {{- end }}
+        {{- end }}
+{{- end }}

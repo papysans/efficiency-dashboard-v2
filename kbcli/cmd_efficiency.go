@@ -37,59 +37,63 @@ type userCommitAgg struct {
 	CommitRealMinutes        float64
 }
 
+func runEfficiency(dateStr string) error {
+	if dateStr != "" && len(dateStr) != 8 {
+		return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s", dateStr)
+	}
+
+	db, err := openGormDB(cfg.StatDatabase.DSN())
+	if err != nil {
+		return fmt.Errorf("连接数据库失败: %w", err)
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+
+	var dates []string
+	if dateStr != "" {
+		dates = []string{dateStr}
+	} else {
+		dates, err = getAllDatesGorm(db)
+		if err != nil {
+			return fmt.Errorf("获取日期列表失败: %w", err)
+		}
+		if len(dates) == 0 {
+			fmt.Println("没有找到任何task或commit数据")
+			return nil
+		}
+		fmt.Printf("共发现 %d 个日期需要处理\n", len(dates))
+	}
+
+	totalUserCount := 0
+	totalOrgCount := 0
+	for _, d := range dates {
+		fmt.Printf("\n=== 处理日期: %s ===\n", d)
+		userCount, err := calculateUserProductivityGorm(db, d)
+		if err != nil {
+			return fmt.Errorf("计算用户生产力失败 [date=%s]: %w", d, err)
+		}
+		fmt.Printf("用户生产力计算完成: %d 条记录 (日期=%s)\n", userCount, d)
+		totalUserCount += userCount
+
+		orgCount, err := calculateOrgProductivityGorm(db, d)
+		if err != nil {
+			return fmt.Errorf("计算组织生产力失败 [date=%s]: %w", d, err)
+		}
+		fmt.Printf("组织生产力计算完成: %d 条记录 (日期=%s)\n", orgCount, d)
+		totalOrgCount += orgCount
+	}
+
+	fmt.Printf("\n全部完成: 用户 %d 条, 组织 %d 条\n", totalUserCount, totalOrgCount)
+	return nil
+}
+
 var efficiencyCmd = &cobra.Command{
 	Use:   "efficiency",
 	Short: "按日计算用户和组织效能数据",
 	Long:  "根据已导入的task、commit、user_org数据，按日计算各用户和组织（分级）的生产力数据，写入user_productivity和org_productivity表。如有--date参数，则只处理该日期的数据，否则处理所有日期数据",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dateStr, _ := cmd.Flags().GetString("date")
-		if dateStr != "" && len(dateStr) != 8 {
-			return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s", dateStr)
-		}
-
-		db, err := openGormDB(cfg.StatDatabase.DSN())
-		if err != nil {
-			return fmt.Errorf("连接数据库失败: %w", err)
-		}
-		sqlDB, _ := db.DB()
-		defer sqlDB.Close()
-
-		var dates []string
-		if dateStr != "" {
-			dates = []string{dateStr}
-		} else {
-			dates, err = getAllDatesGorm(db)
-			if err != nil {
-				return fmt.Errorf("获取日期列表失败: %w", err)
-			}
-			if len(dates) == 0 {
-				fmt.Println("没有找到任何task或commit数据")
-				return nil
-			}
-			fmt.Printf("共发现 %d 个日期需要处理\n", len(dates))
-		}
-
-		totalUserCount := 0
-		totalOrgCount := 0
-		for _, d := range dates {
-			fmt.Printf("\n=== 处理日期: %s ===\n", d)
-			userCount, err := calculateUserProductivityGorm(db, d)
-			if err != nil {
-				return fmt.Errorf("计算用户生产力失败 [date=%s]: %w", d, err)
-			}
-			fmt.Printf("用户生产力计算完成: %d 条记录 (日期=%s)\n", userCount, d)
-			totalUserCount += userCount
-
-			orgCount, err := calculateOrgProductivityGorm(db, d)
-			if err != nil {
-				return fmt.Errorf("计算组织生产力失败 [date=%s]: %w", d, err)
-			}
-			fmt.Printf("组织生产力计算完成: %d 条记录 (日期=%s)\n", orgCount, d)
-			totalOrgCount += orgCount
-		}
-
-		fmt.Printf("\n全部完成: 用户 %d 条, 组织 %d 条\n", totalUserCount, totalOrgCount)
-		return nil
+		return runEfficiency(dateStr)
 	},
 }
 

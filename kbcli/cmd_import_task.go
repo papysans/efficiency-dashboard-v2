@@ -205,87 +205,97 @@ func importGenerateWorkDirID(clientID, workDir string) string {
 	return prefix + "-" + suffix
 }
 
+func runImportTask(taskDir, analysedDir string, force bool) error {
+	summaryDir := filepath.Join(taskDir, "summary")
+	conversationDir := filepath.Join(taskDir, "conversation")
+
+	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+		return fmt.Errorf("summary目录不存在: %s", summaryDir)
+	}
+
+	db, err := openGormDB(cfg.StatDatabase.DSN())
+	if err != nil {
+		return fmt.Errorf("连接数据库失败: %w", err)
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+
+	var summaryFiles []string
+	err = filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
+			summaryFiles = append(summaryFiles, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("扫描summary目录失败: %w", err)
+	}
+
+	if len(summaryFiles) == 0 {
+		fmt.Println("没有找到待导入的 summary 文件")
+		return nil
+	}
+
+	successCount := 0
+	failCount := 0
+	skipCount := 0
+
+	for _, summaryPath := range summaryFiles {
+		relPath, err := filepath.Rel(summaryDir, summaryPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "计算相对路径失败 [%s]: %v\n", summaryPath, err)
+			failCount++
+			continue
+		}
+		fpRelPath := strings.TrimSuffix(relPath, ".json") + ".fp"
+		fpPath := filepath.Join(analysedDir, "task", "summary", fpRelPath)
+		if !force {
+			if _, err := os.Stat(fpPath); err == nil {
+				fmt.Printf("跳过(fp已存在): %s\n", summaryPath)
+				skipCount++
+				continue
+			}
+		}
+		convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
+		conversationPath := filepath.Join(conversationDir, convRelPath)
+
+		if err := importSingleTaskGorm(db, summaryPath, conversationPath, fpPath); err != nil {
+			fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", summaryPath, err)
+			failCount++
+		} else {
+			successCount++
+		}
+	}
+
+	fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
+	return nil
+}
+
 var importTasksCmd = &cobra.Command{
 	Use:   "import-task",
 	Short: "导入 task 数据到 costrict_stat 数据库",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskDir, _ := cmd.Flags().GetString("task-dir")
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
-
-		summaryDir := filepath.Join(taskDir, "summary")
-		conversationDir := filepath.Join(taskDir, "conversation")
-
-		if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
-			return fmt.Errorf("summary目录不存在: %s", summaryDir)
-		}
-
-		db, err := openGormDB(cfg.StatDatabase.DSN())
-		if err != nil {
-			return fmt.Errorf("连接数据库失败: %w", err)
-		}
-		sqlDB, _ := db.DB()
-		defer sqlDB.Close()
-
-		var summaryFiles []string
-		err = filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
-				summaryFiles = append(summaryFiles, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("扫描summary目录失败: %w", err)
-		}
-
-		if len(summaryFiles) == 0 {
-			fmt.Println("没有找到待导入的 summary 文件")
-			return nil
-		}
-
-		successCount := 0
-		failCount := 0
-		skipCount := 0
-
 		force, _ := cmd.Flags().GetBool("force")
 
-		for _, summaryPath := range summaryFiles {
-			relPath, err := filepath.Rel(summaryDir, summaryPath)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "计算相对路径失败 [%s]: %v\n", summaryPath, err)
-				failCount++
-				continue
-			}
-			fpRelPath := strings.TrimSuffix(relPath, ".json") + ".fp"
-			fpPath := filepath.Join(analysedDir, "task", "summary", fpRelPath)
-			if !force {
-				if _, err := os.Stat(fpPath); err == nil {
-					fmt.Printf("跳过(fp已存在): %s\n", summaryPath)
-					skipCount++
-					continue
-				}
-			}
-			convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
-			conversationPath := filepath.Join(conversationDir, convRelPath)
-
-			if err := importSingleTaskGorm(db, summaryPath, conversationPath, fpPath); err != nil {
-				fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", summaryPath, err)
-				failCount++
-			} else {
-				successCount++
-			}
+		if taskDir == "" {
+			taskDir = cfg.TaskDir
+		}
+		if analysedDir == "" {
+			analysedDir = cfg.AnalysedDir
 		}
 
-		fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
-		return nil
+		return runImportTask(taskDir, analysedDir, force)
 	},
 }
 
 func init() {
-	importTasksCmd.Flags().String("task-dir", "./task", "task 目录路径")
-	importTasksCmd.Flags().String("analysed-dir", "./analysed", "输出目录路径")
+	importTasksCmd.Flags().String("task-dir", "", "task 目录路径")
+	importTasksCmd.Flags().String("analysed-dir", "", "输出目录路径")
 	importTasksCmd.Flags().BoolP("force", "f", false, "强制重新导入，忽略fp文件的短路判断")
 	rootCmd.AddCommand(importTasksCmd)
 }

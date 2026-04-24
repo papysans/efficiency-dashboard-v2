@@ -38,6 +38,132 @@ type silicaIndex struct {
 	hashCount   int
 }
 
+func runSilica(analysedDir string, reprocess bool) error {
+	taskFPDir := filepath.Join(analysedDir, "task", "summary")
+	repoFPDir := filepath.Join(analysedDir, "repo")
+
+	db, err := openGormDB(cfg.StatDatabase.DSN())
+	if err != nil {
+		return fmt.Errorf("连接数据库失败: %w", err)
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+
+	idx, err := buildSilicaIndex(taskFPDir)
+	if err != nil {
+		return fmt.Errorf("构建task指纹索引失败: %w", err)
+	}
+	fmt.Printf("已加载task指纹索引: %d个task, %d个分组, %d个哈希\n", idx.taskCount, len(idx.groupHashes), idx.hashCount)
+
+	commitFPFiles, err := scanCommitFPFiles(repoFPDir)
+	if err != nil {
+		return fmt.Errorf("扫描commit指纹文件失败: %w", err)
+	}
+	fmt.Printf("找到%d个commit指纹文件\n", len(commitFPFiles))
+
+	successCount := 0
+	skipCount := 0
+	failCount := 0
+
+	for _, fpFile := range commitFPFiles {
+		commitID := strings.TrimSuffix(filepath.Base(fpFile), ".fp")
+
+		if !reprocess {
+			var commit Commit
+			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
+				if string(commit.TaskIDs) != "" && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
+					skipCount++
+					continue
+				}
+			}
+		}
+
+		var commit Commit
+		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				fmt.Fprintf(os.Stderr, "警告: commit不存在于数据库 [%s]\n", commitID)
+				skipCount++
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "查询commit元数据失败 [%s]: %v\n", commitID, err)
+			failCount++
+			continue
+		}
+
+		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserID}
+		commitTime := time.Time{}
+		if commit.CommitTime != nil {
+			commitTime = *commit.CommitTime
+		}
+		candidateHashes := idx.buildCandidateHashIndex(gk, commitTime)
+
+		taskIDSilica, totalLines, err := computeCommitSilica(fpFile, candidateHashes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "计算含硅量失败 [%s]: %v\n", commitID, err)
+			failCount++
+			continue
+		}
+
+		if len(taskIDSilica) == 0 {
+			if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+				"task_ids":                    "[]",
+				"task_ids_silica":             "[]",
+				"silica":                      0,
+				"commit_real_ai_minutes":      0,
+				"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
+				"commit_real_minutes":         gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
+				"upstream_tokens":             0,
+				"downstream_tokens":           0,
+				"cost":                        0,
+			}).Error; err != nil {
+				fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
+				failCount++
+			} else {
+				successCount++
+			}
+			continue
+		}
+
+		var taskIDList []string
+		var silicaList []float64
+		var totalSilica float64
+		for _, ts := range taskIDSilica {
+			taskIDList = append(taskIDList, ts.TaskID)
+			silicaList = append(silicaList, ts.Silica)
+			totalSilica += ts.Silica
+		}
+
+		commitRealAIMinutes, commitRealAncientMinutes, upstreamTokens, downstreamTokens, cost := calcCommitDerivedMinutesGorm(db, taskIDSilica)
+		commitRealMinutes := commitRealAIMinutes + commitRealAncientMinutes
+
+		taskIDsJSON, _ := json.Marshal(taskIDList)
+		silicaJSON, _ := json.Marshal(silicaList)
+
+		if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+			"task_ids":                    string(taskIDsJSON),
+			"task_ids_silica":             string(silicaJSON),
+			"silica":                      totalSilica,
+			"commit_real_ai_minutes":      commitRealAIMinutes,
+			"commit_real_ancient_minutes": commitRealAncientMinutes,
+			"commit_real_minutes":         commitRealMinutes,
+			"upstream_tokens":             upstreamTokens,
+			"downstream_tokens":           downstreamTokens,
+			"cost":                        cost,
+		}).Error; err != nil {
+			fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
+			failCount++
+		} else {
+			matched := countMatchedLines(fpFile, candidateHashes)
+			fmt.Printf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin\n",
+				commitID, totalSilica, matched, totalLines, commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes)
+			successCount++
+		}
+	}
+
+	fmt.Printf("含硅量计算完成: 成功 %d 个，跳过 %d 个，失败 %d 个\n", successCount, skipCount, failCount)
+	return nil
+}
+
 var silicaCmd = &cobra.Command{
 	Use:   "silica",
 	Short: "计算commit的含硅量（task贡献比例），更新commits表的task_ids和task_ids_silica",
@@ -45,129 +171,11 @@ var silicaCmd = &cobra.Command{
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		reprocess, _ := cmd.Flags().GetBool("reprocess")
 
-		taskFPDir := filepath.Join(analysedDir, "task", "summary")
-		repoFPDir := filepath.Join(analysedDir, "repo")
-
-		db, err := openGormDB(cfg.StatDatabase.DSN())
-		if err != nil {
-			return fmt.Errorf("连接数据库失败: %w", err)
-		}
-		sqlDB, _ := db.DB()
-		defer sqlDB.Close()
-
-		idx, err := buildSilicaIndex(taskFPDir)
-		if err != nil {
-			return fmt.Errorf("构建task指纹索引失败: %w", err)
-		}
-		fmt.Printf("已加载task指纹索引: %d个task, %d个分组, %d个哈希\n", idx.taskCount, len(idx.groupHashes), idx.hashCount)
-
-		commitFPFiles, err := scanCommitFPFiles(repoFPDir)
-		if err != nil {
-			return fmt.Errorf("扫描commit指纹文件失败: %w", err)
-		}
-		fmt.Printf("找到%d个commit指纹文件\n", len(commitFPFiles))
-
-		successCount := 0
-		skipCount := 0
-		failCount := 0
-
-		for _, fpFile := range commitFPFiles {
-			commitID := strings.TrimSuffix(filepath.Base(fpFile), ".fp")
-
-			if !reprocess {
-				var commit Commit
-				if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
-					if string(commit.TaskIDs) != "" && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
-						skipCount++
-						continue
-					}
-				}
-			}
-
-			var commit Commit
-			if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
-				if err == gorm.ErrRecordNotFound {
-					fmt.Fprintf(os.Stderr, "警告: commit不存在于数据库 [%s]\n", commitID)
-					skipCount++
-					continue
-				}
-				fmt.Fprintf(os.Stderr, "查询commit元数据失败 [%s]: %v\n", commitID, err)
-				failCount++
-				continue
-			}
-
-			gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserID}
-			commitTime := time.Time{}
-			if commit.CommitTime != nil {
-				commitTime = *commit.CommitTime
-			}
-			candidateHashes := idx.buildCandidateHashIndex(gk, commitTime)
-
-			taskIDSilica, totalLines, err := computeCommitSilica(fpFile, candidateHashes)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "计算含硅量失败 [%s]: %v\n", commitID, err)
-				failCount++
-				continue
-			}
-
-			if len(taskIDSilica) == 0 {
-				if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
-					"task_ids":                    "[]",
-					"task_ids_silica":             "[]",
-					"silica":                      0,
-					"commit_real_ai_minutes":      0,
-					"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
-					"commit_real_minutes":         gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
-					"upstream_tokens":             0,
-					"downstream_tokens":           0,
-					"cost":                        0,
-				}).Error; err != nil {
-					fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
-					failCount++
-				} else {
-					successCount++
-				}
-				continue
-			}
-
-			var taskIDList []string
-			var silicaList []float64
-			var totalSilica float64
-			for _, ts := range taskIDSilica {
-				taskIDList = append(taskIDList, ts.TaskID)
-				silicaList = append(silicaList, ts.Silica)
-				totalSilica += ts.Silica
-			}
-
-			commitRealAIMinutes, commitRealAncientMinutes, upstreamTokens, downstreamTokens, cost := calcCommitDerivedMinutesGorm(db, taskIDSilica)
-			commitRealMinutes := commitRealAIMinutes + commitRealAncientMinutes
-
-			taskIDsJSON, _ := json.Marshal(taskIDList)
-			silicaJSON, _ := json.Marshal(silicaList)
-
-			if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
-				"task_ids":                    string(taskIDsJSON),
-				"task_ids_silica":             string(silicaJSON),
-				"silica":                      totalSilica,
-				"commit_real_ai_minutes":      commitRealAIMinutes,
-				"commit_real_ancient_minutes": commitRealAncientMinutes,
-				"commit_real_minutes":         commitRealMinutes,
-				"upstream_tokens":             upstreamTokens,
-				"downstream_tokens":           downstreamTokens,
-				"cost":                        cost,
-			}).Error; err != nil {
-				fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
-				failCount++
-			} else {
-				matched := countMatchedLines(fpFile, candidateHashes)
-				fmt.Printf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin\n",
-					commitID, totalSilica, matched, totalLines, commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes)
-				successCount++
-			}
+		if analysedDir == "" {
+			analysedDir = cfg.AnalysedDir
 		}
 
-		fmt.Printf("含硅量计算完成: 成功 %d 个，跳过 %d 个，失败 %d 个\n", successCount, skipCount, failCount)
-		return nil
+		return runSilica(analysedDir, reprocess)
 	},
 }
 

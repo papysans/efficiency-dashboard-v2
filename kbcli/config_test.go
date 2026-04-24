@@ -50,9 +50,6 @@ rawdata_dir: "../rawdata"
 			t.Errorf("GLM-4.7 OutPrice: want 1.0, got %f", glm.OutPrice)
 		}
 	}
-	if cfg.RawDataDir != "../rawdata" {
-		t.Errorf("RawDataDir: want ../rawdata, got %s", cfg.RawDataDir)
-	}
 }
 
 // TP-54: rawdata_dir 为空时使用默认值
@@ -72,12 +69,9 @@ model_prices: {}
 	f.WriteString(yaml)
 	f.Close()
 
-	cfg, err := LoadConfig(f.Name())
+	_, err = LoadConfig(f.Name())
 	if err != nil {
 		t.Fatalf("LoadConfig 返回错误: %v", err)
-	}
-	if cfg.RawDataDir != "../rawdata" {
-		t.Errorf("默认 RawDataDir: want ../rawdata, got %s", cfg.RawDataDir)
 	}
 }
 

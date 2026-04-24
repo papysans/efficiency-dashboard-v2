@@ -13,6 +13,14 @@ type ModelPrice struct {
 	OutPrice float64 `yaml:"out_price"`
 }
 
+type IndicatorDBConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	SSLMode  string `yaml:"sslmode"`
+}
+
 // DatabaseConfig 数据库连接配置
 type DatabaseConfig struct {
 	Host     string `yaml:"host"`
@@ -42,12 +50,15 @@ type AIEstimationConfig struct {
 // Config 全局配置结构
 type Config struct {
 	ModelPrices  map[string]ModelPrice `yaml:"model_prices"`
-	RawDataDir   string                `yaml:"rawdata_dir"`
+	TaskDir      string                `yaml:"task_dir"`
+	RepoDir      string                `yaml:"repo_dir"`
+	AnalysedDir  string                `yaml:"analysed_dir"`
 	OrgCSVFile   string                `yaml:"org_csv_file"`
 	AIEstimation AIEstimationConfig    `yaml:"ai_estimation"`
 	BackendURL   string                `yaml:"backend_url"`
 	HTTPProxy    string                `yaml:"http_proxy"`
 	StatDatabase DatabaseConfig        `yaml:"stat_database"`
+	IndicatorDSN string                `yaml:"indicator_dsn"`
 }
 
 // LoadConfig 从 YAML 文件加载配置
@@ -61,11 +72,17 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, err
 	}
 	// 默认值
-	if config.RawDataDir == "" {
-		config.RawDataDir = "../rawdata"
+	if config.TaskDir == "" {
+		config.TaskDir = "task"
+	}
+	if config.TaskDir == "" {
+		config.TaskDir = "repo"
+	}
+	if config.AnalysedDir == "" {
+		config.AnalysedDir = "analysed"
 	}
 	if config.OrgCSVFile == "" {
-		config.OrgCSVFile = "./org_mapping.csv"
+		config.OrgCSVFile = "analysed/org_mapping.csv"
 	}
 	if config.AIEstimation.TimeoutMS == 0 {
 		config.AIEstimation.TimeoutMS = 300000
