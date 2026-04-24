@@ -1,0 +1,26 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+Server (Backend API):
+
+  Internal: {{ include "server.fullname" . }}:{{ .Values.service.port }}
+
+{{- if .Values.ingress.enabled }}
+
+Access the application:
+
+  URL: http{{ if .Values.ingress.tls }}s{{ end }}://{{ (index .Values.ingress.hosts 0).host }}
+
+{{- else }}
+
+Get the application URL by running:
+
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "server.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 9990:http
+
+{{- end }}
+
+Check logs:
+
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "server.name" . }} --tail=100 -f

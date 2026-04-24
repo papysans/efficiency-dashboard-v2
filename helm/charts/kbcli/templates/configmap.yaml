@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kbcli.fullname" . }}-config
+  labels:
+    {{- include "kbcli.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    database:
+      host: {{ .Values.database.host | quote }}
+      port: {{ .Values.database.port }}
+      user: {{ .Values.database.user | quote }}
+      password: {{ .Values.database.password | quote }}
+      dbname: {{ .Values.database.dbname | quote }}
+      sslmode: {{ .Values.database.sslmode | quote }}
+
+    stat_database:
+      host: {{ .Values.statDatabase.host | quote }}
+      port: {{ .Values.statDatabase.port }}
+      user: {{ .Values.statDatabase.user | quote }}
+      password: {{ .Values.statDatabase.password | quote }}
+      dbname: {{ .Values.statDatabase.dbname | quote }}
+      sslmode: {{ .Values.statDatabase.sslmode | quote }}
+
+    model_prices:
+      GLM-4.7:
+        in_price: 0.5
+        out_price: 1.0
+      GLM-5:
+        in_price: 1.0
+        out_price: 2.0
+      Kimi-K2.5-Moonshot:
+        in_price: 1.0
+        out_price: 2.0
+      MiniMax-M2.1:
+        in_price: 0.5
+        out_price: 1.0
+      Auto:
+        in_price: 0.0
+        out_price: 0.0
+
+    task_dir: "/app/task"
+    analysed_dir: "/app/analysed"
+    org_csv_file: "/app/analysed/org_mapping.csv"
+    indicator_dsn: {{ .Values.indicatorDSN | quote }}
+
+    http_proxy: {{ .Values.httpProxy | quote }}
+
+    ai_estimation:
+      enabled: {{ .Values.aiEstimation.enabled }}
+      api_key: {{ .Values.aiEstimation.apiKey | quote }}
+      base_url: {{ .Values.aiEstimation.baseUrl | quote }}
+      model: {{ .Values.aiEstimation.model | quote }}
+      timeout_ms: {{ .Values.aiEstimation.timeoutMs }}
+      {{- if .Values.aiEstimation.prompt }}
+      prompt: {{ .Values.aiEstimation.prompt | quote }}
+      {{- end }}
+
+    backend_url: "http://{{ .Values.backend.host }}:{{ .Values.backend.port }}"

@@ -1,0 +1,75 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  timezone: Asia/Shanghai
+
+image:
+  repository: postgres
+  tag: 15-alpine
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  size: 500Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+resources:
+  limits:
+    memory: 1Gi
+  requests:
+    memory: 500Mi
+
+postgresConfig:
+  maxConnections: 200
+  sharedBuffers: 256MB
+  effectiveCacheSize: 1GB
+  maintenanceWorkMem: 64MB
+  checkpointCompletionTarget: 0.9
+  defaultStatisticsTarget: 100
+  randomPageCost: 1.1
+  effectiveIoConcurrency: 200
+  workMem: 4MB
+  checkpointTimeout: 10min
+
+auth:
+  user: postgres
+  password: "1"
+  database: report
+  statDatabase: costrict_stat
+
+healthcheck:
+  enabled: true
+  test: ["CMD-SHELL", "pg_isready -U postgres -d report"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  startPeriod: 30s
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

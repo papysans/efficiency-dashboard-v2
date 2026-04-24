@@ -14,8 +14,8 @@ postgresql:
 server:
   enabled: true
   image:
-    repository: efficiency-dashboard-backend
-    tag: "1.0.8"
+    repository: zgsm/efficiency-dashboard-backend
+    tag: "v1.0.9"
   database:
     host: "efficiency-dashboard-postgresql"
     port: 5432
@@ -56,7 +56,7 @@ kbcli:
   enabled: true
   image:
     repository: zgsm/efficiency-dashboard-kbcli
-    tag: "v1.0.8"
+    tag: "v1.0.9"
   database:
     host: "efficiency-dashboard-postgresql"
     port: 5432

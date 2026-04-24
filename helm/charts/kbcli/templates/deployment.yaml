@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kbcli.fullname" . }}
+  labels:
+    {{- include "kbcli.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kbcli.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kbcli.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kbcli.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.waitForPostgres.enabled }}
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.global.imageRegistry }}postgres:14"
+          command: ['sh', '-c', 'until pg_isready -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }}; do echo waiting for postgres; sleep 2; done']
+      {{- end }}
+      containers:
+        - name: kbcli
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone }}
+          command: ["/app/kbcli"]
+          args: ["import", "--config", "/app/config.yaml"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            {{- if .Values.volumes.taskDir.enabled }}
+            - name: task-data
+              mountPath: /app/task
+            {{- end }}
+            {{- if .Values.volumes.analysedDir.enabled }}
+            - name: analysed-data
+              mountPath: /app/analysed
+            {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kbcli.fullname" . }}-config
+        {{- if .Values.volumes.taskDir.enabled }}
+        - name: task-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.volumes.taskDir.externalPvc.name }}
+        {{- end }}
+        {{- if .Values.volumes.analysedDir.enabled }}
+        - name: analysed-data
+          persistentVolumeClaim:
+            claimName: {{ include "kbcli.fullname" . }}-analysed
+        {{- end }}

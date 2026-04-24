@@ -1,0 +1,95 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  timezone: Asia/Shanghai
+
+image:
+  repository: zgsm/efficiency-dashboard-kbcli
+  tag: "v1.0.9"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  limits:
+    memory: 512Mi
+    cpu: 500m
+  requests:
+    memory: 256Mi
+    cpu: 250m
+
+database:
+  host: "postgresql"
+  port: 5432
+  user: "postgres"
+  password: "1"
+  dbname: "report"
+  sslmode: "disable"
+
+statDatabase:
+  host: "postgresql"
+  port: 5432
+  user: "postgres"
+  password: "1"
+  dbname: "costrict_stat"
+  sslmode: "disable"
+
+waitForPostgres:
+  enabled: true
+
+backend:
+  host: "server"
+  port: 9990
+
+volumes:
+  taskDir:
+    enabled: true
+    externalPvc:
+      enabled: true
+      name: user-indicator-storage
+      namespace: costrict
+  analysedDir:
+    enabled: true
+    pvc:
+      enabled: true
+      size: 100Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+
+aiEstimation:
+  enabled: true
+  apiKey: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  baseUrl: "https://open.bigmodel.cn/api/anthropic"
+  model: "claude-3-5-sonnet-20241022"
+  timeoutMs: 300000
+  prompt: ""
+
+httpProxy: "http://127.0.0.1:7890"
+
+indicatorDSN: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

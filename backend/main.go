@@ -4,9 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
-	_ "kanban/backend/docs" // 待生成swagger文档后取消注释
+	_ "kanban/backend/docs"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -114,6 +115,23 @@ func loadConfig(path string) (Config, error) {
 	return cfg, nil
 }
 
+func healthCheck(c *gin.Context) {
+	status := "ok"
+	httpCode := http.StatusOK
+
+	if db != nil {
+		if err := db.Ping(); err != nil {
+			status = "db_error"
+			httpCode = http.StatusServiceUnavailable
+		}
+	} else {
+		status = "db_not_connected"
+		httpCode = http.StatusServiceUnavailable
+	}
+
+	c.JSON(httpCode, gin.H{"status": status})
+}
+
 func main() {
 	var err error
 	appConfig, err = loadConfig("config.yaml")
@@ -160,6 +178,9 @@ func main() {
 	// Swagger 文档路由（需要先运行 swag init 生成文档）
 	// Swagger 文档路由
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// 健康检查路由（不在 /api 下，供 K8s 探针直接访问）
+	r.GET("/healthz", healthCheck)
 
 	// CORS 配置
 	corsOrigins := appConfig.CORS.AllowOrigins
