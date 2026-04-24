@@ -1,0 +1,111 @@
+{{- if .Values.elasticsearch.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "efficiency-dashboard.fullname" . }}-elasticsearch
+  labels:
+    {{- include "efficiency-dashboard.elasticsearch.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "efficiency-dashboard.fullname" . }}-elasticsearch
+  replicas: {{ .Values.elasticsearch.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "efficiency-dashboard.elasticsearch.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "efficiency-dashboard.elasticsearch.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "efficiency-dashboard.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: elasticsearch
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.elasticsearch.image.repository }}:{{ .Values.elasticsearch.image.tag }}"
+          imagePullPolicy: {{ .Values.elasticsearch.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone }}
+            - name: discovery.type
+              value: {{ .Values.elasticsearch.env.discoveryType }}
+            - name: bootstrap.memory_lock
+              value: "{{ .Values.elasticsearch.env.bootstrapMemoryLock }}"
+            - name: xpack.security.enabled
+              value: "{{ .Values.elasticsearch.env.xpackSecurityEnabled }}"
+            - name: xpack.security.http.ssl.enabled
+              value: "{{ .Values.elasticsearch.env.xpackSecurityHttpSslEnabled }}"
+            - name: xpack.ml.enabled
+              value: "{{ .Values.elasticsearch.env.xpackMlEnabled }}"
+            - name: ELASTIC_PASSWORD
+              value: {{ .Values.elasticsearch.password | quote }}
+            - name: ES_JAVA_OPTS
+              value: {{ .Values.elasticsearch.env.esJavaOpts | quote }}
+          ports:
+            - name: http
+              containerPort: 9200
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health?wait_for_nodes=1&wait_for_status=yellow&timeout=50s
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.elasticsearch.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+            - name: logs
+              mountPath: /usr/share/elasticsearch/logs
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - {{ .Values.elasticsearch.persistence.accessMode }}
+        {{- if .Values.elasticsearch.persistence.storageClass }}
+        storageClassName: {{ .Values.elasticsearch.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.elasticsearch.persistence.size }}
+    - metadata:
+        name: logs
+      spec:
+        accessModes:
+          - {{ .Values.elasticsearch.persistence.accessMode }}
+        {{- if .Values.elasticsearch.persistence.storageClass }}
+        storageClassName: {{ .Values.elasticsearch.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: 5Gi
+{{- end }}

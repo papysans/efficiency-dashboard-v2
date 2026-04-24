@@ -1,0 +1,156 @@
+{{- if .Values.server.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "efficiency-dashboard.fullname" . }}-server
+  labels:
+    {{- include "efficiency-dashboard.server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "efficiency-dashboard.server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "efficiency-dashboard.server.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "efficiency-dashboard.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.postgresql.enabled }}
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.global.imageRegistry }}postgres:14"
+          command: ['sh', '-c', 'until pg_isready -h {{ include "efficiency-dashboard.fullname" . }}-postgresql -p 5432 -U {{ .Values.postgresql.auth.user }}; do echo waiting for postgres; sleep 2; done']
+      {{- end }}
+      containers:
+        - name: server
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone }}
+          ports:
+            - name: http
+              containerPort: 9990
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            {{- if .Values.server.volumes.taskDir.enabled }}
+            {{- if .Values.server.volumes.taskDir.pvcEnabled }}
+            - name: task-data
+              mountPath: /app/task
+            {{- else }}
+            - name: task-host
+              mountPath: /app/task
+            {{- end }}
+            {{- end }}
+            {{- if .Values.server.volumes.analysedDir.enabled }}
+            {{- if .Values.server.volumes.analysedDir.pvcEnabled }}
+            - name: analysed-data
+              mountPath: /app/analysed
+            {{- else }}
+            - name: analysed-empty
+              mountPath: /app/analysed
+            {{- end }}
+            {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "efficiency-dashboard.fullname" . }}-server-config
+        {{- if .Values.server.volumes.taskDir.enabled }}
+        {{- if .Values.server.volumes.taskDir.pvcEnabled }}
+        - name: task-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.server.volumes.taskDir.pvcName | default (printf "%s-server-task" (include "efficiency-dashboard.fullname" .)) }}
+        {{- else }}
+        - name: task-host
+          hostPath:
+            path: {{ .Values.server.volumes.taskDir.hostPath }}
+            type: Directory
+        {{- end }}
+        {{- end }}
+        {{- if .Values.server.volumes.analysedDir.enabled }}
+        {{- if .Values.server.volumes.analysedDir.pvcEnabled }}
+        - name: analysed-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.server.volumes.analysedDir.pvcName | default (printf "%s-server-analysed" (include "efficiency-dashboard.fullname" .)) }}
+        {{- else }}
+        - name: analysed-empty
+          emptyDir: {}
+        {{- end }}
+        {{- end }}
+{{- if and .Values.autoscaling.enabled .Values.autoscaling.minReplicas }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "efficiency-dashboard.fullname" . }}-server
+  labels:
+    {{- include "efficiency-dashboard.server.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "efficiency-dashboard.fullname" . }}-server
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

@@ -4,7 +4,6 @@ node_modules/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
-rawdata/
 *.py[cod]
 *$py.class
 .ipynb_checkpoints/
@@ -159,3 +158,4 @@ tmp/**/
 .cospec/
 tools/
 task/
+rawdata/

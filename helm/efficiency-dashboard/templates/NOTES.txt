@@ -1,0 +1,83 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }}
+  $ helm get all {{ .Release.Name }}
+
+{{- if .Values.ingress.enabled }}
+
+Access the application:
+
+  URL: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.hostes[0].host }}
+
+{{- else }}
+
+Get the application URL by running these commands:
+
+{{- if .Values.portal.service.type == "LoadBalancer" }}
+
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "efficiency-dashboard.fullname" . }}-portal -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo http://$SERVICE_IP
+
+{{- else if .Values.portal.service.type == "NodePort" }}
+
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "efficiency-dashboard.fullname" . }}-portal)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+
+{{- else }}
+
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "efficiency-dashboard.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+{{- end }}
+
+{{- end }}
+
+Services:
+
+  Portal (Nginx):
+    Internal: {{ include "efficiency-dashboard.fullname" . }}-portal:80
+
+  Server (Backend):
+    Internal: {{ include "efficiency-dashboard.fullname" . }}-server:9990
+
+  PostgreSQL:
+    Internal: {{ include "efficiency-dashboard.fullname" . }}-postgresql:5432
+    Database: {{ .Values.postgresql.auth.database }}
+    User: {{ .Values.postgresql.auth.user }}
+
+  Elasticsearch:
+    Internal: {{ include "efficiency-dashboard.fullname" . }}-elasticsearch:9200
+
+To connect to PostgreSQL:
+
+  kubectl run -it --rm --namespace {{ .Release.Namespace }} postgres-client \
+    --image=postgres:14 --restart=Never \
+    --env="PGPASSWORD={{ .Values.postgresql.auth.password }}" \
+    --command -- psql -h {{ include "efficiency-dashboard.fullname" . }}-postgresql -U {{ .Values.postgresql.auth.user }} -d {{ .Values.postgresql.auth.database }}
+
+To connect to Elasticsearch:
+
+  kubectl run -it --rm --namespace {{ .Release.Namespace }} es-client \
+    --image=nicolaka/netshoot --restart=Never \
+    --command -- curl http://{{ include "efficiency-dashboard.fullname" . }}-elasticsearch:9200/_cluster/health?pretty
+
+To check logs:
+
+  Server:
+    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "efficiency-dashboard.name" . }}-server --tail=100 -f
+
+  Portal:
+    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "efficiency-dashboard.name" . }}-portal --tail=100 -f
+
+  PostgreSQL:
+    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "efficiency-dashboard.name" . }}-postgresql --tail=100 -f
+
+  Elasticsearch:
+    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "efficiency-dashboard.name" . }}-elasticsearch --tail=100 -f
