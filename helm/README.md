@@ -15,7 +15,6 @@ helm/
         ├── _helpers.tpl         # 可重用模板函数
         ├── NOTES.txt            # 安装后提示信息
         ├── serviceaccount.yaml  # ServiceAccount
-        ├── elasticsearch-*.yaml # Elasticsearch 相关配置
         ├── postgresql-*.yaml    # PostgreSQL 相关配置
         ├── server-*.yaml        # Server 相关配置
         ├── portal-*.yaml        # Portal (Nginx) 相关配置
@@ -69,9 +68,6 @@ postgresql:
   auth:
     password: "your-secure-password"
 
-elasticsearch:
-  password: "your-secure-password"
-
 server:
   aiEstimation:
     apiKey: "your-api-key"
@@ -104,20 +100,14 @@ helm install efficiency-dashboard ./efficiency-dashboard \
 
 该 Helm Chart 部署以下组件：
 
-### 1. Elasticsearch (StatefulSet)
-- **镜像**: `docker.elastic.co/elasticsearch/elasticsearch:8.9.0`
-- **端口**: 9200
-- **存储**: 10Gi PVC
-- **用途**: 搜索和分析引擎
-
-### 2. PostgreSQL (StatefulSet)
+### 1. PostgreSQL (StatefulSet)
 - **镜像**: `postgres:14`
 - **端口**: 5432
 - **存储**: 20Gi PVC
 - **数据库**: report, costrict_stat
 - **用途**: 关系型数据库
 
-### 3. Server (Deployment)
+### 2. Server (Deployment)
 - **镜像**: `efficiency-dashboard-backend:1.0.4`
 - **端口**: 9990
 - **挂载**:
@@ -125,7 +115,7 @@ helm install efficiency-dashboard ./efficiency-dashboard \
   - 分析目录 (EmptyDir 或 PVC)
 - **用途**: 后端 API 服务
 
-### 4. Portal (Deployment)
+### 3. Portal (Deployment)
 - **镜像**: `nginx:alpine`
 - **端口**: 80
 - **配置**: 自定义 nginx.conf
@@ -136,12 +126,6 @@ helm install efficiency-dashboard ./efficiency-dashboard \
 ### 使用 StorageClass
 
 ```yaml
-elasticsearch:
-  persistence:
-    enabled: true
-    storageClass: "fast-ssd"
-    size: 10Gi
-
 postgresql:
   persistence:
     enabled: true
@@ -240,9 +224,6 @@ kubectl logs -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-portal
 
 # PostgreSQL 日志
 kubectl logs -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-postgresql --tail=100 -f
-
-# Elasticsearch 日志
-kubectl logs -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-elasticsearch --tail=100 -f
 ```
 
 ### 查看资源使用
@@ -294,7 +275,7 @@ kubectl run -it --rm postgres-client \
 2. 生产环境请修改所有默认密码和密钥
 3. 确保有足够的存储空间和资源
 4. 建议使用私有镜像仓库
-5. 定期备份 PostgreSQL 和 Elasticsearch 数据
+5. 定期备份 PostgreSQL 数据
 
 ## 更多信息
 

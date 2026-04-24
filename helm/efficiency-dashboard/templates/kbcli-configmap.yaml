@@ -41,7 +41,6 @@ data:
         in_price: 0.0
         out_price: 0.0
 
-    rawdata_dir: "./rawdata"
     {{- if .Values.kbcli.volumes.taskDir.enabled }}
     {{- if .Values.kbcli.volumes.taskDir.pvcEnabled }}
     task_dir: "/app/task"

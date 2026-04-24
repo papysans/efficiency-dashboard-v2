@@ -44,7 +44,6 @@ data:
       sslmode: {{ .Values.server.externalDatabase.sslmode | quote }}
       {{- end }}
 
-    rawdata_dir: "/app/rawdata"
     task_dir: "/app/task"
     analysed_dir: "/app/analysed"
 

@@ -6,7 +6,6 @@ Efficiency Dashboard 的 Kubernetes Helm 部署方案。
 
 该 Helm Chart 部署以下组件：
 
-- **Elasticsearch**: 搜索和分析引擎，用于存储和检索数据
 - **PostgreSQL**: 关系型数据库，用于存储业务数据
 - **Server**: 后端服务，提供 API 接口
 - **Portal (Nginx)**: 前端服务，提供 Web 界面
@@ -39,9 +38,6 @@ global:
 postgresql:
   auth:
     password: "your-secure-password"
-
-elasticsearch:
-  password: "your-secure-password"
 ```
 
 ### 3. 安装 Chart
@@ -68,24 +64,6 @@ helm uninstall efficiency-dashboard -n efficiency
 ```
 
 ## 配置说明
-
-### Elasticsearch 配置
-
-```yaml
-elasticsearch:
-  enabled: true
-  image:
-    repository: docker.elastic.co/elasticsearch/elasticsearch
-    tag: 8.9.0
-  persistence:
-    enabled: true
-    size: 10Gi
-  resources:
-    limits:
-      memory: 1Gi
-    requests:
-      memory: 512Mi
-```
 
 ### PostgreSQL 配置
 
@@ -159,12 +137,6 @@ ingress:
 对于生产环境，建议使用 PVC 来持久化数据：
 
 ```yaml
-elasticsearch:
-  persistence:
-    enabled: true
-    storageClass: "standard"
-    size: 10Gi
-
 postgresql:
   persistence:
     enabled: true
@@ -217,9 +189,6 @@ kubectl logs -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-portal
 
 # PostgreSQL 日志
 kubectl logs -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-postgresql --tail=100 -f
-
-# Elasticsearch 日志
-kubectl logs -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-elasticsearch --tail=100 -f
 ```
 
 ### 连接到数据库
@@ -229,14 +198,6 @@ kubectl run -it --rm postgres-client \
   --image=postgres:14 --restart=Never \
   --env="PGPASSWORD=your-password" \
   --command -- psql -h efficiency-dashboard-postgresql -U postgres -d report
-```
-
-### 连接到 Elasticsearch
-
-```bash
-kubectl run -it --rm es-client \
-  --image=nicolaka/netshoot --restart=Never \
-  --command -- curl http://efficiency-dashboard-elasticsearch:9200/_cluster/health?pretty
 ```
 
 ### 进入 Pod
@@ -257,7 +218,6 @@ kubectl exec -it -n efficiency deployment/efficiency-dashboard-portal -- sh
 # 创建 Secret
 kubectl create secret generic efficiency-dashboard-secrets \
   --from-literal=postgresql-password=your-password \
-  --from-literal=elasticsearch-password=your-password \
   --from-literal=ai-api-key=your-api-key \
   -n efficiency
 
@@ -294,7 +254,7 @@ autoscaling:
 
 4. **配置备份策略**
 
-定期备份 PostgreSQL 数据和 Elasticsearch 数据。
+定期备份 PostgreSQL 数据。
 
 5. **监控和告警**
 
@@ -314,14 +274,6 @@ kubectl describe pod <pod-name> -n efficiency
 检查密码是否正确，PostgreSQL 是否就绪：
 ```bash
 kubectl get pods -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-postgresql
-```
-
-### 3. Elasticsearch 无法访问
-
-检查 Elasticsearch 是否正常运行：
-```bash
-kubectl get pods -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-elasticsearch
-kubectl logs -n efficiency -l app.kubernetes.io/name=efficiency-dashboard-elasticsearch
 ```
 
 ## 许可证

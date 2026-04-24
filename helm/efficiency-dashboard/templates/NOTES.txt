@@ -52,21 +52,12 @@ Services:
     Database: {{ .Values.postgresql.auth.database }}
     User: {{ .Values.postgresql.auth.user }}
 
-  Elasticsearch:
-    Internal: {{ include "efficiency-dashboard.fullname" . }}-elasticsearch:9200
-
-To connect to PostgreSQL:
+  PostgreSQL:
 
   kubectl run -it --rm --namespace {{ .Release.Namespace }} postgres-client \
     --image=postgres:14 --restart=Never \
     --env="PGPASSWORD={{ .Values.postgresql.auth.password }}" \
     --command -- psql -h {{ include "efficiency-dashboard.fullname" . }}-postgresql -U {{ .Values.postgresql.auth.user }} -d {{ .Values.postgresql.auth.database }}
-
-To connect to Elasticsearch:
-
-  kubectl run -it --rm --namespace {{ .Release.Namespace }} es-client \
-    --image=nicolaka/netshoot --restart=Never \
-    --command -- curl http://{{ include "efficiency-dashboard.fullname" . }}-elasticsearch:9200/_cluster/health?pretty
 
 To check logs:
 
@@ -78,6 +69,3 @@ To check logs:
 
   PostgreSQL:
     kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "efficiency-dashboard.name" . }}-postgresql --tail=100 -f
-
-  Elasticsearch:
-    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "efficiency-dashboard.name" . }}-elasticsearch --tail=100 -f

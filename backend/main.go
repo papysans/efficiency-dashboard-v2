@@ -47,7 +47,6 @@ type Config struct {
 	} `yaml:"server"`
 	Database     DatabaseConfig `yaml:"database"`
 	StatDatabase DatabaseConfig `yaml:"stat_database"`
-	RawDataDir   string         `yaml:"rawdata_dir"`
 	TaskDir      string         `yaml:"task_dir"`
 	AnalysedDir  string         `yaml:"analysed_dir"`
 	CORS         struct {
@@ -92,7 +91,6 @@ func loadConfig(path string) (Config, error) {
 		DBName:   "costrict_stat",
 		SSLMode:  "disable",
 	}
-	cfg.RawDataDir = "../rawdata"
 	cfg.TaskDir = "../task"
 	cfg.AnalysedDir = "../task"
 	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}

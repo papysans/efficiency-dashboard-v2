@@ -2,8 +2,8 @@ apiVersion: v2
 name: efficiency-dashboard
 description: A Helm chart for efficiency dashboard application
 type: application
-version: 0.1.0
-appVersion: "1.0.4"
+version: 0.2.0
+appVersion: "1.0.8"
 
 keywords:
   - efficiency

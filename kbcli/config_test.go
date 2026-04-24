@@ -7,13 +7,7 @@ import (
 
 // TP-53: 正常加载配置文件
 func TestLoadConfig_Normal(t *testing.T) {
-	// 使用项目根目录的真实 config.yaml（kbcli 运行时通常从上层目录加载）
-	// 这里写一个临时配置文件来测试
 	yaml := `
-elasticsearch:
-  url: "https://127.0.0.1:9200"
-  username: "testuser"
-  password: "testpass"
 model_prices:
   GLM-4.7:
     in_price: 0.5
@@ -21,7 +15,6 @@ model_prices:
   Auto:
     in_price: 0.0
     out_price: 0.0
-rawdata_dir: "../rawdata"
 `
 	f, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
@@ -52,13 +45,9 @@ rawdata_dir: "../rawdata"
 	}
 }
 
-// TP-54: rawdata_dir 为空时使用默认值
-func TestLoadConfig_DefaultRawDataDir(t *testing.T) {
+// TP-54: 空配置时使用默认值
+func TestLoadConfig_Defaults(t *testing.T) {
 	yaml := `
-elasticsearch:
-  url: "https://127.0.0.1:9200"
-  username: ""
-  password: ""
 model_prices: {}
 `
 	f, err := os.CreateTemp("", "config-*.yaml")
@@ -102,12 +91,7 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 // TP-57: model_prices 为空 map 时 map 非 nil
 func TestLoadConfig_EmptyModelPrices(t *testing.T) {
 	yaml := `
-elasticsearch:
-  url: "https://127.0.0.1:9200"
-  username: ""
-  password: ""
 model_prices: {}
-rawdata_dir: "../rawdata"
 `
 	f, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
@@ -132,10 +116,6 @@ rawdata_dir: "../rawdata"
 // TP-58: 多个模型价格正确加载
 func TestLoadConfig_MultipleModelPrices(t *testing.T) {
 	yaml := `
-elasticsearch:
-  url: "https://127.0.0.1:9200"
-  username: ""
-  password: ""
 model_prices:
   GLM-4.7:
     in_price: 0.5
@@ -149,7 +129,6 @@ model_prices:
   Auto:
     in_price: 0.0
     out_price: 0.0
-rawdata_dir: "../rawdata"
 `
 	f, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
