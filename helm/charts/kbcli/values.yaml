@@ -42,6 +42,29 @@ backend:
   host: "server"
   port: 9990
 
+paths:
+  taskDir: "/app/task/raw/task"
+  repoDir: "/app/task/raw/repo"
+  analysedDir: "/app/analysed"
+  orgCsvFile: "/app/analysed/org_mapping.csv"
+
+modelPrices:
+  GLM-4.7:
+    inPrice: 0.5
+    outPrice: 1.0
+  GLM-5:
+    inPrice: 1.0
+    outPrice: 2.0
+  Kimi-K2.5-Moonshot:
+    inPrice: 1.0
+    outPrice: 2.0
+  MiniMax-M2.1:
+    inPrice: 0.5
+    outPrice: 1.0
+  Auto:
+    inPrice: 0.0
+    outPrice: 0.0
+
 volumes:
   taskDir:
     enabled: true

@@ -33,65 +33,7 @@ type userCommitAgg struct {
 	CommitRealMinutes        float64
 }
 
-func runEfficiency(dateStr string) error {
-	if dateStr != "" && len(dateStr) != 8 {
-		return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s", dateStr)
-	}
-
-	db, err := openGormDB(cfg.StatDatabase.DSN())
-	if err != nil {
-		return fmt.Errorf("连接数据库失败: %w", err)
-	}
-	sqlDB, _ := db.DB()
-	defer sqlDB.Close()
-
-	var dates []string
-	if dateStr != "" {
-		dates = []string{dateStr}
-	} else {
-		dates, err = getAllDatesGorm(db)
-		if err != nil {
-			return fmt.Errorf("获取日期列表失败: %w", err)
-		}
-		if len(dates) == 0 {
-			fmt.Println("没有找到任何task或commit数据")
-			return nil
-		}
-		fmt.Printf("共发现 %d 个日期需要处理\n", len(dates))
-	}
-
-	totalUserCount := 0
-	for _, d := range dates {
-		fmt.Printf("\n=== 处理日期: %s ===\n", d)
-		userCount, err := calculateUserProductivityGorm(db, d)
-		if err != nil {
-			return fmt.Errorf("计算用户生产力失败 [date=%s]: %w", d, err)
-		}
-		fmt.Printf("用户生产力计算完成: %d 条记录 (日期=%s)\n", userCount, d)
-		totalUserCount += userCount
-	}
-
-	fmt.Printf("\n全部完成: 用户 %d 条\n", totalUserCount)
-	return nil
-}
-
-var efficiencyCmd = &cobra.Command{
-	Use:   "efficiency",
-	Short: "按日计算用户和组织效能数据",
-	Long:  "根据已导入的task、commit、user_org数据，按日计算各用户的生产力数据，写入user_productivity表。如有--date参数，则只处理该日期的数据，否则处理所有日期数据",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		dateStr, _ := cmd.Flags().GetString("date")
-		return runEfficiency(dateStr)
-	},
-}
-
-func init() {
-	efficiencyCmd.Flags().SortFlags = false
-	efficiencyCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期")
-	rootCmd.AddCommand(efficiencyCmd)
-}
-
-func getAllDatesGorm(db *gorm.DB) ([]string, error) {
+func getAllDates(db *gorm.DB) ([]string, error) {
 	var dates []string
 	if err := db.Raw(`
 		SELECT DISTINCT dt FROM (
@@ -106,28 +48,28 @@ func getAllDatesGorm(db *gorm.DB) ([]string, error) {
 	return dates, nil
 }
 
-func calculateUserProductivityGorm(db *gorm.DB, dateStr string) (int, error) {
-	userNameMap, err := loadUserNamesGorm(db)
+func calculateUserProductivity(db *gorm.DB, dateStr string) (int, error) {
+	userNameMap, err := loadUserNames(db)
 	if err != nil {
 		return 0, fmt.Errorf("加载用户名称失败: %w", err)
 	}
 
-	taskUserNameMap, err := loadUserNamesFromTasksGorm(db)
+	taskUserNameMap, err := loadUserNamesFromTasks(db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 加载task用户名失败: %v\n", err)
 	}
-	commitUserNameMap, err := loadUserNamesFromCommitsGorm(db)
+	commitUserNameMap, err := loadUserNamesFromCommits(db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 加载commit用户名失败: %v\n", err)
 	}
 
-	taskAggMap, err := aggregateTasksByUserGorm(db, dateStr)
+	taskAggMap, err := aggregateTasksByUser(db, dateStr)
 	if err != nil {
 		return 0, fmt.Errorf("聚合task数据失败: %w", err)
 	}
 	fmt.Printf("聚合task数据: %d 个用户\n", len(taskAggMap))
 
-	commitAggMap, err := aggregateCommitsByUserGorm(db, dateStr)
+	commitAggMap, err := aggregateCommitsByUser(db, dateStr)
 	if err != nil {
 		return 0, fmt.Errorf("聚合commit数据失败: %w", err)
 	}
@@ -247,7 +189,7 @@ func calculateUserProductivityGorm(db *gorm.DB, dateStr string) (int, error) {
 	return len(allUserIDs), nil
 }
 
-func loadUserNamesGorm(db *gorm.DB) (map[string]string, error) {
+func loadUserNames(db *gorm.DB) (map[string]string, error) {
 	var userOrgs []UserOrg
 	if err := db.Select("user_id, user_name").Where("user_name IS NOT NULL AND user_name != ''").Find(&userOrgs).Error; err != nil {
 		return nil, fmt.Errorf("查询user_org用户名失败: %w", err)
@@ -259,7 +201,7 @@ func loadUserNamesGorm(db *gorm.DB) (map[string]string, error) {
 	return result, nil
 }
 
-func aggregateTasksByUserGorm(db *gorm.DB, dateStr string) (map[string]*userTaskAgg, error) {
+func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg, error) {
 	type row struct {
 		UserID             string
 		TaskIDs            StringJSON
@@ -308,7 +250,7 @@ func aggregateTasksByUserGorm(db *gorm.DB, dateStr string) (map[string]*userTask
 	return result, nil
 }
 
-func aggregateCommitsByUserGorm(db *gorm.DB, dateStr string) (map[string]*userCommitAgg, error) {
+func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommitAgg, error) {
 	type row struct {
 		UserID                   string
 		CommitIDs                StringJSON
@@ -365,7 +307,7 @@ func defaultSliceJSON(j StringJSON) []byte {
 	return []byte(j)
 }
 
-func loadUserNamesFromTasksGorm(db *gorm.DB) (map[string]string, error) {
+func loadUserNamesFromTasks(db *gorm.DB) (map[string]string, error) {
 	type row struct {
 		UserID   string
 		UserName string
@@ -383,7 +325,7 @@ func loadUserNamesFromTasksGorm(db *gorm.DB) (map[string]string, error) {
 	return result, nil
 }
 
-func loadUserNamesFromCommitsGorm(db *gorm.DB) (map[string]string, error) {
+func loadUserNamesFromCommits(db *gorm.DB) (map[string]string, error) {
 	type row struct {
 		UserID   string
 		UserName string
@@ -399,4 +341,62 @@ func loadUserNamesFromCommitsGorm(db *gorm.DB) (map[string]string, error) {
 		}
 	}
 	return result, nil
+}
+
+func runEfficiency(dateStr string) error {
+	if dateStr != "" && len(dateStr) != 8 {
+		return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s", dateStr)
+	}
+
+	db, err := openGormDB(cfg.StatDatabase.DSN())
+	if err != nil {
+		return fmt.Errorf("连接数据库失败: %w", err)
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+
+	var dates []string
+	if dateStr != "" {
+		dates = []string{dateStr}
+	} else {
+		dates, err = getAllDates(db)
+		if err != nil {
+			return fmt.Errorf("获取日期列表失败: %w", err)
+		}
+		if len(dates) == 0 {
+			fmt.Println("没有找到任何task或commit数据")
+			return nil
+		}
+		fmt.Printf("共发现 %d 个日期需要处理\n", len(dates))
+	}
+
+	totalUserCount := 0
+	for _, d := range dates {
+		fmt.Printf("\n=== 处理日期: %s ===\n", d)
+		userCount, err := calculateUserProductivity(db, d)
+		if err != nil {
+			return fmt.Errorf("计算用户生产力失败 [date=%s]: %w", d, err)
+		}
+		fmt.Printf("用户生产力计算完成: %d 条记录 (日期=%s)\n", userCount, d)
+		totalUserCount += userCount
+	}
+
+	fmt.Printf("\n全部完成: 用户 %d 条\n", totalUserCount)
+	return nil
+}
+
+var efficiencyCmd = &cobra.Command{
+	Use:   "efficiency",
+	Short: "按日计算用户和组织效能数据",
+	Long:  "根据已导入的task、commit、user_org数据，按日计算各用户的生产力数据，写入user_productivity表。如有--date参数，则只处理该日期的数据，否则处理所有日期数据",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dateStr, _ := cmd.Flags().GetString("date")
+		return runEfficiency(dateStr)
+	},
+}
+
+func init() {
+	efficiencyCmd.Flags().SortFlags = false
+	efficiencyCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期")
+	rootCmd.AddCommand(efficiencyCmd)
 }

@@ -38,6 +38,14 @@ statDatabase:
   dbname: "costrict_stat"
   sslmode: "disable"
 
+server:
+  port: 9990
+
+paths:
+  taskDir: "/app/task/raw/task"
+  repoDir: "/app/task/raw/repo"
+  analysedDir: "/app/analysed"
+
 aiEstimation:
   enabled: false
   apiKey: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"

@@ -170,6 +170,47 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 	return userOrgs, nil
 }
 
+func writeOrgCSV(path string, rows []UserOrg) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	if err := w.Write([]string{"user_id", "user_name", "org1", "org2", "org3", "org4", "org5", "org6", "org7", "org8", "org9", "git_user_name", "git_user_email"}); err != nil {
+		return err
+	}
+
+	for _, r := range rows {
+		if err := w.Write([]string{r.UserID, r.UserName, r.Org1, r.Org2, r.Org3, r.Org4, r.Org5, r.Org6, r.Org7, r.Org8, r.Org9, r.GitUserName, r.GitUserEmail}); err != nil {
+			return err
+		}
+	}
+
+	return w.Error()
+}
+
+func saveUserOrgs(db *gorm.DB, rows []UserOrg) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, r := range rows {
+			result := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "user_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"user_name", "org1", "org2", "org3", "org4", "org5", "org6", "org7", "org8", "org9",
+					"git_user_name", "git_user_email", "updated_at",
+				}),
+			}).Create(&r)
+			if result.Error != nil {
+				return fmt.Errorf("写入记录失败 [user_id=%s]: %w", r.UserID, result.Error)
+			}
+		}
+		return nil
+	})
+}
+
 func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	var userOrgs []UserOrg
 	var err error
@@ -201,7 +242,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	defer sqlDB.Close()
 	fmt.Println("目标数据库连接成功")
 
-	if err := saveUserOrgsGorm(gormDB, userOrgs); err != nil {
+	if err := saveUserOrgs(gormDB, userOrgs); err != nil {
 		return fmt.Errorf("写入user_org表失败: %w", err)
 	}
 	fmt.Printf("已写入 %d 条记录到 user_org 表\n", len(userOrgs))
@@ -236,45 +277,4 @@ func init() {
 	importOrgCmd.Flags().String("from-csv", "", "从指定的CSV文件加载UserOrg数据，替代从数据库加载")
 	importOrgCmd.Flags().String("to-csv", "", "导出CSV文件路径（可选，不指定则不导出）")
 	rootCmd.AddCommand(importOrgCmd)
-}
-
-func writeOrgCSV(path string, rows []UserOrg) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-	defer w.Flush()
-
-	if err := w.Write([]string{"user_id", "user_name", "org1", "org2", "org3", "org4", "org5", "org6", "org7", "org8", "org9", "git_user_name", "git_user_email"}); err != nil {
-		return err
-	}
-
-	for _, r := range rows {
-		if err := w.Write([]string{r.UserID, r.UserName, r.Org1, r.Org2, r.Org3, r.Org4, r.Org5, r.Org6, r.Org7, r.Org8, r.Org9, r.GitUserName, r.GitUserEmail}); err != nil {
-			return err
-		}
-	}
-
-	return w.Error()
-}
-
-func saveUserOrgsGorm(db *gorm.DB, rows []UserOrg) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		for _, r := range rows {
-			result := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "user_id"}},
-				DoUpdates: clause.AssignmentColumns([]string{
-					"user_name", "org1", "org2", "org3", "org4", "org5", "org6", "org7", "org8", "org9",
-					"git_user_name", "git_user_email", "updated_at",
-				}),
-			}).Create(&r)
-			if result.Error != nil {
-				return fmt.Errorf("写入记录失败 [user_id=%s]: %w", r.UserID, result.Error)
-			}
-		}
-		return nil
-	})
 }
