@@ -365,9 +365,9 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 		totalLines++
 
 		if taskIDs, ok := hashToTaskIDs[line]; ok {
-			share := 1.0 / float64(len(taskIDs))
 			for taskID := range taskIDs {
-				taskMatchedLines[taskID] += share
+				taskMatchedLines[taskID] += 1.0
+				break
 			}
 		}
 	}
