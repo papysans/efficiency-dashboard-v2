@@ -24,7 +24,7 @@ spec:
       {{- if .Values.waitForPostgres.enabled }}
       initContainers:
         - name: wait-for-postgres
-          image: "{{ .Values.global.imageRegistry }}postgres:14"
+          image: "{{ .Values.global.imageRegistry }}postgres:15-alpine"
           command: ['sh', '-c', 'until pg_isready -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }}; do echo waiting for postgres; sleep 2; done']
       {{- end }}
       containers:
@@ -36,8 +36,6 @@ spec:
           env:
             - name: TZ
               value: {{ .Values.global.timezone }}
-          command: ["/app/kbcli"]
-          args: ["import", "--config", "/app/config.yaml"]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

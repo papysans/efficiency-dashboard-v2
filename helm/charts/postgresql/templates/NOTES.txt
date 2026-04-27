@@ -11,7 +11,7 @@ PostgreSQL service:
 Connect to database:
 
   kubectl run -it --rm --namespace {{ .Release.Namespace }} postgres-client \
-    --image=postgres:14 --restart=Never \
+    --image=postgres:15-alpine --restart=Never \
     --env="PGPASSWORD={{ .Values.auth.password }}" \
     --command -- psql -h {{ include "postgresql.fullname" . }} -U {{ .Values.auth.user }} -d {{ .Values.auth.database }}
 

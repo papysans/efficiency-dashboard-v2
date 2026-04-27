@@ -39,7 +39,7 @@ statDatabase:
   sslmode: "disable"
 
 waitForPostgres:
-  enabled: true
+  enabled: false
 
 backend:
   host: "server"

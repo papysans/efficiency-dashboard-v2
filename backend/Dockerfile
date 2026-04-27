@@ -20,8 +20,8 @@ RUN cd /app/backend && \
 
 FROM alpine:3.21 AS runtime
 
-ENV env prod
-ENV TZ Asia/Shanghai
+ENV env=prod
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=builder /app/efficiency-dashboard-backend /app/efficiency-dashboard-backend
 

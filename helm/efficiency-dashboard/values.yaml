@@ -31,9 +31,9 @@ server:
     dbname: "costrict_stat"
     sslmode: "disable"
   waitForPostgres:
-    enabled: true
+    enabled: false
   aiEstimation:
-    enabled: true
+    enabled: false
     apiKey: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
     baseUrl: "https://open.bigmodel.cn/api/anthropic"
     model: "claude-3-5-sonnet-20241022"

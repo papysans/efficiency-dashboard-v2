@@ -22,8 +22,8 @@ RUN chmod +x /app/kbcli/scripts/*.sh
 
 FROM alpine:3.21 AS runtime
 
-ENV env prod
-ENV TZ Asia/Shanghai
+ENV env=prod
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 # 安装cron和必要的工具
