@@ -152,33 +152,6 @@ type UserProductivity struct {
 
 func (UserProductivity) TableName() string { return "user_productivity" }
 
-type OrgProductivity struct {
-	OrgID                string     `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"org_id"`
-	OrgName              string     `gorm:"type:varchar(500);index;uniqueIndex:uniq_org_productivity_name_time" json:"org_name"`
-	OrgLevel             int        `gorm:"type:int;default:1;index" json:"org_level"`
-	CreateTime           *time.Time `gorm:"type:timestamptz;index;uniqueIndex:uniq_org_productivity_name_time" json:"create_time"`
-	UserIDs              StringJSON `gorm:"type:jsonb" json:"user_ids"`
-	UserNames            StringJSON `gorm:"type:jsonb" json:"user_names"`
-	TaskDiffLines        int        `gorm:"type:int" json:"task_diff_lines"`
-	UpstreamTokens       int64      `gorm:"type:bigint" json:"upstream_tokens"`
-	DownstreamTokens     int64      `gorm:"type:bigint" json:"downstream_tokens"`
-	Cost                 float64    `gorm:"type:float8" json:"cost"`
-	TaskRealMinutes      float64    `gorm:"type:float8" json:"task_real_minutes"`
-	TaskAncientMinutes   float64    `gorm:"type:float8" json:"task_ancient_minutes"`
-	TaskEfficiencyRatio  float64    `gorm:"type:float8" json:"task_efficiency_ratio"`
-	CommitDiffLines      int        `gorm:"type:int" json:"commit_diff_lines"`
-	CommitAncientMinutes float64    `gorm:"type:float8" json:"commit_ancient_minutes"`
-	CommitRealAIMinutes  float64    `gorm:"type:float8" json:"commit_real_ai_minutes"`
-	CommitRealAncMin     float64    `gorm:"column:commit_real_ancient_minutes;type:float8" json:"commit_real_ancient_minutes"`
-	CommitRealMinutes    float64    `gorm:"type:float8" json:"commit_real_minutes"`
-	CommitEfficiencyRtio float64    `gorm:"column:commit_efficiency_ratio;type:float8" json:"commit_efficiency_ratio"`
-	UserCount            int        `gorm:"type:int;default:0" json:"user_count"`
-	CreatedAt            time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt            time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-func (OrgProductivity) TableName() string { return "org_productivity" }
-
 type Project struct {
 	ProjectID                             string     `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"project_id"`
 	Name                                  string     `gorm:"type:varchar(500);not null;index" json:"name"`
@@ -277,7 +250,6 @@ func autoMigrate(db *gorm.DB) error {
 		&Commit{},
 		&Project{},
 		&UserProductivity{},
-		&OrgProductivity{},
 		&UserGroup{},
 	); err != nil {
 		return fmt.Errorf("AutoMigrate 失败: %w", err)
