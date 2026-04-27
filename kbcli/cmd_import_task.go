@@ -437,7 +437,6 @@ func saveConversationsGorm(db *gorm.DB, taskID string, conversations []taskConve
 				RequestContent:   sanitizeText(conv.RequestContent),
 				ResponseContent:  sanitizeText(conv.ResponseContent),
 				UserInput:        sanitizeText(conv.UserInput),
-				Diff:             "",
 				DiffLines:        conv.DiffLines,
 				ErrorCode:        stringPtrToStr(flexStrPtr(conv.ErrorCode)),
 				ErrorReason:      sanitizeText(stringPtrToStr(flexStrPtr(conv.ErrorReason))),

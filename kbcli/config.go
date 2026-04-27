@@ -67,8 +67,8 @@ func LoadConfig(filename string) (*Config, error) {
 	if config.TaskDir == "" {
 		config.TaskDir = "task"
 	}
-	if config.TaskDir == "" {
-		config.TaskDir = "repo"
+	if config.RepoDir == "" {
+		config.RepoDir = "repo"
 	}
 	if config.AnalysedDir == "" {
 		config.AnalysedDir = "analysed"
