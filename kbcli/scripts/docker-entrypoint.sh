@@ -14,5 +14,14 @@ echo "import data..."
 
 echo "Starting kbcli cron job..."
 # 启动cron服务
-# Alpine Linux使用dcron
-crond -l 2 -f
+# Alpine Linux使用dcron，确保使用正确的路径和权限
+if [ -x /usr/sbin/crond ]; then
+    /usr/sbin/crond -l 2 -f
+elif [ -x /usr/bin/crond ]; then
+    /usr/bin/crond -l 2 -f
+elif command -v crond >/dev/null 2>&1; then
+    crond -l 2 -f
+else
+    echo "Error: crond not found or not executable"
+    exit 1
+fi
