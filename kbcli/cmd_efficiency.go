@@ -98,6 +98,7 @@ var efficiencyCmd = &cobra.Command{
 }
 
 func init() {
+	efficiencyCmd.Flags().SortFlags = false
 	efficiencyCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期")
 	rootCmd.AddCommand(efficiencyCmd)
 }

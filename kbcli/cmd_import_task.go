@@ -294,9 +294,10 @@ var importTasksCmd = &cobra.Command{
 }
 
 func init() {
+	importTasksCmd.Flags().SortFlags = false
 	importTasksCmd.Flags().String("task-dir", "", "task 目录路径")
 	importTasksCmd.Flags().String("analysed-dir", "", "输出目录路径")
-	importTasksCmd.Flags().BoolP("force", "f", false, "强制重新导入，忽略fp文件的短路判断")
+	importTasksCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
 	rootCmd.AddCommand(importTasksCmd)
 }
 

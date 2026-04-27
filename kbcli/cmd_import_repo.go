@@ -109,9 +109,10 @@ var importRepoCmd = &cobra.Command{
 }
 
 func init() {
+	importRepoCmd.Flags().SortFlags = false
 	importRepoCmd.Flags().String("repo-dir", "", "repo 目录路径")
-	importRepoCmd.Flags().String("analysed-dir", "./analysed", "已处理文件的输出目录")
-	importRepoCmd.Flags().BoolP("force", "f", false, "强制重新导入，忽略fp文件的短路判断")
+	importRepoCmd.Flags().String("analysed-dir", "", "已处理文件的输出目录")
+	importRepoCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
 	rootCmd.AddCommand(importRepoCmd)
 }
 

@@ -4,7 +4,6 @@ ARG TARGETARCH
 ARG VERSION=v1.0.1
 WORKDIR /app
 
-COPY ./core /app/core
 COPY ./kbcli/go.mod ./kbcli/go.sum /app/kbcli/
 
 RUN go env -w CGO_ENABLED=0 && \

@@ -316,6 +316,12 @@ func listOrgV2(c *gin.Context) {
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
+	if orgMappings == nil {
+		if err := LoadOrgMappingFromDB(statDB); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			return
+		}
+	}
 
 	// 从 orgMappings 筛选符合 parent 条件的用户
 	users := filterUsersByParent(parent)
@@ -788,6 +794,12 @@ func getOrgDetailV2(c *gin.Context) {
 			return
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
+	}
+	if orgMappings == nil {
+		if err := LoadOrgMappingFromDB(statDB); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			return
+		}
 	}
 
 	// 解析 org_path，按 "/" 分级匹配 orgMappings

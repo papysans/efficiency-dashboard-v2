@@ -39,11 +39,58 @@ func extractDBName(dsn string) string {
 	return ""
 }
 
-func runImportOrg(fromDSN, csvFile string) error {
+func loadUserOrgsFromCSV(csvFile string) ([]UserOrg, error) {
+	f, err := os.Open(csvFile)
+	if err != nil {
+		return nil, fmt.Errorf("打开CSV文件失败: %w", err)
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("读取CSV文件失败: %w", err)
+	}
+
+	if len(records) < 1 {
+		return nil, fmt.Errorf("CSV文件为空")
+	}
+
+	var userOrgs []UserOrg
+	for i, record := range records {
+		if i == 0 {
+			continue
+		}
+		if len(record) < 13 {
+			return nil, fmt.Errorf("第 %d 行数据列数不足，需要13列", i+1)
+		}
+
+		userOrg := UserOrg{
+			UserID:       record[0],
+			UserName:     record[1],
+			Org1:         record[2],
+			Org2:         record[3],
+			Org3:         record[4],
+			Org4:         record[5],
+			Org5:         record[6],
+			Org6:         record[7],
+			Org7:         record[8],
+			Org8:         record[9],
+			Org9:         record[10],
+			GitUserName:  record[11],
+			GitUserEmail: record[12],
+		}
+		userOrgs = append(userOrgs, userOrg)
+	}
+	fmt.Printf("从CSV文件加载到 %d 条用户组织记录\n", len(userOrgs))
+	return userOrgs, nil
+}
+
+func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 	authDSN := replaceDBName(fromDSN, "auth")
 	authDB, err := openSQLDB(authDSN)
 	if err != nil {
-		return fmt.Errorf("连接 auth 数据库失败: %w", err)
+		return nil, fmt.Errorf("连接 auth 数据库失败: %w", err)
 	}
 	defer authDB.Close()
 	fmt.Println("auth 数据库连接成功")
@@ -51,7 +98,7 @@ func runImportOrg(fromDSN, csvFile string) error {
 	quotaDSN := replaceDBName(fromDSN, "quota_manager")
 	quotaDB, err := openSQLDB(quotaDSN)
 	if err != nil {
-		return fmt.Errorf("连接 quota_manager 数据库失败: %w", err)
+		return nil, fmt.Errorf("连接 quota_manager 数据库失败: %w", err)
 	}
 	defer quotaDB.Close()
 	fmt.Println("quota_manager 数据库连接成功")
@@ -63,13 +110,13 @@ func runImportOrg(fromDSN, csvFile string) error {
 		ORDER BY name
 	`)
 	if err != nil {
-		return fmt.Errorf("查询 auth_users 失败: %w", err)
+		return nil, fmt.Errorf("查询 auth_users 失败: %w", err)
 	}
 	defer userRows.Close()
 
 	deptRows, err := quotaDB.Query(`SELECT employee_number, dept_full_level_names FROM employee_department`)
 	if err != nil {
-		return fmt.Errorf("查询 employee_department 失败: %w", err)
+		return nil, fmt.Errorf("查询 employee_department 失败: %w", err)
 	}
 	defer deptRows.Close()
 
@@ -77,14 +124,14 @@ func runImportOrg(fromDSN, csvFile string) error {
 	for deptRows.Next() {
 		var empNum, deptFullLevelNames sql.NullString
 		if err := deptRows.Scan(&empNum, &deptFullLevelNames); err != nil {
-			return fmt.Errorf("读取部门数据失败: %w", err)
+			return nil, fmt.Errorf("读取部门数据失败: %w", err)
 		}
 		if empNum.Valid {
 			deptMap[empNum.String] = deptFullLevelNames.String
 		}
 	}
 	if err := deptRows.Err(); err != nil {
-		return fmt.Errorf("遍历部门数据失败: %w", err)
+		return nil, fmt.Errorf("遍历部门数据失败: %w", err)
 	}
 
 	var userOrgs []UserOrg
@@ -92,7 +139,7 @@ func runImportOrg(fromDSN, csvFile string) error {
 		var userID, userName, gitUserName, gitUserEmail string
 		var empNum sql.NullString
 		if err := userRows.Scan(&userID, &userName, &gitUserName, &gitUserEmail, &empNum); err != nil {
-			return fmt.Errorf("读取用户数据失败: %w", err)
+			return nil, fmt.Errorf("读取用户数据失败: %w", err)
 		}
 
 		org := UserOrg{
@@ -117,14 +164,34 @@ func runImportOrg(fromDSN, csvFile string) error {
 		userOrgs = append(userOrgs, org)
 	}
 	if err := userRows.Err(); err != nil {
-		return fmt.Errorf("遍历用户数据失败: %w", err)
+		return nil, fmt.Errorf("遍历用户数据失败: %w", err)
 	}
 	fmt.Printf("查询到 %d 条用户组织记录\n", len(userOrgs))
+	return userOrgs, nil
+}
 
-	if err := writeOrgCSV(csvFile, userOrgs); err != nil {
-		return fmt.Errorf("写入CSV文件失败: %w", err)
+func runImportOrg(fromDSN, fromCSV, toCSV string) error {
+	var userOrgs []UserOrg
+	var err error
+
+	if fromCSV != "" {
+		userOrgs, err = loadUserOrgsFromCSV(fromCSV)
+		if err != nil {
+			return err
+		}
+	} else {
+		userOrgs, err = loadUserOrgsFromDB(fromDSN)
+		if err != nil {
+			return err
+		}
 	}
-	fmt.Printf("CSV 文件已写入: %s\n", csvFile)
+
+	if toCSV != "" {
+		if err := writeOrgCSV(toCSV, userOrgs); err != nil {
+			return fmt.Errorf("写入CSV文件失败: %w", err)
+		}
+		fmt.Printf("CSV 文件已写入: %s\n", toCSV)
+	}
 
 	gormDB, err := openGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
@@ -144,28 +211,30 @@ func runImportOrg(fromDSN, csvFile string) error {
 
 var importOrgCmd = &cobra.Command{
 	Use:   "import-org",
-	Short: "从源数据库导入用户组织信息到 costrict_stat.user_org 表及 CSV 文件",
+	Short: "从源数据库或CSV文件导入用户组织信息到 costrict_stat.user_org 表，可选择导出到 CSV 文件",
 	Long: `从源数据库的 auth.auth_users 和 quota_manager.employee_department 表读取数据，
 	按 employee_number 关联，将 dept_full_level_names 拆分为 org1~org9，
-	写入目标数据库的 user_org 表并导出 CSV 文件。`,
+	或直接从CSV文件加载UserOrg数据，
+	写入目标数据库的 user_org 表。
+	如需导出CSV文件，请使用 --to-csv 选项。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fromDSN, _ := cmd.Flags().GetString("from-db")
-		csvFile, _ := cmd.Flags().GetString("csv-file")
+		fromCSV, _ := cmd.Flags().GetString("from-csv")
+		toCSV, _ := cmd.Flags().GetString("to-csv")
 
 		if fromDSN == "" {
 			fromDSN = cfg.IndicatorDSN
 		}
-		if csvFile == "" {
-			csvFile = cfg.OrgCSVFile
-		}
 
-		return runImportOrg(fromDSN, csvFile)
+		return runImportOrg(fromDSN, fromCSV, toCSV)
 	},
 }
 
 func init() {
+	importOrgCmd.Flags().SortFlags = false
 	importOrgCmd.Flags().String("from-db", "", "源数据库DSN")
-	importOrgCmd.Flags().String("csv-file", "", "导出CSV文件路径")
+	importOrgCmd.Flags().String("from-csv", "", "从指定的CSV文件加载UserOrg数据，替代从数据库加载")
+	importOrgCmd.Flags().String("to-csv", "", "导出CSV文件路径（可选，不指定则不导出）")
 	rootCmd.AddCommand(importOrgCmd)
 }
 

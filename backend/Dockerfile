@@ -5,7 +5,6 @@ ARG VERSION=v1.0.1
 WORKDIR /app
 
 COPY backend/go.mod backend/go.sum /app/backend/
-COPY core /app/core
 
 RUN go env -w CGO_ENABLED=0 && \
     go env -w GO111MODULE=on && \

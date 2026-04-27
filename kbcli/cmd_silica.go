@@ -38,7 +38,7 @@ type silicaIndex struct {
 	hashCount   int
 }
 
-func runSilica(analysedDir string, reprocess bool) error {
+func runSilica(analysedDir string, force bool) error {
 	taskFPDir := filepath.Join(analysedDir, "task", "summary")
 	repoFPDir := filepath.Join(analysedDir, "repo")
 
@@ -68,7 +68,7 @@ func runSilica(analysedDir string, reprocess bool) error {
 	for _, fpFile := range commitFPFiles {
 		commitID := strings.TrimSuffix(filepath.Base(fpFile), ".fp")
 
-		if !reprocess {
+		if !force {
 			var commit Commit
 			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
 				if string(commit.TaskIDs) != "" && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
@@ -169,13 +169,13 @@ var silicaCmd = &cobra.Command{
 	Short: "计算commit的含硅量（task贡献比例），更新commits表的task_ids和task_ids_silica",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
-		reprocess, _ := cmd.Flags().GetBool("reprocess")
+		force, _ := cmd.Flags().GetBool("force")
 
 		if analysedDir == "" {
 			analysedDir = cfg.AnalysedDir
 		}
 
-		return runSilica(analysedDir, reprocess)
+		return runSilica(analysedDir, force)
 	},
 }
 
@@ -185,8 +185,9 @@ type taskSilica struct {
 }
 
 func init() {
-	silicaCmd.Flags().String("analysed-dir", "./analysed", "已分析文件目录路径")
-	silicaCmd.Flags().Bool("reprocess", false, "重新处理已计算过的commit")
+	silicaCmd.Flags().SortFlags = false
+	silicaCmd.Flags().String("analysed-dir", "", "已分析文件目录路径")
+	silicaCmd.Flags().Bool("force", false, "强制重新计算，覆盖已存在数据")
 	rootCmd.AddCommand(silicaCmd)
 }
 

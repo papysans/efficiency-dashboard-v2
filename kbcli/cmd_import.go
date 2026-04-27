@@ -23,8 +23,7 @@ var importCmd = &cobra.Command{
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
 		fromDB, _ := cmd.Flags().GetString("from-db")
-		csvFile, _ := cmd.Flags().GetString("csv-file")
-		reprocess, _ := cmd.Flags().GetBool("reprocess")
+		fromCSV, _ := cmd.Flags().GetString("from-csv")
 		dateStr, _ := cmd.Flags().GetString("date")
 
 		if taskDir == "" {
@@ -39,9 +38,6 @@ var importCmd = &cobra.Command{
 		if fromDB == "" {
 			fromDB = cfg.IndicatorDSN
 		}
-		if csvFile == "" {
-			csvFile = cfg.OrgCSVFile
-		}
 
 		steps := []struct {
 			name string
@@ -49,8 +45,8 @@ var importCmd = &cobra.Command{
 		}{
 			{"import-task", func() error { return runImportTask(taskDir, analysedDir, force) }},
 			{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force) }},
-			{"import-org", func() error { return runImportOrg(fromDB, csvFile) }},
-			{"silica", func() error { return runSilica(analysedDir, reprocess) }},
+			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
+			{"silica", func() error { return runSilica(analysedDir, force) }},
 			{"efficiency", func() error { return runEfficiency(dateStr) }},
 		}
 
@@ -67,13 +63,15 @@ var importCmd = &cobra.Command{
 }
 
 func init() {
+	importCmd.Flags().SortFlags = false
 	importCmd.Flags().String("task-dir", "", "task 目录路径")
 	importCmd.Flags().String("repo-dir", "", "repo 目录路径")
 	importCmd.Flags().String("analysed-dir", "", "已处理文件的输出目录")
-	importCmd.Flags().BoolP("force", "f", false, "强制重新导入，忽略fp文件的短路判断")
+	importCmd.Flags().BoolP("force", "f", false, "强制重新导入和计算，覆盖已存在数据")
 	importCmd.Flags().String("from-db", "", "源数据库DSN（import-org用）")
-	importCmd.Flags().String("csv-file", "", "导出CSV文件路径（import-org用）")
-	importCmd.Flags().Bool("reprocess", false, "重新处理已计算过的commit（silica用）")
+	importCmd.Flags().String("to-csv", "", "导出CSV文件路径（import-org用，可选，不指定则不导出）")
+	importCmd.Flags().String("from-csv", "", "从指定的CSV文件加载UserOrg数据，替代从数据库加载（import-org用）")
 	importCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期（efficiency用）")
+
 	rootCmd.AddCommand(importCmd)
 }

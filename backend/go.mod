@@ -3,7 +3,6 @@ module kanban/backend
 go 1.26.0
 
 require (
-	comdigger/core v0.0.0
 	github.com/gin-contrib/cors v1.7.5
 	github.com/gin-gonic/gin v1.12.0
 	github.com/lib/pq v1.10.9
@@ -59,5 +58,3 @@ require (
 	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace comdigger/core => ../core

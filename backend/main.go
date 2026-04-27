@@ -69,7 +69,7 @@ type Config struct {
 }
 
 var appConfig Config
-var db *sql.DB
+var reportDB *sql.DB
 var statDB *sql.DB
 
 func loadConfig(path string) (Config, error) {
@@ -119,8 +119,8 @@ func healthCheck(c *gin.Context) {
 	status := "ok"
 	httpCode := http.StatusOK
 
-	if db != nil {
-		if err := db.Ping(); err != nil {
+	if reportDB != nil {
+		if err := reportDB.Ping(); err != nil {
 			status = "db_error"
 			httpCode = http.StatusServiceUnavailable
 		}
@@ -139,27 +139,24 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 初始化 PG 数据库连接
-	db, err = InitDB(appConfig.Database)
+	// 初始化 report 数据库连接
+	reportDB, err = InitDB(appConfig.Database)
 	if err != nil {
-		// log.Fatalf("PG数据库初始化失败: %v", err)
-		log.Printf("PG数据库初始化失败: %v", err)
+		log.Fatalf("report数据库初始化失败: %v", err)
 	}
-	log.Println("PG数据库连接成功")
+	log.Println("report数据库连接成功")
 
 	// 初始化 costrict_stat 数据库连接
 	statDB, err = InitDB(appConfig.StatDatabase)
 	if err != nil {
-		// log.Fatalf("costrict_stat数据库初始化失败: %v", err)
-		log.Printf("costrict_stat数据库初始化失败: %v", err)
+		log.Fatalf("costrict_stat数据库初始化失败: %v", err)
 	}
 	log.Println("costrict_stat数据库连接成功")
 
 	// 确保 stat 数据库表结构存在（幂等，每次启动执行）
 	if statDB != nil {
 		if err := EnsureStatSchema(statDB); err != nil {
-			// log.Fatalf("costrict_stat 数据库表结构初始化失败: %v", err)
-			log.Printf("costrict_stat 数据库表结构初始化失败: %v", err)
+			log.Fatalf("costrict_stat 数据库表结构初始化失败: %v", err)
 		}
 		log.Println("costrict_stat 数据库表结构检查完成")
 	}

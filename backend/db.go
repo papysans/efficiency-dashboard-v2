@@ -17,15 +17,62 @@ type rowScanner interface {
 
 // InitDB 初始化 PostgreSQL 数据库连接
 func InitDB(cfg DatabaseConfig) (*sql.DB, error) {
+	// 首先尝试直接连接到目标数据库
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("打开数据库连接失败: %w", err)
 	}
+	if err := db.Ping(); err == nil {
+		// 连接成功，返回数据库连接
+		return db, nil
+	}
+
+	// 连接失败，可能是数据库不存在，尝试创建数据库
+	// 先关闭之前的连接
+	db.Close()
+
+	// 连接到默认的 postgres 数据库
+	defaultDSN := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.SSLMode)
+	defaultDB, err := sql.Open("postgres", defaultDSN)
+	if err != nil {
+		return nil, fmt.Errorf("连接默认数据库失败: %w", err)
+	}
+	defer defaultDB.Close()
+
+	// 验证默认数据库连接
+	if err := defaultDB.Ping(); err != nil {
+		return nil, fmt.Errorf("默认数据库连接验证失败: %w", err)
+	}
+
+	// 检查数据库是否已存在
+	var exists bool
+	err = defaultDB.QueryRow(`SELECT 1 FROM pg_database WHERE datname = $1`, cfg.DBName).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("检查数据库是否存在失败: %w", err)
+	}
+
+	// 如果数据库不存在，则创建
+	if err == sql.ErrNoRows {
+		// 创建数据库
+		_, err = defaultDB.Exec(fmt.Sprintf(`CREATE DATABASE %s`, cfg.DBName))
+		if err != nil {
+			return nil, fmt.Errorf("创建数据库 %s 失败: %w", cfg.DBName, err)
+		}
+		fmt.Printf("成功创建数据库: %s\n", cfg.DBName)
+	}
+
+	// 重新连接到目标数据库
+	db, err = sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("重新打开数据库连接失败: %w", err)
+	}
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("数据库连接验证失败: %w", err)
 	}
+
 	return db, nil
 }
 
