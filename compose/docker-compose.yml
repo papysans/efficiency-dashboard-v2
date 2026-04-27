@@ -27,11 +27,6 @@ services:
       file: ./postgres/postgres.yml
       service: postgres
 
-  # es:
-  #   extends:
-  #     file: ./es/es.yml
-  #     service: es
-
 networks:
   efficiency:
     driver: bridge

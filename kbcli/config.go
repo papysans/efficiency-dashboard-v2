@@ -13,14 +13,6 @@ type ModelPrice struct {
 	OutPrice float64 `yaml:"out_price"`
 }
 
-type IndicatorDBConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	SSLMode  string `yaml:"sslmode"`
-}
-
 // DatabaseConfig 数据库连接配置
 type DatabaseConfig struct {
 	Host     string `yaml:"host"`
@@ -101,9 +93,6 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 	if config.StatDatabase.User == "" {
 		config.StatDatabase.User = "postgres"
-	}
-	if config.StatDatabase.Password == "" {
-		config.StatDatabase.Password = os.Getenv("PGPASSWORD")
 	}
 	if config.StatDatabase.Password == "" {
 		config.StatDatabase.Password = os.Getenv("STAT_DB_PASSWORD")

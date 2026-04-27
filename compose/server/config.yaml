@@ -1,13 +1,6 @@
 server:
   port: 9990
 
-elasticsearch:
-  url: "http://127.0.0.1:9200"
-  username: "elastic"
-  password: "costrict"
-  # username: "costrict"
-  # password: "costrict"
-
 database:
   host: "postgres"
   port: 5432

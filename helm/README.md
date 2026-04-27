@@ -91,12 +91,10 @@ helm package ./charts/kbcli         # → kbcli-0.2.0.tgz
 |------|--------|--------|------|
 | server | `database.host` | `postgresql` | PostgreSQL 服务地址 |
 | server | `statDatabase.host` | `postgresql` | 统计库服务地址 |
-| server | `waitForPostgres.enabled` | `true` | 是否等待 PG 就绪 |
 | portal | `backend.host` | `server` | 后端 API 服务地址 |
 | portal | `backend.port` | `9990` | 后端 API 端口 |
 | kbcli | `database.host` | `postgresql` | PostgreSQL 服务地址 |
 | kbcli | `backend.host` | `server` | 后端 API 服务地址 |
-| kbcli | `waitForPostgres.enabled` | `true` | 是否等待 PG 就绪 |
 
 伞形部署时，这些值会自动配置为 `efficiency-dashboard-{service}` 格式的服务名。
 

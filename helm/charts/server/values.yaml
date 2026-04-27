@@ -38,9 +38,6 @@ statDatabase:
   dbname: "costrict_stat"
   sslmode: "disable"
 
-waitForPostgres:
-  enabled: false
-
 aiEstimation:
   enabled: false
   apiKey: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"

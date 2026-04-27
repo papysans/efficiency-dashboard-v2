@@ -38,9 +38,6 @@ statDatabase:
   dbname: "costrict_stat"
   sslmode: "disable"
 
-waitForPostgres:
-  enabled: false
-
 backend:
   host: "server"
   port: 9990

@@ -30,8 +30,6 @@ server:
     password: "1"
     dbname: "costrict_stat"
     sslmode: "disable"
-  waitForPostgres:
-    enabled: false
   aiEstimation:
     enabled: false
     apiKey: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
@@ -71,8 +69,6 @@ kbcli:
     password: "1"
     dbname: "costrict_stat"
     sslmode: "disable"
-  waitForPostgres:
-    enabled: true
   backend:
     host: "efficiency-dashboard-server"
     port: 9990
