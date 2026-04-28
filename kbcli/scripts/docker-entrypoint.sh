@@ -10,10 +10,10 @@ cp /app/scripts/crontab /etc/crontabs/root
 chmod 644 /etc/crontabs/root
 
 echo "import data..."
-/app/bin/kbcli import-task
-/app/bin/kbcli import-repo
+/app/bin/kbcli import-task -f
+/app/bin/kbcli import-repo -f
 /app/bin/kbcli import-org
-/app/bin/kbcli silica
+/app/bin/kbcli silica -f
 /app/bin/kbcli efficiency
 
 echo "Starting kbcli cron job..."
