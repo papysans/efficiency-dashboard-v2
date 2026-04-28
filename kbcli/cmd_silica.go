@@ -31,7 +31,10 @@ type groupKey struct {
 	userID   string
 }
 
-type silicaIndex struct {
+/**
+ *	对所有任务的代码行指纹进行分类索引
+ */
+type tasksIndexer struct {
 	groupHashes map[groupKey]map[string]string
 	taskMetas   map[groupKey][]taskMeta
 	taskCount   int
@@ -43,8 +46,12 @@ type taskSilica struct {
 	Silica float64
 }
 
-func buildSilicaIndex(taskFPDir string) (*silicaIndex, error) {
-	idx := &silicaIndex{
+type commitParser struct {
+	Commit
+}
+
+func buildTasksIndexer(taskFPDir string) (*tasksIndexer, error) {
+	idx := &tasksIndexer{
 		groupHashes: make(map[groupKey]map[string]string),
 		taskMetas:   make(map[groupKey][]taskMeta),
 	}
@@ -110,7 +117,7 @@ func buildSilicaIndex(taskFPDir string) (*silicaIndex, error) {
 	return idx, nil
 }
 
-func (idx *silicaIndex) buildCandidateHashIndex(gk groupKey, commitTime time.Time) map[string]string {
+func (idx *tasksIndexer) buildCandidateHashIndex(gk groupKey, commitTime time.Time) map[string]string {
 	groupHashes := idx.groupHashes[gk]
 	if len(groupHashes) == 0 {
 		return nil
@@ -286,7 +293,7 @@ func runSilica(analysedDir string, force bool) error {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	idx, err := buildSilicaIndex(taskFPDir)
+	idx, err := buildTasksIndexer(taskFPDir)
 	if err != nil {
 		return fmt.Errorf("构建task指纹索引失败: %w", err)
 	}
