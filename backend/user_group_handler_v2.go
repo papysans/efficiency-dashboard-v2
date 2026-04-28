@@ -238,10 +238,10 @@ func getUserGroupDetailHandler(c *gin.Context) {
 
 		var taskEffRatio, commitEffRatio float64
 		if taskRealMin > 0 {
-			taskEffRatio = math.Round(taskAncientMin / taskRealMin * 100)
+			taskEffRatio = calcEfficiencyRatio(taskAncientMin, taskRealMin)
 		}
 		if commitRealMin > 0 {
-			commitEffRatio = math.Round(commitAncientMin / commitRealMin * 100)
+			commitEffRatio = calcEfficiencyRatio(commitAncientMin, commitRealMin)
 		}
 
 		members = append(members, UserGroupMember{

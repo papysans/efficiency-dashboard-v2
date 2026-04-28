@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -927,8 +926,7 @@ func ListRepoAggregates(db *sql.DB, startTime, endTime string) ([]map[string]int
 			"task_count":          taskCount,
 		}
 		if sumAncient != nil && sumReal != nil && *sumReal > 0 {
-			ratio := (*sumAncient / *sumReal) * 100
-			ratio = math.Round(ratio*10) / 10
+			ratio := calcEfficiencyRatio(*sumAncient, *sumReal)
 			item["efficiency_ratio"] = ratio
 		} else {
 			item["efficiency_ratio"] = nil

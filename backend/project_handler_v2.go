@@ -481,9 +481,8 @@ func listProjectsV2(c *gin.Context) {
 		}
 		var effRatio *float64
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := (*effectiveAncient / *effectiveReal) * 100
-			v := math.Round(ratio*10) / 10
-			effRatio = &v
+			ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+			effRatio = &ratio
 		}
 
 		results[i] = ProjectListItem{
@@ -688,9 +687,8 @@ func getProjectDetailV2(c *gin.Context) {
 	}
 	var effRatio *float64
 	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-		ratio := (*effectiveAncient / *effectiveReal) * 100
-		v := math.Round(ratio*10) / 10
-		effRatio = &v
+		ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+		effRatio = &ratio
 	}
 
 	// user_count: 统计参与的用户数

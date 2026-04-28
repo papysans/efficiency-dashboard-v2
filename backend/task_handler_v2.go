@@ -269,7 +269,7 @@ func listTasksV2(c *gin.Context) {
 			effectiveReal = t.TaskRealMinutesManual
 		}
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := (*effectiveAncient / *effectiveReal) * 100
+			ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
 			item.EfficiencyRatio = &ratio
 		}
 
@@ -352,7 +352,7 @@ func getTaskDetailV2(c *gin.Context) {
 		effectiveReal = task.TaskRealMinutesManual
 	}
 	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-		ratio := (*effectiveAncient / *effectiveReal) * 100
+		ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
 		efficiencyRatio = &ratio
 	}
 

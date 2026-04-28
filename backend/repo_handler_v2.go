@@ -296,8 +296,7 @@ func getRepoDetailV2(c *gin.Context) {
 	}
 	var efficiencyRatio *float64
 	if repoAncientMinutes > 0 && repoRealMinutes > 0 {
-		ratio := (repoAncientMinutes / repoRealMinutes) * 100
-		ratio = math.Round(ratio*10) / 10
+		ratio := calcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
 		efficiencyRatio = &ratio
 	}
 
@@ -393,9 +392,8 @@ func getRepoDetailV2(c *gin.Context) {
 			commitReal = cm.CommitRealMinutesManual
 		}
 		if commitAncient != nil && commitReal != nil && *commitAncient > 0 && *commitReal > 0 {
-			r := (*commitAncient / *commitReal) * 100
-			r = math.Round(r*10) / 10
-			item.EfficiencyRatio = &r
+			ratio := calcEfficiencyRatio(*commitAncient, *commitReal)
+			item.EfficiencyRatio = &ratio
 		}
 		commitItems = append(commitItems, item)
 	}

@@ -290,9 +290,8 @@ func listCommitsV2(c *gin.Context) {
 		}
 		var efficiencyRatio *float64
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := (*effectiveAncient / *effectiveReal) * 100
-			r := math.Round(ratio*10) / 10
-			efficiencyRatio = &r
+			ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+			efficiencyRatio = &ratio
 		}
 		item.EfficiencyRatio = efficiencyRatio
 
@@ -449,8 +448,7 @@ func getCommitDetailV2(c *gin.Context) {
 		effectiveReal = commit.CommitRealMinutesManual
 	}
 	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-		ratio := (*effectiveAncient / *effectiveReal) * 100
-		ratio = math.Round(ratio*10) / 10
+		ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
 		efficiencyRatio = &ratio
 	}
 

@@ -65,7 +65,7 @@ func getDashboardSummary(c *gin.Context) {
 		COALESCE(SUM(upstream_tokens + downstream_tokens), 0) as total_tokens,
 		COALESCE(SUM(task_ancient_minutes), 0) as total_ai_days,
 		COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)), 0) as total_real_minutes,
-		AVG(CASE WHEN COALESCE(task_real_minutes_manual, task_real_minutes) > 0 AND COALESCE(task_ancient_minutes_manual, task_ancient_minutes) > 0 THEN COALESCE(task_ancient_minutes_manual, task_ancient_minutes) / COALESCE(task_real_minutes_manual, task_real_minutes) * 100 END) as avg_efficiency_ratio
+		AVG(CASE WHEN COALESCE(task_real_minutes_manual, task_real_minutes) > 0 AND COALESCE(task_ancient_minutes_manual, task_ancient_minutes) > 0 THEN (COALESCE(task_real_minutes_manual, task_real_minutes) - COALESCE(task_ancient_minutes_manual, task_ancient_minutes)) / COALESCE(task_real_minutes_manual, task_real_minutes) * 100 END) as avg_efficiency_ratio
 		FROM tasks`
 
 	var taskConditions []string

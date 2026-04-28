@@ -79,3 +79,30 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ secrets.DOCKERHUB_REPOSITORY }}/efficiency-dashboard-kbcli:${{ steps.version.outputs.version }},${{ secrets.DOCKERHUB_REPOSITORY }}/efficiency-dashboard-kbcli:latest
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # GitHub 自动提供
+
+      - name: Build and push backend image to ghcr
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/zgsm-sangfor/efficiency-dashboard-backend:latest
+            ghcr.io/zgsm-sangfor/efficiency-dashboard-backend:${{ steps.version.outputs.version }}
+
+      - name: Build and push kbcli image to ghcr
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: kbcli/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/zgsm-sangfor/efficiency-dashboard-kbcli:latest
+            ghcr.io/zgsm-sangfor/efficiency-dashboard-kbcli:${{ steps.version.outputs.version }}
