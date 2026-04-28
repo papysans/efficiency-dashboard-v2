@@ -32,7 +32,7 @@ type groupKey struct {
 }
 
 type silicaIndex struct {
-	groupHashes map[groupKey]map[string]map[string]bool
+	groupHashes map[groupKey]map[string]string
 	taskMetas   map[groupKey][]taskMeta
 	taskCount   int
 	hashCount   int
@@ -45,7 +45,7 @@ type taskSilica struct {
 
 func buildSilicaIndex(taskFPDir string) (*silicaIndex, error) {
 	idx := &silicaIndex{
-		groupHashes: make(map[groupKey]map[string]map[string]bool),
+		groupHashes: make(map[groupKey]map[string]string),
 		taskMetas:   make(map[groupKey][]taskMeta),
 	}
 
@@ -87,14 +87,13 @@ func buildSilicaIndex(taskFPDir string) (*silicaIndex, error) {
 		gk := groupKey{repoAddr: addr.RepoAddr, userID: addr.UserID}
 
 		if idx.groupHashes[gk] == nil {
-			idx.groupHashes[gk] = make(map[string]map[string]bool)
+			idx.groupHashes[gk] = make(map[string]string)
 		}
 		for _, h := range hashes {
-			if idx.groupHashes[gk][h] == nil {
-				idx.groupHashes[gk][h] = make(map[string]bool)
+			if idx.groupHashes[gk][h] == "" {
+				idx.groupHashes[gk][h] = addr.TaskID
+				idx.hashCount++
 			}
-			idx.groupHashes[gk][h][addr.TaskID] = true
-			idx.hashCount++
 		}
 
 		var startTime time.Time
@@ -111,7 +110,7 @@ func buildSilicaIndex(taskFPDir string) (*silicaIndex, error) {
 	return idx, nil
 }
 
-func (idx *silicaIndex) buildCandidateHashIndex(gk groupKey, commitTime time.Time) map[string]map[string]bool {
+func (idx *silicaIndex) buildCandidateHashIndex(gk groupKey, commitTime time.Time) map[string]string {
 	groupHashes := idx.groupHashes[gk]
 	if len(groupHashes) == 0 {
 		return nil
@@ -133,15 +132,10 @@ func (idx *silicaIndex) buildCandidateHashIndex(gk groupKey, commitTime time.Tim
 		return nil
 	}
 
-	result := make(map[string]map[string]bool)
-	for hash, taskIDs := range groupHashes {
-		for tid := range taskIDs {
-			if candidateTaskIDs[tid] {
-				if result[hash] == nil {
-					result[hash] = make(map[string]bool)
-				}
-				result[hash][tid] = true
-			}
+	result := make(map[string]string)
+	for hash, taskID := range groupHashes {
+		if candidateTaskIDs[taskID] {
+			result[hash] = taskID
 		}
 	}
 	return result
@@ -197,7 +191,7 @@ func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 	return files, err
 }
 
-func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool) ([]taskSilica, int, error) {
+func computeCommitSilica(fpPath string, hashToTaskID map[string]string) ([]taskSilica, int, error) {
 	f, err := os.Open(fpPath)
 	if err != nil {
 		return nil, 0, err
@@ -216,11 +210,8 @@ func computeCommitSilica(fpPath string, hashToTaskIDs map[string]map[string]bool
 		}
 		totalLines++
 
-		if taskIDs, ok := hashToTaskIDs[line]; ok {
-			for taskID := range taskIDs {
-				taskMatchedLines[taskID] += 1.0
-				break
-			}
+		if taskID, ok := hashToTaskID[line]; ok {
+			taskMatchedLines[taskID] += 1.0
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -262,7 +253,7 @@ func calcCommitDerivedMinutes(db *gorm.DB, taskIDSilica []taskSilica) (float64, 
 	return aiMinutes, ancientMinutes, upstreamTokens, downstreamTokens, cost
 }
 
-func countMatchedLines(fpPath string, hashToTaskIDs map[string]map[string]bool) int {
+func countMatchedLines(fpPath string, hashToTaskID map[string]string) int {
 	f, err := os.Open(fpPath)
 	if err != nil {
 		return 0
@@ -277,7 +268,7 @@ func countMatchedLines(fpPath string, hashToTaskIDs map[string]map[string]bool) 
 		if line == "" {
 			continue
 		}
-		if _, ok := hashToTaskIDs[line]; ok {
+		if _, ok := hashToTaskID[line]; ok {
 			matched++
 		}
 	}

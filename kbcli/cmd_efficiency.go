@@ -139,30 +139,33 @@ func calculateUserProductivity(db *gorm.DB, dateStr string) (int, error) {
 				commitIDsJSON = []byte("[]")
 			}
 
-			createTime, _ := time.Parse("20060102", dateStr)
+			createTime, err := time.Parse("20060102", dateStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "警告: 解析日期字符串失败 [%s]: %v", dateStr, err)
+			}
 			createTime = time.Date(createTime.Year(), createTime.Month(), createTime.Day(), 0, 0, 0, 0, time.UTC)
 
 			up := UserProductivity{
-				UserProductivityID:    uid + "_" + dateStr,
-				CreateTime:            &createTime,
-				UserID:                uid,
-				UserName:              userName,
-				TaskIDs:               StringJSON(taskIDsJSON),
-				WorkDirIDs:            StringJSON(workDirIDsJSON),
-				TaskDiffLines:         int(taskDiffLines),
-				UpstreamTokens:        upstreamTokens,
-				DownstreamTokens:      downstreamTokens,
-				Cost:                  cost,
-				TaskRealMinutes:       taskRealMinutes,
-				TaskAncientMinutes:    taskAncientMinutes,
-				TaskEfficiencyRatio:   taskEffRatio,
-				CommitIDs:             StringJSON(commitIDsJSON),
-				CommitDiffLines:       int(commitDiffLines),
-				CommitAncientMinutes:  commitAncientMinutes,
-				CommitRealAIMinutes:   commitRealAIMinutes,
-				CommitRealAncMin:      commitRealAncientMinutes,
-				CommitRealMinutes:     commitRealMinutes,
-				CommitEfficiencyRatio: commitEffRatio,
+				UserProductivityID:       uid + "_" + dateStr,
+				CreateTime:               &createTime,
+				UserID:                   uid,
+				UserName:                 userName,
+				TaskIDs:                  StringJSON(taskIDsJSON),
+				WorkDirIDs:               StringJSON(workDirIDsJSON),
+				TaskDiffLines:            int(taskDiffLines),
+				UpstreamTokens:           upstreamTokens,
+				DownstreamTokens:         downstreamTokens,
+				Cost:                     cost,
+				TaskRealMinutes:          taskRealMinutes,
+				TaskAncientMinutes:       taskAncientMinutes,
+				TaskEfficiencyRatio:      taskEffRatio,
+				CommitIDs:                StringJSON(commitIDsJSON),
+				CommitDiffLines:          int(commitDiffLines),
+				CommitAncientMinutes:     commitAncientMinutes,
+				CommitRealAIMinutes:      commitRealAIMinutes,
+				CommitRealAncientMinutes: commitRealAncientMinutes,
+				CommitRealMinutes:        commitRealMinutes,
+				CommitEfficiencyRatio:    commitEffRatio,
 			}
 
 			result := tx.Clauses(clause.OnConflict{
@@ -218,14 +221,14 @@ func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg,
 	if err := db.Raw(`
 		SELECT
 			user_id,
-			COALESCE(array_to_json(array_agg(task_id)), '[]'),
-			COALESCE(array_to_json(array_agg(DISTINCT work_dir_id) FILTER (WHERE work_dir_id IS NOT NULL AND work_dir_id != '')), '[]'),
-			COALESCE(SUM(diff_lines), 0),
-			COALESCE(SUM(upstream_tokens), 0),
-			COALESCE(SUM(downstream_tokens), 0),
-			COALESCE(SUM(cost), 0),
-			COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)), 0),
-			COALESCE(SUM(COALESCE(task_ancient_minutes_manual, task_ancient_minutes)), 0)
+			COALESCE(array_to_json(array_agg(task_id)), '[]') as task_ids,
+			COALESCE(array_to_json(array_agg(DISTINCT work_dir_id) FILTER (WHERE work_dir_id IS NOT NULL AND work_dir_id != '')), '[]') as work_dir_ids,
+			COALESCE(SUM(diff_lines), 0) as task_diff_lines,
+			COALESCE(SUM(upstream_tokens), 0) as upstream_tokens,
+			COALESCE(SUM(downstream_tokens), 0) as downstream_tokens,
+			COALESCE(SUM(cost), 0) as cost,
+			COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)), 0) as task_real_minutes,
+			COALESCE(SUM(COALESCE(task_ancient_minutes_manual, task_ancient_minutes)), 0) as task_ancient_minutes
 		FROM tasks
 		WHERE user_id IS NOT NULL AND user_id != '' AND DATE(start_time) = $1
 		GROUP BY user_id
@@ -265,12 +268,12 @@ func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommit
 	if err := db.Raw(`
 		SELECT
 			user_id,
-			COALESCE(array_to_json(array_agg(commit_id)), '[]'),
-			COALESCE(SUM(diff_lines), 0),
-			COALESCE(SUM(COALESCE(commit_ancient_minutes_manual, commit_ancient_minutes)), 0),
-			COALESCE(SUM(commit_real_ai_minutes), 0),
-			COALESCE(SUM(commit_real_ancient_minutes), 0),
-			COALESCE(SUM(COALESCE(commit_real_minutes_manual, commit_real_minutes)), 0)
+			COALESCE(array_to_json(array_agg(commit_id)), '[]') as commit_ids,
+			COALESCE(SUM(diff_lines), 0) as commit_diff_lines,
+			COALESCE(SUM(COALESCE(commit_ancient_minutes_manual, commit_ancient_minutes)), 0) as commit_ancient_minutes,
+			COALESCE(SUM(commit_real_ai_minutes), 0) as commit_real_ai_minutes,
+			COALESCE(SUM(commit_real_ancient_minutes), 0) as commit_real_ancient_minutes,
+			COALESCE(SUM(COALESCE(commit_real_minutes_manual, commit_real_minutes)), 0) as commit_real_minutes
 		FROM commits
 		WHERE user_id IS NOT NULL AND user_id != '' AND DATE(commit_time) = $1
 		GROUP BY user_id
@@ -344,8 +347,10 @@ func loadUserNamesFromCommits(db *gorm.DB) (map[string]string, error) {
 }
 
 func runEfficiency(dateStr string) error {
-	if dateStr != "" && len(dateStr) != 8 {
-		return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s", dateStr)
+	if dateStr != "" {
+		if _, err := time.Parse("20060102", dateStr); err != nil {
+			return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s, 详情: %w", dateStr, err)
+		}
 	}
 
 	db, err := openGormDB(cfg.StatDatabase.DSN())

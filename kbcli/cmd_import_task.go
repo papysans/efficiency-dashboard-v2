@@ -291,7 +291,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 	}
 
 	if len(conversations) > 0 {
-		if err := saveConversationsGorm(db, rec.TaskID, conversations); err != nil {
+		if err := saveConversations(db, rec.TaskID, conversations); err != nil {
 			return fmt.Errorf("保存conversations失败: %w", err)
 		}
 	}
@@ -309,7 +309,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 	return nil
 }
 
-func saveConversationsGorm(db *gorm.DB, taskID string, conversations []taskConversation) error {
+func saveConversations(db *gorm.DB, taskID string, conversations []taskConversation) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
 			var convStartTime, convEndTime *time.Time
@@ -461,7 +461,13 @@ func calculateImportTaskRealMinutes(conversations []taskConversation, gapThresho
 func calculateCost(model string, inTokens, outTokens int64, prices map[string]ModelPrice) float64 {
 	price, ok := prices[model]
 	if !ok {
-		return 0
+		price, ok = prices[strings.ToLower(model)]
+		if !ok {
+			price, ok = prices["default"]
+			if !ok {
+				return 0
+			}
+		}
 	}
 	return (float64(inTokens)/1e6)*price.InPrice + (float64(outTokens)/1e6)*price.OutPrice
 }
