@@ -39,18 +39,29 @@ type AIEstimationConfig struct {
 	Prompt    string `yaml:"prompt"`
 }
 
+type EstimateConfig struct {
+	MaxInputChars     float64 //最大输入字符数
+	MaxRatio          float64 //工作量的最大倍数(相比chars(user_input) / inchars_per_minutes + real_minutes)
+	MaxFactor         float64 //最大的加权系数
+	MinFactor         float64 //最小的加权系数
+	IncharsPerMinutes float64 //人每分钟输入20个字
+	LinesPerMinutes   float64 //人每分钟输入2行代码
+	MinMinutes        float64 //最小分钟数
+}
+
 // Config 全局配置结构
 type Config struct {
-	ModelPrices  map[string]ModelPrice `yaml:"model_prices"`
-	TaskDir      string                `yaml:"task_dir"`
-	RepoDir      string                `yaml:"repo_dir"`
-	AnalysedDir  string                `yaml:"analysed_dir"`
-	OrgCSVFile   string                `yaml:"org_csv_file"`
-	AIEstimation AIEstimationConfig    `yaml:"ai_estimation"`
-	BackendURL   string                `yaml:"backend_url"`
-	HTTPProxy    string                `yaml:"http_proxy"`
-	StatDatabase DatabaseConfig        `yaml:"stat_database"`
-	IndicatorDSN string                `yaml:"indicator_dsn"`
+	ModelPrices    map[string]ModelPrice `yaml:"model_prices"`
+	TaskDir        string                `yaml:"task_dir"`
+	RepoDir        string                `yaml:"repo_dir"`
+	AnalysedDir    string                `yaml:"analysed_dir"`
+	OrgCSVFile     string                `yaml:"org_csv_file"`
+	AIEstimation   AIEstimationConfig    `yaml:"ai_estimation"`
+	BackendURL     string                `yaml:"backend_url"`
+	HTTPProxy      string                `yaml:"http_proxy"`
+	StatDatabase   DatabaseConfig        `yaml:"stat_database"`
+	OrgDSN         string                `yaml:"org_dsn"`
+	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
 }
 
 // LoadConfig 从 YAML 文件加载配置

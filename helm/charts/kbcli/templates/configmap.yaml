@@ -33,7 +33,7 @@ data:
     repo_dir: {{ .Values.paths.repoDir | quote }}
     analysed_dir: {{ .Values.paths.analysedDir | quote }}
     org_csv_file: {{ .Values.paths.orgCsvFile | quote }}
-    indicator_dsn: {{ .Values.indicatorDSN | quote }}
+    org_dsn: {{ .Values.indicatorDSN | quote }}
 
     http_proxy: {{ .Values.httpProxy | quote }}
 

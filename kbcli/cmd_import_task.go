@@ -166,11 +166,12 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) task
 	rec.TaskRealMinutes = realMinutes
 	rec.TaskRealMinutesRsn = realReason
 
-	if summary.DiffLines > 0 || len(conversations) > 0 {
-		ancientMinutes, ancientReason := importEstimateAncientMinutes(summary.DiffLines)
-		rec.TaskAncientMinutes = ancientMinutes
-		rec.TaskAncientMinutesRsn = ancientReason
-	}
+	estimateAncientMinutes(cfg.AlgoEstimation, &rec, conversations, realMinutes)
+	// if summary.DiffLines > 0 || len(conversations) > 0 {
+	// 	ancientMinutes, ancientReason := importEstimateAncientMinutes(summary.DiffLines)
+	// 	rec.TaskAncientMinutes = ancientMinutes
+	// 	rec.TaskAncientMinutesRsn = ancientReason
+	// }
 
 	return rec
 }
@@ -399,6 +400,43 @@ func importEstimateAncientMinutes(diffLines int) (float64, string) {
 		minutes = 5
 	}
 	return minutes, fmt.Sprintf("基于diff_lines=%d估算(1.5分钟/行)", diffLines)
+}
+
+func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConversation, realMinutes float64) {
+	var totalInchars int64
+	var totalDiffLines int64
+
+	for _, conv := range convs {
+		totalInchars += int64(len(conv.UserInput))
+		totalDiffLines += conv.DiffLines
+	}
+
+	inchars := float64(totalInchars)
+	diffLines := float64(totalDiffLines)
+
+	if inchars >= cfg.MaxInputChars {
+		inchars = cfg.MaxInputChars
+	}
+
+	factor := cfg.MinFactor + (inchars/cfg.MaxInputChars)*(cfg.MaxFactor-cfg.MinFactor)
+	workload := (diffLines / cfg.LinesPerMinutes) * factor
+
+	inputMinutes := inchars / cfg.IncharsPerMinutes
+	maxWorkload := cfg.MaxRatio * (inputMinutes + realMinutes)
+	minWorkload := cfg.MinMinutes
+
+	if workload > maxWorkload {
+		workload = maxWorkload
+	}
+	if workload < minWorkload {
+		workload = minWorkload
+	}
+
+	t.TaskAncientMinutes = workload
+	t.TaskAncientMinutesRsn = fmt.Sprintf(
+		"基于diff_lines=%.0f, user_input=%.0f字符, factor=%.2f, real_minutes=%.2f估算",
+		diffLines, float64(totalInchars), factor, realMinutes,
+	)
 }
 
 func calculateImportTaskRealMinutes(conversations []taskConversation, gapThreshold, extensionMin int) (float64, string) {

@@ -36,7 +36,7 @@ var importCmd = &cobra.Command{
 			analysedDir = cfg.AnalysedDir
 		}
 		if fromDB == "" {
-			fromDB = cfg.IndicatorDSN
+			fromDB = cfg.OrgDSN
 		}
 
 		steps := []struct {

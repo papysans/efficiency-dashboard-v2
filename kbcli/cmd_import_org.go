@@ -264,7 +264,7 @@ var importOrgCmd = &cobra.Command{
 		toCSV, _ := cmd.Flags().GetString("to-csv")
 
 		if fromDSN == "" {
-			fromDSN = cfg.IndicatorDSN
+			fromDSN = cfg.OrgDSN
 		}
 
 		return runImportOrg(fromDSN, fromCSV, toCSV)
