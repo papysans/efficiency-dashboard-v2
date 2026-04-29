@@ -27,8 +27,12 @@ ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 # 安装cron和必要的工具
-RUN apk add --no-cache dcron tzdata
+# 确保crond有执行权限
+RUN apk add --no-cache dcron tzdata && \
+    chmod +x /usr/sbin/crond /usr/bin/crond 2>/dev/null || true
 COPY --from=builder /app/bin/kbcli /app/bin/kbcli
 COPY --from=builder /app/kbcli/scripts /app/scripts
 
+# 脚本需要root权限来启动cron服务
+USER root
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]

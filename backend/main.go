@@ -46,7 +46,6 @@ type Config struct {
 	Server struct {
 		Port int `yaml:"port"`
 	} `yaml:"server"`
-	Database     DatabaseConfig `yaml:"database"`
 	StatDatabase DatabaseConfig `yaml:"stat_database"`
 	TaskDir      string         `yaml:"task_dir"`
 	AnalysedDir  string         `yaml:"analysed_dir"`
@@ -69,21 +68,12 @@ type Config struct {
 }
 
 var appConfig Config
-var reportDB *sql.DB
 var statDB *sql.DB
 
 func loadConfig(path string) (Config, error) {
 	var cfg Config
 	// 默认值
 	cfg.Server.Port = 9990
-	cfg.Database = DatabaseConfig{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "postgres",
-		Password: "1",
-		DBName:   "report",
-		SSLMode:  "disable",
-	}
 	cfg.StatDatabase = DatabaseConfig{
 		Host:     "localhost",
 		Port:     5432,
@@ -119,8 +109,8 @@ func healthCheck(c *gin.Context) {
 	status := "ok"
 	httpCode := http.StatusOK
 
-	if reportDB != nil {
-		if err := reportDB.Ping(); err != nil {
+	if statDB != nil {
+		if err := statDB.Ping(); err != nil {
 			status = "db_error"
 			httpCode = http.StatusServiceUnavailable
 		}
@@ -138,13 +128,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
-
-	// 初始化 report 数据库连接
-	reportDB, err = InitDB(appConfig.Database)
-	if err != nil {
-		log.Fatalf("report数据库初始化失败: %v", err)
-	}
-	log.Println("report数据库连接成功")
 
 	// 初始化 costrict_stat 数据库连接
 	statDB, err = InitDB(appConfig.StatDatabase)

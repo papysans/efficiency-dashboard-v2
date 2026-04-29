@@ -22,14 +22,6 @@ resources:
     memory: 256Mi
     cpu: 250m
 
-database:
-  host: "postgresql"
-  port: 5432
-  user: "postgres"
-  password: "1"
-  dbname: "report"
-  sslmode: "disable"
-
 statDatabase:
   host: "postgresql"
   port: 5432
@@ -99,14 +91,12 @@ serviceAccount:
 
 podSecurityContext:
   runAsNonRoot: false
-  runAsUser: 1000
-  fsGroup: 1000
+  runAsUser: 0
+  fsGroup: 0
 
 securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
+  # cron服务需要root权限，不限制权限
+  allowPrivilegeEscalation: true
 
 nodeSelector: {}
 

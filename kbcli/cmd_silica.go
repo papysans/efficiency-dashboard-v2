@@ -406,6 +406,6 @@ var silicaCmd = &cobra.Command{
 func init() {
 	silicaCmd.Flags().SortFlags = false
 	silicaCmd.Flags().String("analysed-dir", "", "已分析文件目录路径")
-	silicaCmd.Flags().Bool("force", false, "强制重新计算，覆盖已存在数据")
+	silicaCmd.Flags().BoolP("force", "f", false, "强制重新计算，覆盖已存在数据")
 	rootCmd.AddCommand(silicaCmd)
 }
