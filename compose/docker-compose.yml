@@ -13,6 +13,9 @@ services:
     extends:
       file: ./kbcli/kbcli.yml
       service: kbcli
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   portal:
     extends:

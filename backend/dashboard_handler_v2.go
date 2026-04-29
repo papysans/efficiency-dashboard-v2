@@ -10,17 +10,17 @@ import (
 )
 
 type DashboardSummaryResponse struct {
-	TotalTasks              int      `json:"total_tasks"`
-	TotalUsers              int      `json:"total_users"`
-	TotalRepos              int      `json:"total_repos"`
-	TotalCommits            int      `json:"total_commits"`
-	TotalWorkDirs           int      `json:"total_work_dirs"`
-	TotalCost               float64  `json:"total_cost"`
-	TotalTokens             int64    `json:"total_tokens"`
-	TotalDiffLines          int64    `json:"total_diff_lines"`
-	TotalTaskAncientMinutes float64  `json:"total_task_ancient_minutes"`
-	TotalRealMinutes        float64  `json:"total_real_minutes"`
-	AvgEfficiencyRatio      *float64 `json:"avg_efficiency_ratio"`
+	TotalTasks              int     `json:"total_tasks"`
+	TotalUsers              int     `json:"total_users"`
+	TotalRepos              int     `json:"total_repos"`
+	TotalCommits            int     `json:"total_commits"`
+	TotalWorkDirs           int     `json:"total_work_dirs"`
+	TotalCost               float64 `json:"total_cost"`
+	TotalTokens             int64   `json:"total_tokens"`
+	TotalDiffLines          int64   `json:"total_diff_lines"`
+	TotalTaskAncientMinutes float64 `json:"total_task_ancient_minutes"`
+	TotalRealMinutes        float64 `json:"total_real_minutes"`
+	AvgEfficiencyRatio      float64 `json:"avg_efficiency_ratio"`
 }
 
 // getDashboardSummary GET /api/v2/dashboard/summary
@@ -65,7 +65,7 @@ func getDashboardSummary(c *gin.Context) {
 		COALESCE(SUM(upstream_tokens + downstream_tokens), 0) as total_tokens,
 		COALESCE(SUM(task_ancient_minutes), 0) as total_ai_days,
 		COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)), 0) as total_real_minutes,
-		AVG(CASE WHEN COALESCE(task_real_minutes_manual, task_real_minutes) > 0 AND COALESCE(task_ancient_minutes_manual, task_ancient_minutes) > 0 THEN (COALESCE(task_real_minutes_manual, task_real_minutes) - COALESCE(task_ancient_minutes_manual, task_ancient_minutes)) / COALESCE(task_real_minutes_manual, task_real_minutes) * 100 END) as avg_efficiency_ratio
+		COALESCE(SUM(COALESCE(task_ancient_minutes_manual, task_ancient_minutes)), 0) as total_ancient_minutes
 		FROM tasks`
 
 	var taskConditions []string
@@ -88,13 +88,15 @@ func getDashboardSummary(c *gin.Context) {
 	var totalTasks, totalUsers, totalRepos int
 	var totalCost, totalAIDays float64
 	var totalTokens int64
-	var totalRealMinutes float64
-	var avgEfficiencyRatio *float64
-	err := statDB.QueryRow(taskQuery, taskArgs...).Scan(&totalTasks, &totalUsers, &totalRepos, &totalCost, &totalTokens, &totalAIDays, &totalRealMinutes, &avgEfficiencyRatio)
+	var totalRealMinutes, totalAncientMinutes float64
+	err := statDB.QueryRow(taskQuery, taskArgs...).Scan(&totalTasks, &totalUsers, &totalRepos, &totalCost, &totalTokens, &totalAIDays, &totalRealMinutes, &totalAncientMinutes)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 tasks 聚合失败: " + err.Error()})
 		return
 	}
+
+	// 使用 calcEfficiencyRatio 计算平均提效比
+	avgEfficiencyRatio := calcEfficiencyRatio(totalAncientMinutes, totalRealMinutes)
 
 	// SQL 2: 从 commits 聚合
 	commitQuery := `SELECT

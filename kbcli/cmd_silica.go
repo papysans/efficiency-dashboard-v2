@@ -47,7 +47,27 @@ type taskSilica struct {
 }
 
 type commitParser struct {
-	Commit
+	fpHashs          []string
+	taskIDs          []string
+	taskSilicas      []float64
+	totalLines       int
+	totalMatchLines  int
+	totalSilica      float64
+	aiMinutes        float64
+	ancientMinutes   float64
+	upstreamTokens   int64
+	downstreamTokens int64
+	cost             float64
+}
+
+func buildCommitParser(fpPath string) *commitParser {
+	fpHashs, err := loadFPHashes(fpPath)
+	if err != nil {
+		return nil
+	}
+	return &commitParser{
+		fpHashs: fpHashs,
+	}
 }
 
 func buildTasksIndexer(taskFPDir string) (*tasksIndexer, error) {
@@ -198,88 +218,53 @@ func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 	return files, err
 }
 
-func computeCommitSilica(fpPath string, hashToTaskID map[string]string) ([]taskSilica, int, error) {
-	f, err := os.Open(fpPath)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer f.Close()
-
+func (p *commitParser) computeCommitSilica(hashToTaskID map[string]string) {
 	taskMatchedLines := make(map[string]float64)
-	totalLines := 0
+	p.totalLines = len(p.fpHashs)
+	matchedLines := 0
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		totalLines++
-
-		if taskID, ok := hashToTaskID[line]; ok {
+	for _, hash := range p.fpHashs {
+		if taskID, ok := hashToTaskID[hash]; ok {
 			taskMatchedLines[taskID] += 1.0
+			matchedLines++
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, 0, err
+
+	p.totalMatchLines = matchedLines
+	p.taskIDs = make([]string, 0)
+	p.taskSilicas = make([]float64, 0)
+	p.totalSilica = 0
+
+	if p.totalLines == 0 || len(taskMatchedLines) == 0 {
+		return
 	}
 
-	if totalLines == 0 || len(taskMatchedLines) == 0 {
-		return nil, totalLines, nil
-	}
-
-	var result []taskSilica
 	for taskID, matchedLines := range taskMatchedLines {
-		silica := matchedLines / float64(totalLines)
-		result = append(result, taskSilica{TaskID: taskID, Silica: silica})
+		silica := matchedLines / float64(p.totalLines)
+		p.taskIDs = append(p.taskIDs, taskID)
+		p.taskSilicas = append(p.taskSilicas, silica)
+		p.totalSilica += silica
 	}
-
-	return result, totalLines, nil
 }
 
-func calcCommitDerivedMinutes(db *gorm.DB, taskIDSilica []taskSilica) (float64, float64, int64, int64, float64) {
-	var aiMinutes, ancientMinutes float64
-	var upstreamTokens, downstreamTokens int64
-	var cost float64
-	for _, ts := range taskIDSilica {
+func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
+	for i, taskID := range p.taskIDs {
 		var task Task
 		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes, upstream_tokens, downstream_tokens, cost").
-			Where("task_id = ?", ts.TaskID).First(&task).Error; err != nil {
+			Where("task_id = ?", taskID).First(&task).Error; err != nil {
 			if err != gorm.ErrRecordNotFound {
-				fmt.Fprintf(os.Stderr, "查询task数据失败 [%s]: %v\n", ts.TaskID, err)
+				fmt.Fprintf(os.Stderr, "查询task数据失败 [%s]: %v\n", taskID, err)
 			}
 			continue
 		}
-		aiMinutes += task.TaskRealMinutes * ts.Silica
-		ancientMinutes += task.TaskAncientMinutes * (1 - ts.Silica)
-		upstreamTokens += task.UpstreamTokens
-		downstreamTokens += task.DownstreamTokens
-		cost += task.Cost
+		silica := p.taskSilicas[i]
+		p.aiMinutes += task.TaskRealMinutes * silica
+		p.ancientMinutes += task.TaskAncientMinutes * (1 - silica)
+		p.upstreamTokens += task.UpstreamTokens
+		p.downstreamTokens += task.DownstreamTokens
+		p.cost += task.Cost
 	}
-	return aiMinutes, ancientMinutes, upstreamTokens, downstreamTokens, cost
-}
-
-func countMatchedLines(fpPath string, hashToTaskID map[string]string) int {
-	f, err := os.Open(fpPath)
-	if err != nil {
-		return 0
-	}
-	defer f.Close()
-
-	matched := 0
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		if _, ok := hashToTaskID[line]; ok {
-			matched++
-		}
-	}
-	return matched
+	return nil
 }
 
 func runSilica(analysedDir string, force bool) error {
@@ -321,6 +306,12 @@ func runSilica(analysedDir string, force bool) error {
 				}
 			}
 		}
+		commitPs := buildCommitParser(fpFile)
+		if commitPs == nil {
+			fmt.Fprintf(os.Stderr, "警告: 读取commit指纹文件失败 [%s]\n", fpFile)
+			skipCount++
+			continue
+		}
 
 		var commit Commit
 		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
@@ -341,14 +332,9 @@ func runSilica(analysedDir string, force bool) error {
 		}
 		candidateHashes := idx.buildCandidateHashIndex(gk, commitTime)
 
-		taskIDSilica, totalLines, err := computeCommitSilica(fpFile, candidateHashes)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "计算含硅量失败 [%s]: %v\n", commitID, err)
-			failCount++
-			continue
-		}
+		commitPs.computeCommitSilica(candidateHashes)
 
-		if len(taskIDSilica) == 0 {
+		if len(commitPs.taskIDs) == 0 {
 			if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 				"task_ids":                    "[]",
 				"task_ids_silica":             "[]",
@@ -368,38 +354,32 @@ func runSilica(analysedDir string, force bool) error {
 			continue
 		}
 
-		var taskIDList []string
-		var silicaList []float64
-		var totalSilica float64
-		for _, ts := range taskIDSilica {
-			taskIDList = append(taskIDList, ts.TaskID)
-			silicaList = append(silicaList, ts.Silica)
-			totalSilica += ts.Silica
+		if err := commitPs.calcCommitDerivedMinutes(db); err != nil {
+			fmt.Fprintf(os.Stderr, "计算衍生数据失败 [%s]: %v\n", commitID, err)
+			failCount++
+			continue
 		}
+		commitRealMinutes := commitPs.aiMinutes + commitPs.ancientMinutes
 
-		commitRealAIMinutes, commitRealAncientMinutes, upstreamTokens, downstreamTokens, cost := calcCommitDerivedMinutes(db, taskIDSilica)
-		commitRealMinutes := commitRealAIMinutes + commitRealAncientMinutes
-
-		taskIDsJSON, _ := json.Marshal(taskIDList)
-		silicaJSON, _ := json.Marshal(silicaList)
+		taskIDsJSON, _ := json.Marshal(commitPs.taskIDs)
+		silicaJSON, _ := json.Marshal(commitPs.taskSilicas)
 
 		if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 			"task_ids":                    string(taskIDsJSON),
 			"task_ids_silica":             string(silicaJSON),
-			"silica":                      totalSilica,
-			"commit_real_ai_minutes":      commitRealAIMinutes,
-			"commit_real_ancient_minutes": commitRealAncientMinutes,
+			"silica":                      commitPs.totalSilica,
+			"commit_real_ai_minutes":      commitPs.aiMinutes,
+			"commit_real_ancient_minutes": commitPs.ancientMinutes,
 			"commit_real_minutes":         commitRealMinutes,
-			"upstream_tokens":             upstreamTokens,
-			"downstream_tokens":           downstreamTokens,
-			"cost":                        cost,
+			"upstream_tokens":             commitPs.upstreamTokens,
+			"downstream_tokens":           commitPs.downstreamTokens,
+			"cost":                        commitPs.cost,
 		}).Error; err != nil {
 			fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
 			failCount++
 		} else {
-			matched := countMatchedLines(fpFile, candidateHashes)
 			fmt.Printf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin\n",
-				commitID, totalSilica, matched, totalLines, commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes)
+				commitID, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitRealMinutes)
 			successCount++
 		}
 	}
