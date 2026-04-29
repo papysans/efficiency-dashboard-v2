@@ -131,33 +131,23 @@ func listReposV2(c *gin.Context) {
 		return
 	}
 
-	// 转换 map 为 RepoListItem
+	// 转换 RepoAggregate 为 RepoListItem
 	items := make([]RepoListItem, 0, len(aggregates))
-	for _, m := range aggregates {
+	for _, agg := range aggregates {
 		var ri RepoListItem
-		ri.RepoAddr, _ = m["repo_addr"].(*string)
-		ri.RepoBranch, _ = m["repo_branch"].(*string)
-		if v, ok := m["commit_count"].(int); ok {
-			ri.CommitCount = v
+		ri.RepoAddr = agg.RepoAddr
+		ri.RepoBranch = agg.RepoBranch
+		ri.CommitCount = agg.CommitCount
+		if agg.StartTime != nil {
+			ri.StartTime = agg.StartTime.Format("2006-01-02")
 		}
-		if st, ok := m["start_time"].(*time.Time); ok && st != nil {
-			ri.StartTime = st.Format("2006-01-02")
-		} else {
-			ri.StartTime = ""
+		if agg.EndTime != nil {
+			ri.EndTime = agg.EndTime.Format("2006-01-02")
 		}
-		if et, ok := m["end_time"].(*time.Time); ok && et != nil {
-			ri.EndTime = et.Format("2006-01-02")
-		} else {
-			ri.EndTime = ""
-		}
-		ri.SumAncientMinutes, _ = m["sum_ancient_minutes"].(*float64)
-		ri.SumRealMinutes, _ = m["sum_real_minutes"].(*float64)
-		if v, ok := m["task_count"].(int); ok {
-			ri.TaskCount = v
-		}
-		if v, ok := m["efficiency_ratio"].(float64); ok {
-			ri.EfficiencyRatio = &v
-		}
+		ri.SumAncientMinutes = agg.SumAncientMinutes
+		ri.SumRealMinutes = agg.SumRealMinutes
+		ri.TaskCount = agg.TaskCount
+		ri.EfficiencyRatio = agg.EfficiencyRatio
 		items = append(items, ri)
 	}
 

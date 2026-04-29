@@ -14,6 +14,19 @@ type rowScanner interface {
 	Scan(dest ...interface{}) error
 }
 
+// RepoAggregate 按 (repo_addr, repo_branch) 聚合的仓库统计信息
+type RepoAggregate struct {
+	RepoAddr          *string
+	RepoBranch        *string
+	CommitCount       int
+	StartTime         *time.Time
+	EndTime           *time.Time
+	SumAncientMinutes *float64
+	SumRealMinutes    *float64
+	TaskCount         int
+	EfficiencyRatio   *float64
+}
+
 // InitDB 初始化 PostgreSQL 数据库连接
 func InitDB(cfg DatabaseConfig) (*sql.DB, error) {
 	// 首先尝试直接连接到目标数据库
@@ -133,10 +146,9 @@ func EnsureStatSchema(db *sql.DB) error {
 			task_real_minutes_reason_manual TEXT,
 			task_ancient_minutes FLOAT8,
 			task_ancient_minutes_reason TEXT,
-			task_ancient_minutes_manual FLOAT8,
-			task_ancient_minutes_reason_manual TEXT,
-			efficiency_ratio FLOAT8,
-			title VARCHAR(200),
+		task_ancient_minutes_manual FLOAT8,
+		task_ancient_minutes_reason_manual TEXT,
+		title VARCHAR(200),
 			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -325,7 +337,6 @@ type StatTask struct {
 	TaskAncientMinutesReason       *string    `json:"task_ancient_minutes_reason"`
 	TaskAncientMinutesManual       *float64   `json:"task_ancient_minutes_manual"`
 	TaskAncientMinutesReasonManual *string    `json:"task_ancient_minutes_reason_manual"`
-	EfficiencyRatio                *float64   `json:"efficiency_ratio"`
 	Title                          *string    `json:"title"`
 	CreatedAt                      *time.Time `json:"created_at"`
 	UpdatedAt                      *time.Time `json:"updated_at"`
@@ -367,7 +378,7 @@ var statTaskSelectColumns = `task_id, user_id, user_name, client_id, client_ide,
 	task_real_minutes_manual, task_real_minutes_reason_manual,
 	task_ancient_minutes, task_ancient_minutes_reason,
 	task_ancient_minutes_manual, task_ancient_minutes_reason_manual,
-	efficiency_ratio, title, created_at, updated_at`
+	title, created_at, updated_at`
 
 func scanStatTask(s rowScanner, m *StatTask) error {
 	return s.Scan(
@@ -379,7 +390,7 @@ func scanStatTask(s rowScanner, m *StatTask) error {
 		&m.TaskRealMinutesManual, &m.TaskRealMinutesReasonManual,
 		&m.TaskAncientMinutes, &m.TaskAncientMinutesReason,
 		&m.TaskAncientMinutesManual, &m.TaskAncientMinutesReasonManual,
-		&m.EfficiencyRatio, &m.Title, &m.CreatedAt, &m.UpdatedAt,
+		&m.Title, &m.CreatedAt, &m.UpdatedAt,
 	)
 }
 
@@ -868,7 +879,7 @@ func UpdateStatCommitTaskAssoc(db *sql.DB, commitID string, taskIDs, taskIDsSili
 }
 
 // ListRepoAggregates 按 (repo_addr, repo_branch) 聚合 stat commits 数据
-func ListRepoAggregates(db *sql.DB, startTime, endTime string) ([]map[string]interface{}, error) {
+func ListRepoAggregates(db *sql.DB, startTime, endTime string) ([]RepoAggregate, error) {
 	var conditions []string
 	var args []interface{}
 	argIdx := 1
@@ -905,31 +916,15 @@ func ListRepoAggregates(db *sql.DB, startTime, endTime string) ([]map[string]int
 	}
 	defer rows.Close()
 
-	var list []map[string]interface{}
+	var list []RepoAggregate
 	for rows.Next() {
-		var repoAddr, repoBranch *string
-		var commitCount int
-		var startT, endT *time.Time
-		var sumAncient, sumReal *float64
-		var taskCount int
-		if err := rows.Scan(&repoAddr, &repoBranch, &commitCount, &startT, &endT, &sumAncient, &sumReal, &taskCount); err != nil {
+		var item RepoAggregate
+		if err := rows.Scan(&item.RepoAddr, &item.RepoBranch, &item.CommitCount, &item.StartTime, &item.EndTime, &item.SumAncientMinutes, &item.SumRealMinutes, &item.TaskCount); err != nil {
 			return nil, fmt.Errorf("扫描 stat commits 聚合行失败: %w", err)
 		}
-		item := map[string]interface{}{
-			"repo_addr":           repoAddr,
-			"repo_branch":         repoBranch,
-			"commit_count":        commitCount,
-			"start_time":          startT,
-			"end_time":            endT,
-			"sum_ancient_minutes": sumAncient,
-			"sum_real_minutes":    sumReal,
-			"task_count":          taskCount,
-		}
-		if sumAncient != nil && sumReal != nil && *sumReal > 0 {
-			ratio := calcEfficiencyRatio(*sumAncient, *sumReal)
-			item["efficiency_ratio"] = ratio
-		} else {
-			item["efficiency_ratio"] = nil
+		if item.SumAncientMinutes != nil && item.SumRealMinutes != nil && *item.SumRealMinutes > 0 {
+			ratio := calcEfficiencyRatio(*item.SumAncientMinutes, *item.SumRealMinutes)
+			item.EfficiencyRatio = &ratio
 		}
 		list = append(list, item)
 	}

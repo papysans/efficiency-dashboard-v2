@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     task_ancient_minutes_reason TEXT,
     task_ancient_minutes_manual FLOAT8,
     task_ancient_minutes_reason_manual TEXT,
-    efficiency_ratio FLOAT8,
     title VARCHAR(200),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

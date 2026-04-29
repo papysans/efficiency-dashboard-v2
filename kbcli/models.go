@@ -90,7 +90,6 @@ type Task struct {
 	TaskAncientMinutesReason       string     `gorm:"type:text" json:"task_ancient_minutes_reason"`
 	TaskAncientMinutesManual       *float64   `gorm:"type:float8" json:"task_ancient_minutes_manual"`
 	TaskAncientMinutesReasonManual *string    `gorm:"type:text" json:"task_ancient_minutes_reason_manual"`
-	EfficiencyRatio                *float64   `gorm:"type:float8" json:"efficiency_ratio"`
 	Title                          string     `gorm:"type:varchar(200)" json:"title"`
 	CreatedAt                      time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`

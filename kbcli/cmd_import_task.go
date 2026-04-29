@@ -265,11 +265,6 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 		task_real_minutes_reason = CASE WHEN tasks.task_real_minutes IS NULL AND tasks.task_real_minutes_manual IS NULL THEN EXCLUDED.task_real_minutes_reason ELSE tasks.task_real_minutes_reason END,
 		task_ancient_minutes = CASE WHEN tasks.task_ancient_minutes IS NULL AND tasks.task_ancient_minutes_manual IS NULL THEN EXCLUDED.task_ancient_minutes ELSE tasks.task_ancient_minutes END,
 		task_ancient_minutes_reason = CASE WHEN tasks.task_ancient_minutes IS NULL AND tasks.task_ancient_minutes_manual IS NULL THEN EXCLUDED.task_ancient_minutes_reason ELSE tasks.task_ancient_minutes_reason END,
-		efficiency_ratio = CASE
-			WHEN COALESCE(tasks.task_real_minutes_manual, tasks.task_real_minutes) > 0 AND COALESCE(tasks.task_ancient_minutes_manual, tasks.task_ancient_minutes) > 0
-			THEN COALESCE(tasks.task_ancient_minutes_manual, tasks.task_ancient_minutes) / COALESCE(tasks.task_real_minutes_manual, tasks.task_real_minutes) * 100
-			ELSE NULL
-		END,
 		updated_at = CURRENT_TIMESTAMP`,
 		rec.TaskID, rec.UserID, rec.UserName,
 		rec.ClientID, rec.ClientIDE, rec.ClientVersion,

@@ -89,22 +89,13 @@ func TestRepoAggregates_TaskCount(t *testing.T) {
 	// 查找测试 repo 的结果
 	var found bool
 	for _, item := range results {
-		addr, _ := item["repo_addr"].(*string)
-		if addr != nil && *addr == repoAddr {
+		if item.RepoAddr != nil && *item.RepoAddr == repoAddr {
 			found = true
-			taskCount, ok := item["task_count"].(int)
-			if !ok {
-				t.Fatalf("task_count 类型不是 int: %T", item["task_count"])
+			if item.TaskCount != 3 {
+				t.Errorf("task_count = %d, want 3 (只有第一条 commit 有 3 个有效 task)", item.TaskCount)
 			}
-			if taskCount != 3 {
-				t.Errorf("task_count = %d, want 3 (只有第一条 commit 有 3 个有效 task)", taskCount)
-			}
-			commitCount, ok := item["commit_count"].(int)
-			if !ok {
-				t.Fatalf("commit_count 类型不是 int: %T", item["commit_count"])
-			}
-			if commitCount != 4 {
-				t.Errorf("commit_count = %d, want 4", commitCount)
+			if item.CommitCount != 4 {
+				t.Errorf("commit_count = %d, want 4", item.CommitCount)
 			}
 			break
 		}
@@ -140,14 +131,12 @@ func TestRepoAggregates_EfficiencyRatio(t *testing.T) {
 			t.Fatalf("ListRepoAggregates 失败: %v", err)
 		}
 		for _, item := range results {
-			addr, _ := item["repo_addr"].(*string)
-			if addr != nil && *addr == repoAddr {
-				ratio, ok := item["efficiency_ratio"].(float64)
-				if !ok {
-					t.Fatalf("efficiency_ratio 不是 float64: %T (%v)", item["efficiency_ratio"], item["efficiency_ratio"])
+			if item.RepoAddr != nil && *item.RepoAddr == repoAddr {
+				if item.EfficiencyRatio == nil {
+					t.Fatalf("efficiency_ratio 为 nil")
 				}
-				if ratio != 400.0 {
-					t.Errorf("efficiency_ratio = %v, want 400.0", ratio)
+				if *item.EfficiencyRatio != 400.0 {
+					t.Errorf("efficiency_ratio = %v, want 400.0", *item.EfficiencyRatio)
 				}
 				return
 			}
@@ -171,10 +160,9 @@ func TestRepoAggregates_EfficiencyRatio(t *testing.T) {
 			t.Fatalf("ListRepoAggregates 失败: %v", err)
 		}
 		for _, item := range results {
-			addr, _ := item["repo_addr"].(*string)
-			if addr != nil && *addr == repoAddr {
-				if item["efficiency_ratio"] != nil {
-					t.Errorf("efficiency_ratio = %v, want nil (real 为 NULL)", item["efficiency_ratio"])
+			if item.RepoAddr != nil && *item.RepoAddr == repoAddr {
+				if item.EfficiencyRatio != nil {
+					t.Errorf("efficiency_ratio = %v, want nil (real 为 NULL)", item.EfficiencyRatio)
 				}
 				return
 			}
@@ -198,10 +186,9 @@ func TestRepoAggregates_EfficiencyRatio(t *testing.T) {
 			t.Fatalf("ListRepoAggregates 失败: %v", err)
 		}
 		for _, item := range results {
-			addr, _ := item["repo_addr"].(*string)
-			if addr != nil && *addr == repoAddr {
-				if item["efficiency_ratio"] != nil {
-					t.Errorf("efficiency_ratio = %v, want nil (两者均 NULL)", item["efficiency_ratio"])
+			if item.RepoAddr != nil && *item.RepoAddr == repoAddr {
+				if item.EfficiencyRatio != nil {
+					t.Errorf("efficiency_ratio = %v, want nil (两者均 NULL)", item.EfficiencyRatio)
 				}
 				return
 			}
@@ -248,15 +235,12 @@ func TestRepoAggregates_DateFilter(t *testing.T) {
 	}
 
 	for _, item := range results {
-		addr, _ := item["repo_addr"].(*string)
-		if addr != nil && *addr == repoAddr {
-			commitCount, _ := item["commit_count"].(int)
-			if commitCount != 1 {
-				t.Errorf("日期过滤后 commit_count = %d, want 1", commitCount)
+		if item.RepoAddr != nil && *item.RepoAddr == repoAddr {
+			if item.CommitCount != 1 {
+				t.Errorf("日期过滤后 commit_count = %d, want 1", item.CommitCount)
 			}
-			sumAncient, ok := item["sum_ancient_minutes"].(*float64)
-			if !ok || sumAncient == nil || *sumAncient != 100 {
-				t.Errorf("日期过滤后 sum_ancient_minutes = %v, want 100", item["sum_ancient_minutes"])
+			if item.SumAncientMinutes == nil || *item.SumAncientMinutes != 100 {
+				t.Errorf("日期过滤后 sum_ancient_minutes = %v, want 100", item.SumAncientMinutes)
 			}
 			return
 		}
