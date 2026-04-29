@@ -84,8 +84,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}  # GitHub 自动提供
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}  # 需要在 GitHub Secrets 中配置此 PAT
 
       - name: Build and push backend image to ghcr
         uses: docker/build-push-action@v5
