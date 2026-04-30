@@ -34,6 +34,24 @@ http_proxy: "http://127.0.0.1:7890"
 
 traditional_dev_lines_per_day: 100
 
+serve:
+  port: 8080
+  crontab:
+    - schedule: "0 0 * * * *"
+      command: import-task
+      params:
+        force: false
+    - schedule: "0 5 * * * *"
+      command: import-repo
+      params:
+        force: false
+    - schedule: "0 10 * * * *"
+      command: silica
+      params:
+        force: false
+    - schedule: "0 15 * * * *"
+      command: efficiency
+
 # 算法估时配置
 algo_estimation:
   max_input_chars: 300000    # 最大输入字符数

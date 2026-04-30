@@ -5,7 +5,7 @@ global:
 
 image:
   repository: zgsm/efficiency-dashboard-kbcli
-  tag: "v1.0.9"
+  tag: "v1.0.21"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -92,6 +92,24 @@ algoEstimation:
 httpProxy: "http://127.0.0.1:7890"
 
 orgDSN: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
+
+serve:
+  port: 8080
+  crontab:
+    - schedule: "0 0 * * * *"
+      command: import-task
+      params:
+        force: false
+    - schedule: "0 5 * * * *"
+      command: import-repo
+      params:
+        force: false
+    - schedule: "0 10 * * * *"
+      command: silica
+      params:
+        force: false
+    - schedule: "0 15 * * * *"
+      command: efficiency
 
 serviceAccount:
   create: true

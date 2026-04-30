@@ -1,0 +1,391 @@
+basePath: /
+definitions:
+  main.AsyncTask:
+    properties:
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      error:
+        type: string
+      params:
+        additionalProperties: true
+        type: object
+      result:
+        type: string
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/main.TaskStatus'
+      task_id:
+        type: string
+      type:
+        type: string
+    type: object
+  main.CancelTaskResponse:
+    properties:
+      message:
+        example: 任务已取消
+        type: string
+      status:
+        example: cancelled
+        type: string
+      task_id:
+        example: abc123
+        type: string
+    type: object
+  main.CreateTaskResponse:
+    properties:
+      status:
+        example: pending
+        type: string
+      task_id:
+        example: abc123
+        type: string
+      type:
+        example: import-task
+        type: string
+    type: object
+  main.EfficiencyBody:
+    properties:
+      date:
+        example: "20240101"
+        type: string
+    type: object
+  main.ErrorResponse:
+    properties:
+      error:
+        example: 任务不存在
+        type: string
+    type: object
+  main.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  main.ImportOrgBody:
+    properties:
+      from_csv:
+        example: ./org.csv
+        type: string
+      from_db:
+        example: host=localhost dbname=auth
+        type: string
+      to_csv:
+        example: ./output.csv
+        type: string
+    type: object
+  main.ImportRepoBody:
+    properties:
+      analysed_dir:
+        example: ./analysed
+        type: string
+      force:
+        example: false
+        type: boolean
+      repo_dir:
+        example: /path/to/repo
+        type: string
+    type: object
+  main.ImportTaskBody:
+    properties:
+      analysed_dir:
+        example: ./analysed
+        type: string
+      force:
+        example: false
+        type: boolean
+      task_dir:
+        example: /path/to/task
+        type: string
+    type: object
+  main.SilicaBody:
+    properties:
+      analysed_dir:
+        example: ./analysed
+        type: string
+      force:
+        example: false
+        type: boolean
+    type: object
+  main.TaskListResponse:
+    properties:
+      tasks:
+        items:
+          $ref: '#/definitions/main.AsyncTask'
+        type: array
+      total:
+        example: 1
+        type: integer
+    type: object
+  main.TaskStatus:
+    enum:
+    - pending
+    - running
+    - completed
+    - failed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - TaskStatusPending
+    - TaskStatusRunning
+    - TaskStatusCompleted
+    - TaskStatusFailed
+    - TaskStatusCancelled
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: kbcli serve RESTful API，支持异步任务管理和定时任务调度
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: KBCLI Serve API
+  version: "1.0"
+paths:
+  /api/health:
+    get:
+      description: 检查服务器是否正常运行
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.HealthResponse'
+      summary: 健康检查
+      tags:
+      - health
+  /api/tasks:
+    get:
+      description: 获取所有异步任务的列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.TaskListResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 列举异步任务
+      tags:
+      - tasks
+  /api/tasks/{id}:
+    delete:
+      description: 通过任务ID取消指定的异步任务
+      parameters:
+      - description: 任务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.CancelTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 取消异步任务
+      tags:
+      - tasks
+    get:
+      description: 通过任务ID获取异步任务的详细信息和执行结果
+      parameters:
+      - description: 任务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.AsyncTask'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 查询异步任务
+      tags:
+      - tasks
+  /api/tasks/efficiency:
+    post:
+      consumes:
+      - application/json
+      description: 将 efficiency 逻辑以异步任务方式提交到队列执行
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.EfficiencyBody'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.CreateTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 提交 efficiency 异步任务
+      tags:
+      - tasks
+  /api/tasks/import-org:
+    post:
+      consumes:
+      - application/json
+      description: 将 import-org 逻辑以异步任务方式提交到队列执行
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.ImportOrgBody'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.CreateTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 提交 import-org 异步任务
+      tags:
+      - tasks
+  /api/tasks/import-repo:
+    post:
+      consumes:
+      - application/json
+      description: 将 import-repo 逻辑以异步任务方式提交到队列执行
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.ImportRepoBody'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.CreateTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 提交 import-repo 异步任务
+      tags:
+      - tasks
+  /api/tasks/import-task:
+    post:
+      consumes:
+      - application/json
+      description: 将 import-task 逻辑以异步任务方式提交到队列执行
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.ImportTaskBody'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.CreateTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 提交 import-task 异步任务
+      tags:
+      - tasks
+  /api/tasks/silica:
+    post:
+      consumes:
+      - application/json
+      description: 将 silica 逻辑以异步任务方式提交到队列执行
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.SilicaBody'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.CreateTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 提交 silica 异步任务
+      tags:
+      - tasks
+swagger: "2.0"

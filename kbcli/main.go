@@ -4,7 +4,24 @@ import (
 	"bufio"
 	"os"
 	"strings"
+
+	_ "kanban/kbcli/docs"
 )
+
+// @title KBCLI Serve API
+// @version 1.0
+// @description kbcli serve RESTful API，支持异步任务管理和定时任务调度
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.swagger.io/support
+// @contact.email support@swagger.io
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:8080
+// @BasePath /
 
 // loadDotEnv 加载项目根目录的 .env 文件，不覆盖已有的环境变量
 func loadDotEnv() {

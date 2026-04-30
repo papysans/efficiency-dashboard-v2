@@ -27,7 +27,7 @@ type taskContent struct {
 	TaskAncientMinutesReason string            `json:"task_ancient_minutes_reason"`
 	Conversations            []taskConvContent `json:"conversations"`
 	TotalUserInChars         int               `json:"total_user_inchars"`
-	TotalCodeLines           int               `json:"total_code_lines`
+	TotalCodeLines           int               `json:"total_code_lines"`
 }
 
 // extractJSON 从 AI 响应文本中提取 JSON 对象

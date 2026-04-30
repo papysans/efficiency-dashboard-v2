@@ -1,0 +1,455 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/robfig/cron/v3"
+	"github.com/spf13/cobra"
+	httpSwagger "github.com/swaggo/http-swagger"
+)
+
+var taskQueue *TaskQueue
+
+// validTaskTypes 定义支持的任务类型
+var validTaskTypes = map[string]bool{
+	"import-task": true,
+	"import-repo": true,
+	"import-org":  true,
+	"silica":      true,
+	"efficiency":  true,
+}
+
+// HealthResponse 健康检查响应
+// swagger:response HealthResponse
+type HealthResponse struct {
+	Status string `json:"status" example:"ok"`
+}
+
+// ErrorResponse 错误响应
+// swagger:response ErrorResponse
+type ErrorResponse struct {
+	Error string `json:"error" example:"任务不存在"`
+}
+
+// CreateTaskResponse 创建任务响应
+// swagger:response CreateTaskResponse
+type CreateTaskResponse struct {
+	TaskID string `json:"task_id" example:"abc123"`
+	Status string `json:"status" example:"pending"`
+	Type   string `json:"type" example:"import-task"`
+}
+
+// CancelTaskResponse 取消任务响应
+// swagger:response CancelTaskResponse
+type CancelTaskResponse struct {
+	TaskID  string `json:"task_id" example:"abc123"`
+	Status  string `json:"status" example:"cancelled"`
+	Message string `json:"message" example:"任务已取消"`
+}
+
+// TaskListResponse 任务列表响应
+// swagger:response TaskListResponse
+type TaskListResponse struct {
+	Tasks []*AsyncTask `json:"tasks"`
+	Total int          `json:"total" example:"1"`
+}
+
+// ImportTaskBody import-task 请求体
+type ImportTaskBody struct {
+	TaskDir     string `json:"task_dir" example:"/path/to/task"`
+	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
+	Force       bool   `json:"force" example:"false"`
+}
+
+// ImportRepoBody import-repo 请求体
+type ImportRepoBody struct {
+	RepoDir     string `json:"repo_dir" example:"/path/to/repo"`
+	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
+	Force       bool   `json:"force" example:"false"`
+}
+
+// ImportOrgBody import-org 请求体
+type ImportOrgBody struct {
+	FromDB  string `json:"from_db" example:"host=localhost dbname=auth"`
+	FromCSV string `json:"from_csv" example:"./org.csv"`
+	ToCSV   string `json:"to_csv" example:"./output.csv"`
+}
+
+// SilicaBody silica 请求体
+type SilicaBody struct {
+	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
+	Force       bool   `json:"force" example:"false"`
+}
+
+// EfficiencyBody efficiency 请求体
+type EfficiencyBody struct {
+	Date string `json:"date" example:"20240101"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		logWarnf("写入JSON响应失败: %v", err)
+	}
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// healthHandler 健康检查接口
+// @Summary 健康检查
+// @Description 检查服务器是否正常运行
+// @Tags health
+// @Produce json
+// @Success 200 {object} HealthResponse
+// @Router /api/health [get]
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "仅支持GET请求")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// createTaskHandler 创建异步任务
+// @Summary 提交 import-task 异步任务
+// @Description 将 import-task 逻辑以异步任务方式提交到队列执行
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body ImportTaskBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/import-task [post]
+func createImportTaskHandler(w http.ResponseWriter, r *http.Request) {
+	createTaskHandlerFunc("import-task", w, r)
+}
+
+// createImportRepoHandler 创建 import-repo 异步任务
+// @Summary 提交 import-repo 异步任务
+// @Description 将 import-repo 逻辑以异步任务方式提交到队列执行
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body ImportRepoBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/import-repo [post]
+func createImportRepoHandler(w http.ResponseWriter, r *http.Request) {
+	createTaskHandlerFunc("import-repo", w, r)
+}
+
+// createImportOrgHandler 创建 import-org 异步任务
+// @Summary 提交 import-org 异步任务
+// @Description 将 import-org 逻辑以异步任务方式提交到队列执行
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body ImportOrgBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/import-org [post]
+func createImportOrgHandler(w http.ResponseWriter, r *http.Request) {
+	createTaskHandlerFunc("import-org", w, r)
+}
+
+// createSilicaHandler 创建 silica 异步任务
+// @Summary 提交 silica 异步任务
+// @Description 将 silica 逻辑以异步任务方式提交到队列执行
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body SilicaBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/silica [post]
+func createSilicaHandler(w http.ResponseWriter, r *http.Request) {
+	createTaskHandlerFunc("silica", w, r)
+}
+
+// createEfficiencyHandler 创建 efficiency 异步任务
+// @Summary 提交 efficiency 异步任务
+// @Description 将 efficiency 逻辑以异步任务方式提交到队列执行
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body EfficiencyBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/efficiency [post]
+func createEfficiencyHandler(w http.ResponseWriter, r *http.Request) {
+	createTaskHandlerFunc("efficiency", w, r)
+}
+
+func createTaskHandlerFunc(taskType string, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "仅支持POST请求")
+		return
+	}
+
+	var params map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("解析请求体失败: %v", err))
+		return
+	}
+
+	if params == nil {
+		params = make(map[string]interface{})
+	}
+
+	task := taskQueue.Submit(taskType, params)
+	writeJSON(w, http.StatusAccepted, map[string]interface{}{
+		"task_id": task.ID,
+		"status":  task.Status,
+		"type":    task.Type,
+	})
+}
+
+// listTasksHandler 列举所有异步任务
+// @Summary 列举异步任务
+// @Description 获取所有异步任务的列表
+// @Tags tasks
+// @Produce json
+// @Success 200 {object} TaskListResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks [get]
+func listTasksHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "仅支持GET请求")
+		return
+	}
+
+	tasks := taskQueue.List()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"tasks": tasks,
+		"total": len(tasks),
+	})
+}
+
+// getTaskHandler 查询单个异步任务
+// @Summary 查询异步任务
+// @Description 通过任务ID获取异步任务的详细信息和执行结果
+// @Tags tasks
+// @Produce json
+// @Param id path string true "任务ID"
+// @Success 200 {object} AsyncTask
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/{id} [get]
+func getTaskHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "仅支持GET请求")
+		return
+	}
+
+	taskID := r.PathValue("id")
+	if taskID == "" {
+		writeError(w, http.StatusBadRequest, "缺少任务ID")
+		return
+	}
+
+	task, ok := taskQueue.Get(taskID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "任务不存在")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, task)
+}
+
+// cancelTaskHandler 取消异步任务
+// @Summary 取消异步任务
+// @Description 通过任务ID取消指定的异步任务
+// @Tags tasks
+// @Produce json
+// @Param id path string true "任务ID"
+// @Success 200 {object} CancelTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/{id} [delete]
+func cancelTaskHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, "仅支持DELETE请求")
+		return
+	}
+
+	taskID := r.PathValue("id")
+	if taskID == "" {
+		writeError(w, http.StatusBadRequest, "缺少任务ID")
+		return
+	}
+
+	task, ok := taskQueue.Cancel(taskID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "任务不存在")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"task_id": task.ID,
+		"status":  task.Status,
+		"message": "任务已取消",
+	})
+}
+
+// setupRouter 设置HTTP路由
+func setupRouter() *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// Swagger UI
+	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
+
+	// 健康检查
+	mux.HandleFunc("/api/health", healthHandler)
+
+	// 任务创建接口
+	mux.HandleFunc("/api/tasks/import-task", createImportTaskHandler)
+	mux.HandleFunc("/api/tasks/import-repo", createImportRepoHandler)
+	mux.HandleFunc("/api/tasks/import-org", createImportOrgHandler)
+	mux.HandleFunc("/api/tasks/silica", createSilicaHandler)
+	mux.HandleFunc("/api/tasks/efficiency", createEfficiencyHandler)
+
+	// 任务管理接口
+	mux.HandleFunc("/api/tasks", listTasksHandler)
+	mux.HandleFunc("/api/tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			getTaskHandler(w, r)
+		case http.MethodDelete:
+			cancelTaskHandler(w, r)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		}
+	})
+
+	return mux
+}
+
+// startCron 启动定时任务调度器
+func startCron(queue *TaskQueue) *cron.Cron {
+	if len(cfg.Serve.Crontab) == 0 {
+		logInfo("没有配置定时任务，跳过cron启动")
+		return nil
+	}
+
+	c := cron.New(cron.WithSeconds())
+	for _, job := range cfg.Serve.Crontab {
+		if job.Schedule == "" || job.Command == "" {
+			logWarnf("跳过无效定时任务配置: schedule=%s, command=%s", job.Schedule, job.Command)
+			continue
+		}
+		if !validTaskTypes[job.Command] {
+			logWarnf("跳过未知命令类型的定时任务: %s", job.Command)
+			continue
+		}
+
+		cmd := job.Command
+		params := job.Params
+		if params == nil {
+			params = make(map[string]interface{})
+		}
+
+		entryID, err := c.AddFunc(job.Schedule, func() {
+			logInfof("[cron] 定时任务触发: %s", cmd)
+			task := queue.Submit(cmd, params)
+			logInfof("[cron] 任务已提交: %s (type=%s)", task.ID, cmd)
+		})
+		if err != nil {
+			logWarnf("添加定时任务失败 [%s %s]: %v", job.Schedule, cmd, err)
+			continue
+		}
+		logInfof("[cron] 已注册定时任务: schedule=%s, command=%s, entryID=%d", job.Schedule, cmd, entryID)
+	}
+
+	c.Start()
+	logInfo("[cron] 定时任务调度器已启动")
+	return c
+}
+
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "启动HTTP服务器，提供RESTful API和定时任务调度",
+	Long: `启动HTTP服务器，支持以下功能：
+  1. RESTful API: 健康检查、异步任务提交、任务查询与取消
+  2. 定时任务: 根据config.yaml中的crontab配置定时执行命令`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		port, _ := cmd.Flags().GetInt("port")
+		if port <= 0 {
+			port = cfg.Serve.Port
+		}
+		if port <= 0 {
+			port = 8080
+		}
+
+		// 初始化任务队列
+		workers, _ := cmd.Flags().GetInt("workers")
+		if workers <= 0 {
+			workers = 2
+		}
+		taskQueue = NewTaskQueue(workers)
+		defer taskQueue.Stop()
+
+		// 启动定时任务
+		cronInst := startCron(taskQueue)
+		if cronInst != nil {
+			defer cronInst.Stop()
+		}
+
+		// 设置HTTP路由
+		mux := setupRouter()
+		server := &http.Server{
+			Addr:         fmt.Sprintf(":%d", port),
+			Handler:      mux,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+		}
+
+		// 优雅关闭
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+		go func() {
+			logInfof("[serve] HTTP服务器启动，监听端口: %d", port)
+			logInfof("[serve] Swagger文档地址: http://localhost:%d/swagger/index.html", port)
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logErrorf("[serve] HTTP服务器异常: %v", err)
+			}
+		}()
+
+		<-quit
+		logInfo("[serve] 正在关闭服务器...")
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			logWarnf("[serve] 服务器关闭异常: %v", err)
+		}
+
+		logInfo("[serve] 服务器已关闭")
+		return nil
+	},
+}
+
+func init() {
+	serveCmd.Flags().SortFlags = false
+	serveCmd.Flags().Int("port", 0, "HTTP服务器端口，默认使用config.yaml中serve.port或8080")
+	serveCmd.Flags().Int("workers", 2, "异步任务工作协程数")
+	rootCmd.AddCommand(serveCmd)
+}

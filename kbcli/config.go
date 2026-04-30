@@ -49,6 +49,19 @@ type EstimateConfig struct {
 	MinMinutes        float64 `yaml:"min_minutes"`         //最小分钟数
 }
 
+// CrontabConfig 定时任务配置
+type CrontabConfig struct {
+	Schedule string                 `yaml:"schedule"`
+	Command  string                 `yaml:"command"`
+	Params   map[string]interface{} `yaml:"params"`
+}
+
+// ServeConfig HTTP服务配置
+type ServeConfig struct {
+	Port    int             `yaml:"port"`
+	Crontab []CrontabConfig `yaml:"crontab"`
+}
+
 // Config 全局配置结构
 type Config struct {
 	ModelPrices    map[string]ModelPrice `yaml:"model_prices"`
@@ -62,6 +75,7 @@ type Config struct {
 	StatDatabase   DatabaseConfig        `yaml:"stat_database"`
 	OrgDSN         string                `yaml:"org_dsn"`
 	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
+	Serve          ServeConfig           `yaml:"serve"`
 }
 
 // LoadConfig 从 YAML 文件加载配置

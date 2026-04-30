@@ -48,3 +48,17 @@ data:
       lines_per_minutes: {{ .Values.algoEstimation.linesPerMinutes }}
       min_minutes: {{ .Values.algoEstimation.minMinutes }}
 
+    serve:
+      port: {{ .Values.serve.port }}
+      crontab:
+      {{- range .Values.serve.crontab }}
+        - schedule: {{ .schedule | quote }}
+          command: {{ .command | quote }}
+          {{- if .params }}
+          params:
+            {{- range $k, $v := .params }}
+            {{ $k }}: {{ $v }}
+            {{- end }}
+          {{- end }}
+      {{- end }}
+

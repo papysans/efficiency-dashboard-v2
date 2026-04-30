@@ -26,10 +26,9 @@ ENV env=prod
 ENV TZ=Asia/Shanghai
 WORKDIR /app
 
-# 安装cron和必要的工具
 RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.sangfor.com/nexus/repository|g' /etc/apk/repositories
-RUN apk add --no-cache dcron tzdata
+RUN apk add --no-cache tzdata
 COPY --from=builder /app/bin/kbcli /app/bin/kbcli
 COPY --from=builder /app/kbcli/scripts /app/scripts
 
-ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
+CMD ["/app/bin/kbcli", "serve"]
