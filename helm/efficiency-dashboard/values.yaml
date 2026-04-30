@@ -15,14 +15,7 @@ server:
   enabled: true
   image:
     repository: zgsm/efficiency-dashboard-backend
-    tag: "v1.0.9"
-  database:
-    host: "efficiency-dashboard-postgresql"
-    port: 5432
-    user: "postgres"
-    password: "1"
-    dbname: "report"
-    sslmode: "disable"
+    tag: "v1.0.19"
   statDatabase:
     host: "efficiency-dashboard-postgresql"
     port: 5432
@@ -54,14 +47,7 @@ kbcli:
   enabled: true
   image:
     repository: zgsm/efficiency-dashboard-kbcli
-    tag: "v1.0.9"
-  database:
-    host: "efficiency-dashboard-postgresql"
-    port: 5432
-    user: "postgres"
-    password: "1"
-    dbname: "report"
-    sslmode: "disable"
+    tag: "v1.0.19"
   statDatabase:
     host: "efficiency-dashboard-postgresql"
     port: 5432

@@ -69,7 +69,7 @@ volumes:
     pvc:
       enabled: true
       size: 100Gi
-      storageClass: ""
+      storageClass: "costrict-loki"
       accessMode: ReadWriteOnce
 
 aiEstimation:
@@ -104,7 +104,6 @@ podSecurityContext:
   fsGroup: 0
 
 securityContext:
-  # cron服务需要root权限，不限制权限
   allowPrivilegeEscalation: true
 
 nodeSelector: {}

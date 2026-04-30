@@ -12,6 +12,5 @@ func calcEfficiencyRatio(ancientMinutes, realMinutes float64) float64 {
 		return 0
 	}
 	percent := ((ancientMinutes - realMinutes) / realMinutes) * 100
-	percent = math.Round(percent*10) / 10
-	return percent
+	return math.Round(percent*10) / 10
 }

@@ -22,14 +22,6 @@ resources:
     memory: 512Mi
     cpu: 500m
 
-database:
-  host: "postgresql"
-  port: 5432
-  user: "postgres"
-  password: "1"
-  dbname: "report"
-  sslmode: "disable"
-
 statDatabase:
   host: "postgresql"
   port: 5432

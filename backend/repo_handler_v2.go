@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -130,6 +131,7 @@ func listReposV2(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库聚合失败: " + err.Error()})
 		return
 	}
+	aggregates = filterPreferredBranchAggregates(aggregates)
 
 	// 转换 RepoAggregate 为 RepoListItem
 	items := make([]RepoListItem, 0, len(aggregates))
@@ -433,4 +435,63 @@ func listRepoBranchesV2(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RepoBranchesResponse{Branches: branches})
+}
+
+func branchPriorityScore(branch string) int {
+	switch strings.ToLower(branch) {
+	case "main":
+		return 4
+	case "master":
+		return 3
+	case "dev":
+		return 2
+	case "develop":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func strValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func filterPreferredBranchAggregates(aggregates []RepoAggregate) []RepoAggregate {
+	repoMap := make(map[string][]RepoAggregate)
+	for _, agg := range aggregates {
+		addr := strValue(agg.RepoAddr)
+		repoMap[addr] = append(repoMap[addr], agg)
+	}
+
+	result := make([]RepoAggregate, 0, len(repoMap))
+	for _, aggs := range repoMap {
+		sort.Slice(aggs, func(i, j int) bool {
+			scoreI := branchPriorityScore(strValue(aggs[i].RepoBranch))
+			scoreJ := branchPriorityScore(strValue(aggs[j].RepoBranch))
+			if scoreI != scoreJ {
+				return scoreI > scoreJ
+			}
+			ti, tj := aggs[i].EndTime, aggs[j].EndTime
+			if ti != nil && tj != nil {
+				return ti.After(*tj)
+			}
+			if ti != nil {
+				return true
+			}
+			if tj != nil {
+				return false
+			}
+			return true
+		})
+		result = append(result, aggs[0])
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return strValue(result[i].RepoAddr) < strValue(result[j].RepoAddr)
+	})
+
+	return result
 }

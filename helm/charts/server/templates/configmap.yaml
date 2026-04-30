@@ -9,14 +9,6 @@ data:
     server:
       port: {{ .Values.server.port }}
 
-    database:
-      host: {{ .Values.database.host | quote }}
-      port: {{ .Values.database.port }}
-      user: {{ .Values.database.user | quote }}
-      password: {{ .Values.database.password | quote }}
-      dbname: {{ .Values.database.dbname | quote }}
-      sslmode: {{ .Values.database.sslmode | quote }}
-
     stat_database:
       host: {{ .Values.statDatabase.host | quote }}
       port: {{ .Values.statDatabase.port }}
