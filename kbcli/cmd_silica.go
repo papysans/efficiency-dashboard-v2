@@ -98,7 +98,7 @@ func buildTasksIndexer(taskFPDir string) (*tasksIndexer, error) {
 		jsonFile := strings.TrimSuffix(fpFile, ".fp") + ".json"
 		addr, err := extractTaskAddressingFromJSON(jsonFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 读取task摘要失败 [%s]: %v\n", jsonFile, err)
+			logWarnf("读取task摘要失败 [%s]: %v", jsonFile, err)
 			continue
 		}
 		if addr.TaskID == "" {
@@ -107,7 +107,7 @@ func buildTasksIndexer(taskFPDir string) (*tasksIndexer, error) {
 
 		hashes, err := loadFPHashes(fpFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 读取task指纹文件失败 [%s]: %v\n", fpFile, err)
+			logWarnf("读取task指纹文件失败 [%s]: %v", fpFile, err)
 			continue
 		}
 
@@ -253,7 +253,7 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes, upstream_tokens, downstream_tokens, cost").
 			Where("task_id = ?", taskID).First(&task).Error; err != nil {
 			if err != gorm.ErrRecordNotFound {
-				fmt.Fprintf(os.Stderr, "查询task数据失败 [%s]: %v\n", taskID, err)
+				logWarnf("查询task数据失败 [%s]: %v", taskID, err)
 			}
 			continue
 		}
@@ -282,13 +282,13 @@ func runSilica(analysedDir string, force bool) error {
 	if err != nil {
 		return fmt.Errorf("构建task指纹索引失败: %w", err)
 	}
-	fmt.Printf("已加载task指纹索引: %d个task, %d个分组, %d个哈希\n", idx.taskCount, len(idx.groupHashes), idx.hashCount)
+	logInfof("已加载task指纹索引: %d个task, %d个分组, %d个哈希", idx.taskCount, len(idx.groupHashes), idx.hashCount)
 
 	commitFPFiles, err := scanCommitFPFiles(repoFPDir)
 	if err != nil {
 		return fmt.Errorf("扫描commit指纹文件失败: %w", err)
 	}
-	fmt.Printf("找到%d个commit指纹文件\n", len(commitFPFiles))
+	logInfof("找到%d个commit指纹文件", len(commitFPFiles))
 
 	successCount := 0
 	skipCount := 0
@@ -308,7 +308,7 @@ func runSilica(analysedDir string, force bool) error {
 		}
 		commitPs := buildCommitParser(fpFile)
 		if commitPs == nil {
-			fmt.Fprintf(os.Stderr, "警告: 读取commit指纹文件失败 [%s]\n", fpFile)
+			logWarnf("读取commit指纹文件失败 [%s]", fpFile)
 			skipCount++
 			continue
 		}
@@ -316,11 +316,11 @@ func runSilica(analysedDir string, force bool) error {
 		var commit Commit
 		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
-				fmt.Fprintf(os.Stderr, "警告: commit不存在于数据库 [%s]\n", commitID)
+				logWarnf("commit不存在于数据库 [%s]", commitID)
 				skipCount++
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "查询commit元数据失败 [%s]: %v\n", commitID, err)
+			logWarnf("查询commit元数据失败 [%s]: %v", commitID, err)
 			failCount++
 			continue
 		}
@@ -346,7 +346,7 @@ func runSilica(analysedDir string, force bool) error {
 				"downstream_tokens":           0,
 				"cost":                        0,
 			}).Error; err != nil {
-				fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
+				logWarnf("更新commits表失败 [%s]: %v", commitID, err)
 				failCount++
 			} else {
 				successCount++
@@ -355,7 +355,7 @@ func runSilica(analysedDir string, force bool) error {
 		}
 
 		if err := commitPs.calcCommitDerivedMinutes(db); err != nil {
-			fmt.Fprintf(os.Stderr, "计算衍生数据失败 [%s]: %v\n", commitID, err)
+			logWarnf("计算衍生数据失败 [%s]: %v", commitID, err)
 			failCount++
 			continue
 		}
@@ -375,16 +375,16 @@ func runSilica(analysedDir string, force bool) error {
 			"downstream_tokens":           commitPs.downstreamTokens,
 			"cost":                        commitPs.cost,
 		}).Error; err != nil {
-			fmt.Fprintf(os.Stderr, "更新commits表失败 [%s]: %v\n", commitID, err)
+			logWarnf("更新commits表失败 [%s]: %v", commitID, err)
 			failCount++
 		} else {
-			fmt.Printf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin\n",
+			logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
 				commitID, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitRealMinutes)
 			successCount++
 		}
 	}
 
-	fmt.Printf("含硅量计算完成: 成功 %d 个，跳过 %d 个，失败 %d 个\n", successCount, skipCount, failCount)
+	logInfof("含硅量计算完成: 成功 %d 个，跳过 %d 个，失败 %d 个", successCount, skipCount, failCount)
 	return nil
 }
 

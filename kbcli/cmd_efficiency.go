@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -56,24 +55,24 @@ func calculateUserProductivity(db *gorm.DB, dateStr string) (int, error) {
 
 	taskUserNameMap, err := loadUserNamesFromTasks(db)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 加载task用户名失败: %v\n", err)
+		logWarnf("加载task用户名失败: %v", err)
 	}
 	commitUserNameMap, err := loadUserNamesFromCommits(db)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 加载commit用户名失败: %v\n", err)
+		logWarnf("加载commit用户名失败: %v", err)
 	}
 
 	taskAggMap, err := aggregateTasksByUser(db, dateStr)
 	if err != nil {
 		return 0, fmt.Errorf("聚合task数据失败: %w", err)
 	}
-	fmt.Printf("聚合task数据: %d 个用户\n", len(taskAggMap))
+	logInfof("聚合task数据: %d 个用户", len(taskAggMap))
 
 	commitAggMap, err := aggregateCommitsByUser(db, dateStr)
 	if err != nil {
 		return 0, fmt.Errorf("聚合commit数据失败: %w", err)
 	}
-	fmt.Printf("聚合commit数据: %d 个用户\n", len(commitAggMap))
+	logInfof("聚合commit数据: %d 个用户", len(commitAggMap))
 
 	allUserIDs := make(map[string]bool)
 	for uid := range taskAggMap {
@@ -84,7 +83,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string) (int, error) {
 	}
 
 	if len(allUserIDs) == 0 {
-		fmt.Println("没有找到有task或commit数据的用户")
+		logInfo("没有找到有task或commit数据的用户")
 		return 0, nil
 	}
 
@@ -141,7 +140,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string) (int, error) {
 
 			createTime, err := time.Parse("20060102", dateStr)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "警告: 解析日期字符串失败 [%s]: %v", dateStr, err)
+				logWarnf("解析日期字符串失败 [%s]: %v", dateStr, err)
 			}
 			createTime = time.Date(createTime.Year(), createTime.Month(), createTime.Day(), 0, 0, 0, 0, time.UTC)
 
@@ -383,24 +382,24 @@ func runEfficiency(dateStr string) error {
 			return fmt.Errorf("获取日期列表失败: %w", err)
 		}
 		if len(dates) == 0 {
-			fmt.Println("没有找到任何task或commit数据")
+			logInfo("没有找到任何task或commit数据")
 			return nil
 		}
-		fmt.Printf("共发现 %d 个日期需要处理\n", len(dates))
+		logInfof("共发现 %d 个日期需要处理", len(dates))
 	}
 
 	totalUserCount := 0
 	for _, d := range dates {
-		fmt.Printf("\n=== 处理日期: %s ===\n", d)
+		logInfof("=== 处理日期: %s ===", d)
 		userCount, err := calculateUserProductivity(db, d)
 		if err != nil {
 			return fmt.Errorf("计算用户生产力失败 [date=%s]: %w", d, err)
 		}
-		fmt.Printf("用户生产力计算完成: %d 条记录 (日期=%s)\n", userCount, d)
+		logInfof("用户生产力计算完成: %d 条记录 (日期=%s)", userCount, d)
 		totalUserCount += userCount
 	}
 
-	fmt.Printf("\n全部完成: 用户 %d 条\n", totalUserCount)
+	logInfof("全部完成: 用户 %d 条", totalUserCount)
 	return nil
 }
 

@@ -82,7 +82,7 @@ func loadUserOrgsFromCSV(csvFile string) ([]UserOrg, error) {
 		}
 		userOrgs = append(userOrgs, userOrg)
 	}
-	fmt.Printf("从CSV文件加载到 %d 条用户组织记录\n", len(userOrgs))
+	logInfof("从CSV文件加载到 %d 条用户组织记录", len(userOrgs))
 	return userOrgs, nil
 }
 
@@ -93,7 +93,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 		return nil, fmt.Errorf("连接 auth 数据库失败: %w", err)
 	}
 	defer authDB.Close()
-	fmt.Println("auth 数据库连接成功")
+	logInfo("auth 数据库连接成功")
 
 	quotaDSN := replaceDBName(fromDSN, "quota_manager")
 	quotaDB, err := openSQLDB(quotaDSN)
@@ -101,7 +101,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 		return nil, fmt.Errorf("连接 quota_manager 数据库失败: %w", err)
 	}
 	defer quotaDB.Close()
-	fmt.Println("quota_manager 数据库连接成功")
+	logInfo("quota_manager 数据库连接成功")
 
 	userRows, err := authDB.Query(`
 		SELECT id, name, github_name, email, employee_number
@@ -166,7 +166,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 	if err := userRows.Err(); err != nil {
 		return nil, fmt.Errorf("遍历用户数据失败: %w", err)
 	}
-	fmt.Printf("查询到 %d 条用户组织记录\n", len(userOrgs))
+	logInfof("查询到 %d 条用户组织记录", len(userOrgs))
 	return userOrgs, nil
 }
 
@@ -231,7 +231,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		if err := writeOrgCSV(toCSV, userOrgs); err != nil {
 			return fmt.Errorf("写入CSV文件失败: %w", err)
 		}
-		fmt.Printf("CSV 文件已写入: %s\n", toCSV)
+		logInfof("CSV 文件已写入: %s", toCSV)
 	}
 
 	gormDB, err := openGormDB(cfg.StatDatabase.DSN())
@@ -240,12 +240,12 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	}
 	sqlDB, _ := gormDB.DB()
 	defer sqlDB.Close()
-	fmt.Println("目标数据库连接成功")
+	logInfo("目标数据库连接成功")
 
 	if err := saveUserOrgs(gormDB, userOrgs); err != nil {
 		return fmt.Errorf("写入user_org表失败: %w", err)
 	}
-	fmt.Printf("已写入 %d 条记录到 user_org 表\n", len(userOrgs))
+	logInfof("已写入 %d 条记录到 user_org 表", len(userOrgs))
 
 	return nil
 }

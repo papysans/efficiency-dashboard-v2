@@ -51,13 +51,13 @@ var importCmd = &cobra.Command{
 		}
 
 		for _, step := range steps {
-			fmt.Printf("\n========== [import] 步骤: %s ==========\n", step.name)
+			logInfof("========== [import] 步骤: %s ==========", step.name)
 			if err := step.fn(); err != nil {
 				return fmt.Errorf("步骤 %s 失败: %w", step.name, err)
 			}
 		}
 
-		fmt.Println("\n========== [import] 全部步骤完成 ==========")
+		logInfo("========== [import] 全部步骤完成 ==========")
 		return nil
 	},
 }

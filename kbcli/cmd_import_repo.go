@@ -100,7 +100,7 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 		if !force {
 			fpPath := fpPathForMeta(analysedDir, meta)
 			if _, err := os.Stat(fpPath); err == nil {
-				fmt.Printf("跳过(已处理): %s\n", path)
+				logDebugf("跳过(已处理): %s", path)
 				skipCount++
 				return nil
 			}
@@ -190,9 +190,9 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 			"commit_ancient_minutes":        ancientMinutesPtr,
 			"commit_ancient_minutes_reason": ancientReasonPtr,
 		}).Error; err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 更新commit_ancient_minutes失败 [%s]: %v\n", commitData.CommitID, err)
+		logWarnf("更新commit_ancient_minutes失败 [%s]: %v", commitData.CommitID, err)
 	} else {
-		fmt.Printf("  commit_ancient_minutes=%.1f (%s)\n", ancientMinutes, ancientReason)
+		logDebugf("  commit_ancient_minutes=%.1f (%s)", ancientMinutes, ancientReason)
 	}
 
 	addedLines := extractAddedLinesFromDiff(commitData.Diff)
@@ -202,7 +202,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		return fmt.Errorf("写入fp文件失败 [%s]: %w", fpPath, err)
 	}
 
-	fmt.Printf("导入成功: %s (新增行指纹: %d)\n", commitData.CommitID, len(addedLines))
+	logInfof("导入成功: %s (新增行指纹: %d)", commitData.CommitID, len(addedLines))
 	return nil
 }
 
@@ -256,25 +256,25 @@ func runImportRepo(repoDir, analysedDir string, force bool) error {
 	}
 
 	if len(files) == 0 {
-		fmt.Println("没有找到待导入的commit文件")
+		logInfo("没有找到待导入的commit文件")
 		return nil
 	}
 
-	fmt.Printf("找到 %d 个待导入的commit文件\n", len(files))
+	logInfof("找到 %d 个待导入的commit文件", len(files))
 
 	successCount := 0
 	failCount := 0
 
 	for _, fileMeta := range files {
 		if err := importCommitFile(db, fileMeta, analysedDir); err != nil {
-			fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", fileMeta.Path, err)
+			logWarnf("导入失败 [%s]: %v", fileMeta.Path, err)
 			failCount++
 		} else {
 			successCount++
 		}
 	}
 
-	fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
+	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
 
 	return nil
 }
