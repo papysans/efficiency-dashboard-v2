@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -25,19 +26,32 @@ var rootCmd = &cobra.Command{
 			}
 		}
 		cfg = loadedCfg
+
+		consoleLevel, _ := cmd.Flags().GetString("console")
+		logFile, _ := cmd.Flags().GetString("logfile")
+		fileLevel, _ := cmd.Flags().GetString("loglevel")
+		if err := InitLogger(consoleLevel, logFile, fileLevel); err != nil {
+			return err
+		}
+
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().String("config", "config.yaml", "配置文件路径")
+	rootCmd.PersistentFlags().String("console", "warn", "控制台日志级别 (debug/info/warn/error)")
+	rootCmd.PersistentFlags().String("logfile", "", "日志文件路径")
+	rootCmd.PersistentFlags().String("loglevel", "debug", "日志文件级别 (debug/info/warn/error)")
 }
 
 // Execute 执行根命令，供 main.go 调用
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		// cobra 已经输出了错误信息，这里只需设置退出码
-		// 但由于我们在 main 中调用，可以通过 os.Exit 处理
-		// 为简洁起见，让 cobra 自行处理
+	err := rootCmd.Execute()
+	if logger != nil {
+		logger.Close()
+	}
+	if err != nil {
+		os.Exit(1)
 	}
 }

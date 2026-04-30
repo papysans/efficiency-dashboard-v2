@@ -57,7 +57,6 @@ type taskConversation struct {
 	DiffLines        int64      `json:"diff_lines"`
 	ErrorCode        flexString `json:"error_code"`
 	ErrorReason      flexString `json:"error_reason"`
-	calculatedCost   float64
 }
 
 type flexString string
@@ -280,10 +279,10 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 	}
 
 	if rec.TaskRealMinutes > 0 {
-		fmt.Printf("  task_real_minutes=%.1f (%s)\n", rec.TaskRealMinutes, rec.TaskRealMinutesRsn)
+		logDebugf("  task_real_minutes=%.1f (%s)", rec.TaskRealMinutes, rec.TaskRealMinutesRsn)
 	}
 	if rec.TaskAncientMinutes > 0 {
-		fmt.Printf("  task_ancient_minutes=%.1f (%s)\n", rec.TaskAncientMinutes, rec.TaskAncientMinutesRsn)
+		logDebugf("  task_ancient_minutes=%.1f (%s)", rec.TaskAncientMinutes, rec.TaskAncientMinutesRsn)
 	}
 
 	if len(conversations) > 0 {
@@ -293,15 +292,15 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 	}
 
 	if err := generateFingerprintFile(&summary, conversations, fpPath); err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 生成指纹文件失败 [%s]: %v\n", rec.TaskID, err)
+		logWarnf("生成指纹文件失败 [%s]: %v", rec.TaskID, err)
 	}
 
 	addrJsonPath := strings.TrimSuffix(fpPath, ".fp") + ".json"
 	if err := generateTaskAddressingFile(&summary, rec.StartTime, addrJsonPath); err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 生成任务寻址文件失败 [%s]: %v\n", rec.TaskID, err)
+		logWarnf("生成任务寻址文件失败 [%s]: %v", rec.TaskID, err)
 	}
 
-	fmt.Printf("导入成功: %s\n", rec.TaskID)
+	logInfof("导入成功: %s", rec.TaskID)
 	return nil
 }
 
@@ -421,8 +420,8 @@ func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConve
 	factor := cfg.MinFactor + (inchars/cfg.MaxInputChars)*(cfg.MaxFactor-cfg.MinFactor)
 	workload := (diffLines / cfg.LinesPerMinutes) * factor
 
-	inputMinutes := inchars / cfg.IncharsPerMinutes
-	maxWorkload := cfg.MaxRatio * (inputMinutes + realMinutes)
+	// inputMinutes := inchars / cfg.IncharsPerMinutes
+	maxWorkload := cfg.MaxRatio * realMinutes
 	minWorkload := cfg.MinMinutes
 
 	if workload > maxWorkload {
@@ -528,12 +527,7 @@ func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]ta
 		}
 
 		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conv.calculatedCost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
-			if conv.calculatedCost > 0 {
-				conv.Cost = conv.calculatedCost
-			}
-		} else {
-			conv.calculatedCost = conv.Cost
+			conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
 		}
 
 		convs = append(convs, conv)
@@ -741,7 +735,7 @@ func generateFingerprintFile(summary *taskSummary, conversations []taskConversat
 		if err := os.WriteFile(fpPath, []byte{}, 0644); err != nil {
 			return fmt.Errorf("写入fp文件失败: %w", err)
 		}
-		fmt.Printf("  fp文件已生成(来源:%s, 无diff数据): %s\n", source, fpPath)
+		logDebugf("  fp文件已生成(来源:%s, 无diff数据): %s", source, fpPath)
 		return nil
 	}
 
@@ -750,7 +744,7 @@ func generateFingerprintFile(summary *taskSummary, conversations []taskConversat
 		if err := os.WriteFile(fpPath, []byte{}, 0644); err != nil {
 			return fmt.Errorf("写入fp文件失败: %w", err)
 		}
-		fmt.Printf("  fp文件已生成(来源:%s, 无新增行): %s\n", source, fpPath)
+		logDebugf("  fp文件已生成(来源:%s, 无新增行): %s", source, fpPath)
 		return nil
 	}
 
@@ -765,8 +759,29 @@ func generateFingerprintFile(summary *taskSummary, conversations []taskConversat
 		return fmt.Errorf("写入fp文件失败: %w", err)
 	}
 
-	fmt.Printf("  fp文件已生成(来源:%s, %d行指纹): %s\n", source, len(addedLines), fpPath)
+	logDebugf("  fp文件已生成(来源:%s, %d行指纹): %s", source, len(addedLines), fpPath)
 	return nil
+}
+
+func scanConversationFiles(conversationDir string) (map[string]string, error) {
+	convMap := make(map[string]string)
+	if _, err := os.Stat(conversationDir); os.IsNotExist(err) {
+		return convMap, nil
+	}
+	err := filepath.Walk(conversationDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".jsonl") {
+			taskID := strings.TrimSuffix(info.Name(), ".jsonl")
+			convMap[taskID] = path
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("扫描conversation目录失败: %w", err)
+	}
+	return convMap, nil
 }
 
 func runImportTask(taskDir, analysedDir string, force bool) error {
@@ -784,6 +799,11 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
+	convMap, err := scanConversationFiles(conversationDir)
+	if err != nil {
+		return err
+	}
+
 	var summaryFiles []string
 	err = filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -799,7 +819,7 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 	}
 
 	if len(summaryFiles) == 0 {
-		fmt.Println("没有找到待导入的 summary 文件")
+		logInfo("没有找到待导入的 summary 文件")
 		return nil
 	}
 
@@ -810,7 +830,7 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 	for _, summaryPath := range summaryFiles {
 		relPath, err := filepath.Rel(summaryDir, summaryPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "计算相对路径失败 [%s]: %v\n", summaryPath, err)
+			logWarnf("计算相对路径失败 [%s]: %v", summaryPath, err)
 			failCount++
 			continue
 		}
@@ -818,7 +838,7 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 		fpPath := filepath.Join(analysedDir, "task", "summary", fpRelPath)
 		if !force {
 			if _, err := os.Stat(fpPath); err == nil {
-				fmt.Printf("跳过(fp已存在): %s\n", summaryPath)
+				logDebugf("跳过(fp已存在): %s", summaryPath)
 				skipCount++
 				continue
 			}
@@ -826,15 +846,22 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 		convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
 		conversationPath := filepath.Join(conversationDir, convRelPath)
 
+		if _, err := os.Stat(conversationPath); os.IsNotExist(err) {
+			taskID := strings.TrimSuffix(filepath.Base(summaryPath), ".json")
+			if path, ok := convMap[taskID]; ok {
+				conversationPath = path
+			}
+		}
+
 		if err := importSingleTask(db, summaryPath, conversationPath, fpPath); err != nil {
-			fmt.Fprintf(os.Stderr, "导入失败 [%s]: %v\n", summaryPath, err)
+			logWarnf("导入失败 [%s]: %v", summaryPath, err)
 			failCount++
 		} else {
 			successCount++
 		}
 	}
 
-	fmt.Printf("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个\n", successCount, failCount, skipCount)
+	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
 	return nil
 }
 
