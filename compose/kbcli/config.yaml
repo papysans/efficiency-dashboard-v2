@@ -1,10 +1,3 @@
-database:
-  host: 127.0.0.1
-  port: 5432
-  user: postgres
-  password: "1"
-  dbname: report
-  sslmode: disable
 
 stat_database:
   host: 127.0.0.1
@@ -40,3 +33,13 @@ org_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costri
 http_proxy: "http://127.0.0.1:7890"
 
 traditional_dev_lines_per_day: 100
+
+# 算法估时配置
+algo_estimation:
+  max_input_chars: 300000    # 最大输入字符数
+  max_ratio: 50              # 工作量的最大倍数
+  max_factor: 1.0            # 最大的加权系数
+  min_factor: 0.2            # 最小的加权系数
+  inchars_per_minutes: 20    # 人每分钟输入20个字
+  lines_per_minutes: 2       # 人每分钟输入2行代码
+  min_minutes: 5             # 最小分钟数

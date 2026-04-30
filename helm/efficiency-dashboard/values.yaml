@@ -94,4 +94,4 @@ kbcli:
     timeoutMs: 300000
     prompt: ""
   httpProxy: "http://127.0.0.1:7890"
-  indicatorDSN: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
+  orgDSN: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"

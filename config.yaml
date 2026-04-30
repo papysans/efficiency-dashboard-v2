@@ -50,6 +50,23 @@ model_prices:
     in_price: 0.5
     out_price: 1.0
 
+ai_estimation:
+  enabled: true
+  api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  base_url: "https://open.bigmodel.cn/api/anthropic"
+  model: "claude-3-5-sonnet-20241022"
+  timeout_ms: 300000
+  http_proxy: ""
+
+algo_estimation:
+  max_input_chars: 300000    # 最大输入字符数
+  max_ratio: 50              # 工作量的最大倍数
+  max_factor: 1.0            # 最大的加权系数
+  min_factor: 0.2            # 最小的加权系数
+  inchars_per_minutes: 20    # 人每分钟输入20个字
+  lines_per_minutes: 2       # 人每分钟输入2行代码
+  min_minutes: 5             # 最小分钟数
+
 task_dir: "/mnt/prod_env/user-indicator/raw/task"
 repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
 analysed_dir: "./analysed"

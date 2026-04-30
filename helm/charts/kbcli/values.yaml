@@ -80,9 +80,18 @@ aiEstimation:
   timeoutMs: 300000
   prompt: ""
 
+algoEstimation:
+  maxInputChars: 300000
+  maxRatio: 50
+  maxFactor: 1.0
+  minFactor: 0.2
+  incharsPerMinutes: 20
+  linesPerMinutes: 2
+  minMinutes: 5
+
 httpProxy: "http://127.0.0.1:7890"
 
-indicatorDSN: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
+orgDSN: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
 
 serviceAccount:
   create: true

@@ -6,13 +6,13 @@ metadata:
     {{- include "kbcli.labels" . | nindent 4 }}
 data:
   config.yaml: |
-    database:
-      host: {{ .Values.database.host | quote }}
-      port: {{ .Values.database.port }}
-      user: {{ .Values.database.user | quote }}
-      password: {{ .Values.database.password | quote }}
-      dbname: {{ .Values.database.dbname | quote }}
-      sslmode: {{ .Values.database.sslmode | quote }}
+    task_dir: {{ .Values.paths.taskDir | quote }}
+    repo_dir: {{ .Values.paths.repoDir | quote }}
+    analysed_dir: {{ .Values.paths.analysedDir | quote }}
+    org_csv_file: {{ .Values.paths.orgCsvFile | quote }}
+    org_dsn: {{ .Values.orgDSN | quote }}
+    http_proxy: {{ .Values.httpProxy | quote }}
+    backend_url: "http://{{ .Values.backend.host }}:{{ .Values.backend.port }}"
 
     stat_database:
       host: {{ .Values.statDatabase.host | quote }}
@@ -29,14 +29,6 @@ data:
         out_price: {{ $prices.outPrice }}
       {{- end }}
 
-    task_dir: {{ .Values.paths.taskDir | quote }}
-    repo_dir: {{ .Values.paths.repoDir | quote }}
-    analysed_dir: {{ .Values.paths.analysedDir | quote }}
-    org_csv_file: {{ .Values.paths.orgCsvFile | quote }}
-    org_dsn: {{ .Values.indicatorDSN | quote }}
-
-    http_proxy: {{ .Values.httpProxy | quote }}
-
     ai_estimation:
       enabled: {{ .Values.aiEstimation.enabled }}
       api_key: {{ .Values.aiEstimation.apiKey | quote }}
@@ -47,4 +39,12 @@ data:
       prompt: {{ .Values.aiEstimation.prompt | quote }}
       {{- end }}
 
-    backend_url: "http://{{ .Values.backend.host }}:{{ .Values.backend.port }}"
+    algo_estimation:
+      max_input_chars: {{ .Values.algoEstimation.maxInputChars }}
+      max_ratio: {{ .Values.algoEstimation.maxRatio }}
+      max_factor: {{ .Values.algoEstimation.maxFactor }}
+      min_factor: {{ .Values.algoEstimation.minFactor }}
+      inchars_per_minutes: {{ .Values.algoEstimation.incharsPerMinutes }}
+      lines_per_minutes: {{ .Values.algoEstimation.linesPerMinutes }}
+      min_minutes: {{ .Values.algoEstimation.minMinutes }}
+

@@ -40,13 +40,13 @@ type AIEstimationConfig struct {
 }
 
 type EstimateConfig struct {
-	MaxInputChars     float64 //最大输入字符数
-	MaxRatio          float64 //工作量的最大倍数(相比chars(user_input) / inchars_per_minutes + real_minutes)
-	MaxFactor         float64 //最大的加权系数
-	MinFactor         float64 //最小的加权系数
-	IncharsPerMinutes float64 //人每分钟输入20个字
-	LinesPerMinutes   float64 //人每分钟输入2行代码
-	MinMinutes        float64 //最小分钟数
+	MaxInputChars     float64 `yaml:"max_input_chars"`     //最大输入字符数
+	MaxRatio          float64 `yaml:"max_ratio"`           //工作量的最大倍数(相比chars(user_input) / inchars_per_minutes + real_minutes)
+	MaxFactor         float64 `yaml:"max_factor"`          //最大的加权系数
+	MinFactor         float64 `yaml:"min_factor"`          //最小的加权系数
+	IncharsPerMinutes float64 `yaml:"inchars_per_minutes"` //人每分钟输入20个字
+	LinesPerMinutes   float64 `yaml:"lines_per_minutes"`   //人每分钟输入2行代码
+	MinMinutes        float64 `yaml:"min_minutes"`         //最小分钟数
 }
 
 // Config 全局配置结构
@@ -114,5 +114,27 @@ func LoadConfig(filename string) (*Config, error) {
 	if config.StatDatabase.SSLMode == "" {
 		config.StatDatabase.SSLMode = "disable"
 	}
+	if config.AlgoEstimation.MaxInputChars == 0 {
+		config.AlgoEstimation.MaxInputChars = 300000
+	}
+	if config.AlgoEstimation.MaxRatio == 0 {
+		config.AlgoEstimation.MaxRatio = 50
+	}
+	if config.AlgoEstimation.MaxFactor == 0 {
+		config.AlgoEstimation.MaxFactor = 1.0
+	}
+	if config.AlgoEstimation.MinFactor == 0 {
+		config.AlgoEstimation.MinFactor = 0.2
+	}
+	if config.AlgoEstimation.IncharsPerMinutes == 0 {
+		config.AlgoEstimation.IncharsPerMinutes = 20
+	}
+	if config.AlgoEstimation.LinesPerMinutes == 0 {
+		config.AlgoEstimation.LinesPerMinutes = 2
+	}
+	if config.AlgoEstimation.MinMinutes == 0 {
+		config.AlgoEstimation.MinMinutes = 5
+	}
+
 	return &config, nil
 }
