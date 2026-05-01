@@ -597,8 +597,6 @@ var SwaggerInfo = &swag.Spec{
 	Description:      "kbcli serve RESTful API，支持异步任务管理和定时任务调度",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
-	LeftDelim:        "{{",
-	RightDelim:       "}}",
 }
 
 func init() {

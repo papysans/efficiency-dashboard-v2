@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
-	httpSwagger "github.com/swaggo/http-swagger"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 var taskQueue *TaskQueue
@@ -93,16 +94,8 @@ type EfficiencyBody struct {
 	Date string `json:"date" example:"20240101"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		logWarnf("写入JSON响应失败: %v", err)
-	}
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
+func writeError(c *gin.Context, status int, message string) {
+	c.JSON(status, gin.H{"error": message})
 }
 
 // healthHandler 健康检查接口
@@ -112,12 +105,8 @@ func writeError(w http.ResponseWriter, status int, message string) {
 // @Produce json
 // @Success 200 {object} HealthResponse
 // @Router /api/health [get]
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "仅支持GET请求")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+func healthHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // createTaskHandler 创建异步任务
@@ -131,8 +120,8 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks/import-task [post]
-func createImportTaskHandler(w http.ResponseWriter, r *http.Request) {
-	createTaskHandlerFunc("import-task", w, r)
+func createImportTaskHandler(c *gin.Context) {
+	createTaskHandlerFunc("import-task", c)
 }
 
 // createImportRepoHandler 创建 import-repo 异步任务
@@ -146,8 +135,8 @@ func createImportTaskHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks/import-repo [post]
-func createImportRepoHandler(w http.ResponseWriter, r *http.Request) {
-	createTaskHandlerFunc("import-repo", w, r)
+func createImportRepoHandler(c *gin.Context) {
+	createTaskHandlerFunc("import-repo", c)
 }
 
 // createImportOrgHandler 创建 import-org 异步任务
@@ -161,8 +150,8 @@ func createImportRepoHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks/import-org [post]
-func createImportOrgHandler(w http.ResponseWriter, r *http.Request) {
-	createTaskHandlerFunc("import-org", w, r)
+func createImportOrgHandler(c *gin.Context) {
+	createTaskHandlerFunc("import-org", c)
 }
 
 // createSilicaHandler 创建 silica 异步任务
@@ -176,8 +165,8 @@ func createImportOrgHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks/silica [post]
-func createSilicaHandler(w http.ResponseWriter, r *http.Request) {
-	createTaskHandlerFunc("silica", w, r)
+func createSilicaHandler(c *gin.Context) {
+	createTaskHandlerFunc("silica", c)
 }
 
 // createEfficiencyHandler 创建 efficiency 异步任务
@@ -191,19 +180,14 @@ func createSilicaHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks/efficiency [post]
-func createEfficiencyHandler(w http.ResponseWriter, r *http.Request) {
-	createTaskHandlerFunc("efficiency", w, r)
+func createEfficiencyHandler(c *gin.Context) {
+	createTaskHandlerFunc("efficiency", c)
 }
 
-func createTaskHandlerFunc(taskType string, w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "仅支持POST请求")
-		return
-	}
-
+func createTaskHandlerFunc(taskType string, c *gin.Context) {
 	var params map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("解析请求体失败: %v", err))
+	if err := c.ShouldBindJSON(&params); err != nil {
+		writeError(c, http.StatusBadRequest, fmt.Sprintf("解析请求体失败: %v", err))
 		return
 	}
 
@@ -212,7 +196,7 @@ func createTaskHandlerFunc(taskType string, w http.ResponseWriter, r *http.Reque
 	}
 
 	task := taskQueue.Submit(taskType, params)
-	writeJSON(w, http.StatusAccepted, map[string]interface{}{
+	c.JSON(http.StatusAccepted, gin.H{
 		"task_id": task.ID,
 		"status":  task.Status,
 		"type":    task.Type,
@@ -227,14 +211,9 @@ func createTaskHandlerFunc(taskType string, w http.ResponseWriter, r *http.Reque
 // @Success 200 {object} TaskListResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks [get]
-func listTasksHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "仅支持GET请求")
-		return
-	}
-
+func listTasksHandler(c *gin.Context) {
 	tasks := taskQueue.List()
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"tasks": tasks,
 		"total": len(tasks),
 	})
@@ -251,25 +230,20 @@ func listTasksHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks/{id} [get]
-func getTaskHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "仅支持GET请求")
-		return
-	}
-
-	taskID := r.PathValue("id")
+func getTaskHandler(c *gin.Context) {
+	taskID := c.Param("id")
 	if taskID == "" {
-		writeError(w, http.StatusBadRequest, "缺少任务ID")
+		writeError(c, http.StatusBadRequest, "缺少任务ID")
 		return
 	}
 
 	task, ok := taskQueue.Get(taskID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "任务不存在")
+		writeError(c, http.StatusNotFound, "任务不存在")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, task)
+	c.JSON(http.StatusOK, task)
 }
 
 // cancelTaskHandler 取消异步任务
@@ -283,25 +257,20 @@ func getTaskHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
 // @Router /api/tasks/{id} [delete]
-func cancelTaskHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		writeError(w, http.StatusMethodNotAllowed, "仅支持DELETE请求")
-		return
-	}
-
-	taskID := r.PathValue("id")
+func cancelTaskHandler(c *gin.Context) {
+	taskID := c.Param("id")
 	if taskID == "" {
-		writeError(w, http.StatusBadRequest, "缺少任务ID")
+		writeError(c, http.StatusBadRequest, "缺少任务ID")
 		return
 	}
 
 	task, ok := taskQueue.Cancel(taskID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "任务不存在")
+		writeError(c, http.StatusNotFound, "任务不存在")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"task_id": task.ID,
 		"status":  task.Status,
 		"message": "任务已取消",
@@ -309,36 +278,28 @@ func cancelTaskHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // setupRouter 设置HTTP路由
-func setupRouter() *http.ServeMux {
-	mux := http.NewServeMux()
+func setupRouter() *gin.Engine {
+	r := gin.Default()
 
 	// Swagger UI
-	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// 健康检查
-	mux.HandleFunc("/api/health", healthHandler)
+	r.GET("/api/health", healthHandler)
 
 	// 任务创建接口
-	mux.HandleFunc("/api/tasks/import-task", createImportTaskHandler)
-	mux.HandleFunc("/api/tasks/import-repo", createImportRepoHandler)
-	mux.HandleFunc("/api/tasks/import-org", createImportOrgHandler)
-	mux.HandleFunc("/api/tasks/silica", createSilicaHandler)
-	mux.HandleFunc("/api/tasks/efficiency", createEfficiencyHandler)
+	r.POST("/api/tasks/import-task", createImportTaskHandler)
+	r.POST("/api/tasks/import-repo", createImportRepoHandler)
+	r.POST("/api/tasks/import-org", createImportOrgHandler)
+	r.POST("/api/tasks/silica", createSilicaHandler)
+	r.POST("/api/tasks/efficiency", createEfficiencyHandler)
 
 	// 任务管理接口
-	mux.HandleFunc("/api/tasks", listTasksHandler)
-	mux.HandleFunc("/api/tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			getTaskHandler(w, r)
-		case http.MethodDelete:
-			cancelTaskHandler(w, r)
-		default:
-			writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
-		}
-	})
+	r.GET("/api/tasks", listTasksHandler)
+	r.GET("/api/tasks/:id", getTaskHandler)
+	r.DELETE("/api/tasks/:id", cancelTaskHandler)
 
-	return mux
+	return r
 }
 
 // startCron 启动定时任务调度器
@@ -412,10 +373,10 @@ var serveCmd = &cobra.Command{
 		}
 
 		// 设置HTTP路由
-		mux := setupRouter()
+		r := setupRouter()
 		server := &http.Server{
 			Addr:         fmt.Sprintf(":%d", port),
-			Handler:      mux,
+			Handler:      r,
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 30 * time.Second,
 		}
