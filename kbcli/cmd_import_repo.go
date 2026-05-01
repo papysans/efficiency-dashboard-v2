@@ -271,6 +271,7 @@ func runImportRepo(repoDir, analysedDir string, force bool) error {
 			failCount++
 		} else {
 			successCount++
+			logPromptProgress(successCount, 50)
 		}
 	}
 

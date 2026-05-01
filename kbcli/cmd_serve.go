@@ -9,6 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	_ "kanban/kbcli/docs"
+
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
@@ -95,7 +98,7 @@ type EfficiencyBody struct {
 }
 
 func writeError(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{"error": message})
+	c.JSON(status, ErrorResponse{Error: message})
 }
 
 // healthHandler 健康检查接口
@@ -106,7 +109,7 @@ func writeError(c *gin.Context, status int, message string) {
 // @Success 200 {object} HealthResponse
 // @Router /api/health [get]
 func healthHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 }
 
 // createTaskHandler 创建异步任务
@@ -196,10 +199,10 @@ func createTaskHandlerFunc(taskType string, c *gin.Context) {
 	}
 
 	task := taskQueue.Submit(taskType, params)
-	c.JSON(http.StatusAccepted, gin.H{
-		"task_id": task.ID,
-		"status":  task.Status,
-		"type":    task.Type,
+	c.JSON(http.StatusAccepted, CreateTaskResponse{
+		TaskID: task.ID,
+		Status: string(task.Status),
+		Type:   task.Type,
 	})
 }
 
@@ -209,13 +212,12 @@ func createTaskHandlerFunc(taskType string, c *gin.Context) {
 // @Tags tasks
 // @Produce json
 // @Success 200 {object} TaskListResponse
-// @Failure 405 {object} ErrorResponse
 // @Router /api/tasks [get]
 func listTasksHandler(c *gin.Context) {
 	tasks := taskQueue.List()
-	c.JSON(http.StatusOK, gin.H{
-		"tasks": tasks,
-		"total": len(tasks),
+	c.JSON(http.StatusOK, TaskListResponse{
+		Tasks: tasks,
+		Total: len(tasks),
 	})
 }
 
@@ -270,10 +272,10 @@ func cancelTaskHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"task_id": task.ID,
-		"status":  task.Status,
-		"message": "任务已取消",
+	c.JSON(http.StatusOK, CancelTaskResponse{
+		TaskID:  task.ID,
+		Status:  string(task.Status),
+		Message: "任务已取消",
 	})
 }
 
@@ -281,7 +283,20 @@ func cancelTaskHandler(c *gin.Context) {
 func setupRouter() *gin.Engine {
 	r := gin.Default()
 
+	// CORS 配置
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}))
+
 	// Swagger UI
+	r.GET("/swagger", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
+	})
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// 健康检查
@@ -343,6 +358,21 @@ func startCron(queue *TaskQueue) *cron.Cron {
 	return c
 }
 
+// @title           Kbcli API
+// @version         1.0
+// @description     Kanban CLI HTTP服务API，提供健康检查、异步任务提交与查询、定时任务调度等接口
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.url    http://www.swagger.io/support
+// @contact.email  support@swagger.io
+
+// @license.name  Apache 2.0
+// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host      localhost:8080
+// @BasePath  /api
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "启动HTTP服务器，提供RESTful API和定时任务调度",
@@ -387,7 +417,7 @@ var serveCmd = &cobra.Command{
 
 		go func() {
 			logInfof("[serve] HTTP服务器启动，监听端口: %d", port)
-			logInfof("[serve] Swagger文档地址: http://localhost:%d/swagger/index.html", port)
+			logInfof("[serve] Swagger文档地址: http://127.0.0.1:%d/swagger/index.html", port)
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				logErrorf("[serve] HTTP服务器异常: %v", err)
 			}

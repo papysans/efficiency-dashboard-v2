@@ -54,12 +54,6 @@
                         "schema": {
                             "$ref": "#/definitions/main.TaskListResponse"
                         }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
                     }
                 }
             }

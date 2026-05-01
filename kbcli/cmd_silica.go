@@ -94,7 +94,9 @@ func buildTasksIndexer(taskFPDir string) (*tasksIndexer, error) {
 		return nil, fmt.Errorf("扫描task指纹目录失败: %w", err)
 	}
 
-	for _, fpFile := range fpFiles {
+	for i, fpFile := range fpFiles {
+		logPromptProgress(i, 50)
+
 		jsonFile := strings.TrimSuffix(fpFile, ".fp") + ".json"
 		addr, err := extractTaskAddressingFromJSON(jsonFile)
 		if err != nil {
@@ -294,9 +296,10 @@ func runSilica(analysedDir string, force bool) error {
 	skipCount := 0
 	failCount := 0
 
-	for _, fpFile := range commitFPFiles {
-		commitID := strings.TrimSuffix(filepath.Base(fpFile), ".fp")
+	for i, fpFile := range commitFPFiles {
+		logPromptProgress(i, 50)
 
+		commitID := strings.TrimSuffix(filepath.Base(fpFile), ".fp")
 		if !force {
 			var commit Commit
 			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {

@@ -1,0 +1,761 @@
+package main
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+)
+
+type CheckIssue struct {
+	Severity string `json:"severity"`
+	Path     string `json:"path"`
+	TaskID   string `json:"task_id"`
+	CommitID string `json:"commit_id"`
+	Issue    string `json:"issue"`
+	Field    string `json:"field"`
+	Comment  string `json:"comment"`
+}
+
+type checkContext struct {
+	taskDir     string
+	repoDir     string
+	dateFilter  string
+	minLevel    string
+	modelPrices map[string]ModelPrice
+	issues      []CheckIssue
+	summaryMap  map[string]string // taskID -> summary path
+	convMap     map[string]string // taskID -> conversation path
+	repoFileMap map[string]string // commitID -> repo file path
+}
+
+func severityRank(s string) int {
+	switch s {
+	case "error":
+		return 3
+	case "warn":
+		return 2
+	case "info":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func (ctx *checkContext) meetsMinLevel(severity string) bool {
+	return severityRank(severity) >= severityRank(ctx.minLevel)
+}
+
+func (ctx *checkContext) addIssue(severity, path, taskID, commitID, issue, field, comment string) {
+	if !ctx.meetsMinLevel(severity) {
+		return
+	}
+	ctx.issues = append(ctx.issues, CheckIssue{
+		Severity: severity,
+		Path:     path,
+		TaskID:   taskID,
+		CommitID: commitID,
+		Issue:    issue,
+		Field:    field,
+		Comment:  comment,
+	})
+}
+
+func runCheck(taskDir, repoDir, dateFilter, output, minLevel string) error {
+	ctx := &checkContext{
+		taskDir:     taskDir,
+		repoDir:     repoDir,
+		dateFilter:  dateFilter,
+		minLevel:    minLevel,
+		modelPrices: cfg.ModelPrices,
+		issues:      make([]CheckIssue, 0),
+		summaryMap:  make(map[string]string),
+		convMap:     make(map[string]string),
+		repoFileMap: make(map[string]string),
+	}
+
+	logInfo("===== 开始数据质量检查 =====")
+
+	if err := ctx.scanSummaries(); err != nil {
+		return fmt.Errorf("扫描summary目录失败: %w", err)
+	}
+	if err := ctx.scanConversations(); err != nil {
+		return fmt.Errorf("扫描conversation目录失败: %w", err)
+	}
+	if err := ctx.scanRepos(); err != nil {
+		return fmt.Errorf("扫描repo目录失败: %w", err)
+	}
+
+	logInfof("扫描完成: %d 个summary, %d 个conversation, %d 个repo commit",
+		len(ctx.summaryMap), len(ctx.convMap), len(ctx.repoFileMap))
+
+	if err := ctx.checkSummaries(); err != nil {
+		return fmt.Errorf("检查summary文件失败: %w", err)
+	}
+	if err := ctx.checkConversations(); err != nil {
+		return fmt.Errorf("检查conversation文件失败: %w", err)
+	}
+	if err := ctx.checkRepos(); err != nil {
+		return fmt.Errorf("检查repo文件失败: %w", err)
+	}
+	if err := ctx.checkCrossReferences(); err != nil {
+		return fmt.Errorf("检查交叉引用失败: %w", err)
+	}
+
+	if err := ctx.writeReport(output); err != nil {
+		return fmt.Errorf("写入报告失败: %w", err)
+	}
+	logInfof("报告已输出: %s", output)
+
+	ctx.printSummary()
+
+	return nil
+}
+
+func (ctx *checkContext) printSummary() {
+	totalIssues := len(ctx.issues)
+	if totalIssues == 0 {
+		logPrompt("===== 检查完成 =====")
+		logPrompt("未发现问题")
+		return
+	}
+
+	// 按级别统计
+	severityCounts := map[string]int{"error": 0, "warn": 0, "info": 0}
+	for _, issue := range ctx.issues {
+		if _, ok := severityCounts[issue.Severity]; ok {
+			severityCounts[issue.Severity]++
+		}
+	}
+
+	// 按问题类型统计
+	typeCounts := make(map[string]int)
+	for _, issue := range ctx.issues {
+		typeCounts[issue.Issue]++
+	}
+
+	// 受影响文件统计
+	summaryAffected := make(map[string]bool)
+	convAffected := make(map[string]bool)
+	repoAffected := make(map[string]bool)
+	for _, issue := range ctx.issues {
+		path := issue.Path
+		if strings.Contains(path, "/summary/") || strings.Contains(path, "\\summary\\") {
+			summaryAffected[path] = true
+		} else if strings.Contains(path, "/conversation/") || strings.Contains(path, "\\conversation\\") {
+			convAffected[path] = true
+		} else {
+			repoAffected[path] = true
+		}
+	}
+
+	totalScanned := len(ctx.summaryMap) + len(ctx.convMap) + len(ctx.repoFileMap)
+
+	logPrompt("===== 检查完成 =====")
+	logPromptf("扫描文件总计: %d (summary: %d, conversation: %d, repo: %d)",
+		totalScanned, len(ctx.summaryMap), len(ctx.convMap), len(ctx.repoFileMap))
+	logPromptf("发现问题总计: %d", totalIssues)
+
+	logPrompt("  按级别:")
+	for _, sev := range []string{"error", "warn", "info"} {
+		cnt := severityCounts[sev]
+		if cnt > 0 {
+			logPromptf("    %s: %d (%.1f%%)", sev, cnt, float64(cnt)*100.0/float64(totalIssues))
+		}
+	}
+
+	logPrompt("  按类型:")
+	// 按数量降序排列类型
+	var typeNames []string
+	for name := range typeCounts {
+		typeNames = append(typeNames, name)
+	}
+	for i := 0; i < len(typeNames); i++ {
+		for j := i + 1; j < len(typeNames); j++ {
+			if typeCounts[typeNames[i]] < typeCounts[typeNames[j]] {
+				typeNames[i], typeNames[j] = typeNames[j], typeNames[i]
+			}
+		}
+	}
+	for _, name := range typeNames {
+		cnt := typeCounts[name]
+		logPromptf("    %s: %d (%.1f%%)", name, cnt, float64(cnt)*100.0/float64(totalIssues))
+	}
+
+	logPrompt("  受影响文件:")
+	if len(ctx.summaryMap) > 0 {
+		cnt := len(summaryAffected)
+		logPromptf("    summary: %d / %d (%.1f%%)", cnt, len(ctx.summaryMap), float64(cnt)*100.0/float64(len(ctx.summaryMap)))
+	}
+	if len(ctx.convMap) > 0 {
+		cnt := len(convAffected)
+		logPromptf("    conversation: %d / %d (%.1f%%)", cnt, len(ctx.convMap), float64(cnt)*100.0/float64(len(ctx.convMap)))
+	}
+	if len(ctx.repoFileMap) > 0 {
+		cnt := len(repoAffected)
+		logPromptf("    repo: %d / %d (%.1f%%)", cnt, len(ctx.repoFileMap), float64(cnt)*100.0/float64(len(ctx.repoFileMap)))
+	}
+}
+
+func matchDateFilter(path, dateFilter string) bool {
+	if dateFilter == "" {
+		return true
+	}
+	// 路径格式: .../summary/YYYY/MM/DD/... 或 ...\summary\YYYY\MM\DD\...
+	// 将路径统一为斜杠格式，查找 /YYYY/MM/DD/ 模式
+	normalized := filepath.ToSlash(path)
+	formattedDate := dateFilter[:4] + "/" + dateFilter[4:6] + "/" + dateFilter[6:]
+	return strings.Contains(normalized, "/"+formattedDate+"/")
+}
+
+func (ctx *checkContext) scanSummaries() error {
+	summaryDir := filepath.Join(ctx.taskDir, "summary")
+	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+		return nil
+	}
+	return filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
+			return err
+		}
+		if !matchDateFilter(path, ctx.dateFilter) {
+			return nil
+		}
+		taskID := strings.TrimSuffix(info.Name(), ".json")
+		ctx.summaryMap[taskID] = path
+		return nil
+	})
+}
+
+func (ctx *checkContext) scanConversations() error {
+	convDir := filepath.Join(ctx.taskDir, "conversation")
+	if _, err := os.Stat(convDir); os.IsNotExist(err) {
+		return nil
+	}
+	return filepath.Walk(convDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".jsonl") {
+			return err
+		}
+		if !matchDateFilter(path, ctx.dateFilter) {
+			return nil
+		}
+		taskID := strings.TrimSuffix(info.Name(), ".jsonl")
+		ctx.convMap[taskID] = path
+		return nil
+	})
+}
+
+func (ctx *checkContext) scanRepos() error {
+	if _, err := os.Stat(ctx.repoDir); os.IsNotExist(err) {
+		return nil
+	}
+	return filepath.Walk(ctx.repoDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
+			return err
+		}
+		if !matchDateFilter(path, ctx.dateFilter) {
+			return nil
+		}
+		commitID := strings.TrimSuffix(info.Name(), ".json")
+		ctx.repoFileMap[commitID] = path
+		return nil
+	})
+}
+
+func (ctx *checkContext) checkSummaries() error {
+	cnt := 0
+	for taskID, path := range ctx.summaryMap {
+		cnt++
+		logPromptProgress(cnt, 50)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			ctx.addIssue("error", path, taskID, "", "read-failed", "", fmt.Sprintf("读取文件失败: %v", err))
+			continue
+		}
+
+		var summary taskSummary
+		if err := json.Unmarshal(data, &summary); err != nil {
+			ctx.addIssue("error", path, taskID, "", "json-parse-failed", "", fmt.Sprintf("JSON解析失败: %v", err))
+			continue
+		}
+
+		if summary.TaskID == "" {
+			ctx.addIssue("error", path, taskID, "", "missing-task-id", "task_id", "task_id为空，该数据无法被索引和关联")
+		} else if summary.TaskID != taskID {
+			ctx.addIssue("warn", path, taskID, "", "task-id-mismatch", "task_id",
+				fmt.Sprintf("文件内task_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", summary.TaskID, taskID))
+		}
+		if summary.UserID == "" {
+			ctx.addIssue("warn", path, taskID, "", "missing-user-id", "user_id", "user_id为空，将导致该任务无法按用户聚合统计")
+		}
+		if summary.UserName == "" {
+			ctx.addIssue("info", path, taskID, "", "missing-user-name", "user_name", "user_name为空，用户显示名可能缺失")
+		}
+		if summary.RepoAddr == "" {
+			ctx.addIssue("info", path, taskID, "", "missing-repo-addr", "repo_addr", "repo_addr为空，该任务无法参与silica含硅量计算")
+		}
+		if summary.ClientID == "" {
+			ctx.addIssue("info", path, taskID, "", "missing-client-id", "client_id", "client_id为空，work_dir_id生成将受影响")
+		}
+
+		// diff_lines 与 diff 内容一致性检查
+		actualLines := countDiffLines(summary.Diff)
+		if summary.DiffLines > 0 && actualLines == 0 {
+			ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
+				fmt.Sprintf("diff_lines=%d 但diff内容实际可解析出%d行，diff可能为空或格式异常", summary.DiffLines, actualLines))
+		} else if summary.DiffLines == 0 && actualLines > 0 {
+			ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
+				fmt.Sprintf("diff_lines=0 但diff内容实际可解析出%d行", actualLines))
+		} else if summary.DiffLines > 0 && actualLines > 0 {
+			if isDiffLinesMismatch(summary.DiffLines, actualLines) {
+				diff := summary.DiffLines - actualLines
+				if diff < 0 {
+					diff = -diff
+				}
+				ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
+					fmt.Sprintf("diff_lines=%d 与diff内容解析出的%d行差异过大(差值=%d)", summary.DiffLines, actualLines, diff))
+			}
+		}
+	}
+	return nil
+}
+
+func (ctx *checkContext) checkConversations() error {
+	cnt := 0
+	for taskID, path := range ctx.convMap {
+		cnt++
+		logPromptProgress(cnt, 50)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			ctx.addIssue("error", path, taskID, "", "read-failed", "", fmt.Sprintf("读取文件失败: %v", err))
+			continue
+		}
+
+		// 检查对应summary是否存在
+		if _, ok := ctx.summaryMap[taskID]; !ok {
+			ctx.addIssue("error", path, taskID, "", "orphan-conversation", "",
+				fmt.Sprintf("该conversation文件没有对应的summary文件(task_id=%s)，数据无法被导入", taskID))
+		}
+
+		convs, err := parseConversationLines(data, path, ctx)
+		if err != nil {
+			ctx.addIssue("error", path, taskID, "", "parse-failed", "", fmt.Sprintf("解析失败: %v", err))
+			continue
+		}
+
+		var totalDiffLines int64
+		var totalUpstream, totalDownstream int64
+		lineNum := 0
+		for _, conv := range convs {
+			lineNum++
+			if conv.RequestID == "" {
+				ctx.addIssue("warn", path, taskID, "", "missing-request-id", "request_id",
+					fmt.Sprintf("第%d行request_id为空，该对话无法被去重和追踪", lineNum))
+			}
+			if conv.StartTime != "" {
+				if _, err := time.Parse(time.RFC3339, conv.StartTime); err != nil {
+					ctx.addIssue("warn", path, taskID, "", "invalid-start-time", "start_time",
+						fmt.Sprintf("第%d行start_time格式错误(%s)，将影响task时间计算", lineNum, conv.StartTime))
+				}
+			} else {
+				ctx.addIssue("info", path, taskID, "", "missing-start-time", "start_time",
+					fmt.Sprintf("第%d行start_time为空，该对话不纳入task时间范围计算", lineNum))
+			}
+			if conv.EndTime != "" {
+				if _, err := time.Parse(time.RFC3339, conv.EndTime); err != nil {
+					ctx.addIssue("warn", path, taskID, "", "invalid-end-time", "end_time",
+						fmt.Sprintf("第%d行end_time格式错误(%s)", lineNum, conv.EndTime))
+				}
+			}
+			if conv.UpstreamTokens < 0 {
+				ctx.addIssue("error", path, taskID, "", "negative-tokens", "upstream_tokens",
+					fmt.Sprintf("第%d行upstream_tokens为负值(%d)", lineNum, conv.UpstreamTokens))
+			}
+			if conv.DownstreamTokens < 0 {
+				ctx.addIssue("error", path, taskID, "", "negative-tokens", "downstream_tokens",
+					fmt.Sprintf("第%d行downstream_tokens为负值(%d)", lineNum, conv.DownstreamTokens))
+			}
+			if conv.ProcessTime < 0 {
+				ctx.addIssue("warn", path, taskID, "", "negative-process-time", "process_time",
+					fmt.Sprintf("第%d行process_time为负值(%d)", lineNum, conv.ProcessTime))
+			}
+			if conv.Cost < 0 {
+				ctx.addIssue("error", path, taskID, "", "negative-cost", "cost",
+					fmt.Sprintf("第%d行cost为负值(%.4f)", lineNum, conv.Cost))
+			}
+			if conv.Model == "" && conv.UpstreamTokens > 0 {
+				ctx.addIssue("info", path, taskID, "", "missing-model", "model",
+					fmt.Sprintf("第%d行model为空但upstream_tokens=%d，cost无法自动计算", lineNum, conv.UpstreamTokens))
+			}
+			if conv.ErrorCode != "" && conv.ErrorReason == "" {
+				ctx.addIssue("info", path, taskID, "", "missing-error-reason", "error_reason",
+					fmt.Sprintf("第%d行error_code=%s但error_reason为空，不利于问题排查", lineNum, conv.ErrorCode))
+			}
+
+			// diff_lines 检查
+			actualLines := countDiffLines(conv.Diff)
+			if conv.DiffLines > 0 && actualLines == 0 {
+				ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
+					fmt.Sprintf("第%d行diff_lines=%d 但diff内容实际可解析出0行", lineNum, conv.DiffLines))
+			} else if conv.DiffLines == 0 && actualLines > 0 {
+				ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
+					fmt.Sprintf("第%d行diff_lines=0 但diff内容实际可解析出%d行", lineNum, actualLines))
+			} else if conv.DiffLines > 0 && actualLines > 0 {
+				if isDiffLinesMismatch(int(conv.DiffLines), actualLines) {
+					diff := int(conv.DiffLines) - actualLines
+					if diff < 0 {
+						diff = -diff
+					}
+					ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
+						fmt.Sprintf("第%d行diff_lines=%d 与diff内容解析出的%d行差异过大(差值=%d)", lineNum, conv.DiffLines, actualLines, diff))
+				}
+			}
+
+			totalDiffLines += conv.DiffLines
+			totalUpstream += conv.UpstreamTokens
+			totalDownstream += conv.DownstreamTokens
+		}
+
+		// 与summary的diff_lines对比
+		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
+			summaryData, err := os.ReadFile(summaryPath)
+			if err == nil {
+				var summary taskSummary
+				if err := json.Unmarshal(summaryData, &summary); err == nil {
+					if summary.DiffLines > 0 && totalDiffLines > 0 {
+						diff := summary.DiffLines - int(totalDiffLines)
+						if diff < 0 {
+							diff = -diff
+						}
+						if diff > 100 || (float64(diff)/float64(summary.DiffLines)) > 0.5 {
+							ctx.addIssue("warn", path, taskID, "", "conversation-diff-sum-mismatch", "diff_lines",
+								fmt.Sprintf("conversation中diff_lines累加=%d，但summary中diff_lines=%d，差异过大(差值=%d)", totalDiffLines, summary.DiffLines, diff))
+						}
+					} else if summary.DiffLines > 0 && totalDiffLines == 0 {
+						ctx.addIssue("warn", path, taskID, "", "conversation-diff-sum-mismatch", "diff_lines",
+							fmt.Sprintf("summary中diff_lines=%d，但所有conversation的diff_lines均为0", summary.DiffLines))
+					}
+				}
+			}
+		}
+
+		if totalUpstream == 0 && len(convs) > 0 {
+			ctx.addIssue("info", path, taskID, "", "zero-upstream-tokens", "upstream_tokens",
+				"所有conversation的upstream_tokens累加为0，token消耗统计将为空")
+		}
+		if totalDownstream == 0 && len(convs) > 0 {
+			ctx.addIssue("info", path, taskID, "", "zero-downstream-tokens", "downstream_tokens",
+				"所有conversation的downstream_tokens累加为0，token消耗统计将为空")
+		}
+	}
+	return nil
+}
+
+func (ctx *checkContext) checkRepos() error {
+	cnt := 0
+	for commitID, path := range ctx.repoFileMap {
+		cnt++
+		logPromptProgress(cnt, 50)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			ctx.addIssue("error", path, "", commitID, "read-failed", "", fmt.Sprintf("读取文件失败: %v", err))
+			continue
+		}
+
+		var commitData RepoCommitData
+		if err := json.Unmarshal(data, &commitData); err != nil {
+			ctx.addIssue("error", path, "", commitID, "json-parse-failed", "", fmt.Sprintf("JSON解析失败: %v", err))
+			continue
+		}
+
+		if commitData.CommitID == "" {
+			ctx.addIssue("error", path, "", commitID, "missing-commit-id", "commit_id", "commit_id为空，该提交无法被索引")
+		} else if commitData.CommitID != commitID {
+			ctx.addIssue("warn", path, "", commitID, "commit-id-mismatch", "commit_id",
+				fmt.Sprintf("文件内commit_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", commitData.CommitID, commitID))
+		}
+		if commitData.CommitTime == "" {
+			ctx.addIssue("error", path, "", commitID, "missing-commit-time", "commit_time", "commit_time为空，该提交无法按日期聚合")
+		} else {
+			if _, err := time.Parse(time.RFC3339, commitData.CommitTime); err != nil {
+				ctx.addIssue("error", path, "", commitID, "invalid-commit-time", "commit_time",
+					fmt.Sprintf("commit_time格式错误(%s)，无法解析为有效时间", commitData.CommitTime))
+			}
+		}
+		if commitData.UserID == "" {
+			ctx.addIssue("warn", path, "", commitID, "missing-user-id", "user_id", "user_id为空，该提交无法按用户聚合统计")
+		}
+		if commitData.RepoAddr == "" {
+			ctx.addIssue("warn", path, "", commitID, "missing-repo-addr", "repo_addr", "repo_addr为空，含硅量计算中无法与task关联")
+		}
+		if commitData.RepoBranch == "" {
+			ctx.addIssue("info", path, "", commitID, "missing-repo-branch", "repo_branch", "repo_branch为空")
+		}
+		if commitData.GitUserName == "" && commitData.GitUserEmail == "" {
+			ctx.addIssue("info", path, "", commitID, "missing-git-user", "git_user_name",
+				"git_user_name和git_user_email均为空，无法通过git信息关联用户")
+		}
+
+		// diff_lines 检查
+		actualLines := countDiffLines(commitData.Diff)
+		if commitData.DiffLines > 0 && actualLines == 0 {
+			ctx.addIssue("warn", path, "", commitID, "diff-lines-mismatch", "diff_lines",
+				fmt.Sprintf("diff_lines=%d 但diff内容实际可解析出%d行", commitData.DiffLines, actualLines))
+		} else if commitData.DiffLines == 0 && actualLines > 0 {
+			ctx.addIssue("warn", path, "", commitID, "diff-lines-mismatch", "diff_lines",
+				fmt.Sprintf("diff_lines=0 但diff内容实际可解析出%d行", actualLines))
+		} else if commitData.DiffLines > 0 && actualLines > 0 {
+			if isDiffLinesMismatch(commitData.DiffLines, actualLines) {
+				diff := commitData.DiffLines - actualLines
+				if diff < 0 {
+					diff = -diff
+				}
+				ctx.addIssue("warn", path, "", commitID, "diff-lines-mismatch", "diff_lines",
+					fmt.Sprintf("diff_lines=%d 与diff内容解析出的%d行差异过大(差值=%d)", commitData.DiffLines, actualLines, diff))
+			}
+		}
+	}
+	return nil
+}
+
+func (ctx *checkContext) checkCrossReferences() error {
+	// 检查每个summary是否有对应的conversation
+	for taskID, summaryPath := range ctx.summaryMap {
+		if _, ok := ctx.convMap[taskID]; !ok {
+			ctx.addIssue("error", summaryPath, taskID, "", "missing-conversation", "",
+				fmt.Sprintf("未找到关联的conversation文件(task_id=%s)，该任务将被视为无对话数据导入", taskID))
+		} else {
+			// 检查路径是否对应（是否在同一天的目录下）
+			summaryDir := filepath.Dir(summaryPath)
+			convPath := ctx.convMap[taskID]
+			convDir := filepath.Dir(convPath)
+			expectedConvDir := strings.Replace(summaryDir, "/summary/", "/conversation/", 1)
+			expectedConvDir = strings.Replace(expectedConvDir, "\\summary\\", "\\conversation\\", 1)
+			if convDir != expectedConvDir {
+				ctx.addIssue("warn", summaryPath, taskID, "", "conversation-misplaced", "",
+					fmt.Sprintf("conversation文件不在预期路径(预期:%s, 实际:%s)，可能存在数据归档错位", expectedConvDir, convDir))
+			}
+		}
+	}
+
+	// 检查conversation文件名与实际内容一致性（如果conversation内部有task_id字段的话）
+	// 当前conversation行内没有task_id，跳过
+	return nil
+}
+
+func isDiffLinesMismatch(expected, actual int) bool {
+	if expected <= 0 {
+		return false
+	}
+	diff := expected - actual
+	if diff < 0 {
+		diff = -diff
+	}
+	if expected <= 5 {
+		return diff >= 3
+	}
+	if expected <= 20 {
+		return diff >= 5 || float64(diff)/float64(expected) > 0.3
+	}
+	return diff > 100 || float64(diff)/float64(expected) > 0.5
+}
+
+func parseConversationLines(data []byte, path string, ctx *checkContext) ([]taskConversation, error) {
+	var convs []taskConversation
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var conv taskConversation
+		if err := json.Unmarshal([]byte(line), &conv); err != nil {
+			return nil, fmt.Errorf("第%d行JSON解析失败: %w", lineNum, err)
+		}
+		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
+			conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, ctx.modelPrices)
+		}
+		convs = append(convs, conv)
+	}
+	return convs, scanner.Err()
+}
+
+// countDiffLines 从diff文本中统计变更行数（新增+删除）
+func countDiffLines(diffText string) int {
+	if strings.TrimSpace(diffText) == "" {
+		return 0
+	}
+
+	// 尝试JSON diff格式
+	var jsonDiff []diffJSONEntry
+	if err := json.Unmarshal([]byte(diffText), &jsonDiff); err == nil && len(jsonDiff) > 0 {
+		return countJSONDiffLines(jsonDiff)
+	}
+
+	// 尝试 before/after 格式
+	if strings.Contains(diffText, "<<< BEFORE") && strings.Contains(diffText, ">>> AFTER") {
+		return countBeforeAfterDiffLines(diffText)
+	}
+
+	// 统一diff格式
+	return countUnifiedDiffLines(diffText)
+}
+
+func countJSONDiffLines(entries []diffJSONEntry) int {
+	total := 0
+	for _, e := range entries {
+		total += e.Additions + e.Deletions
+	}
+	return total
+}
+
+func countUnifiedDiffLines(diffText string) int {
+	additions, deletions := 0, 0
+	for _, line := range strings.Split(diffText, "\n") {
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			if strings.TrimSpace(line[1:]) != "" {
+				additions++
+			}
+		} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+			if strings.TrimSpace(line[1:]) != "" {
+				deletions++
+			}
+		}
+	}
+	return additions + deletions
+}
+
+func countBeforeAfterDiffLines(diffText string) int {
+	var additions, deletions int
+	var beforeContent, afterContent strings.Builder
+	var inBefore, inAfter bool
+
+	for _, line := range strings.Split(diffText, "\n") {
+		if strings.TrimSpace(line) == "<<< BEFORE" {
+			if afterContent.Len() > 0 || beforeContent.Len() > 0 {
+				add, del := countContentDiffLines(beforeContent.String(), afterContent.String())
+				additions += add
+				deletions += del
+				beforeContent.Reset()
+				afterContent.Reset()
+			}
+			inBefore = true
+			inAfter = false
+			continue
+		}
+		if strings.TrimSpace(line) == ">>> AFTER" {
+			inBefore = false
+			inAfter = true
+			continue
+		}
+		if strings.HasPrefix(line, "--- ") {
+			if afterContent.Len() > 0 || beforeContent.Len() > 0 {
+				add, del := countContentDiffLines(beforeContent.String(), afterContent.String())
+				additions += add
+				deletions += del
+				beforeContent.Reset()
+				afterContent.Reset()
+			}
+			inBefore = false
+			inAfter = false
+			continue
+		}
+		if inBefore {
+			beforeContent.WriteString(line)
+			beforeContent.WriteByte('\n')
+		} else if inAfter {
+			afterContent.WriteString(line)
+			afterContent.WriteByte('\n')
+		}
+	}
+	if afterContent.Len() > 0 || beforeContent.Len() > 0 {
+		add, del := countContentDiffLines(beforeContent.String(), afterContent.String())
+		additions += add
+		deletions += del
+	}
+	return additions + deletions
+}
+
+func countContentDiffLines(before, after string) (additions, deletions int) {
+	beforeLines := make(map[string]bool)
+	for _, line := range strings.Split(before, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			beforeLines[trimmed] = true
+		}
+	}
+	afterLines := make(map[string]bool)
+	for _, line := range strings.Split(after, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			afterLines[trimmed] = true
+		}
+	}
+	for line := range afterLines {
+		if !beforeLines[line] {
+			additions++
+		}
+	}
+	for line := range beforeLines {
+		if !afterLines[line] {
+			deletions++
+		}
+	}
+	return additions, deletions
+}
+
+func (ctx *checkContext) writeReport(output string) error {
+	data, err := json.MarshalIndent(ctx.issues, "", "\t")
+	if err != nil {
+		return fmt.Errorf("序列化报告失败: %w", err)
+	}
+	if err := os.WriteFile(output, data, 0644); err != nil {
+		return fmt.Errorf("写入报告文件失败: %w", err)
+	}
+	return nil
+}
+
+var checkCmd = &cobra.Command{
+	Use:   "check",
+	Short: "检查summary和conversation目录下数据文件的字段缺失和错误",
+	Long:  "提前检查summary和conversation目录下的原始数据正确性，输出问题清单文件，作为排障依据或提前将问题数据剔除。",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskDir, _ := cmd.Flags().GetString("task-dir")
+		repoDir, _ := cmd.Flags().GetString("repo-dir")
+		dateFilter, _ := cmd.Flags().GetString("date")
+		output, _ := cmd.Flags().GetString("output")
+		level, _ := cmd.Flags().GetString("level")
+
+		if taskDir == "" {
+			taskDir = cfg.TaskDir
+		}
+		if repoDir == "" {
+			repoDir = cfg.RepoDir
+		}
+		if output == "" {
+			output = fmt.Sprintf("check-%s.json", time.Now().Format("20060102"))
+		}
+
+		return runCheck(taskDir, repoDir, dateFilter, output, level)
+	},
+}
+
+func init() {
+	checkCmd.Flags().SortFlags = false
+	checkCmd.Flags().String("task-dir", "", "task 目录路径（包含summary和conversation子目录），默认从配置文件获取")
+	checkCmd.Flags().String("repo-dir", "", "repo 目录路径，默认从配置文件获取")
+	checkCmd.Flags().String("date", "", "指定分析的日期（格式YYYYMMDD），不指定则分析全部")
+	checkCmd.Flags().String("output", "", "分析报告输出文件路径，默认为check-{当前日期}.json")
+	checkCmd.Flags().String("level", "warn", "指定输出issue的最低级别，可选值为info/warn/error，默认warn")
+	rootCmd.AddCommand(checkCmd)
+}

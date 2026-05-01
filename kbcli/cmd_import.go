@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +51,7 @@ var importCmd = &cobra.Command{
 		for _, step := range steps {
 			logInfof("========== [import] 步骤: %s ==========", step.name)
 			if err := step.fn(); err != nil {
-				return fmt.Errorf("步骤 %s 失败: %w", step.name, err)
+				logErrorf("步骤 %s 失败: %w", step.name, err)
 			}
 		}
 

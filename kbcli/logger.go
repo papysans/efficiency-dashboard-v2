@@ -135,3 +135,38 @@ func logDebugf(format string, args ...interface{}) { logger.Debugf(format, args.
 func logInfof(format string, args ...interface{})  { logger.Infof(format, args...) }
 func logWarnf(format string, args ...interface{})  { logger.Warnf(format, args...) }
 func logErrorf(format string, args ...interface{}) { logger.Errorf(format, args...) }
+
+func (l *Logger) Prompt(msg string) {
+	if l == nil {
+		fmt.Fprintln(os.Stderr, msg)
+		return
+	}
+	fmt.Fprintln(os.Stderr, msg)
+	if l.file != nil {
+		l.mu.Lock()
+		fmt.Fprintln(l.file, msg)
+		l.mu.Unlock()
+	}
+}
+
+func (l *Logger) Promptf(format string, args ...interface{}) {
+	l.Prompt(fmt.Sprintf(format, args...))
+}
+
+func logPrompt(msg string)                          { logger.Prompt(msg) }
+func logPromptf(format string, args ...interface{}) { logger.Promptf(format, args...) }
+
+func logPromptProgress(cnt, linecnt int) {
+	if logger.consoleLevel <= LogInfo {
+		return
+	}
+	if linecnt < 2 {
+		linecnt = 2
+	}
+	fmt.Print(".")
+	if cnt%linecnt == linecnt-1 {
+		fmt.Print("\r")
+		fmt.Print(strings.Repeat(" ", linecnt))
+		fmt.Print("\r")
+	}
+}

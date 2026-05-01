@@ -47,21 +47,7 @@ func getAllDates(db *gorm.DB) ([]string, error) {
 	return dates, nil
 }
 
-func calculateUserProductivity(db *gorm.DB, dateStr string) (int, error) {
-	userNameMap, err := loadUserNames(db)
-	if err != nil {
-		return 0, fmt.Errorf("加载用户名称失败: %w", err)
-	}
-
-	taskUserNameMap, err := loadUserNamesFromTasks(db)
-	if err != nil {
-		logWarnf("加载task用户名失败: %v", err)
-	}
-	commitUserNameMap, err := loadUserNamesFromCommits(db)
-	if err != nil {
-		logWarnf("加载commit用户名失败: %v", err)
-	}
-
+func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUserNameMap, commitUserNameMap map[string]string) (int, error) {
 	taskAggMap, err := aggregateTasksByUser(db, dateStr)
 	if err != nil {
 		return 0, fmt.Errorf("聚合task数据失败: %w", err)
@@ -387,11 +373,24 @@ func runEfficiency(dateStr string) error {
 		}
 		logInfof("共发现 %d 个日期需要处理", len(dates))
 	}
+	userNameMap, err := loadUserNames(db)
+	if err != nil {
+		return fmt.Errorf("加载用户名称失败: %w", err)
+	}
+
+	taskUserNameMap, err := loadUserNamesFromTasks(db)
+	if err != nil {
+		logWarnf("加载task用户名失败: %v", err)
+	}
+	commitUserNameMap, err := loadUserNamesFromCommits(db)
+	if err != nil {
+		logWarnf("加载commit用户名失败: %v", err)
+	}
 
 	totalUserCount := 0
 	for _, d := range dates {
 		logInfof("=== 处理日期: %s ===", d)
-		userCount, err := calculateUserProductivity(db, d)
+		userCount, err := calculateUserProductivity(db, d, userNameMap, taskUserNameMap, commitUserNameMap)
 		if err != nil {
 			return fmt.Errorf("计算用户生产力失败 [date=%s]: %w", d, err)
 		}

@@ -156,7 +156,9 @@ func main() {
 	r := gin.Default()
 
 	// Swagger 文档路由（需要先运行 swag init 生成文档）
-	// Swagger 文档路由
+	r.GET("/swagger", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
+	})
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// 健康检查路由（不在 /api 下，供 K8s 探针直接访问）

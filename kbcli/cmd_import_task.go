@@ -705,7 +705,6 @@ func generateTaskAddressingFile(summary *taskSummary, startTime *time.Time, json
 	if err := os.WriteFile(jsonPath, data, 0644); err != nil {
 		return fmt.Errorf("写入任务寻址文件失败: %w", err)
 	}
-	// fmt.Printf("  任务寻址文件已生成: %s\n", jsonPath)
 	return nil
 }
 
@@ -858,6 +857,7 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 			failCount++
 		} else {
 			successCount++
+			logPromptProgress(successCount, 50)
 		}
 	}
 
