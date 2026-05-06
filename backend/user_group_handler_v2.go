@@ -1,7 +1,9 @@
-package main
+﻿package main
 
 import (
-	"encoding/json"
+	
+	"kanban/core/utils"
+"encoding/json"
 	"math"
 	"net/http"
 	"strings"
@@ -238,10 +240,10 @@ func getUserGroupDetailHandler(c *gin.Context) {
 
 		var taskEffRatio, commitEffRatio float64
 		if taskRealMin > 0 {
-			taskEffRatio = calcEfficiencyRatio(taskAncientMin, taskRealMin)
+			taskEffRatio = utils.CalcEfficiencyRatio(taskAncientMin, taskRealMin)
 		}
 		if commitRealMin > 0 {
-			commitEffRatio = calcEfficiencyRatio(commitAncientMin, commitRealMin)
+			commitEffRatio = utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
 		}
 
 		members = append(members, UserGroupMember{

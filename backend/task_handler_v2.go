@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"kanban/core/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -269,7 +271,7 @@ func listTasksV2(c *gin.Context) {
 			effectiveReal = t.TaskRealMinutesManual
 		}
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+			ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
 			item.EfficiencyRatio = &ratio
 		}
 
@@ -352,7 +354,7 @@ func getTaskDetailV2(c *gin.Context) {
 		effectiveReal = task.TaskRealMinutesManual
 	}
 	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-		ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+		ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
 		efficiencyRatio = &ratio
 	}
 

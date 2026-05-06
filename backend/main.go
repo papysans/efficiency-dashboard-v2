@@ -9,6 +9,8 @@ import (
 
 	_ "kanban/backend/docs"
 
+	"kanban/core/config"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -31,24 +33,14 @@ import (
 // @host      localhost:9990
 // @BasePath  /api
 
-// DatabaseConfig PostgreSQL 数据库连接配置
-type DatabaseConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	DBName   string `yaml:"dbname"`
-	SSLMode  string `yaml:"sslmode"`
-}
-
 // Config 应用配置
 type Config struct {
 	Server struct {
 		Port int `yaml:"port"`
 	} `yaml:"server"`
-	StatDatabase DatabaseConfig `yaml:"stat_database"`
-	TaskDir      string         `yaml:"task_dir"`
-	AnalysedDir  string         `yaml:"analysed_dir"`
+	StatDatabase config.DatabaseConfig `yaml:"stat_database"`
+	TaskDir      string                `yaml:"task_dir"`
+	AnalysedDir  string                `yaml:"analysed_dir"`
 	CORS         struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
@@ -74,7 +66,7 @@ func loadConfig(path string) (Config, error) {
 	var cfg Config
 	// 默认值
 	cfg.Server.Port = 9990
-	cfg.StatDatabase = DatabaseConfig{
+	cfg.StatDatabase = config.DatabaseConfig{
 		Host:     "localhost",
 		Port:     5432,
 		User:     "postgres",
@@ -135,14 +127,6 @@ func main() {
 		log.Fatalf("costrict_stat数据库初始化失败: %v", err)
 	}
 	log.Println("costrict_stat数据库连接成功")
-
-	// 确保 stat 数据库表结构存在（幂等，每次启动执行）
-	if statDB != nil {
-		if err := EnsureStatSchema(statDB); err != nil {
-			log.Fatalf("costrict_stat 数据库表结构初始化失败: %v", err)
-		}
-		log.Println("costrict_stat 数据库表结构检查完成")
-	}
 
 	// 从 user_org 表加载组织映射
 	if statDB != nil {

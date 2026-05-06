@@ -1,8 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"os"
+
+	"kanban/core/config"
 
 	"gopkg.in/yaml.v3"
 )
@@ -11,22 +12,6 @@ import (
 type ModelPrice struct {
 	InPrice  float64 `yaml:"in_price"`
 	OutPrice float64 `yaml:"out_price"`
-}
-
-// DatabaseConfig 数据库连接配置
-type DatabaseConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	DBName   string `yaml:"dbname"`
-	SSLMode  string `yaml:"sslmode"`
-}
-
-// DSN 返回 PostgreSQL 连接字符串
-func (d DatabaseConfig) DSN() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
 }
 
 // AIEstimationConfig AI 估时配置
@@ -56,9 +41,15 @@ type CrontabConfig struct {
 	Params   map[string]interface{} `yaml:"params"`
 }
 
+type CommandConfig struct {
+	Command string                 `yaml:"command"`
+	Params  map[string]interface{} `yaml:"params"`
+}
+
 // ServeConfig HTTP服务配置
 type ServeConfig struct {
 	Port    int             `yaml:"port"`
+	Init    CommandConfig   `yaml:"init"`
 	Crontab []CrontabConfig `yaml:"crontab"`
 }
 
@@ -72,7 +63,7 @@ type Config struct {
 	AIEstimation   AIEstimationConfig    `yaml:"ai_estimation"`
 	BackendURL     string                `yaml:"backend_url"`
 	HTTPProxy      string                `yaml:"http_proxy"`
-	StatDatabase   DatabaseConfig        `yaml:"stat_database"`
+	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
 	OrgDSN         string                `yaml:"org_dsn"`
 	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
 	Serve          ServeConfig           `yaml:"serve"`

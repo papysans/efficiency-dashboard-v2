@@ -1,7 +1,9 @@
-package main
+﻿package main
 
 import (
-	"encoding/json"
+	
+	"kanban/core/utils"
+"encoding/json"
 	"math"
 	"net/http"
 	"sort"
@@ -288,7 +290,7 @@ func getRepoDetailV2(c *gin.Context) {
 	}
 	var efficiencyRatio *float64
 	if repoAncientMinutes > 0 && repoRealMinutes > 0 {
-		ratio := calcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
+		ratio := utils.CalcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
 		efficiencyRatio = &ratio
 	}
 
@@ -384,7 +386,7 @@ func getRepoDetailV2(c *gin.Context) {
 			commitReal = cm.CommitRealMinutesManual
 		}
 		if commitAncient != nil && commitReal != nil && *commitAncient > 0 && *commitReal > 0 {
-			ratio := calcEfficiencyRatio(*commitAncient, *commitReal)
+			ratio := utils.CalcEfficiencyRatio(*commitAncient, *commitReal)
 			item.EfficiencyRatio = &ratio
 		}
 		commitItems = append(commitItems, item)

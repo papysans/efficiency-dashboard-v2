@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"kanban/core/utils"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -206,15 +208,6 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	return nil
 }
 
-func removeWhitespace(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
-			return -1
-		}
-		return r
-	}, s)
-}
-
 func writeFingerprintsToFile(addedLines []addedLine, fpPath string) error {
 	fpDir := filepath.Dir(fpPath)
 	if err := os.MkdirAll(fpDir, 0755); err != nil {
@@ -223,7 +216,7 @@ func writeFingerprintsToFile(addedLines []addedLine, fpPath string) error {
 
 	var sb strings.Builder
 	for _, al := range addedLines {
-		hash := sha256.Sum256([]byte(removeWhitespace(al.FilePath + al.Content)))
+		hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.FilePath + al.Content)))
 		sb.WriteString(hex.EncodeToString(hash[:]))
 		sb.WriteByte('\n')
 	}

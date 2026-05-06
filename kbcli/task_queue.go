@@ -32,6 +32,7 @@ type AsyncTask struct {
 	CreatedAt   time.Time              `json:"created_at"`
 	StartedAt   *time.Time             `json:"started_at,omitempty"`
 	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	fn          func() error
 	ctx         context.Context
 	cancelFunc  context.CancelFunc
 	mu          sync.RWMutex
@@ -85,7 +86,7 @@ func generateTaskID() string {
 }
 
 // Submit 提交新任务
-func (q *TaskQueue) Submit(taskType string, params map[string]interface{}) *AsyncTask {
+func (q *TaskQueue) Submit(taskType string, params map[string]interface{}, fn func() error) *AsyncTask {
 	taskID := generateTaskID()
 	taskCtx, cancel := context.WithCancel(q.ctx)
 	task := &AsyncTask{
@@ -93,6 +94,7 @@ func (q *TaskQueue) Submit(taskType string, params map[string]interface{}) *Asyn
 		Type:       taskType,
 		Status:     TaskStatusPending,
 		Params:     params,
+		fn:         fn,
 		CreatedAt:  time.Now(),
 		ctx:        taskCtx,
 		cancelFunc: cancel,
@@ -199,7 +201,9 @@ func (q *TaskQueue) runTask(taskID string) {
 	var runErr error
 	go func() {
 		defer close(done)
-		runErr = executeTaskByType(task.Type, task.Params)
+		if task.fn != nil {
+			runErr = task.fn()
+		}
 	}()
 
 	select {
@@ -226,81 +230,6 @@ func (q *TaskQueue) runTask(taskID string) {
 		task.mu.Unlock()
 		<-done // 等待goroutine完成
 	}
-}
-
-// executeTaskByType 根据任务类型执行对应的命令逻辑
-func executeTaskByType(taskType string, params map[string]interface{}) error {
-	switch taskType {
-	case "import-task":
-		return executeImportTask(params)
-	case "import-repo":
-		return executeImportRepo(params)
-	case "import-org":
-		return executeImportOrg(params)
-	case "silica":
-		return executeSilica(params)
-	case "efficiency":
-		return executeEfficiency(params)
-	default:
-		return fmt.Errorf("未知任务类型: %s", taskType)
-	}
-}
-
-func getStringParam(params map[string]interface{}, key string, defaultVal string) string {
-	if val, ok := params[key]; ok {
-		if s, ok := val.(string); ok {
-			return s
-		}
-	}
-	return defaultVal
-}
-
-func getBoolParam(params map[string]interface{}, key string, defaultVal bool) bool {
-	if val, ok := params[key]; ok {
-		switch v := val.(type) {
-		case bool:
-			return v
-		case string:
-			return v == "true" || v == "1"
-		case int:
-			return v != 0
-		case float64:
-			return v != 0
-		}
-	}
-	return defaultVal
-}
-
-func executeImportTask(params map[string]interface{}) error {
-	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
-	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
-	force := getBoolParam(params, "force", false)
-	return runImportTask(taskDir, analysedDir, force)
-}
-
-func executeImportRepo(params map[string]interface{}) error {
-	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
-	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
-	force := getBoolParam(params, "force", false)
-	return runImportRepo(repoDir, analysedDir, force)
-}
-
-func executeImportOrg(params map[string]interface{}) error {
-	fromDB := getStringParam(params, "from_db", cfg.OrgDSN)
-	fromCSV := getStringParam(params, "from_csv", "")
-	toCSV := getStringParam(params, "to_csv", "")
-	return runImportOrg(fromDB, fromCSV, toCSV)
-}
-
-func executeSilica(params map[string]interface{}) error {
-	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
-	force := getBoolParam(params, "force", false)
-	return runSilica(analysedDir, force)
-}
-
-func executeEfficiency(params map[string]interface{}) error {
-	date := getStringParam(params, "date", "")
-	return runEfficiency(date)
 }
 
 // MarshalJSON 自定义序列化，避免死锁

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"kanban/core/models"
+
 	"gorm.io/gorm"
 )
 
@@ -193,28 +195,8 @@ type UserGroup struct {
 
 func (UserGroup) TableName() string { return "user_groups" }
 
-type StringJSON string
-
-func (j *StringJSON) Scan(value interface{}) error {
-	if value == nil {
-		*j = ""
-		return nil
-	}
-	switch v := value.(type) {
-	case []byte:
-		*j = StringJSON(v)
-	case string:
-		*j = StringJSON(v)
-	}
-	return nil
-}
-
-func (j StringJSON) Value() (interface{}, error) {
-	if j == "" {
-		return "[]", nil
-	}
-	return string(j), nil
-}
+// StringJSON 兼容别名，指向 core/models.StringJSON
+type StringJSON = models.StringJSON
 
 func openGormDB(dsn string) (*gorm.DB, error) {
 	db, err := gorm.Open(postgresOpener(dsn), &gorm.Config{})

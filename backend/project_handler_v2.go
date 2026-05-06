@@ -1,7 +1,9 @@
-package main
+﻿package main
 
 import (
-	"encoding/json"
+	
+	"kanban/core/utils"
+"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -481,7 +483,7 @@ func listProjectsV2(c *gin.Context) {
 		}
 		var effRatio *float64
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+			ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
 			effRatio = &ratio
 		}
 
@@ -687,7 +689,7 @@ func getProjectDetailV2(c *gin.Context) {
 	}
 	var effRatio *float64
 	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-		ratio := calcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+		ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
 		effRatio = &ratio
 	}
 

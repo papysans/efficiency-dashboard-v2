@@ -10,6 +10,7 @@ require (
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
 	gopkg.in/yaml.v3 v3.0.1
+	kanban/core v0.0.0
 )
 
 require (
@@ -58,3 +59,5 @@ require (
 	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+replace kanban/core => ../core

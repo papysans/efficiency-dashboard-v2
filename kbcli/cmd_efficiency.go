@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"kanban/core/utils"
+
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -110,8 +112,8 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				commitRealMinutes = ca.CommitRealMinutes
 			}
 
-			taskEffRatio := calcEfficiencyRatio(taskAncientMinutes, taskRealMinutes)
-			commitEffRatio := calcEfficiencyRatio(commitAncientMinutes, commitRealMinutes)
+			taskEffRatio := utils.CalcEfficiencyRatio(taskAncientMinutes, taskRealMinutes)
+			commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMinutes, commitRealMinutes)
 
 			if taskIDsJSON == nil {
 				taskIDsJSON = []byte("[]")

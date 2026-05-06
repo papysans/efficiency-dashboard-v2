@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"kanban/core/config"
+	"kanban/core/utils"
+
 	_ "github.com/lib/pq"
 )
 
@@ -28,7 +31,7 @@ type RepoAggregate struct {
 }
 
 // InitDB 初始化 PostgreSQL 数据库连接
-func InitDB(cfg DatabaseConfig) (*sql.DB, error) {
+func InitDB(cfg config.DatabaseConfig) (*sql.DB, error) {
 	// 首先尝试直接连接到目标数据库
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode)
@@ -86,222 +89,6 @@ func InitDB(cfg DatabaseConfig) (*sql.DB, error) {
 	}
 
 	return db, nil
-}
-
-// EnsureStatSchema 确保 costrict_stat 数据库的表结构存在
-// 使用 CREATE TABLE IF NOT EXISTS 实现幂等，每次启动时调用
-func EnsureStatSchema(db *sql.DB) error {
-	// 启用 pgcrypto 扩展（gen_random_uuid 函数需要）
-	if _, err := db.Exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto`); err != nil {
-		return fmt.Errorf("启用 pgcrypto 扩展失败: %w", err)
-	}
-
-	stmts := []string{
-		// user_org 表
-		`CREATE TABLE IF NOT EXISTS user_org (
-			user_id VARCHAR(255) PRIMARY KEY,
-			user_name VARCHAR(255),
-			org1 VARCHAR(255),
-			org2 VARCHAR(255),
-			org3 VARCHAR(255),
-			org4 VARCHAR(255),
-			org5 VARCHAR(255),
-			org6 VARCHAR(255),
-			org7 VARCHAR(255),
-			org8 VARCHAR(255),
-			org9 VARCHAR(255),
-			git_user_name VARCHAR(255),
-			git_user_email VARCHAR(255),
-			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_org_user_name ON user_org(user_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_org_git_user_name ON user_org(git_user_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_org_git_user_email ON user_org(git_user_email)`,
-
-		// tasks 表
-		`CREATE TABLE IF NOT EXISTS tasks (
-			task_id VARCHAR(500) PRIMARY KEY,
-			user_id VARCHAR(255),
-			user_name VARCHAR(255),
-			client_id VARCHAR(255),
-			client_ide VARCHAR(100),
-			client_version VARCHAR(100),
-			client_os VARCHAR(100),
-			client_os_version VARCHAR(100),
-			caller VARCHAR(100),
-			repo_addr TEXT,
-			repo_branch VARCHAR(500),
-			work_dir TEXT,
-			work_dir_id VARCHAR(500),
-			diff_lines INT,
-			start_time TIMESTAMPTZ,
-			end_time TIMESTAMPTZ,
-			upstream_tokens BIGINT,
-			downstream_tokens BIGINT,
-			cost FLOAT8,
-			task_real_minutes FLOAT8,
-			task_real_minutes_reason TEXT,
-			task_real_minutes_manual FLOAT8,
-			task_real_minutes_reason_manual TEXT,
-			task_ancient_minutes FLOAT8,
-			task_ancient_minutes_reason TEXT,
-		task_ancient_minutes_manual FLOAT8,
-		task_ancient_minutes_reason_manual TEXT,
-		title VARCHAR(200),
-			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_tasks_work_dir_id ON tasks(work_dir_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_tasks_start_time ON tasks(start_time)`,
-
-		// task_conversations 表
-		`CREATE TABLE IF NOT EXISTS task_conversations (
-			id SERIAL PRIMARY KEY,
-			task_id VARCHAR(500) NOT NULL,
-			request_id VARCHAR(500) NOT NULL,
-			sender VARCHAR(50),
-			prompt_mode VARCHAR(50),
-			mode VARCHAR(100),
-			model VARCHAR(200),
-			start_time TIMESTAMPTZ,
-			end_time TIMESTAMPTZ,
-			process_time BIGINT,
-			process_ttft BIGINT,
-			upstream_tokens BIGINT,
-			downstream_tokens BIGINT,
-			cost FLOAT8,
-			request_content TEXT,
-			response_content TEXT,
-			user_input TEXT,
-			diff TEXT,
-			diff_lines BIGINT,
-			error_code VARCHAR(100),
-			error_reason TEXT,
-			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(task_id, request_id)
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_task_conversations_task_id ON task_conversations(task_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_task_conversations_start_time ON task_conversations(start_time)`,
-
-		// commits 表
-		`CREATE TABLE IF NOT EXISTS commits (
-			commit_id VARCHAR(500) PRIMARY KEY,
-			commit_time TIMESTAMPTZ,
-			repo_addr TEXT,
-			repo_branch VARCHAR(500),
-			git_user_name VARCHAR(255),
-			git_user_email VARCHAR(255),
-			user_id VARCHAR(255),
-			user_name VARCHAR(255),
-			client_id VARCHAR(255),
-			work_dir TEXT,
-			diff_lines INT,
-			commit_ancient_minutes FLOAT8,
-			commit_ancient_minutes_reason TEXT,
-			commit_ancient_minutes_manual FLOAT8,
-			commit_ancient_minutes_reason_manual TEXT,
-			task_ids JSONB,
-			task_ids_silica JSONB,
-			upstream_tokens BIGINT,
-			downstream_tokens BIGINT,
-			cost FLOAT8,
-			silica FLOAT8,
-			commit_real_ai_minutes FLOAT8,
-			commit_real_ancient_minutes FLOAT8,
-			commit_real_minutes FLOAT8,
-			commit_real_minutes_reason TEXT,
-			commit_real_minutes_manual FLOAT8,
-			commit_real_minutes_reason_manual TEXT,
-			comment VARCHAR(150),
-			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_commits_repo_addr ON commits(repo_addr)`,
-		`CREATE INDEX IF NOT EXISTS idx_commits_repo_addr_branch ON commits(repo_addr, repo_branch)`,
-		`CREATE INDEX IF NOT EXISTS idx_commits_user_id ON commits(user_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_commits_commit_time ON commits(commit_time)`,
-
-		// projects 表（虚拟项目）
-		`CREATE TABLE IF NOT EXISTS projects (
-			project_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-			name VARCHAR(500) NOT NULL,
-			description TEXT,
-			repos JSONB DEFAULT '[]',
-			task_ids JSONB DEFAULT '[]',
-			task_ids_silica JSONB DEFAULT '[]',
-			start_time TIMESTAMPTZ,
-			end_time TIMESTAMPTZ,
-			start_time_manual TIMESTAMPTZ,
-			end_time_manual TIMESTAMPTZ,
-			upstream_tokens BIGINT DEFAULT 0,
-			downstream_tokens BIGINT DEFAULT 0,
-			cost FLOAT8 DEFAULT 0,
-			project_ancient_minutes FLOAT8,
-			project_ancient_minutes_reason TEXT,
-			project_ancient_minutes_manual FLOAT8,
-			project_ancient_minutes_reason_manual TEXT,
-			project_real_process_minutes FLOAT8,
-			project_real_process_minutes_reason TEXT,
-			project_real_process_minutes_manual FLOAT8,
-			project_real_process_minutes_reason_manual TEXT,
-			project_real_lead_minutes FLOAT8,
-			project_real_lead_minutes_reason TEXT,
-			project_real_lead_minutes_manual FLOAT8,
-			project_real_lead_minutes_reason_manual TEXT,
-			created_at TIMESTAMPTZ DEFAULT NOW(),
-			updated_at TIMESTAMPTZ DEFAULT NOW()
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)`,
-		`CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at)`,
-
-		// user_productivity 表（用户生产力预聚合）
-		`CREATE TABLE IF NOT EXISTS user_productivity (
-			user_productivity_id VARCHAR(500) PRIMARY KEY,
-			create_time TIMESTAMPTZ,
-			user_id VARCHAR(255),
-			user_name VARCHAR(255),
-			task_ids JSONB,
-			work_dir_ids JSONB,
-			task_diff_lines INT,
-			upstream_tokens BIGINT,
-			downstream_tokens BIGINT,
-			cost FLOAT8,
-			task_real_minutes FLOAT8,
-			task_ancient_minutes FLOAT8,
-			task_efficiency_ratio FLOAT8,
-			commit_ids JSONB,
-			commit_diff_lines INT,
-			commit_ancient_minutes FLOAT8,
-			commit_real_ai_minutes FLOAT8,
-			commit_real_ancient_minutes FLOAT8,
-			commit_real_minutes FLOAT8,
-			commit_efficiency_ratio FLOAT8,
-			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_productivity_user_id ON user_productivity(user_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_productivity_create_time ON user_productivity(create_time)`,
-
-		// user_groups 表（虚拟用户组）
-		`CREATE TABLE IF NOT EXISTS user_groups (
-			group_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-			name VARCHAR(500) NOT NULL,
-			org_name VARCHAR(200) DEFAULT '',
-			user_ids JSONB DEFAULT '[]',
-			created_at TIMESTAMPTZ DEFAULT NOW(),
-			updated_at TIMESTAMPTZ DEFAULT NOW()
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_groups_name ON user_groups(name)`,
-	}
-
-	for _, stmt := range stmts {
-		if _, err := db.Exec(stmt); err != nil {
-			return fmt.Errorf("EnsureStatSchema 执行失败 [%s]: %w", stmt[:60], err)
-		}
-	}
-	return nil
 }
 
 // ============================================================
@@ -923,7 +710,7 @@ func ListRepoAggregates(db *sql.DB, startTime, endTime string) ([]RepoAggregate,
 			return nil, fmt.Errorf("扫描 stat commits 聚合行失败: %w", err)
 		}
 		if item.SumAncientMinutes != nil && item.SumRealMinutes != nil && *item.SumRealMinutes > 0 {
-			ratio := calcEfficiencyRatio(*item.SumAncientMinutes, *item.SumRealMinutes)
+			ratio := utils.CalcEfficiencyRatio(*item.SumAncientMinutes, *item.SumRealMinutes)
 			item.EfficiencyRatio = &ratio
 		}
 		list = append(list, item)

@@ -11,7 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
+
+	"kanban/core/utils"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -126,7 +127,7 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) task
 		RepoAddr:      summary.RepoAddr,
 		RepoBranch:    summary.RepoBranch,
 		WorkDir:       summary.WorkDir,
-		WorkDirID:     generateWorkDirID(summary.ClientID, summary.WorkDir),
+		WorkDirID:     utils.GenerateWorkDirID(summary.ClientID, summary.WorkDir),
 		DiffLines:     summary.DiffLines,
 	}
 
@@ -294,12 +295,12 @@ func saveConversations(db *gorm.DB, taskID string, conversations []taskConversat
 				UpstreamTokens:   conv.UpstreamTokens,
 				DownstreamTokens: conv.DownstreamTokens,
 				Cost:             conv.Cost,
-				RequestContent:   sanitizeText(conv.RequestContent),
-				ResponseContent:  sanitizeText(conv.ResponseContent),
-				UserInput:        sanitizeText(conv.UserInput),
+				RequestContent:   utils.SanitizeText(conv.RequestContent),
+				ResponseContent:  utils.SanitizeText(conv.ResponseContent),
+				UserInput:        utils.SanitizeText(conv.UserInput),
 				DiffLines:        conv.DiffLines,
 				ErrorCode:        stringPtrToStr(flexStrPtr(conv.ErrorCode)),
-				ErrorReason:      sanitizeText(stringPtrToStr(flexStrPtr(conv.ErrorReason))),
+				ErrorReason:      utils.SanitizeText(stringPtrToStr(flexStrPtr(conv.ErrorReason))),
 			}
 
 			result := tx.Clauses(clause.OnConflict{
@@ -319,36 +320,6 @@ func stringPtrToStr(p *string) string {
 		return ""
 	}
 	return *p
-}
-
-// sanitizeText 清理文本字段，移除无效的 UTF-8 字符（特别是 null 字节 0x00）
-// 这样可以避免 PostgreSQL 的 "invalid byte sequence for encoding UTF8" 错误
-func sanitizeText(s string) string {
-	if s == "" {
-		return s
-	}
-
-	// 移除所有 null 字节（0x00）
-	result := strings.ReplaceAll(s, "\x00", "")
-
-	// 如果包含其他无效的 UTF-8 字符，移除它们
-	if !utf8.ValidString(result) {
-		valid := make([]rune, 0, len(result))
-		for i, r := range result {
-			if r == utf8.RuneError {
-				// 检查是否真的是无效字符
-				_, size := utf8.DecodeRuneInString(result[i:])
-				if size == 1 {
-					// 真正的无效字符，跳过
-					continue
-				}
-			}
-			valid = append(valid, r)
-		}
-		result = string(valid)
-	}
-
-	return result
 }
 
 func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConversation, realMinutes float64) {
@@ -699,7 +670,7 @@ func generateFingerprintFile(summary *taskSummary, conversations []taskConversat
 
 	var sb strings.Builder
 	for _, al := range addedLines {
-		hash := sha256.Sum256([]byte(removeWhitespace(al.FilePath + al.Content)))
+		hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.FilePath + al.Content)))
 		sb.WriteString(hex.EncodeToString(hash[:]))
 		sb.WriteByte('\n')
 	}

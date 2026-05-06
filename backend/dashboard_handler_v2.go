@@ -1,7 +1,9 @@
-package main
+﻿package main
 
 import (
-	"fmt"
+	
+	"kanban/core/utils"
+"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -95,8 +97,8 @@ func getDashboardSummary(c *gin.Context) {
 		return
 	}
 
-	// 使用 calcEfficiencyRatio 计算平均提效比
-	avgEfficiencyRatio := calcEfficiencyRatio(totalAncientMinutes, totalRealMinutes)
+	// 使用 utils.CalcEfficiencyRatio 计算平均提效比
+	avgEfficiencyRatio := utils.CalcEfficiencyRatio(totalAncientMinutes, totalRealMinutes)
 
 	// SQL 2: 从 commits 聚合
 	commitQuery := `SELECT

@@ -23,6 +23,7 @@ var taskQueue *TaskQueue
 
 // validTaskTypes 定义支持的任务类型
 var validTaskTypes = map[string]bool{
+	"import":      true,
 	"import-task": true,
 	"import-repo": true,
 	"import-org":  true,
@@ -95,6 +96,17 @@ type SilicaBody struct {
 // EfficiencyBody efficiency 请求体
 type EfficiencyBody struct {
 	Date string `json:"date" example:"20240101"`
+}
+
+// ImportBody import 请求体
+type ImportBody struct {
+	TaskDir     string `json:"task_dir" example:"/path/to/task"`
+	RepoDir     string `json:"repo_dir" example:"/path/to/repo"`
+	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
+	Force       bool   `json:"force" example:"false"`
+	FromDB      string `json:"from_db" example:"host=localhost dbname=auth"`
+	FromCSV     string `json:"from_csv" example:"./org.csv"`
+	Date        string `json:"date" example:"20240101"`
 }
 
 func writeError(c *gin.Context, status int, message string) {
@@ -187,6 +199,21 @@ func createEfficiencyHandler(c *gin.Context) {
 	createTaskHandlerFunc("efficiency", c)
 }
 
+// createImportHandler 创建 import 异步任务
+// @Summary 提交 import 异步任务
+// @Description 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-task → import-repo → import-org → silica → efficiency
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body ImportBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/import [post]
+func createImportHandler(c *gin.Context) {
+	createTaskHandlerFunc("import", c)
+}
+
 func createTaskHandlerFunc(taskType string, c *gin.Context) {
 	var params map[string]interface{}
 	if err := c.ShouldBindJSON(&params); err != nil {
@@ -198,7 +225,13 @@ func createTaskHandlerFunc(taskType string, c *gin.Context) {
 		params = make(map[string]interface{})
 	}
 
-	task := taskQueue.Submit(taskType, params)
+	fn, err := createTaskExecutor(taskType, params)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	task := taskQueue.Submit(taskType, params, fn)
 	c.JSON(http.StatusAccepted, CreateTaskResponse{
 		TaskID: task.ID,
 		Status: string(task.Status),
@@ -303,6 +336,7 @@ func setupRouter() *gin.Engine {
 	r.GET("/api/health", healthHandler)
 
 	// 任务创建接口
+	r.POST("/api/tasks/import", createImportHandler)
 	r.POST("/api/tasks/import-task", createImportTaskHandler)
 	r.POST("/api/tasks/import-repo", createImportRepoHandler)
 	r.POST("/api/tasks/import-org", createImportOrgHandler)
@@ -315,6 +349,32 @@ func setupRouter() *gin.Engine {
 	r.DELETE("/api/tasks/:id", cancelTaskHandler)
 
 	return r
+}
+
+func startInit(queue *TaskQueue) {
+	if cfg.Serve.Init.Command == "" {
+		return
+	}
+	cmd := cfg.Serve.Init
+	if !validTaskTypes[cmd.Command] {
+		logWarnf("跳过未知命令类型的定时任务: %s", cmd.Command)
+		return
+	}
+
+	params := cmd.Params
+	if cmd.Params == nil {
+		params = make(map[string]interface{})
+	}
+
+	fn, err := createTaskExecutor(cmd.Command, params)
+	if err != nil {
+		logWarnf("创建初始化任务执行器失败: %v", err)
+		return
+	}
+
+	task := queue.Submit(cmd.Command, params, fn)
+
+	logInfof("[init] 已启动初始化任务(id=%s): command=%s, params=%v", task.ID, cmd.Command, cmd.Params)
 }
 
 // startCron 启动定时任务调度器
@@ -341,9 +401,15 @@ func startCron(queue *TaskQueue) *cron.Cron {
 			params = make(map[string]interface{})
 		}
 
+		fn, err := createTaskExecutor(cmd, params)
+		if err != nil {
+			logWarnf("创建定时任务执行器失败 [%s %s]: %v", job.Schedule, cmd, err)
+			continue
+		}
+
 		entryID, err := c.AddFunc(job.Schedule, func() {
 			logInfof("[cron] 定时任务触发: %s", cmd)
-			task := queue.Submit(cmd, params)
+			task := queue.Submit(cmd, params, fn)
 			logInfof("[cron] 任务已提交: %s (type=%s)", task.ID, cmd)
 		})
 		if err != nil {
@@ -396,6 +462,8 @@ var serveCmd = &cobra.Command{
 		taskQueue = NewTaskQueue(workers)
 		defer taskQueue.Stop()
 
+		// 启动初始化任务
+		startInit(taskQueue)
 		// 启动定时任务
 		cronInst := startCron(taskQueue)
 		if cronInst != nil {

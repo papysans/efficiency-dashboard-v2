@@ -1,7 +1,9 @@
-package main
+﻿package main
 
 import (
-	"database/sql"
+	
+	"kanban/core/utils"
+"database/sql"
 	"fmt"
 	"math"
 	"net/http"
@@ -471,10 +473,10 @@ func listOrgV2(c *gin.Context) {
 	for orgName, oa := range orgAggMap {
 		var taskEffRatio, commitEffRatio float64
 		if oa.taskRealMin > 0 {
-			taskEffRatio = calcEfficiencyRatio(oa.taskAncientMin, oa.taskRealMin)
+			taskEffRatio = utils.CalcEfficiencyRatio(oa.taskAncientMin, oa.taskRealMin)
 		}
 		if oa.commitRealMin > 0 {
-			commitEffRatio = calcEfficiencyRatio(oa.commitAncientMin, oa.commitRealMin)
+			commitEffRatio = utils.CalcEfficiencyRatio(oa.commitAncientMin, oa.commitRealMin)
 		}
 		data = append(data, OrgDataItem{
 			OrgName: orgName, UserCount: oa.userCount,
@@ -724,10 +726,10 @@ func listOrgV2(c *gin.Context) {
 				downTok = pa.downTokens
 				cost = pa.cost
 				if pa.taskRealMin > 0 {
-					taskEffRatio = calcEfficiencyRatio(pa.taskAncientMin, pa.taskRealMin)
+					taskEffRatio = utils.CalcEfficiencyRatio(pa.taskAncientMin, pa.taskRealMin)
 				}
 				if pa.commitRealMin > 0 {
-					commitEffRatio = calcEfficiencyRatio(pa.commitAncientMin, pa.commitRealMin)
+					commitEffRatio = utils.CalcEfficiencyRatio(pa.commitAncientMin, pa.commitRealMin)
 				}
 			}
 			points = append(points, OrgSeriesPoint{
@@ -993,10 +995,10 @@ func getOrgDetailV2(c *gin.Context) {
 	for _, ma := range memberMap {
 		var taskEffRatio, commitEffRatio float64
 		if ma.taskRealMin > 0 {
-			taskEffRatio = calcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
+			taskEffRatio = utils.CalcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
 		}
 		if ma.commitRealMin > 0 {
-			commitEffRatio = calcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
+			commitEffRatio = utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
 		}
 		membersResult = append(membersResult, OrgMemberItem{
 			UserID: ma.userID, UserName: ma.userName,
@@ -1206,10 +1208,10 @@ func getGroupDetailV2(c *gin.Context) {
 		da := dailyMap[date]
 		var taskEffRatio, commitEffRatio float64
 		if da.taskRealMin > 0 {
-			taskEffRatio = calcEfficiencyRatio(da.taskAncientMin, da.taskRealMin)
+			taskEffRatio = utils.CalcEfficiencyRatio(da.taskAncientMin, da.taskRealMin)
 		}
 		if da.commitRealMin > 0 {
-			commitEffRatio = calcEfficiencyRatio(da.commitAncientMin, da.commitRealMin)
+			commitEffRatio = utils.CalcEfficiencyRatio(da.commitAncientMin, da.commitRealMin)
 		}
 		dailyResult = append(dailyResult, DailyDataItem{
 			Date:                  date,
@@ -1270,10 +1272,10 @@ func getGroupDetailV2(c *gin.Context) {
 	for _, ma := range memberMap {
 		var taskEffRatio, commitEffRatio float64
 		if ma.taskRealMin > 0 {
-			taskEffRatio = calcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
+			taskEffRatio = utils.CalcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
 		}
 		if ma.commitRealMin > 0 {
-			commitEffRatio = calcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
+			commitEffRatio = utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
 		}
 		membersResult = append(membersResult, GroupMemberItem{
 			UserID: ma.userID, UserName: ma.userName,
