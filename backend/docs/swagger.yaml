@@ -713,6 +713,13 @@ definitions:
       work_dir:
         type: string
     type: object
+  main.RefreshOrgMappingResponse:
+    properties:
+      count:
+        type: integer
+      msg:
+        type: string
+    type: object
   main.RelatedTask:
     properties:
       cost:
@@ -986,8 +993,6 @@ definitions:
         type: integer
       downstream_tokens:
         type: integer
-      efficiency_ratio:
-        type: number
       end_time:
         type: string
       repo_addr:
@@ -1912,6 +1917,23 @@ paths:
           schema:
             $ref: '#/definitions/main.ErrorResponse'
       summary: 获取组织详情
+      tags:
+      - Orgs
+  /api/v2/orgs/refresh:
+    post:
+      description: 从 user_org 表重新加载组织结构映射到内存
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.RefreshOrgMappingResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 刷新组织结构查找表
       tags:
       - Orgs
   /api/v2/projects:

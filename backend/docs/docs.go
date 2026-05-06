@@ -488,6 +488,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v2/orgs/refresh": {
+            "post": {
+                "description": "从 user_org 表重新加载组织结构映射到内存",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Orgs"
+                ],
+                "summary": "刷新组织结构查找表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.RefreshOrgMappingResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v2/projects": {
             "get": {
                 "description": "获取所有项目列表",
@@ -2861,6 +2887,17 @@ const docTemplate = `{
                 }
             }
         },
+        "main.RefreshOrgMappingResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "msg": {
+                    "type": "string"
+                }
+            }
+        },
         "main.RelatedTask": {
             "type": "object",
             "properties": {
@@ -3273,9 +3310,6 @@ const docTemplate = `{
                 },
                 "downstream_tokens": {
                     "type": "integer"
-                },
-                "efficiency_ratio": {
-                    "type": "number"
                 },
                 "end_time": {
                     "type": "string"

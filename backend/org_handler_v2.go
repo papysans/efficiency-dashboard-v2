@@ -1303,3 +1303,31 @@ func getGroupDetailV2(c *gin.Context) {
 		Members: membersResult,
 	})
 }
+
+type RefreshOrgMappingResponse struct {
+	Count int    `json:"count"`
+	Msg   string `json:"msg"`
+}
+
+// refreshOrgMappingV2 POST /api/v2/orgs/refresh
+// @Summary 刷新组织结构查找表
+// @Description 从 user_org 表重新加载组织结构映射到内存
+// @Tags Orgs
+// @Produce json
+// @Success 200 {object} RefreshOrgMappingResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/orgs/refresh [post]
+func refreshOrgMappingV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	if err := LoadOrgMapping(statDB); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "刷新组织映射失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, RefreshOrgMappingResponse{
+		Count: len(orgMappings),
+		Msg:   "组织映射刷新成功",
+	})
+}
