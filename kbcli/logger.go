@@ -165,8 +165,6 @@ func logPromptProgress(cnt, linecnt int) {
 	}
 	fmt.Print(".")
 	if cnt%linecnt == linecnt-1 {
-		fmt.Print("\r")
-		fmt.Print(strings.Repeat(" ", linecnt))
-		fmt.Print("\r")
+		fmt.Print("\r\033[K")
 	}
 }

@@ -41,7 +41,7 @@ type AIEstimationConfig struct {
 
 type EstimateConfig struct {
 	MaxInputChars     float64 `yaml:"max_input_chars"`     //最大输入字符数
-	MaxRatio          float64 `yaml:"max_ratio"`           //工作量的最大倍数(相比chars(user_input) / inchars_per_minutes + real_minutes)
+	MaxRatio          float64 `yaml:"max_ratio"`           //工作量的最大倍数(相比real_minutes)
 	MaxFactor         float64 `yaml:"max_factor"`          //最大的加权系数
 	MinFactor         float64 `yaml:"min_factor"`          //最小的加权系数
 	IncharsPerMinutes float64 `yaml:"inchars_per_minutes"` //人每分钟输入20个字

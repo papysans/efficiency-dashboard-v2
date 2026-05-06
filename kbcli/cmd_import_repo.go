@@ -113,7 +113,7 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 	return files, skipCount, err
 }
 
-func importEstimateCommitAncientMinutes(diffLines int) (float64, string) {
+func estimateCommitAncientMinutes(diffLines int) (float64, string) {
 	if diffLines <= 0 {
 		return 5, "默认估算:无代码变更"
 	}
@@ -181,7 +181,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		return fmt.Errorf("写入commits表失败: %w", result.Error)
 	}
 
-	ancientMinutes, ancientReason := importEstimateCommitAncientMinutes(commitData.DiffLines)
+	ancientMinutes, ancientReason := estimateCommitAncientMinutes(commitData.DiffLines)
 	ancientMinutesPtr := &ancientMinutes
 	ancientReasonPtr := &ancientReason
 	if err := db.Model(&Commit{}).

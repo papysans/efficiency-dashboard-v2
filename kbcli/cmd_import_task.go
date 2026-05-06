@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -127,7 +126,7 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) task
 		RepoAddr:      summary.RepoAddr,
 		RepoBranch:    summary.RepoBranch,
 		WorkDir:       summary.WorkDir,
-		WorkDirID:     importGenerateWorkDirID(summary.ClientID, summary.WorkDir),
+		WorkDirID:     generateWorkDirID(summary.ClientID, summary.WorkDir),
 		DiffLines:     summary.DiffLines,
 	}
 
@@ -161,49 +160,13 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) task
 	rec.DownstreamTokens = totalDownstream
 	rec.Cost = totalCost
 
-	realMinutes, realReason := calculateImportTaskRealMinutes(conversations, 30, 5)
+	realMinutes, realReason := calculateTaskRealMinutes(conversations, 30, 5)
 	rec.TaskRealMinutes = realMinutes
 	rec.TaskRealMinutesRsn = realReason
 
 	estimateAncientMinutes(cfg.AlgoEstimation, &rec, conversations, realMinutes)
-	// if summary.DiffLines > 0 || len(conversations) > 0 {
-	// 	ancientMinutes, ancientReason := importEstimateAncientMinutes(summary.DiffLines)
-	// 	rec.TaskAncientMinutes = ancientMinutes
-	// 	rec.TaskAncientMinutesRsn = ancientReason
-	// }
 
 	return rec
-}
-
-var (
-	reImportNonSafe   = regexp.MustCompile(`[^a-z0-9\-]`)
-	reImportMultiDash = regexp.MustCompile(`-{2,}`)
-)
-
-func importGenerateWorkDirID(clientID, workDir string) string {
-	prefix := clientID
-	if len(prefix) > 6 {
-		prefix = prefix[:6]
-	}
-
-	suffix := workDir
-	if suffix != "" {
-		suffix = strings.ToLower(suffix)
-		suffix = reImportNonSafe.ReplaceAllString(suffix, "-")
-		suffix = reImportMultiDash.ReplaceAllString(suffix, "-")
-		suffix = strings.Trim(suffix, "-")
-	}
-
-	if prefix == "" && suffix == "" {
-		return ""
-	}
-	if prefix == "" {
-		return suffix
-	}
-	if suffix == "" {
-		return prefix
-	}
-	return prefix + "-" + suffix
 }
 
 func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string) error {
@@ -231,51 +194,49 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 
 	rec := calcTaskRecord(&summary, conversations)
 
-	if err := db.Exec(`INSERT INTO tasks (
-		task_id, user_id, user_name, client_id, client_ide, client_version,
-		client_os, client_os_version, caller,
-		repo_addr, repo_branch, work_dir, work_dir_id,
-		diff_lines,
-		start_time, end_time, upstream_tokens, downstream_tokens, cost,
-		task_real_minutes, task_real_minutes_reason,
-		task_ancient_minutes, task_ancient_minutes_reason,
-		updated_at
-	) VALUES (
-		$1, $2, $3, $4, $5, $6,
-		$7, $8, $9,
-		$10, $11, $12, $13,
-		$14,
-		$15, $16, $17, $18, $19,
-		$20, $21,
-		$22, $23,
-		CURRENT_TIMESTAMP
-	) ON CONFLICT (task_id) DO UPDATE SET
-		user_id = EXCLUDED.user_id,
-		client_id = EXCLUDED.client_id, client_ide = EXCLUDED.client_ide,
-		client_version = EXCLUDED.client_version,
-		client_os = EXCLUDED.client_os, client_os_version = EXCLUDED.client_os_version,
-		caller = EXCLUDED.caller,
-		repo_addr = EXCLUDED.repo_addr, repo_branch = EXCLUDED.repo_branch,
-		work_dir = EXCLUDED.work_dir, work_dir_id = EXCLUDED.work_dir_id,
-		diff_lines = EXCLUDED.diff_lines,
-		start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time,
-		upstream_tokens = EXCLUDED.upstream_tokens, downstream_tokens = EXCLUDED.downstream_tokens,
-		cost = EXCLUDED.cost,
-		task_real_minutes = CASE WHEN tasks.task_real_minutes IS NULL AND tasks.task_real_minutes_manual IS NULL THEN EXCLUDED.task_real_minutes ELSE tasks.task_real_minutes END,
-		task_real_minutes_reason = CASE WHEN tasks.task_real_minutes IS NULL AND tasks.task_real_minutes_manual IS NULL THEN EXCLUDED.task_real_minutes_reason ELSE tasks.task_real_minutes_reason END,
-		task_ancient_minutes = CASE WHEN tasks.task_ancient_minutes IS NULL AND tasks.task_ancient_minutes_manual IS NULL THEN EXCLUDED.task_ancient_minutes ELSE tasks.task_ancient_minutes END,
-		task_ancient_minutes_reason = CASE WHEN tasks.task_ancient_minutes IS NULL AND tasks.task_ancient_minutes_manual IS NULL THEN EXCLUDED.task_ancient_minutes_reason ELSE tasks.task_ancient_minutes_reason END,
-		updated_at = CURRENT_TIMESTAMP`,
-		rec.TaskID, rec.UserID, rec.UserName,
-		rec.ClientID, rec.ClientIDE, rec.ClientVersion,
-		rec.ClientOS, rec.ClientOSVer, rec.Caller,
-		rec.RepoAddr, rec.RepoBranch, rec.WorkDir, rec.WorkDirID,
-		rec.DiffLines,
-		rec.StartTime, rec.EndTime, rec.UpstreamTokens, rec.DownstreamTokens, rec.Cost,
-		rec.TaskRealMinutes, rec.TaskRealMinutesRsn,
-		rec.TaskAncientMinutes, rec.TaskAncientMinutesRsn,
-	).Error; err != nil {
-		return fmt.Errorf("写入tasks表失败: %w", err)
+	task := Task{
+		TaskID:                   rec.TaskID,
+		UserID:                   rec.UserID,
+		UserName:                 rec.UserName,
+		ClientID:                 rec.ClientID,
+		ClientIDE:                rec.ClientIDE,
+		ClientVersion:            rec.ClientVersion,
+		ClientOS:                 rec.ClientOS,
+		ClientOSVer:              rec.ClientOSVer,
+		Caller:                   rec.Caller,
+		RepoAddr:                 rec.RepoAddr,
+		RepoBranch:               rec.RepoBranch,
+		WorkDir:                  rec.WorkDir,
+		WorkDirID:                rec.WorkDirID,
+		DiffLines:                rec.DiffLines,
+		StartTime:                rec.StartTime,
+		EndTime:                  rec.EndTime,
+		UpstreamTokens:           rec.UpstreamTokens,
+		DownstreamTokens:         rec.DownstreamTokens,
+		Cost:                     rec.Cost,
+		TaskRealMinutes:          rec.TaskRealMinutes,
+		TaskRealMinutesReason:    rec.TaskRealMinutesRsn,
+		TaskAncientMinutes:       rec.TaskAncientMinutes,
+		TaskAncientMinutesReason: rec.TaskAncientMinutesRsn,
+	}
+
+	result := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "task_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"user_id", "user_name",
+			"client_id", "client_ide", "client_version",
+			"client_os", "client_os_version", "caller",
+			"repo_addr", "repo_branch", "work_dir", "work_dir_id",
+			"diff_lines",
+			"start_time", "end_time",
+			"upstream_tokens", "downstream_tokens", "cost",
+			"task_real_minutes", "task_real_minutes_reason",
+			"task_ancient_minutes", "task_ancient_minutes_reason",
+			"updated_at",
+		}),
+	}).Create(&task)
+	if result.Error != nil {
+		return fmt.Errorf("写入tasks表失败: %w", result.Error)
 	}
 
 	if rec.TaskRealMinutes > 0 {
@@ -390,17 +351,6 @@ func sanitizeText(s string) string {
 	return result
 }
 
-func importEstimateAncientMinutes(diffLines int) (float64, string) {
-	if diffLines <= 0 {
-		return 5, "默认估算:无代码变更"
-	}
-	minutes := float64(diffLines) * 1.5
-	if minutes < 5 {
-		minutes = 5
-	}
-	return minutes, fmt.Sprintf("基于diff_lines=%d估算(1.5分钟/行)", diffLines)
-}
-
 func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConversation, realMinutes float64) {
 	var totalInchars int64
 	var totalDiffLines int64
@@ -438,7 +388,7 @@ func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConve
 	)
 }
 
-func calculateImportTaskRealMinutes(conversations []taskConversation, gapThreshold, extensionMin int) (float64, string) {
+func calculateTaskRealMinutes(conversations []taskConversation, gapThreshold, extensionMin int) (float64, string) {
 	var validTimes []time.Time
 	for _, conv := range conversations {
 		if conv.StartTime != "" {

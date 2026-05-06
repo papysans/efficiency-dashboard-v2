@@ -27,6 +27,7 @@ type checkContext struct {
 	repoDir     string
 	dateFilter  string
 	minLevel    string
+	ignoreSet   map[string]bool // issue类型 -> 是否忽略
 	modelPrices map[string]ModelPrice
 	issues      []CheckIssue
 	summaryMap  map[string]string // taskID -> summary path
@@ -52,6 +53,9 @@ func (ctx *checkContext) meetsMinLevel(severity string) bool {
 }
 
 func (ctx *checkContext) addIssue(severity, path, taskID, commitID, issue, field, comment string) {
+	if ctx.ignoreSet[issue] {
+		return
+	}
 	if !ctx.meetsMinLevel(severity) {
 		return
 	}
@@ -66,12 +70,20 @@ func (ctx *checkContext) addIssue(severity, path, taskID, commitID, issue, field
 	})
 }
 
-func runCheck(taskDir, repoDir, dateFilter, output, minLevel string) error {
+func runCheck(taskDir, repoDir, dateFilter, output, minLevel string, ignoreList []string) error {
+	ignoreSet := make(map[string]bool)
+	for _, i := range ignoreList {
+		if i != "" {
+			ignoreSet[i] = true
+		}
+	}
+
 	ctx := &checkContext{
 		taskDir:     taskDir,
 		repoDir:     repoDir,
 		dateFilter:  dateFilter,
 		minLevel:    minLevel,
+		ignoreSet:   ignoreSet,
 		modelPrices: cfg.ModelPrices,
 		issues:      make([]CheckIssue, 0),
 		summaryMap:  make(map[string]string),
@@ -728,7 +740,17 @@ func (ctx *checkContext) writeReport(output string) error {
 var checkCmd = &cobra.Command{
 	Use:   "check",
 	Short: "检查summary和conversation目录下数据文件的字段缺失和错误",
-	Long:  "提前检查summary和conversation目录下的原始数据正确性，输出问题清单文件，作为排障依据或提前将问题数据剔除。",
+	Long: `提前检查summary和conversation目录下的原始数据正确性，输出问题清单文件，作为排障依据或提前将问题数据剔除。
+
+支持的 --ignore issue 类型：
+  commit-id-mismatch, conversation-diff-sum-mismatch, conversation-misplaced,
+  diff-lines-mismatch, invalid-commit-time, invalid-end-time, invalid-start-time,
+  json-parse-failed, missing-client-id, missing-commit-id, missing-commit-time,
+  missing-conversation, missing-error-reason, missing-git-user, missing-model,
+  missing-repo-addr, missing-repo-branch, missing-request-id, missing-start-time,
+  missing-task-id, missing-user-id, missing-user-name, negative-cost,
+  negative-process-time, negative-tokens, orphan-conversation, parse-failed,
+  read-failed, task-id-mismatch, zero-downstream-tokens, zero-upstream-tokens`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskDir, _ := cmd.Flags().GetString("task-dir")
 		repoDir, _ := cmd.Flags().GetString("repo-dir")
@@ -746,7 +768,9 @@ var checkCmd = &cobra.Command{
 			output = fmt.Sprintf("check-%s.json", time.Now().Format("20060102"))
 		}
 
-		return runCheck(taskDir, repoDir, dateFilter, output, level)
+		ignoreList, _ := cmd.Flags().GetStringSlice("ignore")
+
+		return runCheck(taskDir, repoDir, dateFilter, output, level, ignoreList)
 	},
 }
 
@@ -757,5 +781,6 @@ func init() {
 	checkCmd.Flags().String("date", "", "指定分析的日期（格式YYYYMMDD），不指定则分析全部")
 	checkCmd.Flags().String("output", "", "分析报告输出文件路径，默认为check-{当前日期}.json")
 	checkCmd.Flags().String("level", "warn", "指定输出issue的最低级别，可选值为info/warn/error，默认warn")
+	checkCmd.Flags().StringSlice("ignore", nil, "忽略指定类型的issue，可多次使用或逗号分隔，如--ignore=diff-lines-mismatch,missing-model")
 	rootCmd.AddCommand(checkCmd)
 }

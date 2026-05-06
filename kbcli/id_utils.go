@@ -25,3 +25,25 @@ func toPathSafeID(raw string) string {
 	result = strings.Trim(result, "-")
 	return result
 }
+
+// generateWorkDirID 根据 clientID 和 workDir 生成工作目录唯一标识
+// 算法：clientID前6位 + "-" + workDir路径安全化
+func generateWorkDirID(clientID, workDir string) string {
+	prefix := clientID
+	if len(prefix) > 6 {
+		prefix = prefix[:6]
+	}
+
+	suffix := toPathSafeID(workDir)
+
+	if prefix == "" && suffix == "" {
+		return ""
+	}
+	if prefix == "" {
+		return suffix
+	}
+	if suffix == "" {
+		return prefix
+	}
+	return prefix + "-" + suffix
+}
