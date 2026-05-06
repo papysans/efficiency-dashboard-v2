@@ -35,3 +35,6 @@ algo_estimation:
 task_real_minutes:
   gap_threshold_minutes: 30
   extension_minutes: 5
+
+org_mapping_refresh:
+  interval_minutes: 5

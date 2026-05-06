@@ -1,10 +1,9 @@
 ﻿package main
 
 import (
-	
-	"kanban/core/utils"
-"database/sql"
+	"database/sql"
 	"fmt"
+	"kanban/core/utils"
 	"math"
 	"net/http"
 	"sort"
@@ -195,28 +194,37 @@ type OrgMapping struct {
 // orgMappings 全局组织映射表，key=user_id
 var orgMappings map[string]*OrgMapping
 
-// LoadOrgMappingFromDB 从 user_org 表加载组织映射到全局 map
-func LoadOrgMappingFromDB(db *sql.DB) error {
-	orgMappings = make(map[string]*OrgMapping)
+func LoadOrgMapping(db *sql.DB) error {
+	maps, err := loadOrgMapping(db)
+	if err != nil {
+		return err
+	}
+	orgMappings = maps
+	return nil
+}
+
+// LoadOrgMapping 从 user_org 表加载组织映射到全局 map
+func loadOrgMapping(db *sql.DB) (map[string]*OrgMapping, error) {
+	maps := make(map[string]*OrgMapping)
 
 	rows, err := db.Query(`SELECT user_id, user_name, org1, org2, org3, org4, org5, org6, org7, org8, org9, git_user_name, git_user_email FROM user_org`)
 	if err != nil {
-		return fmt.Errorf("查询 user_org 表失败: %w", err)
+		return nil, fmt.Errorf("查询 user_org 表失败: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var m OrgMapping
 		if err := rows.Scan(&m.UserID, &m.UserName, &m.Org1, &m.Org2, &m.Org3, &m.Org4, &m.Org5, &m.Org6, &m.Org7, &m.Org8, &m.Org9, &m.GitUserName, &m.GitUserEmail); err != nil {
-			return fmt.Errorf("扫描 user_org 行失败: %w", err)
+			return nil, fmt.Errorf("扫描 user_org 行失败: %w", err)
 		}
 		if m.UserID == "" {
 			continue
 		}
-		orgMappings[m.UserID] = &m
+		maps[m.UserID] = &m
 	}
 
-	return rows.Err()
+	return maps, rows.Err()
 }
 
 // getOrgValue 根据 level 获取 OrgMapping 中对应的 org 值
@@ -319,7 +327,7 @@ func listOrgV2(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 	if orgMappings == nil {
-		if err := LoadOrgMappingFromDB(statDB); err != nil {
+		if err := LoadOrgMapping(statDB); err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
@@ -798,7 +806,7 @@ func getOrgDetailV2(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 	if orgMappings == nil {
-		if err := LoadOrgMappingFromDB(statDB); err != nil {
+		if err := LoadOrgMapping(statDB); err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}

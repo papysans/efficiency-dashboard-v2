@@ -5,6 +5,7 @@ ARG VERSION=v1.0.1
 WORKDIR /app
 
 COPY ./kbcli/go.mod ./kbcli/go.sum /app/kbcli/
+COPY core /app/core
 
 RUN go env -w CGO_ENABLED=0 && \
     go env -w GO111MODULE=on && \

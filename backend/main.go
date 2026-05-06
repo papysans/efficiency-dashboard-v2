@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "kanban/backend/docs"
 
@@ -57,6 +58,9 @@ type Config struct {
 		ExtensionMinutes    int `yaml:"extension_minutes"`
 	} `yaml:"task_real_minutes"`
 	TraditionalDevLinesPerDay int `yaml:"traditional_dev_lines_per_day"`
+	OrgMappingRefresh         struct {
+		IntervalMinutes int `yaml:"interval_minutes"`
+	} `yaml:"org_mapping_refresh"`
 }
 
 var appConfig Config
@@ -80,6 +84,7 @@ func loadConfig(path string) (Config, error) {
 	cfg.TaskRealMinutes.GapThresholdMinutes = 30
 	cfg.TaskRealMinutes.ExtensionMinutes = 5
 	cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay
+	cfg.OrgMappingRefresh.IntervalMinutes = 5
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -130,12 +135,15 @@ func main() {
 
 	// 从 user_org 表加载组织映射
 	if statDB != nil {
-		if err := LoadOrgMappingFromDB(statDB); err != nil {
+		if err := LoadOrgMapping(statDB); err != nil {
 			log.Printf("警告: 从 user_org 表加载组织映射失败: %v", err)
 		} else {
 			log.Printf("已从 user_org 表加载 %d 条组织映射", len(orgMappings))
 		}
 	}
+
+	// 启动组织映射定时刷新
+	go startOrgMappingRefresher(statDB, appConfig.OrgMappingRefresh.IntervalMinutes)
 
 	r := gin.Default()
 
@@ -219,5 +227,24 @@ func main() {
 	log.Printf("Swagger文档地址: http://localhost:%d/swagger/index.html", port)
 	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
+	}
+}
+
+// startOrgMappingRefresher 定时从数据库刷新组织结构映射表
+func startOrgMappingRefresher(db *sql.DB, intervalMinutes int) {
+	if intervalMinutes <= 0 {
+		intervalMinutes = 5
+	}
+	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		if db == nil {
+			continue
+		}
+		if err := LoadOrgMapping(db); err != nil {
+			log.Printf("定时刷新组织映射失败: %v", err)
+		} else {
+			log.Printf("定时刷新组织映射成功，当前共 %d 条", len(orgMappings))
+		}
 	}
 }
