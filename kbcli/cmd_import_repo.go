@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,8 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"kanban/core/utils"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -216,8 +212,7 @@ func writeFingerprintsToFile(addedLines []addedLine, fpPath string) error {
 
 	var sb strings.Builder
 	for _, al := range addedLines {
-		hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.FilePath + al.Content)))
-		sb.WriteString(hex.EncodeToString(hash[:]))
+		sb.WriteString(calcLineFingerprint(al))
 		sb.WriteByte('\n')
 	}
 

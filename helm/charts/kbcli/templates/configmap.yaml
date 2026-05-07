@@ -50,6 +50,16 @@ data:
 
     serve:
       port: {{ .Values.serve.port }}
+      {{- if .Values.serve.init }}
+      init:
+        command: {{ .Values.serve.init.command | quote }}
+        {{- if .Values.serve.init.params }}
+        params:
+          {{- range $k, $v := .Values.serve.init.params }}
+          {{ $k }}: {{ $v }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
       crontab:
       {{- range .Values.serve.crontab }}
         - schedule: {{ .schedule | quote }}

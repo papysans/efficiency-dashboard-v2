@@ -95,6 +95,10 @@ orgDSN: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costric
 
 serve:
   port: 8080
+  init:
+    command: "import"
+    params:
+      force: true
   crontab:
     - schedule: "0 0 * * * *"
       command: import-task

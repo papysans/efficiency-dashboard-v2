@@ -282,7 +282,7 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 
 func runSilica(analysedDir string, force bool, maxDays int) error {
 	startTime := time.Now()
-	taskFPDir := filepath.Join(analysedDir, "task", "summary")
+	taskFPDir := filepath.Join(analysedDir, "task", "conversation")
 	repoFPDir := filepath.Join(analysedDir, "repo")
 
 	if _, err := os.Stat(taskFPDir); os.IsNotExist(err) {

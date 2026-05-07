@@ -25,9 +25,11 @@ var rootCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("加载配置文件失败: %w", err)
 			}
+			fmt.Printf("load config [%s] ok, cfg: %+v\n", "../config.yaml", loadedCfg)
+		} else {
+			fmt.Printf("load config [%s] ok, cfg: %+v\n", configPath, loadedCfg)
 		}
 		cfg = loadedCfg
-		fmt.Printf("load config [%s] ok, cfg: %+v\n", configPath, cfg)
 
 		consoleLevel, _ := cmd.Flags().GetString("console")
 		logFile, _ := cmd.Flags().GetString("logfile")
