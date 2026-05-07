@@ -2,6 +2,8 @@ services:
   kbcli:
     image: ${IMAGE_KBCLI}
     restart: always
+    ports:
+      - "8080:8080"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - /mnt/prod_env/user-indicator/raw/task:/app/task

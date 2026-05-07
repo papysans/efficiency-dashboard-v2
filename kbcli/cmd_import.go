@@ -23,6 +23,7 @@ var importCmd = &cobra.Command{
 		fromDB, _ := cmd.Flags().GetString("from-db")
 		fromCSV, _ := cmd.Flags().GetString("from-csv")
 		dateStr, _ := cmd.Flags().GetString("date")
+		remote, _ := cmd.Flags().GetString("remote")
 
 		if taskDir == "" {
 			taskDir = cfg.TaskDir
@@ -35,6 +36,19 @@ var importCmd = &cobra.Command{
 		}
 		if fromDB == "" {
 			fromDB = cfg.OrgDSN
+		}
+
+		// 如果指定了远程地址，发送到远程 kbcli 服务执行
+		if remote != "" {
+			return sendToRemote(remote, "import", map[string]interface{}{
+				"task_dir":     taskDir,
+				"repo_dir":     repoDir,
+				"analysed_dir": analysedDir,
+				"force":        force,
+				"from_db":      fromDB,
+				"from_csv":     fromCSV,
+				"date":         dateStr,
+			})
 		}
 
 		steps := []struct {
@@ -70,6 +84,7 @@ func init() {
 	importCmd.Flags().String("to-csv", "", "导出CSV文件路径（import-org用，可选，不指定则不导出）")
 	importCmd.Flags().String("from-csv", "", "从指定的CSV文件加载UserOrg数据，替代从数据库加载（import-org用）")
 	importCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期（efficiency用）")
+	importCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 
 	rootCmd.AddCommand(importCmd)
 }

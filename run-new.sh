@@ -82,17 +82,43 @@ fi
 echo "✓ kbcli 可执行文件构建成功"
 cd ..
 
-# 7. 在 kbcli 目录运行 ./kbcli import --force
+# 7. 通过 remote 方式连接第5步启动的 kbcli 服务，执行 import 命令
 echo ""
-echo "[7/7] 运行 kbcli import --force..."
+echo "[7/7] 通过 remote 方式运行 kbcli import --force..."
+KBCLI_REMOTE_URL="http://127.0.0.1:8080"
+MAX_RETRIES=5
+RETRY_INTERVAL=3
 cd kbcli
-./kbcli import --force
-if [ $? -ne 0 ]; then
-    echo "警告：kbcli import --force 执行失败"
+
+RETRY_COUNT=0
+CONNECTED=false
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    echo "尝试连接 kbcli 服务 ($((RETRY_COUNT+1))/$MAX_RETRIES): $KBCLI_REMOTE_URL/health"
+    if curl -sf --connect-timeout 3 "$KBCLI_REMOTE_URL/health" > /dev/null 2>&1; then
+        CONNECTED=true
+        echo "✓ kbcli 服务已就绪"
+        break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT+1))
+    if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+        echo "  连接失败，${RETRY_INTERVAL}秒后重试..."
+        sleep $RETRY_INTERVAL
+    fi
+done
+
+if [ "$CONNECTED" = false ]; then
+    echo "错误：无法连接到 kbcli 服务 (已重试 $MAX_RETRIES 次)"
     cd ..
     exit 1
 fi
-echo "✓ kbcli import --force 执行完成"
+
+./kbcli import --force --remote "$KBCLI_REMOTE_URL"
+if [ $? -ne 0 ]; then
+    echo "错误：kbcli import --force --remote 执行失败"
+    cd ..
+    exit 1
+fi
+echo "✓ kbcli import --force --remote 执行完成"
 cd ..
 
 echo ""
