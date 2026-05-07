@@ -195,6 +195,16 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 
 	rec := calcTaskRecord(&summary, conversations)
 
+	for _, conv := range conversations {
+		if strings.TrimSpace(conv.Diff) != "" {
+			convFpName := summary.TaskID + "-" + conv.RequestID + ".fp"
+			convFpPath := filepath.Join(filepath.Dir(fpPath), convFpName)
+			if err := generateConversationFingerprintFile(conv, convFpPath); err != nil {
+				logWarnf("生成conversation指纹文件失败 [%s/%s]: %v", summary.TaskID, conv.RequestID, err)
+			}
+		}
+	}
+
 	task := Task{
 		TaskID:                   rec.TaskID,
 		UserID:                   rec.UserID,
@@ -764,6 +774,37 @@ func generateFingerprintFile(summary *taskSummary, conversations []taskConversat
 	}
 
 	logDebugf("  fp文件已生成(来源:%s, %d行指纹): %s", source, len(addedLines), fpPath)
+	return nil
+}
+
+func generateConversationFingerprintFile(conv taskConversation, fpPath string) error {
+	diffText := conv.Diff
+	if strings.TrimSpace(diffText) == "" {
+		return nil
+	}
+
+	addedLines := extractAddedLinesFromDiff(diffText)
+	if len(addedLines) == 0 {
+		return nil
+	}
+
+	dir := filepath.Dir(fpPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建conversation fp目录失败: %w", err)
+	}
+
+	var sb strings.Builder
+	for _, al := range addedLines {
+		hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.FilePath + al.Content)))
+		sb.WriteString(hex.EncodeToString(hash[:]))
+		sb.WriteByte('\n')
+	}
+
+	if err := os.WriteFile(fpPath, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("写入conversation fp文件失败: %w", err)
+	}
+
+	logDebugf("  conversation fp文件已生成(%d行指纹): %s", len(addedLines), fpPath)
 	return nil
 }
 
