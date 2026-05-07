@@ -271,16 +271,16 @@ var importOrgCmd = &cobra.Command{
 		toCSV, _ := cmd.Flags().GetString("to-csv")
 		remote, _ := cmd.Flags().GetString("remote")
 
-		if fromDSN == "" {
-			fromDSN = cfg.OrgDSN
-		}
-
 		if remote != "" {
 			return sendToRemote(remote, "import-org", map[string]interface{}{
 				"from_db":  fromDSN,
 				"from_csv": fromCSV,
 				"to_csv":   toCSV,
 			})
+		}
+
+		if fromDSN == "" {
+			fromDSN = cfg.OrgDSN
 		}
 
 		return runImportOrg(fromDSN, fromCSV, toCSV)

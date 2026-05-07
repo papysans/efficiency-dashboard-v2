@@ -59,10 +59,19 @@ type taskConversation struct {
 	ErrorReason      flexString `json:"error_reason"`
 }
 
-type taskConversationParsed struct {
-	TaskID          string `json:"task_id"`
-	Size            int64  `json:"size"`
-	ConversationNum int    `json:"conversation_num"`
+type taskSilicaData struct {
+	TaskID          string                   `json:"task_id"`
+	RepoAddr        string                   `json:"repo_addr"`
+	UserID          string                   `json:"user_id"`
+	Size            int64                    `json:"size"`
+	ConversationNum int                      `json:"conversation_num"`
+	Conversations   []taskSilicaConversation `json:"conversations"`
+}
+
+type taskSilicaConversation struct {
+	RequestID    string   `json:"request_id"`
+	EndTime      string   `json:"end_time"`
+	Fingerprints []string `json:"fingerprints"`
 }
 
 type flexString string
@@ -93,34 +102,8 @@ func flexStrPtr(s flexString) *string {
 	return &str
 }
 
-type taskRecord struct {
-	TaskID                string
-	UserID                string
-	UserName              string
-	ClientID              string
-	ClientIDE             string
-	ClientVersion         string
-	ClientOS              string
-	ClientOSVer           string
-	Caller                string
-	RepoAddr              string
-	RepoBranch            string
-	WorkDir               string
-	WorkDirID             string
-	DiffLines             int
-	StartTime             *time.Time
-	EndTime               *time.Time
-	UpstreamTokens        int64
-	DownstreamTokens      int64
-	Cost                  float64
-	TaskRealMinutes       float64
-	TaskRealMinutesRsn    string
-	TaskAncientMinutes    float64
-	TaskAncientMinutesRsn string
-}
-
-func calcTaskRecord(summary *taskSummary, conversations []taskConversation) taskRecord {
-	rec := taskRecord{
+func calcTaskRecord(summary *taskSummary, conversations []taskConversation) Task {
+	rec := Task{
 		TaskID:        summary.TaskID,
 		UserID:        summary.UserID,
 		UserName:      summary.UserName,
@@ -179,14 +162,14 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) task
 
 	realMinutes, realReason := calculateTaskRealMinutes(conversations, 30, 5)
 	rec.TaskRealMinutes = realMinutes
-	rec.TaskRealMinutesRsn = realReason
+	rec.TaskRealMinutesReason = realReason
 
 	estimateAncientMinutes(cfg.AlgoEstimation, &rec, conversations, realMinutes)
 
 	return rec
 }
 
-func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath, convParsedPath string) error {
+func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath string) error {
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
 		return fmt.Errorf("读取summary文件失败: %w", err)
@@ -209,42 +192,10 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath, convPa
 		}
 	}
 
-	rec := calcTaskRecord(&summary, conversations)
+	task := calcTaskRecord(&summary, conversations)
 
-	for _, conv := range conversations {
-		if strings.TrimSpace(conv.Diff) != "" {
-			convFpName := summary.TaskID + "-" + conv.RequestID + ".fp"
-			convFpPath := filepath.Join(filepath.Dir(fpPath), convFpName)
-			if err := generateConversationFingerprintFile(conv, convFpPath); err != nil {
-				logWarnf("生成conversation指纹文件失败 [%s/%s]: %v", summary.TaskID, conv.RequestID, err)
-			}
-		}
-	}
-
-	task := Task{
-		TaskID:                   rec.TaskID,
-		UserID:                   rec.UserID,
-		UserName:                 rec.UserName,
-		ClientID:                 rec.ClientID,
-		ClientIDE:                rec.ClientIDE,
-		ClientVersion:            rec.ClientVersion,
-		ClientOS:                 rec.ClientOS,
-		ClientOSVer:              rec.ClientOSVer,
-		Caller:                   rec.Caller,
-		RepoAddr:                 rec.RepoAddr,
-		RepoBranch:               rec.RepoBranch,
-		WorkDir:                  rec.WorkDir,
-		WorkDirID:                rec.WorkDirID,
-		DiffLines:                rec.DiffLines,
-		StartTime:                rec.StartTime,
-		EndTime:                  rec.EndTime,
-		UpstreamTokens:           rec.UpstreamTokens,
-		DownstreamTokens:         rec.DownstreamTokens,
-		Cost:                     rec.Cost,
-		TaskRealMinutes:          rec.TaskRealMinutes,
-		TaskRealMinutesReason:    rec.TaskRealMinutesRsn,
-		TaskAncientMinutes:       rec.TaskAncientMinutes,
-		TaskAncientMinutesReason: rec.TaskAncientMinutesRsn,
+	if err := generateTaskSilicaFile(&summary, conversations, conversationPath, silicaPath); err != nil {
+		logWarnf("生成task silica文件失败 [%s]: %v", summary.TaskID, err)
 	}
 
 	result := db.Clauses(clause.OnConflict{
@@ -266,33 +217,20 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath, convPa
 		return fmt.Errorf("写入tasks表失败: %w", result.Error)
 	}
 
-	if rec.TaskRealMinutes > 0 {
-		logDebugf("  task_real_minutes=%.1f (%s)", rec.TaskRealMinutes, rec.TaskRealMinutesRsn)
+	if task.TaskRealMinutes > 0 {
+		logDebugf("  task_real_minutes=%.1f (%s)", task.TaskRealMinutes, task.TaskRealMinutesReason)
 	}
-	if rec.TaskAncientMinutes > 0 {
-		logDebugf("  task_ancient_minutes=%.1f (%s)", rec.TaskAncientMinutes, rec.TaskAncientMinutesRsn)
+	if task.TaskAncientMinutes > 0 {
+		logDebugf("  task_ancient_minutes=%.1f (%s)", task.TaskAncientMinutes, task.TaskAncientMinutesReason)
 	}
 
 	if len(conversations) > 0 {
-		if err := saveConversations(db, rec.TaskID, conversations); err != nil {
+		if err := saveConversations(db, task.TaskID, conversations); err != nil {
 			return fmt.Errorf("保存conversations失败: %w", err)
 		}
 	}
 
-	if err := generateFingerprintFile(&summary, conversations, fpPath); err != nil {
-		logWarnf("生成指纹文件失败 [%s]: %v", rec.TaskID, err)
-	}
-
-	addrJsonPath := strings.TrimSuffix(fpPath, ".fp") + ".json"
-	if err := generateTaskAddressingFile(&summary, rec.StartTime, addrJsonPath); err != nil {
-		logWarnf("生成任务寻址文件失败 [%s]: %v", rec.TaskID, err)
-	}
-
-	if err := saveTaskConversationParsed(summary.TaskID, conversationPath, len(conversations), convParsedPath); err != nil {
-		logWarnf("保存taskConversationParsed失败 [%s]: %v", rec.TaskID, err)
-	}
-
-	logInfof("导入成功: %s", rec.TaskID)
+	logInfof("导入成功: %s", task.TaskID)
 	return nil
 }
 
@@ -352,37 +290,7 @@ func stringPtrToStr(p *string) string {
 	return *p
 }
 
-func saveTaskConversationParsed(taskID, conversationPath string, conversationNum int, parsedPath string) error {
-	var fileSize int64
-	if info, err := os.Stat(conversationPath); err == nil {
-		fileSize = info.Size()
-	}
-
-	parsed := taskConversationParsed{
-		TaskID:          taskID,
-		Size:            fileSize,
-		ConversationNum: conversationNum,
-	}
-
-	dir := filepath.Dir(parsedPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
-	}
-
-	data, err := json.Marshal(parsed)
-	if err != nil {
-		return fmt.Errorf("序列化失败: %w", err)
-	}
-
-	if err := os.WriteFile(parsedPath, data, 0644); err != nil {
-		return fmt.Errorf("写入文件失败: %w", err)
-	}
-
-	logDebugf("  taskConversationParsed已保存: %s", parsedPath)
-	return nil
-}
-
-func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConversation, realMinutes float64) {
+func estimateAncientMinutes(cfg EstimateConfig, t *Task, convs []taskConversation, realMinutes float64) {
 	var totalInchars int64
 	var totalDiffLines int64
 
@@ -413,7 +321,7 @@ func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConve
 	}
 
 	t.TaskAncientMinutes = workload
-	t.TaskAncientMinutesRsn = fmt.Sprintf(
+	t.TaskAncientMinutesReason = fmt.Sprintf(
 		"基于diff_lines=%.0f, user_input=%.0f字符, factor=%.2f, real_minutes=%.2f估算",
 		diffLines, float64(totalInchars), factor, realMinutes,
 	)
@@ -752,109 +660,59 @@ func computeDiffAddedLines(filePath, before, after string) []addedLine {
 	return result
 }
 
-func generateTaskAddressingFile(summary *taskSummary, startTime *time.Time, jsonPath string) error {
-	s := taskAddressing{
-		TaskID:   summary.TaskID,
-		RepoAddr: summary.RepoAddr,
-		UserID:   summary.UserID,
-	}
-	if startTime != nil {
-		s.StartTime = startTime.Format(time.RFC3339)
+func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversation, conversationPath, silicaPath string) error {
+	var fileSize int64
+	if info, err := os.Stat(conversationPath); err == nil {
+		fileSize = info.Size()
 	}
 
-	data, err := json.Marshal(s)
+	tsd := taskSilicaData{
+		TaskID:          summary.TaskID,
+		RepoAddr:        summary.RepoAddr,
+		UserID:          summary.UserID,
+		Size:            fileSize,
+		ConversationNum: len(conversations),
+	}
+
+	for _, conv := range conversations {
+		if strings.TrimSpace(conv.Diff) == "" {
+			continue
+		}
+
+		addedLines := extractAddedLinesFromDiff(conv.Diff)
+		if len(addedLines) == 0 {
+			continue
+		}
+
+		var fingerprints []string
+		for _, al := range addedLines {
+			hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.FilePath + al.Content)))
+			fingerprints = append(fingerprints, hex.EncodeToString(hash[:]))
+		}
+
+		tsc := taskSilicaConversation{
+			RequestID:    conv.RequestID,
+			EndTime:      conv.EndTime,
+			Fingerprints: fingerprints,
+		}
+		tsd.Conversations = append(tsd.Conversations, tsc)
+	}
+
+	dir := filepath.Dir(silicaPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	data, err := json.Marshal(tsd)
 	if err != nil {
-		return fmt.Errorf("序列化taskAddressing对象失败: %w", err)
+		return fmt.Errorf("序列化taskSilicaData失败: %w", err)
 	}
 
-	if err := os.WriteFile(jsonPath, data, 0644); err != nil {
-		return fmt.Errorf("写入任务寻址文件失败: %w", err)
-	}
-	return nil
-}
-
-func generateFingerprintFile(summary *taskSummary, conversations []taskConversation, fpPath string) error {
-	diffText := summary.Diff
-	source := "summary"
-
-	if strings.TrimSpace(diffText) == "" {
-		var diffs []string
-		for _, conv := range conversations {
-			if strings.TrimSpace(conv.Diff) != "" {
-				diffs = append(diffs, conv.Diff)
-			}
-		}
-		if len(diffs) > 0 {
-			diffText = strings.Join(diffs, "\n")
-			source = "conversation"
-		}
+	if err := os.WriteFile(silicaPath, data, 0644); err != nil {
+		return fmt.Errorf("写入task silica文件失败: %w", err)
 	}
 
-	dir := filepath.Dir(fpPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建fp目录失败: %w", err)
-	}
-
-	if strings.TrimSpace(diffText) == "" {
-		if err := os.WriteFile(fpPath, []byte{}, 0644); err != nil {
-			return fmt.Errorf("写入fp文件失败: %w", err)
-		}
-		logDebugf("  fp文件已生成(来源:%s, 无diff数据): %s", source, fpPath)
-		return nil
-	}
-
-	addedLines := extractAddedLinesFromDiff(diffText)
-	if len(addedLines) == 0 {
-		if err := os.WriteFile(fpPath, []byte{}, 0644); err != nil {
-			return fmt.Errorf("写入fp文件失败: %w", err)
-		}
-		logDebugf("  fp文件已生成(来源:%s, 无新增行): %s", source, fpPath)
-		return nil
-	}
-
-	var sb strings.Builder
-	for _, al := range addedLines {
-		hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.FilePath + al.Content)))
-		sb.WriteString(hex.EncodeToString(hash[:]))
-		sb.WriteByte('\n')
-	}
-
-	if err := os.WriteFile(fpPath, []byte(sb.String()), 0644); err != nil {
-		return fmt.Errorf("写入fp文件失败: %w", err)
-	}
-
-	logDebugf("  fp文件已生成(来源:%s, %d行指纹): %s", source, len(addedLines), fpPath)
-	return nil
-}
-
-func generateConversationFingerprintFile(conv taskConversation, fpPath string) error {
-	diffText := conv.Diff
-	if strings.TrimSpace(diffText) == "" {
-		return nil
-	}
-
-	addedLines := extractAddedLinesFromDiff(diffText)
-	if len(addedLines) == 0 {
-		return nil
-	}
-
-	dir := filepath.Dir(fpPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建conversation fp目录失败: %w", err)
-	}
-
-	var sb strings.Builder
-	for _, al := range addedLines {
-		hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.FilePath + al.Content)))
-		sb.WriteString(hex.EncodeToString(hash[:]))
-		sb.WriteByte('\n')
-	}
-
-	if err := os.WriteFile(fpPath, []byte(sb.String()), 0644); err != nil {
-		return fmt.Errorf("写入conversation fp文件失败: %w", err)
-	}
-
-	logDebugf("  conversation fp文件已生成(%d行指纹): %s", len(addedLines), fpPath)
+	logDebugf("  task silica文件已生成(%d个conversation): %s", len(tsd.Conversations), silicaPath)
 	return nil
 }
 
@@ -869,7 +727,9 @@ func scanConversationFiles(conversationDir string) (map[string]string, error) {
 		}
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".jsonl") {
 			taskID := strings.TrimSuffix(info.Name(), ".jsonl")
-			convMap[taskID] = path
+			if existing, ok := convMap[taskID]; !ok || path > existing {
+				convMap[taskID] = path
+			}
 		}
 		return nil
 	})
@@ -877,6 +737,48 @@ func scanConversationFiles(conversationDir string) (map[string]string, error) {
 		return nil, fmt.Errorf("扫描conversation目录失败: %w", err)
 	}
 	return convMap, nil
+}
+
+func scanSummaryFiles(summaryDir string) (map[string]string, error) {
+	summaryMap := make(map[string]string)
+	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+		return summaryMap, nil
+	}
+	err := filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
+			taskID := strings.TrimSuffix(info.Name(), ".json")
+			if existing, ok := summaryMap[taskID]; !ok || path > existing {
+				summaryMap[taskID] = path
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("扫描summary目录失败: %w", err)
+	}
+	return summaryMap, nil
+}
+
+func needUpdateConversations(conversationPath, silicaPath string, force bool) bool {
+	if force {
+		return true
+	}
+	data, err := os.ReadFile(silicaPath)
+	if err != nil {
+		return true
+	}
+	var tsd taskSilicaData
+	if err := json.Unmarshal(data, &tsd); err != nil {
+		return true
+	}
+	info, err := os.Stat(conversationPath)
+	if err != nil {
+		return true
+	}
+	return info.Size() != tsd.Size
 }
 
 func runImportTask(taskDir, analysedDir string, force bool) error {
@@ -903,23 +805,14 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 		return err
 	}
 
-	var summaryFiles []string
-	err = filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
-			summaryFiles = append(summaryFiles, path)
-		}
-		return nil
-	})
+	summaryMap, err := scanSummaryFiles(summaryDir)
 	if err != nil {
 		recordCommandRun("import-task", startTime, 0, 0, 0, err)
-		return fmt.Errorf("扫描summary目录失败: %w", err)
+		return err
 	}
 
-	if len(summaryFiles) == 0 {
-		logInfo("没有找到待导入的 summary 文件")
+	if len(convMap) == 0 {
+		logInfo("没有找到待导入的 conversation 文件")
 		recordCommandRun("import-task", startTime, 0, 0, 0, nil)
 		return nil
 	}
@@ -928,43 +821,32 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 	failCount := 0
 	skipCount := 0
 
-	for _, summaryPath := range summaryFiles {
-		relPath, err := filepath.Rel(summaryDir, summaryPath)
-		if err != nil {
-			logWarnf("计算相对路径失败 [%s]: %v", summaryPath, err)
-			failCount++
+	for taskID, conversationPath := range convMap {
+		summaryPath, ok := summaryMap[taskID]
+		if !ok {
+			logDebugf("跳过(无对应summary): %s", taskID)
+			skipCount++
 			continue
 		}
-		fpRelPath := strings.TrimSuffix(relPath, ".json") + ".fp"
-		fpPath := filepath.Join(analysedDir, "task", "summary", fpRelPath)
-		if !force {
-			if _, err := os.Stat(fpPath); err == nil {
-				logDebugf("跳过(fp已存在): %s", summaryPath)
-				skipCount++
-				continue
-			}
-		}
-		convRelPath := strings.TrimSuffix(relPath, ".json") + ".jsonl"
-		conversationPath := filepath.Join(conversationDir, convRelPath)
 
-		if _, err := os.Stat(conversationPath); os.IsNotExist(err) {
-			taskID := strings.TrimSuffix(filepath.Base(summaryPath), ".json")
-			if path, ok := convMap[taskID]; ok {
-				conversationPath = path
-			}
-		}
+		// convParsedRelPath, err := filepath.Rel(conversationDir, conversationPath)
+		// if err != nil {
+		// 	logWarnf("计算conversation相对路径失败 [%s]: %v", taskID, err)
+		// 	failCount++
+		// 	continue
+		// }
+		// convParsedRelPath = strings.TrimSuffix(convParsedRelPath, ".jsonl") + ".json"
+		// convParsedPath := filepath.Join(analysedDir, "task", "conversation", convParsedRelPath)
 
-		convParsedRelPath, err := filepath.Rel(conversationDir, conversationPath)
-		if err != nil {
-			logWarnf("计算conversation相对路径失败 [%s]: %v", summaryPath, err)
-			failCount++
+		silicaPath := filepath.Join(analysedDir, "task", "conversation", taskID+".silica.json")
+		if !needUpdateConversations(conversationPath, silicaPath, force) {
+			logDebugf("跳过(conversation未更新): %s", taskID)
+			skipCount++
 			continue
 		}
-		convParsedRelPath = strings.TrimSuffix(convParsedRelPath, ".jsonl") + ".json"
-		convParsedPath := filepath.Join(analysedDir, "task", "conversation", convParsedRelPath)
 
-		if err := importSingleTask(db, summaryPath, conversationPath, fpPath, convParsedPath); err != nil {
-			logWarnf("导入失败 [%s]: %v", summaryPath, err)
+		if err := importSingleTask(db, summaryPath, conversationPath, silicaPath); err != nil {
+			logWarnf("导入失败 [%s]: %v", taskID, err)
 			failCount++
 		} else {
 			successCount++
@@ -986,19 +868,18 @@ var importTasksCmd = &cobra.Command{
 		force, _ := cmd.Flags().GetBool("force")
 		remote, _ := cmd.Flags().GetString("remote")
 
-		if taskDir == "" {
-			taskDir = cfg.TaskDir
-		}
-		if analysedDir == "" {
-			analysedDir = cfg.AnalysedDir
-		}
-
 		if remote != "" {
 			return sendToRemote(remote, "import-task", map[string]interface{}{
 				"task_dir":     taskDir,
 				"analysed_dir": analysedDir,
 				"force":        force,
 			})
+		}
+		if taskDir == "" {
+			taskDir = cfg.TaskDir
+		}
+		if analysedDir == "" {
+			analysedDir = cfg.AnalysedDir
 		}
 
 		return runImportTask(taskDir, analysedDir, force)

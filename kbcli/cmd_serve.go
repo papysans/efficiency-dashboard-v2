@@ -92,6 +92,7 @@ type ImportOrgBody struct {
 type SilicaBody struct {
 	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
 	Force       bool   `json:"force" example:"false"`
+	MaxDays     int    `json:"max_days" example:"7"`
 }
 
 // EfficiencyBody efficiency 请求体

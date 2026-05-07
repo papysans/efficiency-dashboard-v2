@@ -26,6 +26,7 @@ var rootCmd = &cobra.Command{
 			}
 		}
 		cfg = loadedCfg
+		fmt.Printf("config path: %s, cfg: %+v\n", configPath, cfg)
 
 		consoleLevel, _ := cmd.Flags().GetString("console")
 		logFile, _ := cmd.Flags().GetString("logfile")

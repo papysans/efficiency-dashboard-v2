@@ -14,16 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type taskAddressing struct {
-	TaskID    string `json:"task_id"`
-	RepoAddr  string `json:"repo_addr"`
-	UserID    string `json:"user_id"`
-	StartTime string `json:"start_time"`
-}
-
-type taskMeta struct {
+type convMeta struct {
 	taskID    string
-	startTime time.Time
+	requestID string
+	endTime   time.Time
 }
 
 type groupKey struct {
@@ -32,23 +26,14 @@ type groupKey struct {
 }
 
 type groupIndexer struct {
-	LineHashs map[string][]string //lineHash to task-ids
-	Tasks     []taskMeta          //
+	Lines map[string]int // 代码行指纹 -> Convs数组索引，映射到生成该行的对话
+	Convs []convMeta     // 同属于该组的对话
 }
 
-/**
- *	对所有任务的代码行指纹进行分类索引
- */
-type tasksIndexer struct {
-	groupHashes map[groupKey]map[string]string
-	taskMetas   map[groupKey][]taskMeta
-	taskCount   int
-	hashCount   int
-}
-
-type taskSilica struct {
-	TaskID string
-	Silica float64
+type conversationsIndexer struct {
+	groups    map[groupKey]groupIndexer
+	convCount int
+	hashCount int
 }
 
 type commitParser struct {
@@ -75,119 +60,129 @@ func buildCommitParser(fpPath string) *commitParser {
 	}
 }
 
-func buildTasksIndexer(taskFPDir string) (*tasksIndexer, error) {
-	idx := &tasksIndexer{
-		groupHashes: make(map[groupKey]map[string]string),
-		taskMetas:   make(map[groupKey][]taskMeta),
+func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) {
+	idx := &conversationsIndexer{
+		groups: make(map[groupKey]groupIndexer),
 	}
 
 	if _, err := os.Stat(taskFPDir); os.IsNotExist(err) {
 		return idx, nil
 	}
 
-	var fpFiles []string
+	var silicaFiles []string
 	err := filepath.Walk(taskFPDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".fp") {
-			fpFiles = append(fpFiles, path)
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".silica.json") {
+			silicaFiles = append(silicaFiles, path)
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("扫描task指纹目录失败: %w", err)
+		return nil, fmt.Errorf("扫描task silica目录失败: %w", err)
 	}
 
-	for i, fpFile := range fpFiles {
+	for i, silicaFile := range silicaFiles {
 		logPromptProgress(i, 50)
 
-		jsonFile := strings.TrimSuffix(fpFile, ".fp") + ".json"
-		addr, err := extractTaskAddressingFromJSON(jsonFile)
+		tsd, err := loadTaskSilicaFile(silicaFile)
 		if err != nil {
-			logWarnf("读取task摘要失败 [%s]: %v", jsonFile, err)
+			logWarnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
 			continue
 		}
-		if addr.TaskID == "" {
-			continue
-		}
-
-		hashes, err := loadFPHashes(fpFile)
-		if err != nil {
-			logWarnf("读取task指纹文件失败 [%s]: %v", fpFile, err)
+		if tsd.TaskID == "" || tsd.RepoAddr == "" {
 			continue
 		}
 
-		gk := groupKey{repoAddr: addr.RepoAddr, userID: addr.UserID}
+		gk := groupKey{repoAddr: tsd.RepoAddr, userID: tsd.UserID}
 
-		if idx.groupHashes[gk] == nil {
-			idx.groupHashes[gk] = make(map[string]string)
-		}
-		for _, h := range hashes {
-			if idx.groupHashes[gk][h] == "" {
-				idx.groupHashes[gk][h] = addr.TaskID
-				idx.hashCount++
+		gi, exists := idx.groups[gk]
+		if !exists {
+			gi = groupIndexer{
+				Lines: make(map[string]int),
+				Convs: make([]convMeta, 0),
 			}
 		}
 
-		var startTime time.Time
-		if addr.StartTime != "" {
-			startTime, _ = time.Parse(time.RFC3339, addr.StartTime)
+		for _, conv := range tsd.Conversations {
+			if conv.RequestID == "" {
+				continue
+			}
+
+			var endTime time.Time
+			if conv.EndTime != "" {
+				endTime, _ = time.Parse(time.RFC3339, conv.EndTime)
+			}
+
+			cm := convMeta{
+				taskID:    tsd.TaskID,
+				requestID: conv.RequestID,
+				endTime:   endTime,
+			}
+
+			convIdx := len(gi.Convs)
+			gi.Convs = append(gi.Convs, cm)
+
+			for _, h := range conv.Fingerprints {
+				prevIdx, prevExists := gi.Lines[h]
+				if !prevExists || endTime.After(gi.Convs[prevIdx].endTime) {
+					gi.Lines[h] = convIdx
+					if !prevExists {
+						idx.hashCount++
+					}
+				}
+			}
+
+			idx.convCount++
 		}
-		idx.taskMetas[gk] = append(idx.taskMetas[gk], taskMeta{
-			taskID:    addr.TaskID,
-			startTime: startTime,
-		})
-		idx.taskCount++
+
+		idx.groups[gk] = gi
 	}
 
 	return idx, nil
 }
 
-/**
- *	根据提交时间，从任务分组中挑出
- */
-func (idx *tasksIndexer) buildCandidateHashIndex(gk groupKey, commitTime time.Time) map[string]string {
-	groupHashes := idx.groupHashes[gk]
-	if len(groupHashes) == 0 {
-		return nil
-	}
-
-	candidateTaskIDs := make(map[string]bool)
-	metas := idx.taskMetas[gk]
-	sevenDays := 7 * 24 * time.Hour
-	for _, m := range metas {
-		if m.startTime.IsZero() {
-			continue
-		}
-		if m.startTime.Before(commitTime) && commitTime.Before(m.startTime.Add(sevenDays)) {
-			candidateTaskIDs[m.taskID] = true
-		}
-	}
-
-	if len(candidateTaskIDs) == 0 {
-		return nil
-	}
-
-	result := make(map[string]string)
-	for hash, taskID := range groupHashes {
-		if candidateTaskIDs[taskID] {
-			result[hash] = taskID
-		}
-	}
-	return result
-}
-
-func extractTaskAddressingFromJSON(jsonPath string) (*taskAddressing, error) {
-	data, err := os.ReadFile(jsonPath)
+func loadTaskSilicaFile(path string) (*taskSilicaData, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var addr taskAddressing
-	if err := json.Unmarshal(data, &addr); err != nil {
+	var tsd taskSilicaData
+	if err := json.Unmarshal(data, &tsd); err != nil {
 		return nil, err
 	}
-	return &addr, nil
+	return &tsd, nil
+}
+
+func (idx *conversationsIndexer) buildCandidateHashIndex(gk groupKey, commitTime time.Time, maxDays int) map[string]convMeta {
+	gi, exists := idx.groups[gk]
+	if !exists || len(gi.Lines) == 0 {
+		return nil
+	}
+
+	maxDuration := time.Duration(maxDays) * 24 * time.Hour
+	candidateIndices := make(map[int]bool)
+	for i, m := range gi.Convs {
+		if m.endTime.IsZero() {
+			continue
+		}
+		if m.endTime.Before(commitTime) && commitTime.Sub(m.endTime) <= maxDuration {
+			candidateIndices[i] = true
+		}
+	}
+
+	if len(candidateIndices) == 0 {
+		return nil
+	}
+
+	result := make(map[string]convMeta)
+	for hash, convIdx := range gi.Lines {
+		if candidateIndices[convIdx] {
+			result[hash] = gi.Convs[convIdx]
+		}
+	}
+	return result
 }
 
 func loadFPHashes(fpPath string) ([]string, error) {
@@ -228,14 +223,15 @@ func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 	return files, err
 }
 
-func (p *commitParser) computeCommitSilica(hashToTaskID map[string]string) {
-	taskMatchedLines := make(map[string]float64)
+func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
+	convMatchedLines := make(map[string]float64)
 	p.totalLines = len(p.fpHashs)
 	matchedLines := 0
 
 	for _, hash := range p.fpHashs {
-		if taskID, ok := hashToTaskID[hash]; ok {
-			taskMatchedLines[taskID] += 1.0
+		if cm, ok := hashToConv[hash]; ok {
+			key := cm.taskID + "|" + cm.requestID
+			convMatchedLines[key] += 1.0
 			matchedLines++
 		}
 	}
@@ -245,12 +241,19 @@ func (p *commitParser) computeCommitSilica(hashToTaskID map[string]string) {
 	p.taskSilicas = make([]float64, 0)
 	p.totalSilica = 0
 
-	if p.totalLines == 0 || len(taskMatchedLines) == 0 {
+	if p.totalLines == 0 || len(convMatchedLines) == 0 {
 		return
 	}
 
-	for taskID, matchedLines := range taskMatchedLines {
-		silica := matchedLines / float64(p.totalLines)
+	taskSilicaMap := make(map[string]float64)
+	for convKey, matched := range convMatchedLines {
+		silica := matched / float64(p.totalLines)
+		parts := strings.SplitN(convKey, "|", 2)
+		taskID := parts[0]
+		taskSilicaMap[taskID] += silica
+	}
+
+	for taskID, silica := range taskSilicaMap {
 		p.taskIDs = append(p.taskIDs, taskID)
 		p.taskSilicas = append(p.taskSilicas, silica)
 		p.totalSilica += silica
@@ -277,10 +280,15 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 	return nil
 }
 
-func runSilica(analysedDir string, force bool) error {
+func runSilica(analysedDir string, force bool, maxDays int) error {
 	startTime := time.Now()
 	taskFPDir := filepath.Join(analysedDir, "task", "summary")
 	repoFPDir := filepath.Join(analysedDir, "repo")
+
+	if _, err := os.Stat(taskFPDir); os.IsNotExist(err) {
+		recordCommandRun("silica", startTime, 0, 0, 0, err)
+		return fmt.Errorf("task指纹目录不存在: %s", taskFPDir)
+	}
 
 	db, err := openGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
@@ -290,12 +298,12 @@ func runSilica(analysedDir string, force bool) error {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	idx, err := buildTasksIndexer(taskFPDir)
+	idx, err := buildConversationsIndexer(taskFPDir)
 	if err != nil {
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
-		return fmt.Errorf("构建task指纹索引失败: %w", err)
+		return fmt.Errorf("构建conversation指纹索引失败: %w", err)
 	}
-	logInfof("已加载task指纹索引: %d个task, %d个分组, %d个哈希", idx.taskCount, len(idx.groupHashes), idx.hashCount)
+	logInfof("已加载conversation指纹索引: %d个conversation, %d个分组, %d个哈希, max_days=%d", idx.convCount, len(idx.groups), idx.hashCount, maxDays)
 
 	commitFPFiles, err := scanCommitFPFiles(repoFPDir)
 	if err != nil {
@@ -345,7 +353,7 @@ func runSilica(analysedDir string, force bool) error {
 			logErrorf("Commit [%s] 缺少提交时间", commitID)
 			continue
 		}
-		candidateHashes := idx.buildCandidateHashIndex(gk, *commit.CommitTime)
+		candidateHashes := idx.buildCandidateHashIndex(gk, *commit.CommitTime, maxDays)
 		commitPs.computeCommitSilica(candidateHashes)
 
 		if len(commitPs.taskIDs) == 0 {
@@ -409,20 +417,25 @@ var silicaCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
+		maxDays, _ := cmd.Flags().GetInt("max-days")
 		remote, _ := cmd.Flags().GetString("remote")
-
-		if analysedDir == "" {
-			analysedDir = cfg.AnalysedDir
-		}
 
 		if remote != "" {
 			return sendToRemote(remote, "silica", map[string]interface{}{
 				"analysed_dir": analysedDir,
 				"force":        force,
+				"max_days":     maxDays,
 			})
 		}
 
-		return runSilica(analysedDir, force)
+		if analysedDir == "" {
+			analysedDir = cfg.AnalysedDir
+		}
+		if maxDays <= 0 {
+			maxDays = cfg.SilicaMaxDays
+		}
+
+		return runSilica(analysedDir, force, maxDays)
 	},
 }
 
@@ -430,6 +443,7 @@ func init() {
 	silicaCmd.Flags().SortFlags = false
 	silicaCmd.Flags().String("analysed-dir", "", "已分析文件目录路径")
 	silicaCmd.Flags().BoolP("force", "f", false, "强制重新计算，覆盖已存在数据")
+	silicaCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（默认从config读取）")
 	silicaCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(silicaCmd)
 }

@@ -76,6 +76,7 @@ org_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costri
 http_proxy: "http://127.0.0.1:7890"
 
 traditional_dev_lines_per_day: 100
+silica_max_days: 7
 
 serve:
   port: 8080

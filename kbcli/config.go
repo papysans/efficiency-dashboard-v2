@@ -66,6 +66,7 @@ type Config struct {
 	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
 	OrgDSN         string                `yaml:"org_dsn"`
 	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
+	SilicaMaxDays  int                   `yaml:"silica_max_days"`
 	Serve          ServeConfig           `yaml:"serve"`
 }
 
@@ -139,6 +140,9 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 	if config.AlgoEstimation.MinMinutes == 0 {
 		config.AlgoEstimation.MinMinutes = 5
+	}
+	if config.SilicaMaxDays == 0 {
+		config.SilicaMaxDays = 7
 	}
 
 	return &config, nil

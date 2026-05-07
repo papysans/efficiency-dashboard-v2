@@ -24,7 +24,7 @@ func createTaskExecutor(taskType string, params map[string]interface{}) (func() 
 
 func getStringParam(params map[string]interface{}, key string, defaultVal string) string {
 	if val, ok := params[key]; ok {
-		if s, ok := val.(string); ok {
+		if s, ok := val.(string); ok && s != "" {
 			return s
 		}
 	}
@@ -42,6 +42,31 @@ func getBoolParam(params map[string]interface{}, key string, defaultVal bool) bo
 			return v != 0
 		case float64:
 			return v != 0
+		}
+	}
+	return defaultVal
+}
+
+func getIntParam(params map[string]interface{}, key string, defaultVal int) int {
+	if val, ok := params[key]; ok {
+		switch v := val.(type) {
+		case int:
+			if v == 0 {
+				return defaultVal
+			}
+			return v
+		case float64:
+			if v == 0.0 {
+				return defaultVal
+			}
+			return int(v)
+		case string:
+			if v == "" {
+				return defaultVal
+			}
+			var result int
+			fmt.Sscanf(v, "%d", &result)
+			return result
 		}
 	}
 	return defaultVal
@@ -71,7 +96,8 @@ func executeImportOrg(params map[string]interface{}) error {
 func executeSilica(params map[string]interface{}) error {
 	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
-	return runSilica(analysedDir, force)
+	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
+	return runSilica(analysedDir, force, maxDays)
 }
 
 func executeEfficiency(params map[string]interface{}) error {
@@ -87,6 +113,7 @@ func executeImport(params map[string]interface{}) error {
 	fromDB := getStringParam(params, "from_db", cfg.OrgDSN)
 	fromCSV := getStringParam(params, "from_csv", "")
 	date := getStringParam(params, "date", "")
+	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
 
 	steps := []struct {
 		name string
@@ -95,7 +122,7 @@ func executeImport(params map[string]interface{}) error {
 		{"import-task", func() error { return runImportTask(taskDir, analysedDir, force) }},
 		{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force) }},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-		{"silica", func() error { return runSilica(analysedDir, force) }},
+		{"silica", func() error { return runSilica(analysedDir, force, maxDays) }},
 		{"efficiency", func() error { return runEfficiency(date) }},
 	}
 

@@ -23,8 +23,22 @@ var importCmd = &cobra.Command{
 		fromDB, _ := cmd.Flags().GetString("from-db")
 		fromCSV, _ := cmd.Flags().GetString("from-csv")
 		dateStr, _ := cmd.Flags().GetString("date")
+		maxDays, _ := cmd.Flags().GetInt("max-days")
 		remote, _ := cmd.Flags().GetString("remote")
 
+		// 如果指定了远程地址，发送到远程 kbcli 服务执行
+		if remote != "" {
+			return sendToRemote(remote, "import", map[string]interface{}{
+				"task_dir":     taskDir,
+				"repo_dir":     repoDir,
+				"analysed_dir": analysedDir,
+				"force":        force,
+				"from_db":      fromDB,
+				"from_csv":     fromCSV,
+				"date":         dateStr,
+				"max_days":     maxDays,
+			})
+		}
 		if taskDir == "" {
 			taskDir = cfg.TaskDir
 		}
@@ -37,18 +51,8 @@ var importCmd = &cobra.Command{
 		if fromDB == "" {
 			fromDB = cfg.OrgDSN
 		}
-
-		// 如果指定了远程地址，发送到远程 kbcli 服务执行
-		if remote != "" {
-			return sendToRemote(remote, "import", map[string]interface{}{
-				"task_dir":     taskDir,
-				"repo_dir":     repoDir,
-				"analysed_dir": analysedDir,
-				"force":        force,
-				"from_db":      fromDB,
-				"from_csv":     fromCSV,
-				"date":         dateStr,
-			})
+		if maxDays <= 0 {
+			maxDays = cfg.SilicaMaxDays
 		}
 
 		steps := []struct {
@@ -58,7 +62,7 @@ var importCmd = &cobra.Command{
 			{"import-task", func() error { return runImportTask(taskDir, analysedDir, force) }},
 			{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force) }},
 			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-			{"silica", func() error { return runSilica(analysedDir, force) }},
+			{"silica", func() error { return runSilica(analysedDir, force, maxDays) }},
 			{"efficiency", func() error { return runEfficiency(dateStr) }},
 		}
 
@@ -84,6 +88,7 @@ func init() {
 	importCmd.Flags().String("to-csv", "", "导出CSV文件路径（import-org用，可选，不指定则不导出）")
 	importCmd.Flags().String("from-csv", "", "从指定的CSV文件加载UserOrg数据，替代从数据库加载（import-org用）")
 	importCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期（efficiency用）")
+	importCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（silica用，默认从config读取）")
 	importCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 
 	rootCmd.AddCommand(importCmd)

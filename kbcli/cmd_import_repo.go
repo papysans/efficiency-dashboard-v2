@@ -289,19 +289,18 @@ var importRepoCmd = &cobra.Command{
 		force, _ := cmd.Flags().GetBool("force")
 		remote, _ := cmd.Flags().GetString("remote")
 
-		if repoDir == "" {
-			repoDir = cfg.RepoDir
-		}
-		if analysedDir == "" {
-			analysedDir = cfg.AnalysedDir
-		}
-
 		if remote != "" {
 			return sendToRemote(remote, "import-repo", map[string]interface{}{
 				"repo_dir":     repoDir,
 				"analysed_dir": analysedDir,
 				"force":        force,
 			})
+		}
+		if repoDir == "" {
+			repoDir = cfg.RepoDir
+		}
+		if analysedDir == "" {
+			analysedDir = cfg.AnalysedDir
 		}
 
 		return runImportRepo(repoDir, analysedDir, force)
