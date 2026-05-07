@@ -59,6 +59,12 @@ type taskConversation struct {
 	ErrorReason      flexString `json:"error_reason"`
 }
 
+type taskConversationParsed struct {
+	TaskID          string `json:"task_id"`
+	Size            int64  `json:"size"`
+	ConversationNum int    `json:"conversation_num"`
+}
+
 type flexString string
 
 func (f *flexString) UnmarshalJSON(data []byte) error {
@@ -136,19 +142,29 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) task
 	var totalCost float64
 
 	for _, conv := range conversations {
-		if conv.StartTime != "" {
-			if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
-				if startTime == nil || t.Before(*startTime) {
-					startTime = &t
-				}
-			}
+		if conv.StartTime == "" {
+			logWarnf("conversation [%s-%s] 缺少start_time字段", summary.TaskID, conv.RequestID)
+			continue
 		}
-		if conv.EndTime != "" {
-			if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
-				if endTime == nil || t.After(*endTime) {
-					endTime = &t
-				}
-			}
+		if conv.EndTime == "" {
+			logWarnf("conversation [%s-%s] 缺少end_time字段", summary.TaskID, conv.RequestID)
+			continue
+		}
+		t1, err := time.Parse(time.RFC3339, conv.StartTime)
+		if err != nil {
+			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", summary.TaskID, conv.RequestID, err)
+			continue
+		}
+		t2, err := time.Parse(time.RFC3339, conv.EndTime)
+		if err != nil {
+			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", summary.TaskID, conv.RequestID, err)
+			continue
+		}
+		if startTime == nil || t1.Before(*startTime) {
+			startTime = &t1
+		}
+		if endTime == nil || t2.After(*endTime) {
+			endTime = &t2
 		}
 		totalUpstream += conv.UpstreamTokens
 		totalDownstream += conv.DownstreamTokens
@@ -170,7 +186,7 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) task
 	return rec
 }
 
-func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string) error {
+func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath, convParsedPath string) error {
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
 		return fmt.Errorf("读取summary文件失败: %w", err)
@@ -272,6 +288,10 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, fpPath string)
 		logWarnf("生成任务寻址文件失败 [%s]: %v", rec.TaskID, err)
 	}
 
+	if err := saveTaskConversationParsed(summary.TaskID, conversationPath, len(conversations), convParsedPath); err != nil {
+		logWarnf("保存taskConversationParsed失败 [%s]: %v", rec.TaskID, err)
+	}
+
 	logInfof("导入成功: %s", rec.TaskID)
 	return nil
 }
@@ -330,6 +350,36 @@ func stringPtrToStr(p *string) string {
 		return ""
 	}
 	return *p
+}
+
+func saveTaskConversationParsed(taskID, conversationPath string, conversationNum int, parsedPath string) error {
+	var fileSize int64
+	if info, err := os.Stat(conversationPath); err == nil {
+		fileSize = info.Size()
+	}
+
+	parsed := taskConversationParsed{
+		TaskID:          taskID,
+		Size:            fileSize,
+		ConversationNum: conversationNum,
+	}
+
+	dir := filepath.Dir(parsedPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	data, err := json.Marshal(parsed)
+	if err != nil {
+		return fmt.Errorf("序列化失败: %w", err)
+	}
+
+	if err := os.WriteFile(parsedPath, data, 0644); err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	logDebugf("  taskConversationParsed已保存: %s", parsedPath)
+	return nil
 }
 
 func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConversation, realMinutes float64) {
@@ -904,7 +954,16 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 			}
 		}
 
-		if err := importSingleTask(db, summaryPath, conversationPath, fpPath); err != nil {
+		convParsedRelPath, err := filepath.Rel(conversationDir, conversationPath)
+		if err != nil {
+			logWarnf("计算conversation相对路径失败 [%s]: %v", summaryPath, err)
+			failCount++
+			continue
+		}
+		convParsedRelPath = strings.TrimSuffix(convParsedRelPath, ".jsonl") + ".json"
+		convParsedPath := filepath.Join(analysedDir, "task", "conversation", convParsedRelPath)
+
+		if err := importSingleTask(db, summaryPath, conversationPath, fpPath, convParsedPath); err != nil {
 			logWarnf("导入失败 [%s]: %v", summaryPath, err)
 			failCount++
 		} else {
