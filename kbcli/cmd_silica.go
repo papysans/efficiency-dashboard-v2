@@ -31,6 +31,11 @@ type groupKey struct {
 	userID   string
 }
 
+type groupIndexer struct {
+	LineHashs map[string][]string //lineHash to task-ids
+	Tasks     []taskMeta          //
+}
+
 /**
  *	对所有任务的代码行指纹进行分类索引
  */
@@ -139,6 +144,9 @@ func buildTasksIndexer(taskFPDir string) (*tasksIndexer, error) {
 	return idx, nil
 }
 
+/**
+ *	根据提交时间，从任务分组中挑出
+ */
 func (idx *tasksIndexer) buildCandidateHashIndex(gk groupKey, commitTime time.Time) map[string]string {
 	groupHashes := idx.groupHashes[gk]
 	if len(groupHashes) == 0 {
@@ -270,11 +278,13 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 }
 
 func runSilica(analysedDir string, force bool) error {
+	startTime := time.Now()
 	taskFPDir := filepath.Join(analysedDir, "task", "summary")
 	repoFPDir := filepath.Join(analysedDir, "repo")
 
 	db, err := openGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
+		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -282,12 +292,14 @@ func runSilica(analysedDir string, force bool) error {
 
 	idx, err := buildTasksIndexer(taskFPDir)
 	if err != nil {
+		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("构建task指纹索引失败: %w", err)
 	}
 	logInfof("已加载task指纹索引: %d个task, %d个分组, %d个哈希", idx.taskCount, len(idx.groupHashes), idx.hashCount)
 
 	commitFPFiles, err := scanCommitFPFiles(repoFPDir)
 	if err != nil {
+		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("扫描commit指纹文件失败: %w", err)
 	}
 	logInfof("找到%d个commit指纹文件", len(commitFPFiles))
@@ -329,12 +341,11 @@ func runSilica(analysedDir string, force bool) error {
 		}
 
 		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserID}
-		commitTime := time.Time{}
-		if commit.CommitTime != nil {
-			commitTime = *commit.CommitTime
+		if commit.CommitTime == nil {
+			logErrorf("Commit [%s] 缺少提交时间", commitID)
+			continue
 		}
-		candidateHashes := idx.buildCandidateHashIndex(gk, commitTime)
-
+		candidateHashes := idx.buildCandidateHashIndex(gk, *commit.CommitTime)
 		commitPs.computeCommitSilica(candidateHashes)
 
 		if len(commitPs.taskIDs) == 0 {
@@ -388,6 +399,7 @@ func runSilica(analysedDir string, force bool) error {
 	}
 
 	logInfof("含硅量计算完成: 成功 %d 个，跳过 %d 个，失败 %d 个", successCount, skipCount, failCount)
+	recordCommandRun("silica", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
 
@@ -397,9 +409,17 @@ var silicaCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
+		remote, _ := cmd.Flags().GetString("remote")
 
 		if analysedDir == "" {
 			analysedDir = cfg.AnalysedDir
+		}
+
+		if remote != "" {
+			return sendToRemote(remote, "silica", map[string]interface{}{
+				"analysed_dir": analysedDir,
+				"force":        force,
+			})
 		}
 
 		return runSilica(analysedDir, force)
@@ -410,5 +430,6 @@ func init() {
 	silicaCmd.Flags().SortFlags = false
 	silicaCmd.Flags().String("analysed-dir", "", "已分析文件目录路径")
 	silicaCmd.Flags().BoolP("force", "f", false, "强制重新计算，覆盖已存在数据")
+	silicaCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(silicaCmd)
 }

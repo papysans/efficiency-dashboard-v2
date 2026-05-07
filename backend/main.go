@@ -148,6 +148,12 @@ func main() {
 	// 健康检查路由（不在 /api 下，供 K8s 探针直接访问）
 	r.GET("/healthz", healthCheck)
 
+	// Prometheus 指标端点（不在 /api 下，供 Prometheus 抓取）
+	r.GET("/metrics", MetricsHandler())
+
+	// 注册全局指标收集中间件（统计所有 API 的响应码和时延）
+	r.Use(MetricsMiddleware())
+
 	// CORS 配置
 	corsOrigins := appConfig.CORS.AllowOrigins
 	if len(corsOrigins) == 0 {

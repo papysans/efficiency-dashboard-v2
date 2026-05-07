@@ -343,7 +343,7 @@ func estimateAncientMinutes(cfg EstimateConfig, t *taskRecord, convs []taskConve
 
 	// inputMinutes := inchars / cfg.IncharsPerMinutes
 	maxWorkload := cfg.MaxRatio * realMinutes
-	minWorkload := cfg.MinMinutes
+	minWorkload := max(cfg.MinMinutes, realMinutes)
 
 	if workload > maxWorkload {
 		workload = maxWorkload
@@ -442,19 +442,103 @@ func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]ta
 		if line == "" {
 			continue
 		}
+
+		// 尝试直接解析整行
 		var conv taskConversation
-		if err := json.Unmarshal([]byte(line), &conv); err != nil {
-			return nil, fmt.Errorf("第%d行JSON解析失败: %w", lineNum, err)
+		if err := json.Unmarshal([]byte(line), &conv); err == nil {
+			if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
+				conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
+			}
+			convs = append(convs, conv)
+			continue
 		}
 
-		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
+		// 容错：尝试将单行按独立的JSON对象拆分解析
+		// 处理上游写入时缺少换行符的情况: {"a":1}{"a":2}
+		subConvs, splitErr := splitAndParseConversations(line, modelPrices)
+		if splitErr == nil && len(subConvs) > 0 {
+			convs = append(convs, subConvs...)
+			continue
 		}
 
-		convs = append(convs, conv)
+		return nil, fmt.Errorf("第%d行JSON解析失败: %w, 内容: %s", lineNum, err, line)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("读取文件失败: %w", err)
+	}
+	return convs, nil
+}
+
+// splitAndParseConversations 尝试将单行字符串按顶层JSON对象拆分并解析
+func splitAndParseConversations(line string, modelPrices map[string]ModelPrice) ([]taskConversation, error) {
+	var convs []taskConversation
+	start := 0
+	for start < len(line) {
+		if line[start] != '{' {
+			break
+		}
+		// 找到匹配的 }，考虑嵌套
+		depth := 0
+		end := start
+		inString := false
+		escaped := false
+		for ; end < len(line); end++ {
+			ch := line[end]
+			if inString {
+				if escaped {
+					escaped = false
+					continue
+				}
+				if ch == '\\' {
+					escaped = true
+					continue
+				}
+				if ch == '"' {
+					inString = false
+				}
+				continue
+			}
+			if ch == '"' {
+				inString = true
+				continue
+			}
+			if ch == '{' {
+				depth++
+				continue
+			}
+			if ch == '}' {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+		}
+		if depth != 0 || end >= len(line) {
+			break
+		}
+
+		objStr := strings.TrimSpace(line[start : end+1])
+		if objStr == "" {
+			break
+		}
+		var conv taskConversation
+		if err := json.Unmarshal([]byte(objStr), &conv); err != nil {
+			break
+		}
+		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
+			conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
+		}
+		convs = append(convs, conv)
+
+		// 跳过空白和可能的分隔符
+		next := end + 1
+		for next < len(line) && (line[next] == ' ' || line[next] == '\t' || line[next] == '\n' || line[next] == '\r') {
+			next++
+		}
+		start = next
+	}
+	if len(convs) == 0 {
+		return nil, fmt.Errorf("未能拆分出有效JSON对象")
 	}
 	return convs, nil
 }
@@ -705,15 +789,18 @@ func scanConversationFiles(conversationDir string) (map[string]string, error) {
 }
 
 func runImportTask(taskDir, analysedDir string, force bool) error {
+	startTime := time.Now()
 	summaryDir := filepath.Join(taskDir, "summary")
 	conversationDir := filepath.Join(taskDir, "conversation")
 
 	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return fmt.Errorf("summary目录不存在: %s", summaryDir)
 	}
 
 	db, err := openGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
+		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -721,6 +808,7 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 
 	convMap, err := scanConversationFiles(conversationDir)
 	if err != nil {
+		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return err
 	}
 
@@ -735,11 +823,13 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 		return nil
 	})
 	if err != nil {
+		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return fmt.Errorf("扫描summary目录失败: %w", err)
 	}
 
 	if len(summaryFiles) == 0 {
 		logInfo("没有找到待导入的 summary 文件")
+		recordCommandRun("import-task", startTime, 0, 0, 0, nil)
 		return nil
 	}
 
@@ -783,6 +873,7 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 	}
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
+	recordCommandRun("import-task", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
 
@@ -793,12 +884,21 @@ var importTasksCmd = &cobra.Command{
 		taskDir, _ := cmd.Flags().GetString("task-dir")
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
+		remote, _ := cmd.Flags().GetString("remote")
 
 		if taskDir == "" {
 			taskDir = cfg.TaskDir
 		}
 		if analysedDir == "" {
 			analysedDir = cfg.AnalysedDir
+		}
+
+		if remote != "" {
+			return sendToRemote(remote, "import-task", map[string]interface{}{
+				"task_dir":     taskDir,
+				"analysed_dir": analysedDir,
+				"force":        force,
+			})
 		}
 
 		return runImportTask(taskDir, analysedDir, force)
@@ -810,5 +910,6 @@ func init() {
 	importTasksCmd.Flags().String("task-dir", "", "task 目录路径")
 	importTasksCmd.Flags().String("analysed-dir", "", "输出目录路径")
 	importTasksCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
+	importTasksCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importTasksCmd)
 }

@@ -103,6 +103,15 @@ export PGPASSWORD='1' && psql -U postgres -d report -c "SQL"
 - 修复：移除表格2第一行的2个空单元格 → 变成11列
 - 结果：12列+11列成功合并（列数差1，在允许范围内）
 
+#### kbcli import 报错 "invalid character '{' after top-level value"
+**错误现象**：`kbcli import-task` 导入 conversation 文件时，报错第N行JSON解析失败，错误信息为 `invalid character '{' after top-level value`
+**原因**：上游写入 conversation 的 .jsonl 文件时，两个 JSON 对象写到了同一行，没有用换行符分隔，如 `{"a":1}{"a":2}`
+**排查步骤**：
+1. 打开报错的 conversation .jsonl 文件，定位到报错行号
+2. 检查该行是否包含多个 `{}` 块直接拼接
+3. 如果是偶发情况，通常是上游并发写入或缓冲刷新问题
+**修复**：在 `parseConversationFile` 中增加容错逻辑，当整行解析失败时，尝试按顶层JSON对象逐个拆分并解析。
+
 ## 输入处理规范
 - **所有搜索/过滤输入框，传给后端或用于前端过滤前，必须先 `.trim()` 去除两侧空格**
 - 防止用户粘贴时带入多余空格导致搜不到数据

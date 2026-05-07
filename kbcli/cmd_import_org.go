@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -212,23 +213,27 @@ func saveUserOrgs(db *gorm.DB, rows []UserOrg) error {
 }
 
 func runImportOrg(fromDSN, fromCSV, toCSV string) error {
+	startTime := time.Now()
 	var userOrgs []UserOrg
 	var err error
 
 	if fromCSV != "" {
 		userOrgs, err = loadUserOrgsFromCSV(fromCSV)
 		if err != nil {
+			recordCommandRun("import-org", startTime, 0, 0, 0, err)
 			return err
 		}
 	} else {
 		userOrgs, err = loadUserOrgsFromDB(fromDSN)
 		if err != nil {
+			recordCommandRun("import-org", startTime, 0, 0, 0, err)
 			return err
 		}
 	}
 
 	if toCSV != "" {
 		if err := writeOrgCSV(toCSV, userOrgs); err != nil {
+			recordCommandRun("import-org", startTime, 0, 0, 0, err)
 			return fmt.Errorf("写入CSV文件失败: %w", err)
 		}
 		logInfof("CSV 文件已写入: %s", toCSV)
@@ -236,6 +241,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 
 	gormDB, err := openGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
+		recordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接目标数据库失败: %w", err)
 	}
 	sqlDB, _ := gormDB.DB()
@@ -243,10 +249,11 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	logInfo("目标数据库连接成功")
 
 	if err := saveUserOrgs(gormDB, userOrgs); err != nil {
+		recordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("写入user_org表失败: %w", err)
 	}
 	logInfof("已写入 %d 条记录到 user_org 表", len(userOrgs))
-
+	recordCommandRun("import-org", startTime, len(userOrgs), 0, 0, nil)
 	return nil
 }
 
@@ -262,9 +269,18 @@ var importOrgCmd = &cobra.Command{
 		fromDSN, _ := cmd.Flags().GetString("from-db")
 		fromCSV, _ := cmd.Flags().GetString("from-csv")
 		toCSV, _ := cmd.Flags().GetString("to-csv")
+		remote, _ := cmd.Flags().GetString("remote")
 
 		if fromDSN == "" {
 			fromDSN = cfg.OrgDSN
+		}
+
+		if remote != "" {
+			return sendToRemote(remote, "import-org", map[string]interface{}{
+				"from_db":  fromDSN,
+				"from_csv": fromCSV,
+				"to_csv":   toCSV,
+			})
 		}
 
 		return runImportOrg(fromDSN, fromCSV, toCSV)
@@ -276,5 +292,6 @@ func init() {
 	importOrgCmd.Flags().String("from-db", "", "源数据库DSN")
 	importOrgCmd.Flags().String("from-csv", "", "从指定的CSV文件加载UserOrg数据，替代从数据库加载")
 	importOrgCmd.Flags().String("to-csv", "", "导出CSV文件路径（可选，不指定则不导出）")
+	importOrgCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importOrgCmd)
 }

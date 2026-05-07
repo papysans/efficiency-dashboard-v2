@@ -123,7 +123,7 @@ func LoadConfig(filename string) (*Config, error) {
 		config.AlgoEstimation.MaxInputChars = 300000
 	}
 	if config.AlgoEstimation.MaxRatio == 0 {
-		config.AlgoEstimation.MaxRatio = 50
+		config.AlgoEstimation.MaxRatio = 10
 	}
 	if config.AlgoEstimation.MaxFactor == 0 {
 		config.AlgoEstimation.MaxFactor = 1.0

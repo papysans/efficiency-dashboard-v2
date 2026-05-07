@@ -40,3 +40,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{- define "kbcli.image" -}}
+{{- $registry := .Values.global.imageRegistry | default "" -}}
+{{- if $registry -}}
+{{- if not (hasSuffix "/" $registry) -}}
+{{- $registry = printf "%s/" $registry -}}
+{{- end -}}
+{{- end -}}
+{{- printf "%s%s:%s" $registry .Values.image.repository .Values.image.tag -}}
+{{- end -}}

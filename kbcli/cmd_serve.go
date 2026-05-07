@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 	swaggerFiles "github.com/swaggo/files"
@@ -119,7 +120,7 @@ func writeError(c *gin.Context, status int, message string) {
 // @Tags health
 // @Produce json
 // @Success 200 {object} HealthResponse
-// @Router /api/health [get]
+// @Router /health [get]
 func healthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 }
@@ -332,8 +333,11 @@ func setupRouter() *gin.Engine {
 	})
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
+	// Prometheus 指标
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
 	// 健康检查
-	r.GET("/api/health", healthHandler)
+	r.GET("/health", healthHandler)
 
 	// 任务创建接口
 	r.POST("/api/tasks/import", createImportHandler)

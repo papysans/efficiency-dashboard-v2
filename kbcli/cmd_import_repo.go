@@ -232,12 +232,16 @@ func fpPathForMeta(analysedDir string, meta repoFileMeta) string {
 }
 
 func runImportRepo(repoDir, analysedDir string, force bool) error {
+	startTime := time.Now()
+
 	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
+		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("repo目录不存在: %s", repoDir)
 	}
 
 	db, err := openGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
+		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -245,11 +249,13 @@ func runImportRepo(repoDir, analysedDir string, force bool) error {
 
 	files, skipCount, err := scanRepoDir(repoDir, analysedDir, force)
 	if err != nil {
+		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("扫描repo目录失败: %w", err)
 	}
 
 	if len(files) == 0 {
 		logInfo("没有找到待导入的commit文件")
+		recordCommandRun("import-repo", startTime, 0, 0, skipCount, nil)
 		return nil
 	}
 
@@ -269,7 +275,7 @@ func runImportRepo(repoDir, analysedDir string, force bool) error {
 	}
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
-
+	recordCommandRun("import-repo", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
 
@@ -281,12 +287,21 @@ var importRepoCmd = &cobra.Command{
 		repoDir, _ := cmd.Flags().GetString("repo-dir")
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
+		remote, _ := cmd.Flags().GetString("remote")
 
 		if repoDir == "" {
 			repoDir = cfg.RepoDir
 		}
 		if analysedDir == "" {
 			analysedDir = cfg.AnalysedDir
+		}
+
+		if remote != "" {
+			return sendToRemote(remote, "import-repo", map[string]interface{}{
+				"repo_dir":     repoDir,
+				"analysed_dir": analysedDir,
+				"force":        force,
+			})
 		}
 
 		return runImportRepo(repoDir, analysedDir, force)
@@ -298,5 +313,6 @@ func init() {
 	importRepoCmd.Flags().String("repo-dir", "", "repo 目录路径")
 	importRepoCmd.Flags().String("analysed-dir", "", "已处理文件的输出目录")
 	importRepoCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
+	importRepoCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importRepoCmd)
 }

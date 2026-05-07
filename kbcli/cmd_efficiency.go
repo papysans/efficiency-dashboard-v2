@@ -326,14 +326,18 @@ func loadUserNamesFromCommits(db *gorm.DB) (map[string]string, error) {
 }
 
 func runEfficiency(dateStr string) error {
+	startTime := time.Now()
+
 	if dateStr != "" {
 		if _, err := time.Parse("20060102", dateStr); err != nil {
+			recordCommandRun("efficiency", startTime, 0, 0, 0, err)
 			return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s, 详情: %w", dateStr, err)
 		}
 	}
 
 	db, err := openGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
+		recordCommandRun("efficiency", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -345,16 +349,19 @@ func runEfficiency(dateStr string) error {
 	} else {
 		dates, err = getAllDates(db)
 		if err != nil {
+			recordCommandRun("efficiency", startTime, 0, 0, 0, err)
 			return fmt.Errorf("获取日期列表失败: %w", err)
 		}
 		if len(dates) == 0 {
 			logInfo("没有找到任何task或commit数据")
+			recordCommandRun("efficiency", startTime, 0, 0, 0, nil)
 			return nil
 		}
 		logInfof("共发现 %d 个日期需要处理", len(dates))
 	}
 	userNameMap, err := loadUserNames(db)
 	if err != nil {
+		recordCommandRun("efficiency", startTime, 0, 0, 0, err)
 		return fmt.Errorf("加载用户名称失败: %w", err)
 	}
 
@@ -372,6 +379,7 @@ func runEfficiency(dateStr string) error {
 		logInfof("=== 处理日期: %s ===", d)
 		userCount, err := calculateUserProductivity(db, d, userNameMap, taskUserNameMap, commitUserNameMap)
 		if err != nil {
+			recordCommandRun("efficiency", startTime, totalUserCount, 0, 0, err)
 			return fmt.Errorf("计算用户生产力失败 [date=%s]: %w", d, err)
 		}
 		logInfof("用户生产力计算完成: %d 条记录 (日期=%s)", userCount, d)
@@ -379,6 +387,7 @@ func runEfficiency(dateStr string) error {
 	}
 
 	logInfof("全部完成: 用户 %d 条", totalUserCount)
+	recordCommandRun("efficiency", startTime, totalUserCount, 0, 0, nil)
 	return nil
 }
 
@@ -388,6 +397,14 @@ var efficiencyCmd = &cobra.Command{
 	Long:  "根据已导入的task、commit、user_org数据，按日计算各用户的生产力数据，写入user_productivity表。如有--date参数，则只处理该日期的数据，否则处理所有日期数据",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dateStr, _ := cmd.Flags().GetString("date")
+		remote, _ := cmd.Flags().GetString("remote")
+
+		if remote != "" {
+			return sendToRemote(remote, "efficiency", map[string]interface{}{
+				"date": dateStr,
+			})
+		}
+
 		return runEfficiency(dateStr)
 	},
 }
@@ -395,5 +412,6 @@ var efficiencyCmd = &cobra.Command{
 func init() {
 	efficiencyCmd.Flags().SortFlags = false
 	efficiencyCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期")
+	efficiencyCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(efficiencyCmd)
 }
