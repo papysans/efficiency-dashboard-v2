@@ -19,6 +19,7 @@ var rootCmd = &cobra.Command{
 		configPath, _ := cmd.Flags().GetString("config")
 		loadedCfg, err := LoadConfig(configPath)
 		if err != nil {
+			fmt.Printf("load config [%s] failed: %v\n", configPath, err)
 			// fallback: 尝试上级目录的 config.yaml
 			loadedCfg, err = LoadConfig("../config.yaml")
 			if err != nil {
@@ -26,7 +27,7 @@ var rootCmd = &cobra.Command{
 			}
 		}
 		cfg = loadedCfg
-		fmt.Printf("config path: %s, cfg: %+v\n", configPath, cfg)
+		fmt.Printf("load config [%s] ok, cfg: %+v\n", configPath, cfg)
 
 		consoleLevel, _ := cmd.Flags().GetString("console")
 		logFile, _ := cmd.Flags().GetString("logfile")

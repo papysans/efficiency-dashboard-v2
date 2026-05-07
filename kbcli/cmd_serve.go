@@ -358,6 +358,7 @@ func setupRouter() *gin.Engine {
 
 func startInit(queue *TaskQueue) {
 	if cfg.Serve.Init.Command == "" {
+		logDebug("init command is emptied")
 		return
 	}
 	cmd := cfg.Serve.Init
