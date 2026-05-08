@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/core/models"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -55,7 +56,7 @@ func TestListTasksV2_OrgFields_UserInMapping(t *testing.T) {
 
 	// 备份并设置 orgMappings
 	origMappings := orgMappings
-	orgMappings = map[string]*OrgMapping{
+	orgMappings = map[string]*models.UserOrg{
 		testUserID: {
 			UserID: testUserID, UserName: "测试用户",
 			Org1: "研发中心", Org2: "平台部", Org3: "基础架构组", Org4: "云原生团队",
@@ -122,7 +123,7 @@ func TestListTasksV2_OrgFields_UserNotInMapping(t *testing.T) {
 
 	// orgMappings 不包含该 user
 	origMappings := orgMappings
-	orgMappings = map[string]*OrgMapping{
+	orgMappings = map[string]*models.UserOrg{
 		"some-other-user": {UserID: "some-other-user", Org1: "其他"},
 	}
 	defer func() { orgMappings = origMappings }()
@@ -178,7 +179,7 @@ func TestListTasksV2_OrgFields_UserIDNil(t *testing.T) {
 	defer statDB.Exec(`DELETE FROM tasks WHERE task_id = $1`, taskID)
 
 	origMappings := orgMappings
-	orgMappings = make(map[string]*OrgMapping)
+	orgMappings = make(map[string]*models.UserOrg)
 	defer func() { orgMappings = origMappings }()
 
 	w := httptest.NewRecorder()

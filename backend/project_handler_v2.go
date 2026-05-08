@@ -600,34 +600,9 @@ func getProjectDetailV2(c *gin.Context) {
 		taskDetailMap = make(map[string]*StatTask)
 	}
 
-	// 构建 commits 列表，计算每条 commit 的加权硅含量
+	// 构建 commits 列表
 	commitItems := make([]ProjectCommitItem, 0, len(commitMap))
 	for _, cm := range commitMap {
-		var taskIDs []string
-		if len(cm.TaskIDs) > 0 && string(cm.TaskIDs) != "null" && string(cm.TaskIDs) != "[]" {
-			_ = json.Unmarshal(cm.TaskIDs, &taskIDs)
-		}
-		var silicaList []float64
-		if len(cm.TaskIDsSilica) > 0 && string(cm.TaskIDsSilica) != "null" && string(cm.TaskIDsSilica) != "[]" {
-			_ = json.Unmarshal(cm.TaskIDsSilica, &silicaList)
-		}
-		var weightedSilicaSum, silicaWeightSum float64
-		for j, taskID := range taskIDs {
-			task := taskDetailMap[taskID]
-			if task != nil && task.DiffLines != nil && *task.DiffLines > 0 {
-				silica := 0.0
-				if j < len(silicaList) {
-					silica = silicaList[j]
-				}
-				weightedSilicaSum += float64(*task.DiffLines) * silica
-				silicaWeightSum += float64(*task.DiffLines)
-			}
-		}
-		var overallSilica *float64
-		if silicaWeightSum > 0 {
-			s := math.Round(weightedSilicaSum/silicaWeightSum*1000) / 10
-			overallSilica = &s
-		}
 		repoAddr := ""
 		if cm.RepoAddr != nil {
 			repoAddr = *cm.RepoAddr
@@ -649,7 +624,7 @@ func getProjectDetailV2(c *gin.Context) {
 			CommitAncientMinutesManual: cm.CommitAncientMinutesManual,
 			CommitRealMinutes:          cm.CommitRealMinutes,
 			CommitRealMinutesManual:    cm.CommitRealMinutesManual,
-			Silica:                     overallSilica,
+			Silica:                     cm.Silica,
 		})
 	}
 

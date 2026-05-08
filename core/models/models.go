@@ -70,7 +70,7 @@ type Task struct {
 	ClientIDE                      string     `gorm:"column:client_ide;type:varchar(100)" json:"client_ide"`
 	ClientVersion                  string     `gorm:"type:varchar(100)" json:"client_version"`
 	ClientOS                       string     `gorm:"column:client_os;type:varchar(100)" json:"client_os"`
-	ClientOSVer                    string     `gorm:"column:client_os_version;type:varchar(100)" json:"client_os_version"`
+	ClientOSVersion                string     `gorm:"column:client_os_version;type:varchar(100)" json:"client_os_version"`
 	Caller                         string     `gorm:"type:varchar(100)" json:"caller"`
 	RepoAddr                       string     `gorm:"type:text" json:"repo_addr"`
 	RepoBranch                     string     `gorm:"type:varchar(500)" json:"repo_branch"`

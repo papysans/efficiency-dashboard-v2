@@ -278,7 +278,7 @@ func toStatTask(t *models.Task) *StatTask {
 		ClientIDE:                      toStrPtr(t.ClientIDE),
 		ClientVersion:                  toStrPtr(t.ClientVersion),
 		ClientOS:                       toStrPtr(t.ClientOS),
-		ClientOSVersion:                toStrPtr(t.ClientOSVer),
+		ClientOSVersion:                toStrPtr(t.ClientOSVersion),
 		Caller:                         toStrPtr(t.Caller),
 		RepoAddr:                       toStrPtr(t.RepoAddr),
 		RepoBranch:                     toStrPtr(t.RepoBranch),
@@ -1400,7 +1400,7 @@ func UpdateTaskAncientEstimation(db *gorm.DB, taskID string, minutes float64, re
 // user_org 查询
 // ============================================================
 
-func loadUserOrgs(db *gorm.DB) (map[string]*models.UserOrg, error) {
+func LoadUserOrgs(db *gorm.DB) (map[string]*models.UserOrg, error) {
 	var uos []models.UserOrg
 	if err := db.Find(&uos).Error; err != nil {
 		return nil, fmt.Errorf("查询 user_org 表失败: %w", err)
@@ -1413,33 +1413,6 @@ func loadUserOrgs(db *gorm.DB) (map[string]*models.UserOrg, error) {
 		result[uos[i].UserID] = &uos[i]
 	}
 	return result, nil
-}
-
-// LoadUserOrgs 从 user_org 表加载组织映射（用于启动时加载到 orgMappings）
-func LoadUserOrgs(db *gorm.DB) (map[string]*OrgMapping, error) {
-	uos, err := loadUserOrgs(db)
-	if err != nil {
-		return nil, err
-	}
-	maps := make(map[string]*OrgMapping, len(uos))
-	for id, uo := range uos {
-		maps[id] = &OrgMapping{
-			UserID:       uo.UserID,
-			UserName:     uo.UserName,
-			Org1:         uo.Org1,
-			Org2:         uo.Org2,
-			Org3:         uo.Org3,
-			Org4:         uo.Org4,
-			Org5:         uo.Org5,
-			Org6:         uo.Org6,
-			Org7:         uo.Org7,
-			Org8:         uo.Org8,
-			Org9:         uo.Org9,
-			GitUserName:  uo.GitUserName,
-			GitUserEmail: uo.GitUserEmail,
-		}
-	}
-	return maps, nil
 }
 
 // ============================================================

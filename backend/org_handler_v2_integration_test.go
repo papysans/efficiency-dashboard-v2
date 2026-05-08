@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"kanban/core/models"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,7 +25,7 @@ func setupGroupDetailTestRouter(t *testing.T) *gin.Engine {
 
 	// 初始化 orgMappings（若为空则设为空 map，避免 nil panic）
 	if orgMappings == nil {
-		orgMappings = make(map[string]*OrgMapping)
+		orgMappings = make(map[string]*models.UserOrg)
 	}
 
 	r := gin.New()

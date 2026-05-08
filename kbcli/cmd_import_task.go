@@ -20,20 +20,20 @@ import (
 )
 
 type taskSummary struct {
-	TaskID        string `json:"task_id"`
-	UserID        string `json:"user_id"`
-	UserName      string `json:"user_name"`
-	ClientID      string `json:"client_id"`
-	ClientIDE     string `json:"client_ide"`
-	ClientVersion string `json:"client_version"`
-	ClientOS      string `json:"client_os"`
-	ClientOSVer   string `json:"client_os_version"`
-	Caller        string `json:"caller"`
-	RepoAddr      string `json:"repo_addr"`
-	RepoBranch    string `json:"repo_branch"`
-	WorkDir       string `json:"work_dir"`
-	Diff          string `json:"diff"`
-	DiffLines     int    `json:"diff_lines"`
+	TaskID          string `json:"task_id"`
+	UserID          string `json:"user_id"`
+	UserName        string `json:"user_name"`
+	ClientID        string `json:"client_id"`
+	ClientIDE       string `json:"client_ide"`
+	ClientVersion   string `json:"client_version"`
+	ClientOS        string `json:"client_os"`
+	ClientOSVersion string `json:"client_os_version"`
+	Caller          string `json:"caller"`
+	RepoAddr        string `json:"repo_addr"`
+	RepoBranch      string `json:"repo_branch"`
+	WorkDir         string `json:"work_dir"`
+	Diff            string `json:"diff"`
+	DiffLines       int    `json:"diff_lines"`
 }
 
 type taskConversation struct {
@@ -105,19 +105,19 @@ func flexStrPtr(s flexString) *string {
 
 func calcTaskRecord(summary *taskSummary, conversations []taskConversation) models.Task {
 	rec := models.Task{
-		TaskID:        summary.TaskID,
-		UserID:        summary.UserID,
-		UserName:      summary.UserName,
-		ClientID:      summary.ClientID,
-		ClientIDE:     summary.ClientIDE,
-		ClientVersion: summary.ClientVersion,
-		ClientOS:      summary.ClientOS,
-		ClientOSVer:   summary.ClientOSVer,
-		Caller:        summary.Caller,
-		RepoAddr:      summary.RepoAddr,
-		RepoBranch:    summary.RepoBranch,
-		WorkDir:       summary.WorkDir,
-		WorkDirID:     utils.GenerateWorkDirID(summary.ClientID, summary.WorkDir),
+		TaskID:          summary.TaskID,
+		UserID:          summary.UserID,
+		UserName:        summary.UserName,
+		ClientID:        summary.ClientID,
+		ClientIDE:       summary.ClientIDE,
+		ClientVersion:   summary.ClientVersion,
+		ClientOS:        summary.ClientOS,
+		ClientOSVersion: summary.ClientOSVersion,
+		Caller:          summary.Caller,
+		RepoAddr:        summary.RepoAddr,
+		RepoBranch:      summary.RepoBranch,
+		WorkDir:         summary.WorkDir,
+		WorkDirID:       utils.GenerateWorkDirID(summary.ClientID, summary.WorkDir),
 	}
 
 	var startTime, endTime *time.Time

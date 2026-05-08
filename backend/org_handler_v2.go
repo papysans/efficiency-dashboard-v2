@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/core/models"
 	"kanban/core/utils"
 	"math"
 	"net/http"
@@ -172,28 +173,11 @@ type GroupDetailResponse struct {
 	Members []GroupMemberItem `json:"members"`
 }
 
-// OrgMapping 组织架构映射
-type OrgMapping struct {
-	UserID       string
-	UserName     string
-	Org1         string
-	Org2         string
-	Org3         string
-	Org4         string
-	Org5         string
-	Org6         string
-	Org7         string
-	Org8         string
-	Org9         string
-	GitUserName  string
-	GitUserEmail string
-}
-
 // orgMappings 全局组织映射表，key=user_id
-var orgMappings map[string]*OrgMapping
+var orgMappings map[string]*models.UserOrg
 
-// getOrgValue 根据 level 获取 OrgMapping 中对应的 org 值
-func getOrgValue(m *OrgMapping, level string) string {
+// getOrgValue 根据 level 获取 models.UserOrg 中对应的 org 值
+func getOrgValue(m *models.UserOrg, level string) string {
 	switch level {
 	case "org1":
 		return m.Org1
@@ -219,8 +203,8 @@ func getOrgValue(m *OrgMapping, level string) string {
 }
 
 // filterUsersByParent 根据 parent 路径筛选用户
-func filterUsersByParent(parent string) []*OrgMapping {
-	var result []*OrgMapping
+func filterUsersByParent(parent string) []*models.UserOrg {
+	var result []*models.UserOrg
 	if parent == "" {
 		for _, m := range orgMappings {
 			result = append(result, m)
@@ -684,7 +668,7 @@ func getOrgDetailV2(c *gin.Context) {
 
 	// 解析 org_path，按 "/" 分级匹配 orgMappings
 	parts := strings.Split(orgPath, "/")
-	var matchedUsers []*OrgMapping
+	var matchedUsers []*models.UserOrg
 	for _, m := range orgMappings {
 		match := true
 		for i, p := range parts {
@@ -947,7 +931,7 @@ func getGroupDetailV2(c *gin.Context) {
 	}
 
 	// 按组织层级从 orgMappings 筛选用户，逐级匹配非空参数
-	var matchedUsers []*OrgMapping
+	var matchedUsers []*models.UserOrg
 	orgParams := []string{org1, org2, org3, org4}
 	for _, m := range orgMappings {
 		match := true
