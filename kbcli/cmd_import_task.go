@@ -184,12 +184,9 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 		return fmt.Errorf("task_id为空")
 	}
 
-	var conversations []taskConversation
-	if _, err := os.Stat(conversationPath); err == nil {
-		conversations, err = parseConversationFile(conversationPath, cfg.ModelPrices)
-		if err != nil {
-			return fmt.Errorf("解析conversation文件失败: %w", err)
-		}
+	conversations, err := parseConversationFile(conversationPath, cfg.ModelPrices)
+	if err != nil {
+		return fmt.Errorf("解析conversation文件失败: %w", err)
 	}
 
 	task := calcTaskRecord(&summary, conversations)
@@ -676,15 +673,6 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 			skipCount++
 			continue
 		}
-
-		// convParsedRelPath, err := filepath.Rel(conversationDir, conversationPath)
-		// if err != nil {
-		// 	logWarnf("计算conversation相对路径失败 [%s]: %v", taskID, err)
-		// 	failCount++
-		// 	continue
-		// }
-		// convParsedRelPath = strings.TrimSuffix(convParsedRelPath, ".jsonl") + ".json"
-		// convParsedPath := filepath.Join(analysedDir, "task", "conversation", convParsedRelPath)
 
 		silicaPath := filepath.Join(analysedDir, "task", "conversation", taskID+".silica.json")
 		if !needUpdateConversations(conversationPath, silicaPath, force) {

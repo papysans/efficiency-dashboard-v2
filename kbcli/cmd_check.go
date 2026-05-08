@@ -369,6 +369,7 @@ func (ctx *checkContext) checkConversations() error {
 		}
 
 		var totalDiffLines int64
+		var totalActualDiffLines int64
 		var totalUpstream, totalDownstream int64
 		var validStartCount, totalConvWithDiff int
 		var anyDiffContent bool
@@ -463,6 +464,7 @@ func (ctx *checkContext) checkConversations() error {
 			}
 
 			totalDiffLines += conv.DiffLines
+			totalActualDiffLines += int64(countDiffLines(conv.Diff))
 			totalUpstream += conv.UpstreamTokens
 			totalDownstream += conv.DownstreamTokens
 		}
@@ -516,6 +518,33 @@ func (ctx *checkContext) checkConversations() error {
 					if summary.DiffLines == 0 && totalDiffLines > 0 {
 						ctx.addIssue("warn", path, taskID, "", "summary-diff-zero-conv-has-diff", "diff_lines",
 							fmt.Sprintf("summary中diff_lines=0，但conversation中diff_lines累加=%d，数据不一致", totalDiffLines))
+					}
+				}
+			}
+		}
+
+		// 与summary的diff_lines交叉对比：基于conversation diff内容实际统计的diff_lines汇总
+		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
+			summaryData, err := os.ReadFile(summaryPath)
+			if err == nil {
+				var summary taskSummary
+				if err := json.Unmarshal(summaryData, &summary); err == nil {
+					if summary.DiffLines > 0 && totalActualDiffLines > 0 {
+						diff := summary.DiffLines - int(totalActualDiffLines)
+						if diff < 0 {
+							diff = -diff
+						}
+						// 允许小误差：绝对差值>10 且 相对差值>10%
+						if diff > 10 && (float64(diff)/float64(summary.DiffLines)) > 0.1 {
+							ctx.addIssue("warn", path, taskID, "", "conv-actual-diff-sum-mismatch", "diff_lines",
+								fmt.Sprintf("conversation中diff内容实际统计行数=%d，但summary中diff_lines=%d，差异超出小误差范围(差值=%d)", totalActualDiffLines, summary.DiffLines, diff))
+						}
+					} else if summary.DiffLines > 0 && totalActualDiffLines == 0 {
+						ctx.addIssue("warn", path, taskID, "", "conv-actual-diff-sum-mismatch", "diff_lines",
+							fmt.Sprintf("summary中diff_lines=%d，但所有conversation的diff内容均为空或不可解析", summary.DiffLines))
+					} else if summary.DiffLines == 0 && totalActualDiffLines > 0 {
+						ctx.addIssue("warn", path, taskID, "", "conv-actual-diff-sum-mismatch", "diff_lines",
+							fmt.Sprintf("summary中diff_lines=0，但conversation的diff内容实际统计行数=%d，数据不一致", totalActualDiffLines))
 					}
 				}
 			}
@@ -803,7 +832,7 @@ var checkCmd = &cobra.Command{
 
 支持的 --ignore issue 类型：
   all-start-times-invalid, commit-diff-lines-negative, commit-empty-diff-content,
-  commit-id-mismatch, conversation-diff-sum-mismatch, conversation-misplaced,
+  commit-id-mismatch, conv-actual-diff-sum-mismatch, conversation-diff-sum-mismatch, conversation-misplaced,
   diff-lines-mismatch, diff-lines-negative, empty-diff-content, empty-request-content,
   empty-response-content, empty-user-input, invalid-commit-time, invalid-end-time,
   invalid-start-time, json-parse-failed, missing-client-id, missing-commit-id,

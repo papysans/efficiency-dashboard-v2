@@ -122,7 +122,9 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	if err := json.Unmarshal(data, &commitData); err != nil {
 		return fmt.Errorf("解析JSON失败: %w", err)
 	}
-
+	if commitData.UserID == "" {
+		return fmt.Errorf("user_id为空")
+	}
 	if commitData.CommitID == "" {
 		return fmt.Errorf("commit_id为空")
 	}
