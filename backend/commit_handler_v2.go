@@ -86,6 +86,25 @@ type CommitDetailResponse struct {
 }
 
 // listCommitsV2 GET /api/v2/commits
+// @Summary 获取提交列表
+// @Description 按条件查询提交列表，支持分页
+// @Tags Commits
+// @Produce json
+// @Param repoAddr query string false "仓库地址"
+// @Param repoBranch query string false "分支名"
+// @Param userId query string false "用户ID"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param org1 query string false "一级组织"
+// @Param org2 query string false "二级组织"
+// @Param org3 query string false "三级组织"
+// @Param org4 query string false "四级组织"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
+// @Success 200 {object} CommitListResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/commits [get]
 func listCommitsV2(c *gin.Context) {
 	repoAddr := c.Query("repoAddr")
 	repoBranch := c.Query("repoBranch")
@@ -241,6 +260,16 @@ func listCommitsV2(c *gin.Context) {
 }
 
 // getCommitDetailV2 GET /api/v2/commits/:commitId
+// @Summary 获取提交详情
+// @Description 根据提交ID获取提交详细信息及关联任务
+// @Tags Commits
+// @Produce json
+// @Param commitId path string true "提交ID"
+// @Success 200 {object} CommitDetailResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/commits/{commitId} [get]
 func getCommitDetailV2(c *gin.Context) {
 	commitID := c.Param("commitId")
 
@@ -327,6 +356,17 @@ func getCommitDetailV2(c *gin.Context) {
 }
 
 // updateCommitManualV2 PUT /api/v2/commits/:commitId/manual
+// @Summary 更新提交人工数据
+// @Description 更新提交的人工修改数据
+// @Tags Commits
+// @Accept json
+// @Produce json
+// @Param commitId path string true "提交ID"
+// @Param data body UpdateCommitManualRequest true "人工数据"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/commits/{commitId}/manual [put]
 func updateCommitManualV2(c *gin.Context) {
 	commitId := c.Param("commitId")
 

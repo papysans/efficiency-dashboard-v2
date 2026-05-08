@@ -140,6 +140,8 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	if workDir == "" {
 		workDir = commitData.WorkPath
 	}
+	addedLines := extractAddedLinesFromDiff(commitData.Diff)
+	commitData.DiffLines = len(addedLines)
 
 	ancientMinutes, ancientReason := estimateCommitAncientMinutes(commitData.DiffLines)
 	logDebugf("  commit_ancient_minutes=%.1f (%s)", ancientMinutes, ancientReason)
@@ -176,14 +178,12 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		return fmt.Errorf("写入commits表失败: %w", result.Error)
 	}
 
-	addedLines := extractAddedLinesFromDiff(commitData.Diff)
 	fpPath := fpPathForMeta(analysedDir, meta)
-
 	if err := writeFingerprintsToFile(addedLines, fpPath); err != nil {
 		return fmt.Errorf("写入fp文件失败 [%s]: %w", fpPath, err)
 	}
 
-	logInfof("导入成功: %s (新增行指纹: %d)", commitData.CommitID, len(addedLines))
+	logDebugf("导入成功: %s (新增行指纹: %d)", commitData.CommitID, len(addedLines))
 	return nil
 }
 

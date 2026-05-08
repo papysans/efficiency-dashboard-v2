@@ -26,7 +26,7 @@ const docTemplate = `{
     "paths": {
         "/api/v2/commits": {
             "get": {
-                "description": "按条件查询提交列表",
+                "description": "按条件查询提交列表，支持分页",
                 "produces": [
                     "application/json"
                 ],
@@ -39,8 +39,7 @@ const docTemplate = `{
                         "type": "string",
                         "description": "仓库地址",
                         "name": "repoAddr",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     },
                     {
                         "type": "string",
@@ -52,6 +51,18 @@ const docTemplate = `{
                         "type": "string",
                         "description": "用户ID",
                         "name": "userId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "开始日期(YYYYMMDD)",
+                        "name": "startDate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束日期(YYYYMMDD)",
+                        "name": "endDate",
                         "in": "query"
                     },
                     {
@@ -76,18 +87,6 @@ const docTemplate = `{
                         "type": "string",
                         "description": "四级组织",
                         "name": "org4",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "开始日期(YYYYMMDD)",
-                        "name": "startDate",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "结束日期(YYYYMMDD)",
-                        "name": "endDate",
                         "in": "query"
                     },
                     {
@@ -129,7 +128,7 @@ const docTemplate = `{
         },
         "/api/v2/commits/{commitId}": {
             "get": {
-                "description": "根据提交ID获取提交详细信息",
+                "description": "根据提交ID获取提交详细信息及关联任务",
                 "produces": [
                     "application/json"
                 ],
@@ -151,6 +150,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/main.CommitDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
                         }
                     },
                     "404": {
@@ -1237,7 +1242,7 @@ const docTemplate = `{
         },
         "/api/v2/tasks": {
             "get": {
-                "description": "按条件查询任务列表，支持日期范围过滤",
+                "description": "按日期范围查询任务列表，支持分页",
                 "produces": [
                     "application/json"
                 ],
@@ -1259,18 +1264,6 @@ const docTemplate = `{
                         "name": "endDate",
                         "in": "query",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "用户ID",
-                        "name": "userId",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "工作目录ID",
-                        "name": "workDirId",
-                        "in": "query"
                     },
                     {
                         "type": "integer",
@@ -1311,18 +1304,18 @@ const docTemplate = `{
         },
         "/api/v2/tasks/estimate-ancient": {
             "post": {
-                "description": "使用AI从对话记录中估算任务的古代工时",
+                "description": "使用AI估算指定任务或未估算任务的耗时",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Tasks"
                 ],
-                "summary": "估算古代工时",
+                "summary": "AI估算任务耗时",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "指定单个任务ID",
+                        "description": "指定任务ID(为空则批量估算最近50个未估算任务)",
                         "name": "taskId",
                         "in": "query"
                     }
@@ -1351,15 +1344,22 @@ const docTemplate = `{
         },
         "/api/v2/tasks/file": {
             "get": {
-                "description": "获取任务的原始文件内容",
+                "description": "根据任务ID和日期获取任务的summary或conversation文件内容",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Tasks"
                 ],
-                "summary": "获取任务文件",
+                "summary": "获取任务文件内容",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "文件类型(summary/conversation)",
+                        "name": "type",
+                        "in": "query",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "任务ID",
@@ -1369,13 +1369,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "文件类型",
-                        "name": "type",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "日期(YYYY-MM-DD)",
+                        "description": "日期(YYYYMMDD)",
                         "name": "date",
                         "in": "query",
                         "required": true
@@ -1412,7 +1406,7 @@ const docTemplate = `{
         },
         "/api/v2/tasks/{taskId}": {
             "get": {
-                "description": "根据任务ID获取任务详细信息",
+                "description": "根据任务ID获取任务详细信息及关联对话",
                 "produces": [
                     "application/json"
                 ],
@@ -1434,6 +1428,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/main.TaskDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
                         }
                     },
                     "404": {
@@ -1650,7 +1650,7 @@ const docTemplate = `{
         },
         "/api/v2/users": {
             "get": {
-                "description": "按条件查询用户列表，支持日期范围过滤",
+                "description": "按日期范围查询用户效率汇总列表，支持分页、组织筛选和时间序列",
                 "produces": [
                     "application/json"
                 ],
@@ -1669,6 +1669,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "结束日期(YYYYMMDD)",
                         "name": "endDate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "时间粒度(day/week/month/year)",
+                        "name": "granularity",
                         "in": "query"
                     },
                     {
@@ -1693,12 +1699,6 @@ const docTemplate = `{
                         "type": "string",
                         "description": "四级组织",
                         "name": "org4",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "时间粒度(day/week/month/year)",
-                        "name": "granularity",
                         "in": "query"
                     },
                     {
@@ -1740,7 +1740,7 @@ const docTemplate = `{
         },
         "/api/v2/users/{userId}": {
             "get": {
-                "description": "根据用户ID获取用户详细信息",
+                "description": "根据用户ID获取用户效率详情，包含每日数据、提交和任务时间序列",
                 "produces": [
                     "application/json"
                 ],
@@ -1785,12 +1785,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/main.ErrorResponse"
                         }
@@ -2605,8 +2599,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "repos": {
-                    "type": "string",
-                    "example": "[{\"repo_addr\":\"https://github.com/example/repo\"}]"
+                    "type": "string"
                 },
                 "start_time": {
                     "type": "string"
@@ -2615,12 +2608,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "task_ids": {
-                    "type": "string",
-                    "example": "[\"task1\", \"task2\"]"
+                    "type": "string"
                 },
                 "task_ids_silica": {
-                    "type": "string",
-                    "example": "[\"1.0\", \"0.5\"]"
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
@@ -3238,10 +3229,16 @@ const docTemplate = `{
                 "commit_time": {
                     "type": "string"
                 },
+                "cost": {
+                    "type": "number"
+                },
                 "created_at": {
                     "type": "string"
                 },
                 "diff_lines": {
+                    "type": "integer"
+                },
+                "downstream_tokens": {
                     "type": "integer"
                 },
                 "git_user_email": {
@@ -3256,6 +3253,9 @@ const docTemplate = `{
                 "repo_branch": {
                     "type": "string"
                 },
+                "silica": {
+                    "type": "number"
+                },
                 "task_ids": {
                     "type": "string",
                     "example": "[\"task1\", \"task2\"]"
@@ -3266,6 +3266,9 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "upstream_tokens": {
+                    "type": "integer"
                 },
                 "user_id": {
                     "type": "string"
@@ -4068,8 +4071,7 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "commit_ids": {
-                    "type": "string",
-                    "example": "[\"commit1\"]"
+                    "type": "string"
                 },
                 "commit_real_ai_minutes": {
                     "type": "number"
@@ -4102,8 +4104,7 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "task_ids": {
-                    "type": "string",
-                    "example": "[\"task1\"]"
+                    "type": "string"
                 },
                 "task_real_minutes": {
                     "type": "number"
@@ -4124,8 +4125,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "work_dir_ids": {
-                    "type": "string",
-                    "example": "[\"dir1\"]"
+                    "type": "string"
                 }
             }
         },

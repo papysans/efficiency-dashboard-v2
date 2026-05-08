@@ -170,6 +170,18 @@ func joinStrings(ss []string, sep string) string {
 }
 
 // listTasksV2 GET /api/v2/tasks
+// @Summary 获取任务列表
+// @Description 按日期范围查询任务列表，支持分页
+// @Tags Tasks
+// @Produce json
+// @Param startDate query string true "开始日期(YYYYMMDD)"
+// @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
+// @Success 200 {object} TaskListResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/tasks [get]
 func listTasksV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -272,6 +284,16 @@ func listTasksV2(c *gin.Context) {
 }
 
 // getTaskDetailV2 GET /api/v2/tasks/:taskId
+// @Summary 获取任务详情
+// @Description 根据任务ID获取任务详细信息及关联对话
+// @Tags Tasks
+// @Produce json
+// @Param taskId path string true "任务ID"
+// @Success 200 {object} TaskDetailResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/tasks/{taskId} [get]
 func getTaskDetailV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 
@@ -399,6 +421,17 @@ func callAIForTaskTitle(taskID string, userInputs []string) {
 }
 
 // updateTaskManualV2 PUT /api/v2/tasks/:taskId/manual
+// @Summary 更新任务人工数据
+// @Description 更新任务的人工修改数据
+// @Tags Tasks
+// @Accept json
+// @Produce json
+// @Param taskId path string true "任务ID"
+// @Param data body UpdateTaskManualRequest true "人工数据"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/tasks/{taskId}/manual [put]
 func updateTaskManualV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 	if taskId == "" {
@@ -420,6 +453,18 @@ func updateTaskManualV2(c *gin.Context) {
 }
 
 // getTaskFile GET /api/v2/tasks/file
+// @Summary 获取任务文件内容
+// @Description 根据任务ID和日期获取任务的summary或conversation文件内容
+// @Tags Tasks
+// @Produce json
+// @Param type query string true "文件类型(summary/conversation)"
+// @Param taskId query string true "任务ID"
+// @Param date query string true "日期(YYYYMMDD)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/tasks/file [get]
 func getTaskFile(c *gin.Context) {
 	typ := c.Query("type")
 	taskId := c.Query("taskId")
@@ -475,6 +520,15 @@ func getTaskFile(c *gin.Context) {
 }
 
 // estimateAncientMinutes POST /api/v2/tasks/estimate-ancient
+// @Summary AI估算任务耗时
+// @Description 使用AI估算指定任务或未估算任务的耗时
+// @Tags Tasks
+// @Produce json
+// @Param taskId query string false "指定任务ID(为空则批量估算最近50个未估算任务)"
+// @Success 200 {object} EstimateAncientResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/tasks/estimate-ancient [post]
 func estimateAncientMinutes(c *gin.Context) {
 	cfg := appConfig.AIEstimation
 	if !cfg.Enabled || cfg.APIKey == "" {

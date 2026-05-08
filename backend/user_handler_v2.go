@@ -101,6 +101,23 @@ type UserDetailResponse struct {
 }
 
 // listUsersV2 GET /api/v2/users
+// @Summary 获取用户列表
+// @Description 按日期范围查询用户效率汇总列表，支持分页、组织筛选和时间序列
+// @Tags Users
+// @Produce json
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param granularity query string false "时间粒度(day/week/month/year)"
+// @Param org1 query string false "一级组织"
+// @Param org2 query string false "二级组织"
+// @Param org3 query string false "三级组织"
+// @Param org4 query string false "四级组织"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
+// @Success 200 {object} UsersListResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/users [get]
 func listUsersV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -645,6 +662,18 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 }
 
 // getUserDetailV2 GET /api/v2/users/:userId
+// @Summary 获取用户详情
+// @Description 根据用户ID获取用户效率详情，包含每日数据、提交和任务时间序列
+// @Tags Users
+// @Produce json
+// @Param userId path string true "用户ID"
+// @Param startDate query string false "开始日期(YYYYMMDD)"
+// @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param granularity query string false "时间粒度(day/week/month/year)" default(day)
+// @Success 200 {object} UserDetailResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/users/{userId} [get]
 func getUserDetailV2(c *gin.Context) {
 	userID := c.Param("userId")
 	startDate := c.Query("startDate")

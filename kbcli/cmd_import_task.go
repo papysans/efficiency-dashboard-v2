@@ -56,6 +56,8 @@ type taskConversation struct {
 	DiffLines        int64      `json:"diff_lines"`
 	ErrorCode        flexString `json:"error_code"`
 	ErrorReason      flexString `json:"error_reason"`
+
+	addedLines []addedLine
 }
 
 type taskSilicaData struct {
@@ -116,12 +118,12 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) mode
 		RepoBranch:    summary.RepoBranch,
 		WorkDir:       summary.WorkDir,
 		WorkDirID:     utils.GenerateWorkDirID(summary.ClientID, summary.WorkDir),
-		DiffLines:     summary.DiffLines,
 	}
 
 	var startTime, endTime *time.Time
 	var totalUpstream, totalDownstream int64
 	var totalCost float64
+	var totalLines int64
 
 	for _, conv := range conversations {
 		if conv.StartTime == "" {
@@ -151,6 +153,7 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) mode
 		totalUpstream += conv.UpstreamTokens
 		totalDownstream += conv.DownstreamTokens
 		totalCost += conv.Cost
+		totalLines += conv.DiffLines
 	}
 
 	rec.StartTime = startTime
@@ -158,6 +161,7 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) mode
 	rec.UpstreamTokens = totalUpstream
 	rec.DownstreamTokens = totalDownstream
 	rec.Cost = totalCost
+	rec.DiffLines = int(totalLines)
 
 	minutes, reason := calcTaskRealMinutes(conversations, 30, 5)
 	rec.TaskRealMinutes = minutes
@@ -230,7 +234,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 		}
 	}
 
-	logInfof("导入成功: %s", task.TaskID)
+	logDebugf("导入成功: %s", task.TaskID)
 	return nil
 }
 
@@ -423,6 +427,11 @@ func calcConversation(conv *taskConversation) {
 		conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, cfg.ModelPrices)
 	}
 	conv.UserInput = parseUserInput(conv.UserInput)
+	if strings.TrimSpace(conv.Diff) != "" {
+		conv.addedLines = extractAddedLinesFromDiff(conv.Diff)
+	}
+	conv.DiffLines = int64(len(conv.addedLines))
+	conv.Diff = ""
 }
 
 func parseConversationFile(path string) ([]taskConversation, error) {
@@ -556,17 +565,12 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 	}
 
 	for _, conv := range conversations {
-		if strings.TrimSpace(conv.Diff) == "" {
-			continue
-		}
-
-		addedLines := extractAddedLinesFromDiff(conv.Diff)
-		if len(addedLines) == 0 {
+		if len(conv.addedLines) == 0 {
 			continue
 		}
 
 		var fingerprints []string
-		for _, al := range addedLines {
+		for _, al := range conv.addedLines {
 			fingerprints = append(fingerprints, calcLineFingerprint(al))
 		}
 

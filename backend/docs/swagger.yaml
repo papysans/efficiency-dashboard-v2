@@ -527,17 +527,14 @@ definitions:
       project_real_process_minutes_reason_manual:
         type: string
       repos:
-        example: '[{"repo_addr":"https://github.com/example/repo"}]'
         type: string
       start_time:
         type: string
       start_time_manual:
         type: string
       task_ids:
-        example: '["task1", "task2"]'
         type: string
       task_ids_silica:
-        example: '["1.0", "0.5"]'
         type: string
       updated_at:
         type: string
@@ -944,9 +941,13 @@ definitions:
         type: string
       commit_time:
         type: string
+      cost:
+        type: number
       created_at:
         type: string
       diff_lines:
+        type: integer
+      downstream_tokens:
         type: integer
       git_user_email:
         type: string
@@ -956,6 +957,8 @@ definitions:
         type: string
       repo_branch:
         type: string
+      silica:
+        type: number
       task_ids:
         example: '["task1", "task2"]'
         type: string
@@ -964,6 +967,8 @@ definitions:
         type: string
       updated_at:
         type: string
+      upstream_tokens:
+        type: integer
       user_id:
         type: string
       user_name:
@@ -1492,7 +1497,6 @@ definitions:
       commit_efficiency_ratio:
         type: number
       commit_ids:
-        example: '["commit1"]'
         type: string
       commit_real_ai_minutes:
         type: number
@@ -1515,7 +1519,6 @@ definitions:
       task_efficiency_ratio:
         type: number
       task_ids:
-        example: '["task1"]'
         type: string
       task_real_minutes:
         type: number
@@ -1530,7 +1533,6 @@ definitions:
       user_productivity_id:
         type: string
       work_dir_ids:
-        example: '["dir1"]'
         type: string
     type: object
   main.UserSeriesItem:
@@ -1614,12 +1616,11 @@ info:
 paths:
   /api/v2/commits:
     get:
-      description: 按条件查询提交列表
+      description: 按条件查询提交列表，支持分页
       parameters:
       - description: 仓库地址
         in: query
         name: repoAddr
-        required: true
         type: string
       - description: 分支名
         in: query
@@ -1628,6 +1629,14 @@ paths:
       - description: 用户ID
         in: query
         name: userId
+        type: string
+      - description: 开始日期(YYYYMMDD)
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期(YYYYMMDD)
+        in: query
+        name: endDate
         type: string
       - description: 一级组织
         in: query
@@ -1644,14 +1653,6 @@ paths:
       - description: 四级组织
         in: query
         name: org4
-        type: string
-      - description: 开始日期(YYYYMMDD)
-        in: query
-        name: startDate
-        type: string
-      - description: 结束日期(YYYYMMDD)
-        in: query
-        name: endDate
         type: string
       - default: 1
         description: 页码
@@ -1683,7 +1684,7 @@ paths:
       - Commits
   /api/v2/commits/{commitId}:
     get:
-      description: 根据提交ID获取提交详细信息
+      description: 根据提交ID获取提交详细信息及关联任务
       parameters:
       - description: 提交ID
         in: path
@@ -1697,6 +1698,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/main.CommitDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -2415,7 +2420,7 @@ paths:
       - Repos
   /api/v2/tasks:
     get:
-      description: 按条件查询任务列表，支持日期范围过滤
+      description: 按日期范围查询任务列表，支持分页
       parameters:
       - description: 开始日期(YYYYMMDD)
         in: query
@@ -2426,14 +2431,6 @@ paths:
         in: query
         name: endDate
         required: true
-        type: string
-      - description: 用户ID
-        in: query
-        name: userId
-        type: string
-      - description: 工作目录ID
-        in: query
-        name: workDirId
         type: string
       - default: 1
         description: 页码
@@ -2465,7 +2462,7 @@ paths:
       - Tasks
   /api/v2/tasks/{taskId}:
     get:
-      description: 根据任务ID获取任务详细信息
+      description: 根据任务ID获取任务详细信息及关联对话
       parameters:
       - description: 任务ID
         in: path
@@ -2479,6 +2476,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/main.TaskDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -2527,9 +2528,9 @@ paths:
       - Tasks
   /api/v2/tasks/estimate-ancient:
     post:
-      description: 使用AI从对话记录中估算任务的古代工时
+      description: 使用AI估算指定任务或未估算任务的耗时
       parameters:
-      - description: 指定单个任务ID
+      - description: 指定任务ID(为空则批量估算最近50个未估算任务)
         in: query
         name: taskId
         type: string
@@ -2548,23 +2549,24 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/main.ErrorResponse'
-      summary: 估算古代工时
+      summary: AI估算任务耗时
       tags:
       - Tasks
   /api/v2/tasks/file:
     get:
-      description: 获取任务的原始文件内容
+      description: 根据任务ID和日期获取任务的summary或conversation文件内容
       parameters:
+      - description: 文件类型(summary/conversation)
+        in: query
+        name: type
+        required: true
+        type: string
       - description: 任务ID
         in: query
         name: taskId
         required: true
         type: string
-      - description: 文件类型
-        in: query
-        name: type
-        type: string
-      - description: 日期(YYYY-MM-DD)
+      - description: 日期(YYYYMMDD)
         in: query
         name: date
         required: true
@@ -2589,7 +2591,7 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/main.ErrorResponse'
-      summary: 获取任务文件
+      summary: 获取任务文件内容
       tags:
       - Tasks
   /api/v2/user-groups:
@@ -2689,7 +2691,7 @@ paths:
       - UserGroups
   /api/v2/users:
     get:
-      description: 按条件查询用户列表，支持日期范围过滤
+      description: 按日期范围查询用户效率汇总列表，支持分页、组织筛选和时间序列
       parameters:
       - description: 开始日期(YYYYMMDD)
         in: query
@@ -2698,6 +2700,10 @@ paths:
       - description: 结束日期(YYYYMMDD)
         in: query
         name: endDate
+        type: string
+      - description: 时间粒度(day/week/month/year)
+        in: query
+        name: granularity
         type: string
       - description: 一级组织
         in: query
@@ -2714,10 +2720,6 @@ paths:
       - description: 四级组织
         in: query
         name: org4
-        type: string
-      - description: 时间粒度(day/week/month/year)
-        in: query
-        name: granularity
         type: string
       - default: 1
         description: 页码
@@ -2749,7 +2751,7 @@ paths:
       - Users
   /api/v2/users/{userId}:
     get:
-      description: 根据用户ID获取用户详细信息
+      description: 根据用户ID获取用户效率详情，包含每日数据、提交和任务时间序列
       parameters:
       - description: 用户ID
         in: path
@@ -2778,10 +2780,6 @@ paths:
             $ref: '#/definitions/main.UserDetailResponse'
         "400":
           description: Bad Request
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "404":
-          description: Not Found
           schema:
             $ref: '#/definitions/main.ErrorResponse'
         "500":
