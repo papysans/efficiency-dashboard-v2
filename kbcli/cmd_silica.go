@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"kanban/core/models"
 	"os"
 	"path/filepath"
 	"strings"
@@ -266,7 +267,7 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
 
 func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 	for _, taskID := range p.taskIDs {
-		var task Task
+		var task models.Task
 		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes, upstream_tokens, downstream_tokens, cost").
 			Where("task_id = ?", taskID).First(&task).Error; err != nil {
 			if err != gorm.ErrRecordNotFound {
@@ -304,7 +305,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 		return fmt.Errorf("task指纹目录不存在: %s", taskFPDir)
 	}
 
-	db, err := openGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
@@ -335,7 +336,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 
 		commitID := strings.TrimSuffix(filepath.Base(commitFpFile), ".fp")
 		if !force {
-			var commit Commit
+			var commit models.Commit
 			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
 				if string(commit.TaskIDs) != "" && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
 					skipCount++
@@ -350,7 +351,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			continue
 		}
 
-		var commit Commit
+		var commit models.Commit
 		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				logWarnf("commit不存在于数据库 [%s]", commitID)
@@ -371,7 +372,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 		commitPs.computeCommitSilica(candidateHashes)
 
 		if len(commitPs.taskIDs) == 0 {
-			if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+			if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 				"task_ids":                    "[]",
 				"task_ids_silica":             "[]",
 				"silica":                      0,
@@ -399,7 +400,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 		taskIDsJSON, _ := json.Marshal(commitPs.taskIDs)
 		silicaJSON, _ := json.Marshal(commitPs.taskSilicas)
 
-		if err := db.Model(&Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+		if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 			"task_ids":                    string(taskIDsJSON),
 			"task_ids_silica":             string(silicaJSON),
 			"silica":                      commitPs.totalSilica,

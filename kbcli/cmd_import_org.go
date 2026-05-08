@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"kanban/core/models"
 	"os"
 	"strings"
 	"time"
@@ -40,7 +41,7 @@ func extractDBName(dsn string) string {
 	return ""
 }
 
-func loadUserOrgsFromCSV(csvFile string) ([]UserOrg, error) {
+func loadUserOrgsFromCSV(csvFile string) ([]models.UserOrg, error) {
 	f, err := os.Open(csvFile)
 	if err != nil {
 		return nil, fmt.Errorf("打开CSV文件失败: %w", err)
@@ -57,7 +58,7 @@ func loadUserOrgsFromCSV(csvFile string) ([]UserOrg, error) {
 		return nil, fmt.Errorf("CSV文件为空")
 	}
 
-	var userOrgs []UserOrg
+	var userOrgs []models.UserOrg
 	for i, record := range records {
 		if i == 0 {
 			continue
@@ -66,7 +67,7 @@ func loadUserOrgsFromCSV(csvFile string) ([]UserOrg, error) {
 			return nil, fmt.Errorf("第 %d 行数据列数不足，需要13列", i+1)
 		}
 
-		userOrg := UserOrg{
+		userOrg := models.UserOrg{
 			UserID:       record[0],
 			UserName:     record[1],
 			Org1:         record[2],
@@ -87,9 +88,9 @@ func loadUserOrgsFromCSV(csvFile string) ([]UserOrg, error) {
 	return userOrgs, nil
 }
 
-func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
+func loadUserOrgsFromDB(fromDSN string) ([]models.UserOrg, error) {
 	authDSN := replaceDBName(fromDSN, "auth")
-	authDB, err := openSQLDB(authDSN)
+	authDB, err := models.OpenSQLDB(authDSN)
 	if err != nil {
 		return nil, fmt.Errorf("连接 auth 数据库失败: %w", err)
 	}
@@ -97,7 +98,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 	logInfo("auth 数据库连接成功")
 
 	quotaDSN := replaceDBName(fromDSN, "quota_manager")
-	quotaDB, err := openSQLDB(quotaDSN)
+	quotaDB, err := models.OpenSQLDB(quotaDSN)
 	if err != nil {
 		return nil, fmt.Errorf("连接 quota_manager 数据库失败: %w", err)
 	}
@@ -135,7 +136,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 		return nil, fmt.Errorf("遍历部门数据失败: %w", err)
 	}
 
-	var userOrgs []UserOrg
+	var userOrgs []models.UserOrg
 	for userRows.Next() {
 		var userID, userName, gitUserName, gitUserEmail string
 		var empNum sql.NullString
@@ -143,7 +144,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 			return nil, fmt.Errorf("读取用户数据失败: %w", err)
 		}
 
-		org := UserOrg{
+		org := models.UserOrg{
 			UserID:       userID,
 			UserName:     userName,
 			GitUserName:  gitUserName,
@@ -171,7 +172,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]UserOrg, error) {
 	return userOrgs, nil
 }
 
-func writeOrgCSV(path string, rows []UserOrg) error {
+func writeOrgCSV(path string, rows []models.UserOrg) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -194,7 +195,7 @@ func writeOrgCSV(path string, rows []UserOrg) error {
 	return w.Error()
 }
 
-func saveUserOrgs(db *gorm.DB, rows []UserOrg) error {
+func saveUserOrgs(db *gorm.DB, rows []models.UserOrg) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, r := range rows {
 			result := tx.Clauses(clause.OnConflict{
@@ -214,7 +215,7 @@ func saveUserOrgs(db *gorm.DB, rows []UserOrg) error {
 
 func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	startTime := time.Now()
-	var userOrgs []UserOrg
+	var userOrgs []models.UserOrg
 	var err error
 
 	if fromCSV != "" {
@@ -239,7 +240,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		logInfof("CSV 文件已写入: %s", toCSV)
 	}
 
-	gormDB, err := openGormDB(cfg.StatDatabase.DSN())
+	gormDB, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接目标数据库失败: %w", err)

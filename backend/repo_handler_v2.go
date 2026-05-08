@@ -1,9 +1,8 @@
-﻿package main
+package main
 
 import (
-	
+	"encoding/json"
 	"kanban/core/utils"
-"encoding/json"
 	"math"
 	"net/http"
 	"sort"
@@ -246,11 +245,6 @@ func getRepoDetailV2(c *gin.Context) {
 		}
 		tasks = append(tasks, *t)
 	}
-	taskMap := make(map[string]*StatTask)
-	for i := range tasks {
-		taskMap[tasks[i].TaskID] = &tasks[i]
-	}
-
 	// 步骤 3：实时计算 repo 级别效率评估
 	var ancientReasons, realReasons []string
 	var repoAncientMinutes, repoRealMinutes float64
@@ -332,50 +326,19 @@ func getRepoDetailV2(c *gin.Context) {
 			CreatedAt:                        cm.CreatedAt,
 			UpdatedAt:                        cm.UpdatedAt,
 		}
-		var taskIDs []string
-		if len(cm.TaskIDs) > 0 && string(cm.TaskIDs) != "null" && string(cm.TaskIDs) != "[]" {
-			json.Unmarshal(cm.TaskIDs, &taskIDs)
+		if cm.Cost != nil {
+			item.Cost = *cm.Cost
 		}
-		var silicaList []float64
-		if len(cm.TaskIDsSilica) > 0 && string(cm.TaskIDsSilica) != "null" && string(cm.TaskIDsSilica) != "[]" {
-			json.Unmarshal(cm.TaskIDsSilica, &silicaList)
+		if cm.UpstreamTokens != nil {
+			item.UpstreamTokens = *cm.UpstreamTokens
 		}
-		var totalCost float64
-		var upstreamTokens, downstreamTokens int64
-		var weightedSilicaSum, silicaWeightSum float64
-		for j, taskID := range taskIDs {
-			task := taskMap[taskID]
-			if task != nil {
-				if task.Cost != nil {
-					totalCost += *task.Cost
-				}
-				silica := 0.0
-				if j < len(silicaList) {
-					silica = silicaList[j]
-				}
-				if task.UpstreamTokens != nil {
-					upstreamTokens += int64(math.Round(float64(*task.UpstreamTokens) * silica))
-				}
-				if task.DownstreamTokens != nil {
-					downstreamTokens += int64(math.Round(float64(*task.DownstreamTokens) * silica))
-				}
-				// 加权硅含量：Σ(silica_i * task_diff_i) / Σ(task_diff_i)
-				if task.DiffLines != nil && *task.DiffLines > 0 {
-					weightedSilicaSum += float64(*task.DiffLines) * silica
-					silicaWeightSum += float64(*task.DiffLines)
-				}
-			}
+		if cm.DownstreamTokens != nil {
+			item.DownstreamTokens = *cm.DownstreamTokens
 		}
-		// 计算整体硅含量（百分比，1位小数）
-		var overallSilica *float64
-		if silicaWeightSum > 0 {
-			s := math.Round(weightedSilicaSum/silicaWeightSum*1000) / 10
-			overallSilica = &s
+		if cm.Silica != nil && *cm.Silica > 0 {
+			s := math.Round(*cm.Silica*1000) / 10
+			item.Silica = &s
 		}
-		item.Cost = totalCost
-		item.UpstreamTokens = upstreamTokens
-		item.DownstreamTokens = downstreamTokens
-		item.Silica = overallSilica
 		// 计算单条 commit 的效率比率
 		commitAncient := cm.CommitAncientMinutes
 		if cm.CommitAncientMinutesManual != nil {

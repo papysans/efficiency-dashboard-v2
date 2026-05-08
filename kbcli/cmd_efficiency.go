@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"kanban/core/models"
 	"kanban/core/utils"
 
 	"github.com/spf13/cobra"
@@ -13,8 +14,8 @@ import (
 
 type userTaskAgg struct {
 	UserID             string
-	TaskIDs            StringJSON
-	WorkDirIDs         StringJSON
+	TaskIDs            models.StringJSON
+	WorkDirIDs         models.StringJSON
 	TaskDiffLines      int64
 	UpstreamTokens     int64
 	DownstreamTokens   int64
@@ -25,7 +26,7 @@ type userTaskAgg struct {
 
 type userCommitAgg struct {
 	UserID                   string
-	CommitIDs                StringJSON
+	CommitIDs                models.StringJSON
 	CommitDiffLines          int64
 	CommitAncientMinutes     float64
 	CommitRealAIMinutes      float64
@@ -131,13 +132,13 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			}
 			createTime = time.Date(createTime.Year(), createTime.Month(), createTime.Day(), 0, 0, 0, 0, time.UTC)
 
-			up := UserProductivity{
+			up := models.UserProductivity{
 				UserProductivityID:       uid + "_" + dateStr,
 				CreateTime:               &createTime,
 				UserID:                   uid,
 				UserName:                 userName,
-				TaskIDs:                  StringJSON(taskIDsJSON),
-				WorkDirIDs:               StringJSON(workDirIDsJSON),
+				TaskIDs:                  models.StringJSON(taskIDsJSON),
+				WorkDirIDs:               models.StringJSON(workDirIDsJSON),
 				TaskDiffLines:            int(taskDiffLines),
 				UpstreamTokens:           upstreamTokens,
 				DownstreamTokens:         downstreamTokens,
@@ -145,7 +146,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				TaskRealMinutes:          taskRealMinutes,
 				TaskAncientMinutes:       taskAncientMinutes,
 				TaskEfficiencyRatio:      taskEffRatio,
-				CommitIDs:                StringJSON(commitIDsJSON),
+				CommitIDs:                models.StringJSON(commitIDsJSON),
 				CommitDiffLines:          int(commitDiffLines),
 				CommitAncientMinutes:     commitAncientMinutes,
 				CommitRealAIMinutes:      commitRealAIMinutes,
@@ -179,7 +180,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 }
 
 func loadUserNames(db *gorm.DB) (map[string]string, error) {
-	var userOrgs []UserOrg
+	var userOrgs []models.UserOrg
 	if err := db.Select("user_id, user_name").Where("user_name IS NOT NULL AND user_name != ''").Find(&userOrgs).Error; err != nil {
 		return nil, fmt.Errorf("查询user_org用户名失败: %w", err)
 	}
@@ -193,8 +194,8 @@ func loadUserNames(db *gorm.DB) (map[string]string, error) {
 func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg, error) {
 	type row struct {
 		UserID             string
-		TaskIDs            StringJSON
-		WorkDirIDs         StringJSON
+		TaskIDs            models.StringJSON
+		WorkDirIDs         models.StringJSON
 		TaskDiffLines      int64
 		UpstreamTokens     int64
 		DownstreamTokens   int64
@@ -242,7 +243,7 @@ func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg,
 func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommitAgg, error) {
 	type row struct {
 		UserID                   string
-		CommitIDs                StringJSON
+		CommitIDs                models.StringJSON
 		CommitDiffLines          int64
 		CommitAncientMinutes     float64
 		CommitRealAIMinutes      float64
@@ -282,7 +283,7 @@ func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommit
 	return result, nil
 }
 
-func defaultSliceJSON(j StringJSON) []byte {
+func defaultSliceJSON(j models.StringJSON) []byte {
 	if j == "" || j == "null" {
 		return []byte("[]")
 	}
@@ -335,7 +336,7 @@ func runEfficiency(dateStr string) error {
 		}
 	}
 
-	db, err := openGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("efficiency", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"kanban/core/models"
 	"kanban/core/utils"
 
 	"gorm.io/gorm"
@@ -100,8 +101,8 @@ func flexStrPtr(s flexString) *string {
 	return &str
 }
 
-func calcTaskRecord(summary *taskSummary, conversations []taskConversation) Task {
-	rec := Task{
+func calcTaskRecord(summary *taskSummary, conversations []taskConversation) models.Task {
+	rec := models.Task{
 		TaskID:        summary.TaskID,
 		UserID:        summary.UserID,
 		UserName:      summary.UserName,
@@ -248,7 +249,7 @@ func saveConversations(db *gorm.DB, taskID string, conversations []taskConversat
 				}
 			}
 
-			tc := TaskConversation{
+			tc := models.TaskConversation{
 				TaskID:           taskID,
 				RequestID:        conv.RequestID,
 				Sender:           conv.Sender,
@@ -638,7 +639,7 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 		return fmt.Errorf("summary目录不存在: %s", summaryDir)
 	}
 
-	db, err := openGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)

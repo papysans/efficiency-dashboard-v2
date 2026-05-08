@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/core/models"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -141,7 +142,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	ancientMinutes, ancientReason := estimateCommitAncientMinutes(commitData.DiffLines)
 	logDebugf("  commit_ancient_minutes=%.1f (%s)", ancientMinutes, ancientReason)
 
-	commit := Commit{
+	commit := models.Commit{
 		CommitID:                   commitData.CommitID,
 		CommitTime:                 &commitTime,
 		RepoAddr:                   commitData.RepoAddr,
@@ -154,8 +155,8 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		WorkDir:                    workDir,
 		Comment:                    commitData.Comment,
 		DiffLines:                  commitData.DiffLines,
-		TaskIDs:                    StringJSON("[]"),
-		TaskIDsSilica:              StringJSON("[]"),
+		TaskIDs:                    models.StringJSON("[]"),
+		TaskIDsSilica:              models.StringJSON("[]"),
 		CommitAncientMinutes:       &ancientMinutes,
 		CommitAncientMinutesReason: &ancientReason,
 	}
@@ -214,7 +215,7 @@ func runImportRepo(repoDir, analysedDir string, force bool) error {
 		return fmt.Errorf("repo目录不存在: %s", repoDir)
 	}
 
-	db, err := openGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
