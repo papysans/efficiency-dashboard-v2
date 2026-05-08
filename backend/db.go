@@ -1122,7 +1122,7 @@ type dashboardTaskAgg struct {
 	TotalRepos          int
 	TotalCost           float64
 	TotalTokens         int64
-	TotalAIDays         float64
+	TotalAiDays         float64
 	TotalRealMinutes    float64
 	TotalAncientMinutes float64
 }

@@ -85,7 +85,7 @@ func getDashboardSummary(c *gin.Context) {
 		TotalCost:               taskAgg.TotalCost,
 		TotalTokens:             taskAgg.TotalTokens,
 		TotalDiffLines:          commitAgg.TotalDiffLines,
-		TotalTaskAncientMinutes: taskAgg.TotalAIDays,
+		TotalTaskAncientMinutes: taskAgg.TotalAiDays,
 		TotalRealMinutes:        taskAgg.TotalRealMinutes,
 		AvgEfficiencyRatio:      avgEfficiencyRatio,
 	})
