@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"kanban/core/utils"
+	"path/filepath"
 	"strings"
 )
 
@@ -158,6 +159,7 @@ func computeDiffAddedLines(filePath, before, after string) []addedLine {
 }
 
 func calcLineFingerprint(al addedLine) string {
-	hash := sha256.Sum256([]byte(utils.RemoveWhitespace(al.Content)))
+	path := filepath.Base(al.FilePath)
+	hash := sha256.Sum256([]byte(utils.RemoveWhitespace(path + al.Content)))
 	return hex.EncodeToString(hash[:])
 }

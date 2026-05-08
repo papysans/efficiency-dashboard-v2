@@ -424,6 +424,10 @@ type StatCommit struct {
 	CommitAncientMinutesReasonManual *string         `json:"commit_ancient_minutes_reason_manual"`
 	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	UpstreamTokens                   *int64          `json:"upstream_tokens"`
+	DownstreamTokens                 *int64          `json:"downstream_tokens"`
+	Cost                             *float64        `json:"cost"`
+	Silica                           *float64        `json:"silica"`
 	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
@@ -442,6 +446,7 @@ var statCommitSelectColumns = `commit_id, commit_time, repo_addr, repo_branch,
 	diff_lines, commit_ancient_minutes, commit_ancient_minutes_reason,
 	commit_ancient_minutes_manual, commit_ancient_minutes_reason_manual,
 	task_ids, task_ids_silica,
+	upstream_tokens, downstream_tokens, cost, silica,
 	commit_real_ai_minutes, commit_real_ancient_minutes,
 	commit_real_minutes, commit_real_minutes_reason,
 	commit_real_minutes_manual, commit_real_minutes_reason_manual,
@@ -456,6 +461,7 @@ func scanStatCommit(s rowScanner, m *StatCommit) error {
 		&m.DiffLines, &m.CommitAncientMinutes, &m.CommitAncientMinutesReason,
 		&m.CommitAncientMinutesManual, &m.CommitAncientMinutesReasonManual,
 		&taskIDs, &taskIDsSilica,
+		&m.UpstreamTokens, &m.DownstreamTokens, &m.Cost, &m.Silica,
 		&m.CommitRealAIMinutes, &m.CommitRealAncientMinutes,
 		&m.CommitRealMinutes, &m.CommitRealMinutesReason,
 		&m.CommitRealMinutesManual, &m.CommitRealMinutesReasonManual,

@@ -111,17 +111,6 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 	return files, skipCount, err
 }
 
-func estimateCommitAncientMinutes(diffLines int) (float64, string) {
-	if diffLines <= 0 {
-		return 5, "默认估算:无代码变更"
-	}
-	minutes := float64(diffLines) * 1.5
-	if minutes < 5 {
-		minutes = 5
-	}
-	return minutes, fmt.Sprintf("基于diff_lines=%d估算(1.5分钟/行)", diffLines)
-}
-
 func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error {
 	data, err := os.ReadFile(meta.Path)
 	if err != nil {
@@ -139,32 +128,36 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	if commitData.CommitTime == "" {
 		return fmt.Errorf("commit_time为空")
 	}
+	commitTime, err := time.Parse(time.RFC3339, commitData.CommitTime)
+	if err != nil {
+		return fmt.Errorf("解析commit_time失败: %w", err)
+	}
 
 	workDir := commitData.WorkDir
 	if workDir == "" {
 		workDir = commitData.WorkPath
 	}
 
-	commitTime, err := time.Parse(time.RFC3339, commitData.CommitTime)
-	if err != nil {
-		return fmt.Errorf("解析commit_time失败: %w", err)
-	}
+	ancientMinutes, ancientReason := estimateCommitAncientMinutes(commitData.DiffLines)
+	logDebugf("  commit_ancient_minutes=%.1f (%s)", ancientMinutes, ancientReason)
 
 	commit := Commit{
-		CommitID:      commitData.CommitID,
-		CommitTime:    &commitTime,
-		RepoAddr:      commitData.RepoAddr,
-		RepoBranch:    commitData.RepoBranch,
-		GitUserName:   commitData.GitUserName,
-		GitUserEmail:  commitData.GitUserEmail,
-		UserID:        commitData.UserID,
-		UserName:      commitData.UserName,
-		ClientID:      commitData.ClientID,
-		WorkDir:       workDir,
-		Comment:       commitData.Comment,
-		DiffLines:     commitData.DiffLines,
-		TaskIDs:       StringJSON("[]"),
-		TaskIDsSilica: StringJSON("[]"),
+		CommitID:                   commitData.CommitID,
+		CommitTime:                 &commitTime,
+		RepoAddr:                   commitData.RepoAddr,
+		RepoBranch:                 commitData.RepoBranch,
+		GitUserName:                commitData.GitUserName,
+		GitUserEmail:               commitData.GitUserEmail,
+		UserID:                     commitData.UserID,
+		UserName:                   commitData.UserName,
+		ClientID:                   commitData.ClientID,
+		WorkDir:                    workDir,
+		Comment:                    commitData.Comment,
+		DiffLines:                  commitData.DiffLines,
+		TaskIDs:                    StringJSON("[]"),
+		TaskIDsSilica:              StringJSON("[]"),
+		CommitAncientMinutes:       &ancientMinutes,
+		CommitAncientMinutesReason: &ancientReason,
 	}
 
 	result := db.Clauses(clause.OnConflict{
@@ -173,24 +166,11 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 			"commit_time", "repo_addr", "repo_branch",
 			"git_user_name", "git_user_email", "user_id", "user_name",
 			"client_id", "work_dir", "comment", "diff_lines", "updated_at",
+			"commit_ancient_minutes", "commit_ancient_minutes_reason",
 		}),
 	}).Create(&commit)
 	if result.Error != nil {
 		return fmt.Errorf("写入commits表失败: %w", result.Error)
-	}
-
-	ancientMinutes, ancientReason := estimateCommitAncientMinutes(commitData.DiffLines)
-	ancientMinutesPtr := &ancientMinutes
-	ancientReasonPtr := &ancientReason
-	if err := db.Model(&Commit{}).
-		Where("commit_id = ? AND commit_ancient_minutes IS NULL AND commit_ancient_minutes_manual IS NULL", commitData.CommitID).
-		Updates(map[string]interface{}{
-			"commit_ancient_minutes":        ancientMinutesPtr,
-			"commit_ancient_minutes_reason": ancientReasonPtr,
-		}).Error; err != nil {
-		logWarnf("更新commit_ancient_minutes失败 [%s]: %v", commitData.CommitID, err)
-	} else {
-		logDebugf("  commit_ancient_minutes=%.1f (%s)", ancientMinutes, ancientReason)
 	}
 
 	addedLines := extractAddedLinesFromDiff(commitData.Diff)

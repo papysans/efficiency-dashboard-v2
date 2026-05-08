@@ -1,6 +1,6 @@
 
 stat_database:
-  host: 127.0.0.1
+  host: postgres
   port: 5432
   user: postgres
   password: "1"
@@ -138,20 +138,6 @@ serve:
       command: import
       params:
         force: false
-    - schedule: "0 30 * * * *"
-      command: import-task
-      params:
-        force: false
-    - schedule: "0 35 * * * *"
-      command: import-repo
-      params:
-        force: false
-    - schedule: "0 40 * * * *"
-      command: silica
-      params:
-        force: false
-    - schedule: "0 45 * * * *"
-      command: efficiency
 
 # 算法估时配置
 algo_estimation:

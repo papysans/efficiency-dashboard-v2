@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -175,78 +174,19 @@ func listCommitsV2(c *gin.Context) {
 		return
 	}
 
-	// 批量获取所有关联的 StatTask
-	allTaskIDSet := make(map[string]struct{})
-	for _, cm := range list {
-		var ids []string
-		if len(cm.TaskIDs) > 0 && string(cm.TaskIDs) != "null" && string(cm.TaskIDs) != "[]" {
-			if err := json.Unmarshal(cm.TaskIDs, &ids); err != nil {
-				log.Printf("解析 commit %s task_ids 失败: %v", cm.CommitID, err)
-				continue
-			}
-		}
-		for _, id := range ids {
-			allTaskIDSet[id] = struct{}{}
-		}
-	}
-	allTaskIDs := make([]string, 0, len(allTaskIDSet))
-	for id := range allTaskIDSet {
-		allTaskIDs = append(allTaskIDs, id)
-	}
-	taskMap, err := BatchGetStatTasks(statDB, allTaskIDs)
-	if err != nil {
-		log.Printf("批量查询 stat tasks 失败: %v", err)
-		taskMap = make(map[string]*StatTask)
-	}
-
-	// 为每条 commit 计算 efficiency_ratio
+	// 为每条 commit 填充列表项（聚合值从 DB 直接读取，由 kbcli runSilica 计算写入）
 	results := make([]CommitListItem, len(list))
 	for i, commit := range list {
-		// 聚合 cost/tokens
 		var totalCost float64
+		if commit.Cost != nil {
+			totalCost = *commit.Cost
+		}
 		var upstreamTokens, downstreamTokens int64
-		var taskIDs []string
-		if len(commit.TaskIDs) > 0 && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
-			if err := json.Unmarshal(commit.TaskIDs, &taskIDs); err != nil {
-				log.Printf("解析 commit %s task_ids 失败: %v", commit.CommitID, err)
-			}
+		if commit.UpstreamTokens != nil {
+			upstreamTokens = *commit.UpstreamTokens
 		}
-		var silicaList []float64
-		if len(commit.TaskIDsSilica) > 0 && string(commit.TaskIDsSilica) != "null" && string(commit.TaskIDsSilica) != "[]" {
-			if err := json.Unmarshal(commit.TaskIDsSilica, &silicaList); err != nil {
-				log.Printf("解析 commit %s task_ids_silica 失败: %v", commit.CommitID, err)
-			}
-		}
-		var weightedSilicaSum, silicaWeightSum float64
-		for j, taskID := range taskIDs {
-			task := taskMap[taskID]
-			if task != nil {
-				if task.Cost != nil {
-					totalCost += *task.Cost
-				}
-				silica := 0.0
-				if j < len(silicaList) {
-					silica = silicaList[j]
-				}
-				if task.UpstreamTokens != nil {
-					upstreamTokens += int64(math.Round(float64(*task.UpstreamTokens) * silica))
-				}
-				if task.DownstreamTokens != nil {
-					downstreamTokens += int64(math.Round(float64(*task.DownstreamTokens) * silica))
-				}
-				// 加权硅含量：Σ(silica_i * task_diff_i) / Σ(task_diff_i)
-				if task.DiffLines != nil && *task.DiffLines > 0 {
-					weightedSilicaSum += float64(*task.DiffLines) * silica
-					silicaWeightSum += float64(*task.DiffLines)
-				}
-			}
-		}
-
-		// 计算整体硅含量（百分比，1位小数）
-		var overallSilica *float64
-		if silicaWeightSum > 0 {
-			s := math.Round(weightedSilicaSum/silicaWeightSum*1000) / 10
-			overallSilica = &s
+		if commit.DownstreamTokens != nil {
+			downstreamTokens = *commit.DownstreamTokens
 		}
 
 		item := CommitListItem{
@@ -279,9 +219,10 @@ func listCommitsV2(c *gin.Context) {
 			Cost:                             totalCost,
 			UpstreamTokens:                   upstreamTokens,
 			DownstreamTokens:                 downstreamTokens,
-			Silica:                           overallSilica,
+			Silica:                           commit.Silica,
 		}
 
+		// 计算 efficiency_ratio（该值在导入过程中未计算）
 		effectiveAncient := commit.CommitAncientMinutes
 		if commit.CommitAncientMinutesManual != nil {
 			effectiveAncient = commit.CommitAncientMinutesManual
@@ -363,12 +304,7 @@ func getCommitDetailV2(c *gin.Context) {
 		}
 	}
 
-	var aiMinutes, ancientMinutes float64
-	var totalCost float64
-	var upstreamTokens, downstreamTokens int64
-	// 加权硅含量: Σ(silica_i * task_diff_i) / Σ(task_diff_i)
-	var weightedSilicaSum, silicaWeightSum float64
-
+	// 构建关联 task 列表（仅填充展示信息，聚合值从 DB 直接读取）
 	for i, taskID := range taskIDs {
 		rt := RelatedTask{TaskID: taskID}
 		task, err := GetStatTask(statDB, taskID)
@@ -381,33 +317,6 @@ func getCommitDetailV2(c *gin.Context) {
 			rt.TaskRealMinutes = task.TaskRealMinutes
 			rt.Cost = task.Cost
 			rt.DiffLines = task.DiffLines
-			if task.Cost != nil {
-				totalCost += *task.Cost
-			}
-			// 累加计算 commit_real_ai_minutes 和 commit_real_ancient_minutes
-			silica := 0.0
-			if i < len(silicaList) {
-				silica = silicaList[i]
-			}
-			if task.TaskRealMinutes != nil {
-				aiMinutes += *task.TaskRealMinutes * silica
-			}
-			if task.TaskAncientMinutes != nil {
-				ancientMinutes += *task.TaskAncientMinutes * (1 - silica)
-			}
-			// tokens: task.tokens * silica
-			if task.UpstreamTokens != nil {
-				upstreamTokens += int64(math.Round(float64(*task.UpstreamTokens) * silica))
-			}
-			if task.DownstreamTokens != nil {
-				downstreamTokens += int64(math.Round(float64(*task.DownstreamTokens) * silica))
-			}
-			// 加权硅含量
-			if task.DiffLines != nil && *task.DiffLines > 0 {
-				w := float64(*task.DiffLines) * silica
-				weightedSilicaSum += w
-				silicaWeightSum += float64(*task.DiffLines)
-			}
 		}
 		if i < len(silicaList) {
 			s := silicaList[i]
@@ -416,30 +325,7 @@ func getCommitDetailV2(c *gin.Context) {
 		relatedTasks = append(relatedTasks, rt)
 	}
 
-	// 处理空 task_ids 情况
-	if len(taskIDs) == 0 {
-		aiMinutes = 0
-		if commit.CommitAncientMinutes != nil {
-			ancientMinutes = *commit.CommitAncientMinutes
-		}
-	}
-	// commit 实际耗时 = Σ(task_real_minutes * silica)，仅计算 AI 辅助部分的实际耗时
-	commitRealMinutes := aiMinutes
-
-	// 赋值到 commit 对象
-	commit.CommitRealAIMinutes = &aiMinutes
-	commit.CommitRealAncientMinutes = &ancientMinutes
-	commit.CommitRealMinutes = &commitRealMinutes
-
-	// 异步写回数据库
-	go func(cID string, tIDs, tSilica json.RawMessage, rm, raiM, raM float64) {
-		err := UpdateStatCommitTaskAssoc(statDB, cID, tIDs, tSilica, &rm, &raiM, &raM, nil)
-		if err != nil {
-			log.Printf("异步更新 commit_real_minutes 失败: %v", err)
-		}
-	}(commit.CommitID, commit.TaskIDs, commit.TaskIDsSilica, commitRealMinutes, aiMinutes, ancientMinutes)
-
-	// 计算 efficiency_ratio
+	// 计算 efficiency_ratio（该值在导入过程中未计算）
 	var efficiencyRatio *float64
 	effectiveAncient := commit.CommitAncientMinutes
 	if commit.CommitAncientMinutesManual != nil {
@@ -454,19 +340,25 @@ func getCommitDetailV2(c *gin.Context) {
 		efficiencyRatio = &ratio
 	}
 
-	// 计算整体硅含量
-	var overallSilica *float64
-	if silicaWeightSum > 0 {
-		s := math.Round(weightedSilicaSum/silicaWeightSum*1000) / 10 // 百分比，1位小数
-		overallSilica = &s
+	// 从 DB 直接读取聚合值（由 kbcli runSilica 计算写入）
+	var totalCost float64
+	if commit.Cost != nil {
+		totalCost = *commit.Cost
+	}
+	var upstreamTokens, downstreamTokens int64
+	if commit.UpstreamTokens != nil {
+		upstreamTokens = *commit.UpstreamTokens
+	}
+	if commit.DownstreamTokens != nil {
+		downstreamTokens = *commit.DownstreamTokens
 	}
 
 	c.JSON(http.StatusOK, CommitDetailResponse{
 		Commit:           commit,
 		RelatedTasks:     relatedTasks,
 		EfficiencyRatio:  efficiencyRatio,
-		TotalCost:        math.Round(totalCost*10000) / 10000,
-		Silica:           overallSilica,
+		TotalCost:        totalCost,
+		Silica:           commit.Silica,
 		UpstreamTokens:   upstreamTokens,
 		DownstreamTokens: downstreamTokens,
 	})

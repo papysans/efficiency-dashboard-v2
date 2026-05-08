@@ -158,12 +158,13 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) Task
 	rec.DownstreamTokens = totalDownstream
 	rec.Cost = totalCost
 
-	realMinutes, realReason := calculateTaskRealMinutes(conversations, 30, 5)
-	rec.TaskRealMinutes = realMinutes
-	rec.TaskRealMinutesReason = realReason
+	minutes, reason := calcTaskRealMinutes(conversations, 30, 5)
+	rec.TaskRealMinutes = minutes
+	rec.TaskRealMinutesReason = reason
 
-	estimateAncientMinutes(cfg.AlgoEstimation, &rec, conversations, realMinutes)
-
+	minutes, reason = estimateTaskAncientMinutes(cfg.AlgoEstimation, conversations, rec.TaskRealMinutes)
+	rec.TaskAncientMinutes = minutes
+	rec.TaskAncientMinutesReason = reason
 	return rec
 }
 
@@ -288,7 +289,7 @@ func stringPtrToStr(p *string) string {
 	return *p
 }
 
-func estimateAncientMinutes(cfg EstimateConfig, t *Task, convs []taskConversation, realMinutes float64) {
+func estimateTaskAncientMinutes(cfg EstimateConfig, convs []taskConversation, realMinutes float64) (float64, string) {
 	var totalInchars int64
 	var totalDiffLines int64
 
@@ -307,7 +308,6 @@ func estimateAncientMinutes(cfg EstimateConfig, t *Task, convs []taskConversatio
 	factor := cfg.MinFactor + (inchars/cfg.MaxInputChars)*(cfg.MaxFactor-cfg.MinFactor)
 	workload := (diffLines / cfg.LinesPerMinutes) * factor
 
-	// inputMinutes := inchars / cfg.IncharsPerMinutes
 	maxWorkload := cfg.MaxRatio * realMinutes
 	minWorkload := max(cfg.MinMinutes, realMinutes)
 
@@ -318,14 +318,13 @@ func estimateAncientMinutes(cfg EstimateConfig, t *Task, convs []taskConversatio
 		workload = minWorkload
 	}
 
-	t.TaskAncientMinutes = workload
-	t.TaskAncientMinutesReason = fmt.Sprintf(
+	return workload, fmt.Sprintf(
 		"基于diff_lines=%.0f, user_input=%.0f字符, factor=%.2f, real_minutes=%.2f估算",
 		diffLines, float64(totalInchars), factor, realMinutes,
 	)
 }
 
-func calculateTaskRealMinutes(conversations []taskConversation, gapThreshold, extensionMin int) (float64, string) {
+func calcTaskRealMinutes(conversations []taskConversation, gapThreshold, extensionMin int) (float64, string) {
 	var validTimes []time.Time
 	for _, conv := range conversations {
 		if conv.StartTime != "" {

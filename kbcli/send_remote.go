@@ -49,6 +49,6 @@ func sendToRemote(remoteURL, taskType string, params map[string]interface{}) err
 	}
 
 	logInfof("远程任务已提交: task_id=%s, status=%s, type=%s", result.TaskID, result.Status, result.Type)
-	logInfof("可通过 GET %s/api/tasks/%s 查询任务状态", remoteURL, result.TaskID)
+	logInfof("可通过 curl %s/api/tasks/%s 查询任务状态", remoteURL, result.TaskID)
 	return nil
 }

@@ -45,6 +45,8 @@ type commitParser struct {
 	totalSilica      float64
 	aiMinutes        float64
 	ancientMinutes   float64
+	realMinutes      float64
+	realReason       string
 	upstreamTokens   int64
 	downstreamTokens int64
 	cost             float64
@@ -92,6 +94,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			continue
 		}
 		if tsd.TaskID == "" || tsd.RepoAddr == "" {
+			logWarnf("文件[%s]缺失字段[task_id/repo_addr]", silicaFile)
 			continue
 		}
 
@@ -105,8 +108,9 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			}
 		}
 
-		for _, conv := range tsd.Conversations {
+		for i, conv := range tsd.Conversations {
 			if conv.RequestID == "" {
+				logWarnf("文件[%s]对话[%d]缺失字段[request_id]", silicaFile, i)
 				continue
 			}
 
@@ -261,7 +265,7 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
 }
 
 func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
-	for i, taskID := range p.taskIDs {
+	for _, taskID := range p.taskIDs {
 		var task Task
 		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes, upstream_tokens, downstream_tokens, cost").
 			Where("task_id = ?", taskID).First(&task).Error; err != nil {
@@ -270,13 +274,23 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 			}
 			continue
 		}
-		silica := p.taskSilicas[i]
-		p.aiMinutes += task.TaskRealMinutes * silica
-		p.ancientMinutes += task.TaskAncientMinutes * (1 - silica)
+		p.aiMinutes += task.TaskRealMinutes
 		p.upstreamTokens += task.UpstreamTokens
 		p.downstreamTokens += task.DownstreamTokens
 		p.cost += task.Cost
 	}
+	ancientLines := int((1 - p.totalSilica) * float64(p.totalLines))
+
+	var ancientReason string
+	p.ancientMinutes = 0
+	if ancientLines > 0 {
+		p.ancientMinutes, ancientReason = estimateCommitAncientMinutes(ancientLines)
+	} else {
+		ancientReason = "纯AI生成"
+	}
+	p.realMinutes = p.aiMinutes + p.ancientMinutes
+	p.realReason = fmt.Sprintf("AI耗时%.1f分钟 + 剩余代码%.1f分钟(%s) = %.1f分钟", p.aiMinutes, p.ancientMinutes, ancientReason, p.realMinutes)
+
 	return nil
 }
 
@@ -316,10 +330,10 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 	skipCount := 0
 	failCount := 0
 
-	for i, fpFile := range commitFPFiles {
+	for i, commitFpFile := range commitFPFiles {
 		logPromptProgress(i, 50)
 
-		commitID := strings.TrimSuffix(filepath.Base(fpFile), ".fp")
+		commitID := strings.TrimSuffix(filepath.Base(commitFpFile), ".fp")
 		if !force {
 			var commit Commit
 			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
@@ -329,9 +343,9 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 				}
 			}
 		}
-		commitPs := buildCommitParser(fpFile)
+		commitPs := buildCommitParser(commitFpFile)
 		if commitPs == nil {
-			logWarnf("读取commit指纹文件失败 [%s]", fpFile)
+			logWarnf("读取commit指纹文件失败 [%s]", commitFpFile)
 			skipCount++
 			continue
 		}
@@ -381,7 +395,6 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			failCount++
 			continue
 		}
-		commitRealMinutes := commitPs.aiMinutes + commitPs.ancientMinutes
 
 		taskIDsJSON, _ := json.Marshal(commitPs.taskIDs)
 		silicaJSON, _ := json.Marshal(commitPs.taskSilicas)
@@ -392,7 +405,8 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			"silica":                      commitPs.totalSilica,
 			"commit_real_ai_minutes":      commitPs.aiMinutes,
 			"commit_real_ancient_minutes": commitPs.ancientMinutes,
-			"commit_real_minutes":         commitRealMinutes,
+			"commit_real_minutes":         commitPs.realMinutes,
+			"commit_real_minutes_reason":  commitPs.realReason,
 			"upstream_tokens":             commitPs.upstreamTokens,
 			"downstream_tokens":           commitPs.downstreamTokens,
 			"cost":                        commitPs.cost,
@@ -401,7 +415,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			failCount++
 		} else {
 			logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
-				commitID, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitRealMinutes)
+				commitID, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitPs.realMinutes)
 			successCount++
 		}
 	}

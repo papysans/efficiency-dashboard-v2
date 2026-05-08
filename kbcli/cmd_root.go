@@ -17,26 +17,27 @@ var rootCmd = &cobra.Command{
 	Long:  "kbcli 是效率看板的命令行工具，用于数据索引、分析、纠错等操作。",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		configPath, _ := cmd.Flags().GetString("config")
-		loadedCfg, err := LoadConfig(configPath)
-		if err != nil {
-			fmt.Printf("load config [%s] failed: %v\n", configPath, err)
-			// fallback: 尝试上级目录的 config.yaml
-			loadedCfg, err = LoadConfig("../config.yaml")
-			if err != nil {
-				return fmt.Errorf("加载配置文件失败: %w", err)
-			}
-			fmt.Printf("load config [%s] ok, cfg: %+v\n", "../config.yaml", loadedCfg)
-		} else {
-			fmt.Printf("load config [%s] ok, cfg: %+v\n", configPath, loadedCfg)
-		}
-		cfg = loadedCfg
-
 		consoleLevel, _ := cmd.Flags().GetString("console")
 		logFile, _ := cmd.Flags().GetString("logfile")
 		fileLevel, _ := cmd.Flags().GetString("loglevel")
+
 		if err := InitLogger(consoleLevel, logFile, fileLevel); err != nil {
 			return err
 		}
+
+		loadedCfg, err := LoadConfig(configPath)
+		if err != nil {
+			logWarnf("load config [%s] failed: %v\n", configPath, err)
+			loadedCfg, err = LoadConfig("../config.yaml")
+			if err != nil {
+				logErrorf("加载配置文件失败: %v", err)
+				return fmt.Errorf("加载配置文件失败: %w", err)
+			}
+			logDebugf("load config [%s] ok, cfg: %+v\n", "../config.yaml", loadedCfg)
+		} else {
+			logDebugf("load config [%s] ok, cfg: %+v\n", configPath, loadedCfg)
+		}
+		cfg = loadedCfg
 
 		return nil
 	},
@@ -44,7 +45,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().String("config", "config.yaml", "配置文件路径")
-	rootCmd.PersistentFlags().String("console", "warn", "控制台日志级别 (debug/info/warn/error)")
+	rootCmd.PersistentFlags().String("console", "info", "控制台日志级别 (debug/info/warn/error)")
 	rootCmd.PersistentFlags().String("logfile", "", "日志文件路径")
 	rootCmd.PersistentFlags().String("loglevel", "debug", "日志文件级别 (debug/info/warn/error)")
 }
