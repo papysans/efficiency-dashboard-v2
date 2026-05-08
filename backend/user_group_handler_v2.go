@@ -1,9 +1,8 @@
-﻿package main
+package main
 
 import (
-	
+	"encoding/json"
 	"kanban/core/utils"
-"encoding/json"
 	"math"
 	"net/http"
 	"strings"

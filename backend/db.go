@@ -1410,7 +1410,6 @@ func loadUserOrgs(db *gorm.DB) (map[string]*models.UserOrg, error) {
 		if uos[i].UserID == "" {
 			continue
 		}
-		uos[i] = uos[i]
 		result[uos[i].UserID] = &uos[i]
 	}
 	return result, nil

@@ -1,7 +1,6 @@
-﻿package main
+package main
 
 import (
-	"database/sql"
 	"fmt"
 	"kanban/core/utils"
 	"math"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lib/pq"
 )
 
 type OrgDataItem struct {
@@ -194,39 +192,6 @@ type OrgMapping struct {
 // orgMappings 全局组织映射表，key=user_id
 var orgMappings map[string]*OrgMapping
 
-func LoadOrgMapping(db *sql.DB) error {
-	maps, err := loadOrgMapping(db)
-	if err != nil {
-		return err
-	}
-	orgMappings = maps
-	return nil
-}
-
-// LoadOrgMapping 从 user_org 表加载组织映射到全局 map
-func loadOrgMapping(db *sql.DB) (map[string]*OrgMapping, error) {
-	maps := make(map[string]*OrgMapping)
-
-	rows, err := db.Query(`SELECT user_id, user_name, org1, org2, org3, org4, org5, org6, org7, org8, org9, git_user_name, git_user_email FROM user_org`)
-	if err != nil {
-		return nil, fmt.Errorf("查询 user_org 表失败: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var m OrgMapping
-		if err := rows.Scan(&m.UserID, &m.UserName, &m.Org1, &m.Org2, &m.Org3, &m.Org4, &m.Org5, &m.Org6, &m.Org7, &m.Org8, &m.Org9, &m.GitUserName, &m.GitUserEmail); err != nil {
-			return nil, fmt.Errorf("扫描 user_org 行失败: %w", err)
-		}
-		if m.UserID == "" {
-			continue
-		}
-		maps[m.UserID] = &m
-	}
-
-	return maps, rows.Err()
-}
-
 // getOrgValue 根据 level 获取 OrgMapping 中对应的 org 值
 func getOrgValue(m *OrgMapping, level string) string {
 	switch level {
@@ -327,10 +292,12 @@ func listOrgV2(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 	if orgMappings == nil {
-		if err := LoadOrgMapping(statDB); err != nil {
+		maps, err := LoadUserOrgs(statDB)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
+		orgMappings = maps
 	}
 
 	// 从 orgMappings 筛选符合 parent 条件的用户
@@ -363,82 +330,22 @@ func listOrgV2(c *gin.Context) {
 		return
 	}
 
-	// 从 user_productivity 聚合每个用户的汇总数据
-	type userProdAgg struct {
-		taskCount        int
-		commitCount      int
-		taskDiffLines    int
-		commitDiffLines  int
-		upTokens         int64
-		downTokens       int64
-		cost             float64
-		taskRealMin      float64
-		taskAncientMin   float64
-		commitRealMin    float64
-		commitAncientMin float64
-	}
-
 	// 收集所有 user_id
 	var allUserIDs []string
 	for _, g := range groupMap {
 		allUserIDs = append(allUserIDs, g.userIDs...)
 	}
 
-	userAggMap := make(map[string]*userProdAgg)
+	userAggMap := make(map[string]*userProdAggRow)
 
-	prodQuery := `SELECT user_id,
-		COALESCE(SUM(jsonb_array_length(task_ids)), 0),
-		COALESCE(SUM(jsonb_array_length(commit_ids)), 0),
-		COALESCE(SUM(task_diff_lines), 0),
-		COALESCE(SUM(commit_diff_lines), 0),
-		COALESCE(SUM(upstream_tokens), 0),
-		COALESCE(SUM(downstream_tokens), 0),
-		COALESCE(SUM(cost), 0),
-		COALESCE(SUM(task_real_minutes), 0),
-		COALESCE(SUM(task_ancient_minutes), 0),
-		COALESCE(SUM(commit_real_minutes), 0),
-		COALESCE(SUM(commit_ancient_minutes), 0)
-		FROM user_productivity
-		WHERE user_id = ANY($1::text[])`
-
-	prodArgs := []interface{}{pq.Array(allUserIDs)}
-	prodArgIdx := 2
-	if startTime != "" {
-		prodQuery += fmt.Sprintf(" AND create_time >= $%d", prodArgIdx)
-		prodArgs = append(prodArgs, startTime)
-		prodArgIdx++
-	}
-	if endTime != "" {
-		prodQuery += fmt.Sprintf(" AND create_time <= $%d", prodArgIdx)
-		prodArgs = append(prodArgs, endTime)
-		prodArgIdx++
-	}
-	prodQuery += " GROUP BY user_id"
-
-	prodRows, err := statDB.Query(prodQuery, prodArgs...)
+	prodRows, err := QueryUserProdAggForIDs(statDB, allUserIDs, startTime, endTime)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 user_productivity 聚合失败: " + err.Error()})
 		return
 	}
-	defer prodRows.Close()
 
-	for prodRows.Next() {
-		var uid string
-		var taskCount, commitCount, taskDiffLines, commitDiffLines int
-		var upTokens, downTokens int64
-		var cost, taskRealMin, taskAncientMin, commitRealMin, commitAncientMin float64
-		if err := prodRows.Scan(&uid, &taskCount, &commitCount, &taskDiffLines, &commitDiffLines,
-			&upTokens, &downTokens, &cost, &taskRealMin, &taskAncientMin, &commitRealMin, &commitAncientMin); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "扫描 user_productivity 行失败: " + err.Error()})
-			return
-		}
-		userAggMap[uid] = &userProdAgg{
-			taskCount: taskCount, commitCount: commitCount,
-			taskDiffLines: taskDiffLines, commitDiffLines: commitDiffLines,
-			upTokens: upTokens, downTokens: downTokens, cost: cost,
-			taskRealMin: taskRealMin, taskAncientMin: taskAncientMin,
-			commitRealMin: commitRealMin, commitAncientMin: commitAncientMin,
-		}
+	for _, row := range prodRows {
+		userAggMap[row.UserID] = &row
 	}
 
 	// 按 org 分组汇总 → data[]
@@ -461,17 +368,17 @@ func listOrgV2(c *gin.Context) {
 		oa := &orgAgg{userCount: len(g.userIDs)}
 		for _, uid := range g.userIDs {
 			if ua, ok := userAggMap[uid]; ok {
-				oa.taskCount += ua.taskCount
-				oa.commitCount += ua.commitCount
-				oa.taskDiffLines += ua.taskDiffLines
-				oa.commitDiffLines += ua.commitDiffLines
-				oa.upTokens += ua.upTokens
-				oa.downTokens += ua.downTokens
-				oa.cost += ua.cost
-				oa.taskRealMin += ua.taskRealMin
-				oa.taskAncientMin += ua.taskAncientMin
-				oa.commitRealMin += ua.commitRealMin
-				oa.commitAncientMin += ua.commitAncientMin
+				oa.taskCount += ua.TaskCount
+				oa.commitCount += ua.CommitCount
+				oa.taskDiffLines += ua.TaskDiffLines
+				oa.commitDiffLines += ua.CommitDiffLines
+				oa.upTokens += ua.UpstreamTokens
+				oa.downTokens += ua.DownstreamTokens
+				oa.cost += ua.Cost
+				oa.taskRealMin += ua.TaskRealMinutes
+				oa.taskAncientMin += ua.TaskAncientMinutes
+				oa.commitRealMin += ua.CommitRealMinutes
+				oa.commitAncientMin += ua.CommitAncientMinutes
 			}
 		}
 		orgAggMap[orgName] = oa
@@ -535,74 +442,35 @@ func listOrgV2(c *gin.Context) {
 
 	dayOrgMap := make(map[dayOrgKey]*dayOrgAgg)
 
-	seriesQuery := `SELECT user_id, create_time,
-		COALESCE(jsonb_array_length(task_ids), 0),
-		COALESCE(jsonb_array_length(commit_ids), 0),
-		COALESCE(task_diff_lines, 0),
-		COALESCE(commit_diff_lines, 0),
-		COALESCE(upstream_tokens, 0),
-		COALESCE(downstream_tokens, 0),
-		COALESCE(cost, 0),
-		COALESCE(task_real_minutes, 0),
-		COALESCE(task_ancient_minutes, 0),
-		COALESCE(commit_real_minutes, 0),
-		COALESCE(commit_ancient_minutes, 0)
-		FROM user_productivity
-		WHERE user_id = ANY($1::text[])`
-
-	seriesArgs := []interface{}{pq.Array(allUserIDs)}
-	seriesArgIdx := 2
-	if startTime != "" {
-		seriesQuery += fmt.Sprintf(" AND create_time >= $%d", seriesArgIdx)
-		seriesArgs = append(seriesArgs, startTime)
-		seriesArgIdx++
-	}
-	if endTime != "" {
-		seriesQuery += fmt.Sprintf(" AND create_time <= $%d", seriesArgIdx)
-		seriesArgs = append(seriesArgs, endTime)
-		seriesArgIdx++
-	}
-	seriesQuery += " ORDER BY create_time"
-
-	sRows, err := statDB.Query(seriesQuery, seriesArgs...)
+	sRows, err := QueryUserProdTimeSeries(statDB, allUserIDs, startTime, endTime)
 	if err != nil {
 		c.JSON(http.StatusOK, OrgListResponse{Data: data, Series: []OrgSeriesItem{}})
 		return
 	}
-	defer sRows.Close()
 
-	for sRows.Next() {
-		var uid string
-		var ct time.Time
-		var taskCnt, commitCnt, taskDiff, commitDiff int
-		var upTok, downTok int64
-		var cost, taskReal, taskAnc, commitReal, commitAnc float64
-		if err := sRows.Scan(&uid, &ct, &taskCnt, &commitCnt, &taskDiff, &commitDiff,
-			&upTok, &downTok, &cost, &taskReal, &taskAnc, &commitReal, &commitAnc); err != nil {
-			continue
-		}
-		orgName, ok := uidToOrg[uid]
+	for _, row := range sRows {
+		orgName, ok := uidToOrg[row.UserID]
 		if !ok {
 			continue
 		}
-		dateStr := ct.Format("2006-01-02")
+		dateStr := row.CreateTime.Format("2006-01-02")
 		key := dayOrgKey{date: dateStr, orgName: orgName}
 		if _, ok := dayOrgMap[key]; !ok {
 			dayOrgMap[key] = &dayOrgAgg{users: make(map[string]bool)}
 		}
 		da := dayOrgMap[key]
-		da.users[uid] = true
-		da.taskCount += taskCnt
-		da.commitCount += commitCnt
-		da.taskDiffLines += taskDiff
-		da.commitDiffLines += commitDiff
-		da.upTokens += upTok
-		da.downTokens += downTok
-		da.cost += cost
-		da.taskRealMin += taskReal
-		da.taskAncientMin += taskAnc
-		da.commitRealMin += commitReal
-		da.commitAncientMin += commitAnc
+		da.users[row.UserID] = true
+		da.taskCount += row.TaskCount
+		da.commitCount += row.CommitCount
+		da.taskDiffLines += row.TaskDiffLines
+		da.commitDiffLines += row.CommitDiffLines
+		da.upTokens += row.UpstreamTokens
+		da.downTokens += row.DownstreamTokens
+		da.cost += row.Cost
+		da.taskRealMin += row.TaskRealMinutes
+		da.taskAncientMin += row.TaskAncientMinutes
+		da.commitRealMin += row.CommitRealMinutes
+		da.commitAncientMin += row.CommitAncientMinutes
 	}
 
 	// 收集所有日期，排序
@@ -806,10 +674,12 @@ func getOrgDetailV2(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 	if orgMappings == nil {
-		if err := LoadOrgMapping(statDB); err != nil {
+		maps, err := LoadUserOrgs(statDB)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
+		orgMappings = maps
 	}
 
 	// 解析 org_path，按 "/" 分级匹配 orgMappings
@@ -1322,10 +1192,12 @@ func refreshOrgMappingV2(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "数据库未连接"})
 		return
 	}
-	if err := LoadOrgMapping(statDB); err != nil {
+	maps, err := LoadUserOrgs(statDB)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "刷新组织映射失败: " + err.Error()})
 		return
 	}
+	orgMappings = maps
 	c.JSON(http.StatusOK, RefreshOrgMappingResponse{
 		Count: len(orgMappings),
 		Msg:   "组织映射刷新成功",

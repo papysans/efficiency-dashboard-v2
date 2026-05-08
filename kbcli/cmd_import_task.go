@@ -187,7 +187,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 		return fmt.Errorf("user_id为空")
 	}
 
-	conversations, err := parseConversationFile(conversationPath, cfg.ModelPrices)
+	conversations, err := parseConversationFile(conversationPath)
 	if err != nil {
 		return fmt.Errorf("解析conversation文件失败: %w", err)
 	}
@@ -401,8 +401,31 @@ func calculateCost(model string, inTokens, outTokens int64, prices map[string]Mo
 
 	return (float64(inTokens)/1e6)*price.InPrice + (float64(outTokens)/1e6)*price.OutPrice
 }
+func parseUserInput(userInput string) string {
+	const prefix = "<user_message>"
+	const suffix = "</user_message>"
 
-func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]taskConversation, error) {
+	if !strings.HasPrefix(userInput, prefix) {
+		return userInput
+	}
+
+	startIdx := len(prefix)
+	endIdx := strings.Index(userInput[startIdx:], suffix)
+	if endIdx == -1 {
+		return userInput
+	}
+
+	return userInput[startIdx : startIdx+endIdx]
+}
+
+func calcConversation(conv *taskConversation) {
+	if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
+		conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, cfg.ModelPrices)
+	}
+	conv.UserInput = parseUserInput(conv.UserInput)
+}
+
+func parseConversationFile(path string) ([]taskConversation, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -423,18 +446,23 @@ func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]ta
 		// 尝试直接解析整行
 		var conv taskConversation
 		if err := json.Unmarshal([]byte(line), &conv); err == nil {
-			if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-				conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
-			}
+			calcConversation(&conv)
 			convs = append(convs, conv)
 			continue
 		}
 
 		// 容错：尝试将单行按独立的JSON对象拆分解析
 		// 处理上游写入时缺少换行符的情况: {"a":1}{"a":2}
-		subConvs, splitErr := splitAndParseConversations(line, modelPrices)
-		if splitErr == nil && len(subConvs) > 0 {
-			convs = append(convs, subConvs...)
+		parts, splitErr := splitConversations(line)
+		if splitErr == nil && len(parts) > 0 {
+			for _, part := range parts {
+				var conv taskConversation
+				if err := json.Unmarshal([]byte(part), &conv); err != nil {
+					return nil, fmt.Errorf("第%d行JSON解析失败: %w, 内容: %s", lineNum, err, part)
+				}
+				calcConversation(&conv)
+				convs = append(convs, conv)
+			}
 			continue
 		}
 
@@ -446,9 +474,9 @@ func parseConversationFile(path string, modelPrices map[string]ModelPrice) ([]ta
 	return convs, nil
 }
 
-// splitAndParseConversations 尝试将单行字符串按顶层JSON对象拆分并解析
-func splitAndParseConversations(line string, modelPrices map[string]ModelPrice) ([]taskConversation, error) {
-	var convs []taskConversation
+// splitConversations 尝试将单行字符串按顶层JSON对象拆分，返回JSON字符串列表
+func splitConversations(line string) ([]string, error) {
+	var parts []string
 	start := 0
 	for start < len(line) {
 		if line[start] != '{' {
@@ -498,14 +526,7 @@ func splitAndParseConversations(line string, modelPrices map[string]ModelPrice) 
 		if objStr == "" {
 			break
 		}
-		var conv taskConversation
-		if err := json.Unmarshal([]byte(objStr), &conv); err != nil {
-			break
-		}
-		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, modelPrices)
-		}
-		convs = append(convs, conv)
+		parts = append(parts, objStr)
 
 		// 跳过空白和可能的分隔符
 		next := end + 1
@@ -514,10 +535,10 @@ func splitAndParseConversations(line string, modelPrices map[string]ModelPrice) 
 		}
 		start = next
 	}
-	if len(convs) == 0 {
+	if len(parts) == 0 {
 		return nil, fmt.Errorf("未能拆分出有效JSON对象")
 	}
-	return convs, nil
+	return parts, nil
 }
 
 func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversation, conversationPath, silicaPath string) error {

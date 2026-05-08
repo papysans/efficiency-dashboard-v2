@@ -1,10 +1,9 @@
-﻿package main
+package main
 
 import (
-	
-	"kanban/core/utils"
-"encoding/json"
+	"encoding/json"
 	"fmt"
+	"kanban/core/utils"
 	"log"
 	"math"
 	"net/http"
