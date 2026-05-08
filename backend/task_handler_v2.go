@@ -100,7 +100,6 @@ type TimeSegment struct {
 
 // calculateTaskRealMinutes 根据对话时间戳计算实际工作时长
 func calculateTaskRealMinutes(conversations []StatTaskConversation, gapThreshold int, extensionMin int) (float64, string, []TimeSegment) {
-	// 过滤出有效的 start_time
 	var validTimes []time.Time
 	for _, c := range conversations {
 		if c.StartTime != nil {
@@ -129,7 +128,6 @@ func calculateTaskRealMinutes(conversations []StatTaskConversation, gapThreshold
 
 	gapDur := time.Duration(gapThreshold) * time.Minute
 
-	// 初始化第一个片段
 	segments := []TimeSegment{{Start: validTimes[0], End: validTimes[0], ConvCount: 1}}
 
 	for i := 1; i < len(validTimes); i++ {
@@ -143,7 +141,6 @@ func calculateTaskRealMinutes(conversations []StatTaskConversation, gapThreshold
 			segments = append(segments, TimeSegment{Start: validTimes[i], End: validTimes[i], ConvCount: 1})
 		}
 	}
-	// 最后一个片段加 extension
 	segments[len(segments)-1].End = segments[len(segments)-1].End.Add(ext)
 
 	var totalMinutes float64
@@ -173,20 +170,6 @@ func joinStrings(ss []string, sep string) string {
 }
 
 // listTasksV2 GET /api/v2/tasks
-// @Summary 获取任务列表
-// @Description 按条件查询任务列表，支持日期范围过滤
-// @Tags Tasks
-// @Produce json
-// @Param startDate query string true "开始日期(YYYYMMDD)"
-// @Param endDate query string true "结束日期(YYYYMMDD)"
-// @Param userId query string false "用户ID"
-// @Param workDirId query string false "工作目录ID"
-// @Param page query int false "页码" default(1)
-// @Param pageSize query int false "每页数量" default(20)
-// @Success 200 {object} TaskListResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/tasks [get]
 func listTasksV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
@@ -226,7 +209,6 @@ func listTasksV2(c *gin.Context) {
 		return
 	}
 
-	// 为每条 task 计算 efficiency_ratio
 	results := make([]TaskListItem, len(list))
 	for i, t := range list {
 		item := TaskListItem{
@@ -290,15 +272,6 @@ func listTasksV2(c *gin.Context) {
 }
 
 // getTaskDetailV2 GET /api/v2/tasks/:taskId
-// @Summary 获取任务详情
-// @Description 根据任务ID获取任务详细信息
-// @Tags Tasks
-// @Produce json
-// @Param taskId path string true "任务ID"
-// @Success 200 {object} TaskDetailResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/tasks/{taskId} [get]
 func getTaskDetailV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 
@@ -318,19 +291,14 @@ func getTaskDetailV2(c *gin.Context) {
 		return
 	}
 
-	// 计算 task_real_minutes
 	realMinutes, realReason, segments := calculateTaskRealMinutes(convs, appConfig.TaskRealMinutes.GapThresholdMinutes, appConfig.TaskRealMinutes.ExtensionMinutes)
 	task.TaskRealMinutes = &realMinutes
 	task.TaskRealMinutesReason = &realReason
 
 	go func(taskID string, rm float64, rr string) {
-		_, err := statDB.Exec("UPDATE tasks SET task_real_minutes = $1, task_real_minutes_reason = $2 WHERE task_id = $3", rm, rr, taskID)
-		if err != nil {
-			log.Printf("异步更新 task_real_minutes 失败: %v", err)
-		}
+		UpdateTaskRealMinutes(statDB, taskID, rm, rr)
 	}(task.TaskID, realMinutes, realReason)
 
-	// 如果 title 为空，异步调 AI 提取
 	if task.Title == nil || *task.Title == "" {
 		var userInputs []string
 		for _, conv := range convs {
@@ -343,7 +311,6 @@ func getTaskDetailV2(c *gin.Context) {
 		}
 	}
 
-	// 计算 efficiency_ratio
 	var efficiencyRatio *float64
 	effectiveAncient := task.TaskAncientMinutes
 	if task.TaskAncientMinutesManual != nil {
@@ -418,9 +385,7 @@ func callAIForTaskTitle(taskID string, userInputs []string) {
 	}
 
 	title := strings.TrimSpace(anthropicResp.Content[0].Text)
-	// 去除可能的引号包裹
 	title = strings.Trim(title, "\"'`")
-	// 截断到100字符
 	runes := []rune(title)
 	if len(runes) > 100 {
 		title = string(runes[:100])
@@ -429,26 +394,11 @@ func callAIForTaskTitle(taskID string, userInputs []string) {
 		return
 	}
 
-	_, err = statDB.Exec("UPDATE tasks SET title = $1, updated_at = NOW() WHERE task_id = $2", title, taskID)
-	if err != nil {
-		log.Printf("回写title失败: %v", err)
-	} else {
-		log.Printf("AI提取title完成: task=%s, title=%s", taskID, title)
-	}
+	UpdateTaskTitle(statDB, taskID, title)
+	log.Printf("AI提取title完成: task=%s, title=%s", taskID, title)
 }
 
 // updateTaskManualV2 PUT /api/v2/tasks/:taskId/manual
-// @Summary 更新任务人工数据
-// @Description 更新任务的人工修改数据
-// @Tags Tasks
-// @Accept json
-// @Produce json
-// @Param taskId path string true "任务ID"
-// @Param data body UpdateTaskManualRequest true "人工数据"
-// @Success 200 {object} StatusResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/tasks/{taskId}/manual [put]
 func updateTaskManualV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 	if taskId == "" {
@@ -470,18 +420,6 @@ func updateTaskManualV2(c *gin.Context) {
 }
 
 // getTaskFile GET /api/v2/tasks/file
-// @Summary 获取任务文件
-// @Description 获取任务的原始文件内容
-// @Tags Tasks
-// @Produce json
-// @Param taskId query string true "任务ID"
-// @Param type query string false "文件类型"
-// @Param date query string true "日期(YYYY-MM-DD)"
-// @Success 200 {object} map[string]interface{}
-// @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/tasks/file [get]
 func getTaskFile(c *gin.Context) {
 	typ := c.Query("type")
 	taskId := c.Query("taskId")
@@ -537,16 +475,6 @@ func getTaskFile(c *gin.Context) {
 }
 
 // estimateAncientMinutes POST /api/v2/tasks/estimate-ancient
-// estimateAncientMinutes POST /api/v2/tasks/estimate-ancient
-// @Summary 估算古代工时
-// @Description 使用AI从对话记录中估算任务的古代工时
-// @Tags Tasks
-// @Produce json
-// @Param taskId query string false "指定单个任务ID"
-// @Success 200 {object} EstimateAncientResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/tasks/estimate-ancient [post]
 func estimateAncientMinutes(c *gin.Context) {
 	cfg := appConfig.AIEstimation
 	if !cfg.Enabled || cfg.APIKey == "" {
@@ -554,32 +482,12 @@ func estimateAncientMinutes(c *gin.Context) {
 		return
 	}
 
-	// 可选参数：指定单个 taskId
 	taskId := c.Query("taskId")
 
-	var query string
-	var args []interface{}
-	if taskId != "" {
-		query = `SELECT task_id FROM tasks WHERE task_id = $1 AND task_ancient_minutes IS NULL AND task_ancient_minutes_manual IS NULL`
-		args = []interface{}{taskId}
-	} else {
-		query = `SELECT task_id FROM tasks WHERE task_ancient_minutes IS NULL AND task_ancient_minutes_manual IS NULL ORDER BY start_time DESC LIMIT 50`
-	}
-
-	rows, err := statDB.Query(query, args...)
+	taskIDs, err := GetTaskIDsForEstimation(statDB, taskId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
-	}
-	defer rows.Close()
-
-	var taskIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
-		}
-		taskIDs = append(taskIDs, id)
 	}
 
 	if len(taskIDs) == 0 {
@@ -590,55 +498,24 @@ func estimateAncientMinutes(c *gin.Context) {
 	var results []EstimateAncientResult
 
 	for _, tid := range taskIDs {
-		// 读取对话记录
-		convRows, err := statDB.Query(
-			`SELECT user_input, diff, diff_lines, upstream_tokens, downstream_tokens
-			 FROM task_conversations WHERE task_id = $1 ORDER BY start_time`, tid)
+		userInputs, codeOutputs, totalChars, totalLines, err := GetConvInputForEstimation(statDB, tid)
 		if err != nil {
 			results = append(results, EstimateAncientResult{TaskID: tid, Error: err.Error()})
 			continue
 		}
-
-		var userInputs []string
-		var codeOutputs []string
-		var totalLines int64
-		var totalChars int64
-		for convRows.Next() {
-			var userInput, diff *string
-			var diffLines, upTokens, downTokens *int64
-			if err := convRows.Scan(&userInput, &diff, &diffLines, &upTokens, &downTokens); err != nil {
-				continue
-			}
-			if userInput != nil && *userInput != "" {
-				userInputs = append(userInputs, *userInput)
-				totalChars += int64(len(*userInput))
-			}
-			if diff != nil && *diff != "" {
-				codeOutputs = append(codeOutputs, *diff)
-			}
-			if diffLines != nil {
-				totalLines += *diffLines
-			}
-		}
-		convRows.Close()
 
 		if len(userInputs) == 0 {
 			results = append(results, EstimateAncientResult{TaskID: tid, Error: "no conversation data"})
 			continue
 		}
 
-		// 构建 prompt
 		minutes, reason, err := callAIForAncientEstimation(userInputs, codeOutputs, totalChars, totalLines)
 		if err != nil {
 			results = append(results, EstimateAncientResult{TaskID: tid, Error: err.Error()})
 			continue
 		}
 
-		// 回写 DB
-		_, err = statDB.Exec(
-			`UPDATE tasks SET task_ancient_minutes = $1, task_ancient_minutes_reason = $2, updated_at = NOW() WHERE task_id = $3`,
-			minutes, reason, tid)
-		if err != nil {
+		if err := UpdateTaskAncientEstimation(statDB, tid, minutes, reason); err != nil {
 			results = append(results, EstimateAncientResult{TaskID: tid, Minutes: minutes, Reason: reason, Error: "db update failed: " + err.Error()})
 			continue
 		}

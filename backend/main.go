@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,12 +9,14 @@ import (
 	_ "kanban/backend/docs"
 
 	"kanban/core/config"
+	"kanban/core/models"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gopkg.in/yaml.v3"
+	"gorm.io/gorm"
 )
 
 // @title           Efficiency Dashboard API
@@ -60,11 +61,10 @@ type Config struct {
 }
 
 var appConfig Config
-var statDB *sql.DB
+var statDB *gorm.DB
 
 func loadConfig(path string) (Config, error) {
 	var cfg Config
-	// 默认值
 	cfg.Server.Port = 9990
 	cfg.StatDatabase = config.DatabaseConfig{
 		Host:     "localhost",
@@ -83,7 +83,7 @@ func loadConfig(path string) (Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return cfg, nil // 文件不存在时使用默认值
+		return cfg, nil
 	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("解析 config.yaml 失败: %w", err)
@@ -102,7 +102,8 @@ func healthCheck(c *gin.Context) {
 	httpCode := http.StatusOK
 
 	if statDB != nil {
-		if err := statDB.Ping(); err != nil {
+		sqlDB, err := statDB.DB()
+		if err != nil || sqlDB.Ping() != nil {
 			status = "db_error"
 			httpCode = http.StatusServiceUnavailable
 		}
@@ -121,40 +122,35 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 初始化 costrict_stat 数据库连接
-	statDB, err = InitDB(appConfig.StatDatabase)
+	statDB, err = models.OpenGormDB(appConfig.StatDatabase.DSN())
 	if err != nil {
 		log.Fatalf("costrict_stat数据库初始化失败: %v", err)
 	}
 	log.Println("costrict_stat数据库连接成功")
 
-	// 从 user_org 表加载组织映射
 	if statDB != nil {
-		if err := LoadOrgMapping(statDB); err != nil {
+		maps, err := LoadUserOrgs(statDB)
+		if err != nil {
 			log.Printf("警告: 从 user_org 表加载组织映射失败: %v", err)
 		} else {
+			orgMappings = maps
 			log.Printf("已从 user_org 表加载 %d 条组织映射", len(orgMappings))
 		}
 	}
 
 	r := gin.Default()
 
-	// Swagger 文档路由（需要先运行 swag init 生成文档）
 	r.GET("/swagger", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
 	})
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 健康检查路由（不在 /api 下，供 K8s 探针直接访问）
 	r.GET("/healthz", healthCheck)
 
-	// Prometheus 指标端点（不在 /api 下，供 Prometheus 抓取）
 	r.GET("/metrics", MetricsHandler())
 
-	// 注册全局指标收集中间件（统计所有 API 的响应码和时延）
 	r.Use(MetricsMiddleware())
 
-	// CORS 配置
 	corsOrigins := appConfig.CORS.AllowOrigins
 	if len(corsOrigins) == 0 {
 		corsOrigins = []string{"*"}
@@ -195,7 +191,6 @@ func main() {
 		v2.POST("/orgs/refresh", refreshOrgMappingV2)
 		v2.GET("/group", getGroupDetailV2)
 
-		// Projects
 		v2.POST("/projects", createProjectV2)
 		v2.GET("/projects", listProjectsV2)
 		v2.POST("/projects/check-conflicts", checkProjectConflictsV2)
@@ -209,12 +204,10 @@ func main() {
 		v2.DELETE("/projects/:projectId/tasks", removeTasksFromProjectV2)
 		v2.PUT("/projects/:projectId/tasks/silica", updateTaskSilicaInProjectV2)
 
-		// User Groups
 		v2.POST("/user-groups", createUserGroupHandler)
 		v2.DELETE("/user-groups/:groupId", deleteUserGroupHandler)
 		v2.GET("/user-groups/:groupId", getUserGroupDetailHandler)
 
-		// Config
 		v2.GET("/config", getConfigV2)
 	}
 

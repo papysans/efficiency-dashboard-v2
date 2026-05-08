@@ -86,25 +86,6 @@ type CommitDetailResponse struct {
 }
 
 // listCommitsV2 GET /api/v2/commits
-// @Summary 获取提交列表
-// @Description 按条件查询提交列表
-// @Tags Commits
-// @Produce json
-// @Param repoAddr query string true "仓库地址"
-// @Param repoBranch query string false "分支名"
-// @Param userId query string false "用户ID"
-// @Param org1 query string false "一级组织"
-// @Param org2 query string false "二级组织"
-// @Param org3 query string false "三级组织"
-// @Param org4 query string false "四级组织"
-// @Param startDate query string false "开始日期(YYYYMMDD)"
-// @Param endDate query string false "结束日期(YYYYMMDD)"
-// @Param page query int false "页码" default(1)
-// @Param pageSize query int false "每页数量" default(20)
-// @Success 200 {object} CommitListResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/commits [get]
 func listCommitsV2(c *gin.Context) {
 	repoAddr := c.Query("repoAddr")
 	repoBranch := c.Query("repoBranch")
@@ -134,7 +115,6 @@ func listCommitsV2(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 
-	// 若指定了 org 参数，通过 orgMappings 过滤出匹配的 user_id 集合
 	var orgFilterUserIDs []string
 	if org1 != "" || org2 != "" || org3 != "" || org4 != "" {
 		for uid, m := range orgMappings {
@@ -152,7 +132,6 @@ func listCommitsV2(c *gin.Context) {
 			}
 			orgFilterUserIDs = append(orgFilterUserIDs, uid)
 		}
-		// org 有效但无匹配用户 → 直接返回空结果
 		if len(orgFilterUserIDs) == 0 {
 			c.JSON(http.StatusOK, CommitListResponse{Total: 0, Page: 1, PageSize: 250, Data: []CommitListItem{}})
 			return
@@ -174,7 +153,6 @@ func listCommitsV2(c *gin.Context) {
 		return
 	}
 
-	// 为每条 commit 填充列表项（聚合值从 DB 直接读取，由 kbcli runSilica 计算写入）
 	results := make([]CommitListItem, len(list))
 	for i, commit := range list {
 		var totalCost float64
@@ -222,7 +200,6 @@ func listCommitsV2(c *gin.Context) {
 			Silica:                           commit.Silica,
 		}
 
-		// 计算 efficiency_ratio（该值在导入过程中未计算）
 		effectiveAncient := commit.CommitAncientMinutes
 		if commit.CommitAncientMinutesManual != nil {
 			effectiveAncient = commit.CommitAncientMinutesManual
@@ -231,14 +208,11 @@ func listCommitsV2(c *gin.Context) {
 		if commit.CommitRealMinutesManual != nil {
 			effectiveReal = commit.CommitRealMinutesManual
 		}
-		var efficiencyRatio *float64
 		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
 			ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
-			efficiencyRatio = &ratio
+			item.EfficiencyRatio = &ratio
 		}
-		item.EfficiencyRatio = efficiencyRatio
 
-		// 补充 org 字段
 		if commit.UserID != nil {
 			if om, ok := orgMappings[*commit.UserID]; ok {
 				item.Org1 = om.Org1
@@ -267,15 +241,6 @@ func listCommitsV2(c *gin.Context) {
 }
 
 // getCommitDetailV2 GET /api/v2/commits/:commitId
-// @Summary 获取提交详情
-// @Description 根据提交ID获取提交详细信息
-// @Tags Commits
-// @Produce json
-// @Param commitId path string true "提交ID"
-// @Success 200 {object} CommitDetailResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/commits/{commitId} [get]
 func getCommitDetailV2(c *gin.Context) {
 	commitID := c.Param("commitId")
 
@@ -304,7 +269,6 @@ func getCommitDetailV2(c *gin.Context) {
 		}
 	}
 
-	// 构建关联 task 列表（仅填充展示信息，聚合值从 DB 直接读取）
 	for i, taskID := range taskIDs {
 		rt := RelatedTask{TaskID: taskID}
 		task, err := GetStatTask(statDB, taskID)
@@ -325,7 +289,6 @@ func getCommitDetailV2(c *gin.Context) {
 		relatedTasks = append(relatedTasks, rt)
 	}
 
-	// 计算 efficiency_ratio（该值在导入过程中未计算）
 	var efficiencyRatio *float64
 	effectiveAncient := commit.CommitAncientMinutes
 	if commit.CommitAncientMinutesManual != nil {
@@ -340,7 +303,6 @@ func getCommitDetailV2(c *gin.Context) {
 		efficiencyRatio = &ratio
 	}
 
-	// 从 DB 直接读取聚合值（由 kbcli runSilica 计算写入）
 	var totalCost float64
 	if commit.Cost != nil {
 		totalCost = *commit.Cost
@@ -365,17 +327,6 @@ func getCommitDetailV2(c *gin.Context) {
 }
 
 // updateCommitManualV2 PUT /api/v2/commits/:commitId/manual
-// @Summary 更新提交人工数据
-// @Description 更新提交的人工修改数据
-// @Tags Commits
-// @Accept json
-// @Produce json
-// @Param commitId path string true "提交ID"
-// @Param data body UpdateCommitManualRequest true "人工数据"
-// @Success 200 {object} StatusResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/commits/{commitId}/manual [put]
 func updateCommitManualV2(c *gin.Context) {
 	commitId := c.Param("commitId")
 

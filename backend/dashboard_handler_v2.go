@@ -1,12 +1,10 @@
-﻿package main
+package main
 
 import (
-	
-	"kanban/core/utils"
-"fmt"
 	"net/http"
-	"strings"
 	"time"
+
+	"kanban/core/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -58,98 +56,37 @@ func getDashboardSummary(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 
-	// SQL 1: 从 tasks 聚合
-	taskQuery := `SELECT
-		COUNT(task_id) as total_tasks,
-		COUNT(DISTINCT user_id) as total_users,
-		COUNT(DISTINCT work_dir_id) as total_repos,
-		COALESCE(SUM(cost), 0) as total_cost,
-		COALESCE(SUM(upstream_tokens + downstream_tokens), 0) as total_tokens,
-		COALESCE(SUM(task_ancient_minutes), 0) as total_ai_days,
-		COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)), 0) as total_real_minutes,
-		COALESCE(SUM(COALESCE(task_ancient_minutes_manual, task_ancient_minutes)), 0) as total_ancient_minutes
-		FROM tasks`
-
-	var taskConditions []string
-	var taskArgs []interface{}
-	taskArgIdx := 1
-	if startTime != "" {
-		taskConditions = append(taskConditions, fmt.Sprintf("start_time >= $%d", taskArgIdx))
-		taskArgs = append(taskArgs, startTime)
-		taskArgIdx++
-	}
-	if endTime != "" {
-		taskConditions = append(taskConditions, fmt.Sprintf("end_time <= $%d", taskArgIdx))
-		taskArgs = append(taskArgs, endTime)
-		taskArgIdx++
-	}
-	if len(taskConditions) > 0 {
-		taskQuery += " WHERE " + strings.Join(taskConditions, " AND ")
-	}
-
-	var totalTasks, totalUsers, totalRepos int
-	var totalCost, totalAIDays float64
-	var totalTokens int64
-	var totalRealMinutes, totalAncientMinutes float64
-	err := statDB.QueryRow(taskQuery, taskArgs...).Scan(&totalTasks, &totalUsers, &totalRepos, &totalCost, &totalTokens, &totalAIDays, &totalRealMinutes, &totalAncientMinutes)
+	taskAgg, err := QueryDashboardTaskAgg(statDB, startTime, endTime)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 tasks 聚合失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// 使用 utils.CalcEfficiencyRatio 计算平均提效比
-	avgEfficiencyRatio := utils.CalcEfficiencyRatio(totalAncientMinutes, totalRealMinutes)
-
-	// SQL 2: 从 commits 聚合
-	commitQuery := `SELECT
-		COUNT(*) as total_commits,
-		COALESCE(SUM(diff_lines), 0) as total_diff_lines
-		FROM commits`
-
-	var commitConditions []string
-	var commitArgs []interface{}
-	commitArgIdx := 1
-	if startTime != "" {
-		commitConditions = append(commitConditions, fmt.Sprintf("commit_time >= $%d", commitArgIdx))
-		commitArgs = append(commitArgs, startTime)
-		commitArgIdx++
-	}
-	if endTime != "" {
-		commitConditions = append(commitConditions, fmt.Sprintf("commit_time <= $%d", commitArgIdx))
-		commitArgs = append(commitArgs, endTime)
-		commitArgIdx++
-	}
-	if len(commitConditions) > 0 {
-		commitQuery += " WHERE " + strings.Join(commitConditions, " AND ")
-	}
-
-	var totalCommits int
-	var totalDiffLines int64
-	err = statDB.QueryRow(commitQuery, commitArgs...).Scan(&totalCommits, &totalDiffLines)
+	commitAgg, err := QueryDashboardCommitAgg(statDB, startTime, endTime)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 commits 聚合失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// SQL 3: 从 commits 聚合去重 repo
-	var totalWorkDirs int
-	err = statDB.QueryRow("SELECT COUNT(*) FROM (SELECT DISTINCT repo_addr, repo_branch FROM commits WHERE repo_addr IS NOT NULL AND repo_addr != '') sub").Scan(&totalWorkDirs)
+	totalWorkDirs, err := QueryDistinctWorkDirs(statDB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 work_dirs 聚合失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	avgEfficiencyRatio := utils.CalcEfficiencyRatio(taskAgg.TotalAncientMinutes, taskAgg.TotalRealMinutes)
 
 	c.JSON(http.StatusOK, DashboardSummaryResponse{
-		TotalTasks:              totalTasks,
-		TotalUsers:              totalUsers,
-		TotalRepos:              totalRepos,
-		TotalCommits:            totalCommits,
+		TotalTasks:              taskAgg.TotalTasks,
+		TotalUsers:              taskAgg.TotalUsers,
+		TotalRepos:              taskAgg.TotalRepos,
+		TotalCommits:            commitAgg.TotalCommits,
 		TotalWorkDirs:           totalWorkDirs,
-		TotalCost:               totalCost,
-		TotalTokens:             totalTokens,
-		TotalDiffLines:          totalDiffLines,
-		TotalTaskAncientMinutes: totalAIDays,
-		TotalRealMinutes:        totalRealMinutes,
+		TotalCost:               taskAgg.TotalCost,
+		TotalTokens:             taskAgg.TotalTokens,
+		TotalDiffLines:          commitAgg.TotalDiffLines,
+		TotalTaskAncientMinutes: taskAgg.TotalAIDays,
+		TotalRealMinutes:        taskAgg.TotalRealMinutes,
 		AvgEfficiencyRatio:      avgEfficiencyRatio,
 	})
 }

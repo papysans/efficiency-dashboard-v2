@@ -413,6 +413,11 @@ func (ctx *checkContext) checkConversations() error {
 				ctx.addIssue("error", path, taskID, "", "negative-tokens", "downstream_tokens",
 					fmt.Sprintf("第%d行downstream_tokens为负值(%d)", lineNum, conv.DownstreamTokens))
 			}
+			if (conv.UpstreamTokens > 0) != (conv.DownstreamTokens > 0) {
+				ctx.addIssue("warn", path, taskID, "", "tokens-correlation-mismatch", "upstream_tokens",
+					fmt.Sprintf("第%d行upstream_tokens(%d)与downstream_tokens(%d)不相关：一个大于0而另一个等于0，通常两者应同大于0或同时等于0",
+						lineNum, conv.UpstreamTokens, conv.DownstreamTokens))
+			}
 			if conv.ProcessTime < 0 {
 				ctx.addIssue("warn", path, taskID, "", "negative-process-time", "process_time",
 					fmt.Sprintf("第%d行process_time为负值(%d)", lineNum, conv.ProcessTime))
@@ -841,8 +846,8 @@ var checkCmd = &cobra.Command{
   missing-start-time, missing-task-id, missing-user-id, missing-user-name,
   missing-work-dir, negative-cost, negative-process-time, negative-tokens,
   no-fingerprints, orphan-conversation, parse-failed, read-failed, start-after-end,
-  summary-diff-zero-conv-has-diff, task-id-mismatch, zero-downstream-tokens,
-  zero-upstream-tokens`,
+  summary-diff-zero-conv-has-diff, task-id-mismatch, tokens-correlation-mismatch,
+  zero-downstream-tokens, zero-upstream-tokens`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskDir, _ := cmd.Flags().GetString("task-dir")
 		repoDir, _ := cmd.Flags().GetString("repo-dir")

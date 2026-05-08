@@ -183,6 +183,9 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	if summary.TaskID == "" {
 		return fmt.Errorf("task_id为空")
 	}
+	if summary.UserID == "" {
+		return fmt.Errorf("user_id为空")
+	}
 
 	conversations, err := parseConversationFile(conversationPath, cfg.ModelPrices)
 	if err != nil {
@@ -375,16 +378,27 @@ func calcTaskRealMinutes(conversations []taskConversation, gapThreshold, extensi
 }
 
 func calculateCost(model string, inTokens, outTokens int64, prices map[string]ModelPrice) float64 {
-	price, ok := prices[model]
-	if !ok {
-		price, ok = prices[strings.ToLower(model)]
-		if !ok {
-			price, ok = prices["default"]
-			if !ok {
-				return 0
+	model = strings.ToLower(model)
+	var price ModelPrice
+	// 前缀匹配：找 prices 中为 model 前缀的 key，取最长匹配
+	var bestKey string
+	for k := range prices {
+		if k != "default" && strings.HasPrefix(model, k) {
+			if len(k) > len(bestKey) {
+				bestKey = k
 			}
 		}
 	}
+	if bestKey != "" {
+		price = prices[bestKey]
+	} else {
+		var ok bool
+		price, ok = prices["default"]
+		if !ok {
+			return 0
+		}
+	}
+
 	return (float64(inTokens)/1e6)*price.InPrice + (float64(outTokens)/1e6)*price.OutPrice
 }
 
