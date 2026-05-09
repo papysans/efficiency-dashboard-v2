@@ -4375,7 +4375,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "",
-	BasePath:         "/api",
+	BasePath:         "",
 	Schemes:          []string{},
 	Title:            "Efficiency Dashboard API",
 	Description:      "效率仪表盘后端API，提供任务、提交、用户、仓库、项目、组织等数据管理接口",

@@ -15,7 +15,6 @@
         },
         "version": "1.0"
     },
-    "basePath": "/api",
     "paths": {
         "/api/v2/commits": {
             "get": {

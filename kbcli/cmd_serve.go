@@ -441,7 +441,6 @@ func startCron(queue *TaskQueue) *cron.Cron {
 
 // @license.name  Apache 2.0
 // @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
-// @BasePath  /api
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",

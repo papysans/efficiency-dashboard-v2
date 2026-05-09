@@ -725,7 +725,11 @@ func (f *UserFilter) HasOrgFilter() bool {
 func (f *UserFilter) MatchOrg(userID string) (*models.UserOrg, bool) {
 	om, ok := orgMappings[userID]
 	if !ok {
-		return om, !f.HasOrgFilter()
+		// 用户不在组织映射表中：无过滤条件时允许通过，但返回空结构体避免 nil panic
+		if !f.HasOrgFilter() {
+			return &models.UserOrg{}, true
+		}
+		return nil, false
 	}
 	if f.Org1 != "" && om.Org1 != f.Org1 {
 		return nil, false
@@ -758,6 +762,9 @@ func (f *UserFilter) MatchOrg(userID string) (*models.UserOrg, bool) {
 }
 
 func (f *UserFilter) OrgDisplay(om *models.UserOrg) string {
+	if om == nil {
+		return ""
+	}
 	parts := []string{}
 	for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9} {
 		if v != "" {
