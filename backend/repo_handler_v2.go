@@ -13,8 +13,8 @@ import (
 )
 
 type RepoListItem struct {
-	RepoAddr          *string  `json:"repo_addr"`
-	RepoBranch        *string  `json:"repo_branch"`
+	RepoAddr          string   `json:"repo_addr"`
+	RepoBranch        string   `json:"repo_branch"`
 	CommitCount       int      `json:"commit_count"`
 	StartTime         string   `json:"start_time"`
 	EndTime           string   `json:"end_time"`
@@ -47,28 +47,28 @@ type RepoSummary struct {
 type RepoCommitItem struct {
 	CommitID                         string          `json:"commit_id"`
 	CommitTime                       *time.Time      `json:"commit_time"`
-	RepoAddr                         *string         `json:"repo_addr"`
-	RepoBranch                       *string         `json:"repo_branch"`
-	GitUserName                      *string         `json:"git_user_name"`
-	GitUserEmail                     *string         `json:"git_user_email"`
-	UserID                           *string         `json:"user_id"`
-	UserName                         *string         `json:"user_name"`
-	ClientID                         *string         `json:"client_id"`
-	WorkDir                          *string         `json:"work_dir"`
+	RepoAddr                         string          `json:"repo_addr"`
+	RepoBranch                       string          `json:"repo_branch"`
+	GitUserName                      string          `json:"git_user_name"`
+	GitUserEmail                     string          `json:"git_user_email"`
+	UserID                           string          `json:"user_id"`
+	UserName                         string          `json:"user_name"`
+	ClientID                         string          `json:"client_id"`
+	WorkDir                          string          `json:"work_dir"`
 	DiffLines                        *int            `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
-	CommitAncientMinutesReason       *string         `json:"commit_ancient_minutes_reason"`
+	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientMinutesReasonManual *string         `json:"commit_ancient_minutes_reason_manual"`
+	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
 	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
-	CommitRealMinutesReason          *string         `json:"commit_real_minutes_reason"`
+	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
-	CommitRealMinutesReasonManual    *string         `json:"commit_real_minutes_reason_manual"`
+	CommitRealMinutesReasonManual    string          `json:"commit_real_minutes_reason_manual"`
 	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
-	Comment                          *string         `json:"comment"`
+	Comment                          string          `json:"comment"`
 	CreatedAt                        *time.Time      `json:"created_at"`
 	UpdatedAt                        *time.Time      `json:"updated_at"`
 	Cost                             float64         `json:"cost"`
@@ -272,19 +272,19 @@ func getRepoDetailV2(c *gin.Context) {
 
 		// 收集 reason
 		ancientReason := cm.CommitAncientMinutesReason
-		if cm.CommitAncientMinutesReasonManual != nil {
+		if cm.CommitAncientMinutesReasonManual != "" {
 			ancientReason = cm.CommitAncientMinutesReasonManual
 		}
-		if ancientReason != nil && *ancientReason != "" {
-			ancientReasons = append(ancientReasons, cm.CommitID[:8]+": "+*ancientReason)
+		if ancientReason != "" {
+			ancientReasons = append(ancientReasons, cm.CommitID[:8]+": "+ancientReason)
 		}
 
 		realReason := cm.CommitRealMinutesReason
-		if cm.CommitRealMinutesReasonManual != nil {
+		if cm.CommitRealMinutesReasonManual != "" {
 			realReason = cm.CommitRealMinutesReasonManual
 		}
-		if realReason != nil && *realReason != "" {
-			realReasons = append(realReasons, cm.CommitID[:8]+": "+*realReason)
+		if realReason != "" {
+			realReasons = append(realReasons, cm.CommitID[:8]+": "+realReason)
 		}
 	}
 	var efficiencyRatio *float64
@@ -314,7 +314,7 @@ func getRepoDetailV2(c *gin.Context) {
 			UserName:                         cm.UserName,
 			ClientID:                         cm.ClientID,
 			WorkDir:                          cm.WorkDir,
-			DiffLines:                        cm.DiffLines,
+			DiffLines:                        toIntPtr(cm.DiffLines),
 			CommitAncientMinutes:             cm.CommitAncientMinutes,
 			CommitAncientMinutesReason:       cm.CommitAncientMinutesReason,
 			CommitAncientMinutesManual:       cm.CommitAncientMinutesManual,
@@ -330,15 +330,9 @@ func getRepoDetailV2(c *gin.Context) {
 			Comment:                          cm.Comment,
 			CreatedAt:                        cm.CreatedAt,
 			UpdatedAt:                        cm.UpdatedAt,
-		}
-		if cm.Cost != nil {
-			item.Cost = *cm.Cost
-		}
-		if cm.UpstreamTokens != nil {
-			item.UpstreamTokens = *cm.UpstreamTokens
-		}
-		if cm.DownstreamTokens != nil {
-			item.DownstreamTokens = *cm.DownstreamTokens
+			Cost:                             cm.Cost,
+			UpstreamTokens:                   cm.UpstreamTokens,
+			DownstreamTokens:                 cm.DownstreamTokens,
 		}
 		if cm.Silica != nil && *cm.Silica > 0 {
 			s := math.Round(*cm.Silica*1000) / 10
@@ -432,15 +426,15 @@ func strValue(s *string) string {
 func filterPreferredBranchAggregates(aggregates []RepoAggregate) []RepoAggregate {
 	repoMap := make(map[string][]RepoAggregate)
 	for _, agg := range aggregates {
-		addr := strValue(agg.RepoAddr)
+		addr := agg.RepoAddr
 		repoMap[addr] = append(repoMap[addr], agg)
 	}
 
 	result := make([]RepoAggregate, 0, len(repoMap))
 	for _, aggs := range repoMap {
 		sort.Slice(aggs, func(i, j int) bool {
-			scoreI := branchPriorityScore(strValue(aggs[i].RepoBranch))
-			scoreJ := branchPriorityScore(strValue(aggs[j].RepoBranch))
+			scoreI := branchPriorityScore(aggs[i].RepoBranch)
+			scoreJ := branchPriorityScore(aggs[j].RepoBranch)
 			if scoreI != scoreJ {
 				return scoreI > scoreJ
 			}
@@ -460,7 +454,7 @@ func filterPreferredBranchAggregates(aggregates []RepoAggregate) []RepoAggregate
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return strValue(result[i].RepoAddr) < strValue(result[j].RepoAddr)
+		return result[i].RepoAddr < result[j].RepoAddr
 	})
 
 	return result

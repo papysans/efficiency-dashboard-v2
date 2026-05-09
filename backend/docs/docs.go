@@ -114,6 +114,36 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "五级组织",
+                        "name": "org5",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "六级组织",
+                        "name": "org6",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "七级组织",
+                        "name": "org7",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "八级组织",
+                        "name": "org8",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "九级组织",
+                        "name": "org9",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "default": 1,
                         "description": "页码",
@@ -1434,46 +1464,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v2/tasks/estimate-ancient": {
-            "post": {
-                "description": "使用AI估算指定任务或未估算任务的耗时",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Tasks"
-                ],
-                "summary": "AI估算任务耗时",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "指定任务ID(为空则批量估算最近50个未估算任务)",
-                        "name": "taskId",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.EstimateAncientResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v2/tasks/file": {
             "get": {
                 "description": "根据任务ID和日期获取任务的summary或conversation文件内容",
@@ -1834,6 +1824,36 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "五级组织",
+                        "name": "org5",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "六级组织",
+                        "name": "org6",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "七级组织",
+                        "name": "org7",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "八级组织",
+                        "name": "org8",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "九级组织",
+                        "name": "org9",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "default": 1,
                         "description": "页码",
@@ -2067,6 +2087,21 @@ const docTemplate = `{
                 "org4": {
                     "type": "string"
                 },
+                "org5": {
+                    "type": "string"
+                },
+                "org6": {
+                    "type": "string"
+                },
+                "org7": {
+                    "type": "string"
+                },
+                "org8": {
+                    "type": "string"
+                },
+                "org9": {
+                    "type": "string"
+                },
                 "org_display": {
                     "type": "string"
                 },
@@ -2286,43 +2321,6 @@ const docTemplate = `{
                 "error": {
                     "type": "string",
                     "example": "参数错误"
-                }
-            }
-        },
-        "main.EstimateAncientResponse": {
-            "type": "object",
-            "properties": {
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/main.EstimateAncientResult"
-                    }
-                },
-                "status": {
-                    "type": "string"
-                },
-                "success": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "main.EstimateAncientResult": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "type": "string"
-                },
-                "minutes": {
-                    "type": "number"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "task_id": {
-                    "type": "string"
                 }
             }
         },
@@ -3602,12 +3600,6 @@ const docTemplate = `{
                 },
                 "task": {
                     "$ref": "#/definitions/main.StatTask"
-                },
-                "time_segments": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/main.TimeSegment"
-                    }
                 }
             }
         },
@@ -3791,20 +3783,6 @@ const docTemplate = `{
                 },
                 "upstream_tokens": {
                     "type": "integer"
-                }
-            }
-        },
-        "main.TimeSegment": {
-            "type": "object",
-            "properties": {
-                "conv_count": {
-                    "type": "integer"
-                },
-                "end": {
-                    "type": "string"
-                },
-                "start": {
-                    "type": "string"
                 }
             }
         },
@@ -4173,6 +4151,21 @@ const docTemplate = `{
                 "org4": {
                     "type": "string"
                 },
+                "org5": {
+                    "type": "string"
+                },
+                "org6": {
+                    "type": "string"
+                },
+                "org7": {
+                    "type": "string"
+                },
+                "org8": {
+                    "type": "string"
+                },
+                "org9": {
+                    "type": "string"
+                },
                 "org_display": {
                     "type": "string"
                 },
@@ -4381,7 +4374,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:9990",
+	Host:             "",
 	BasePath:         "/api",
 	Schemes:          []string{},
 	Title:            "Efficiency Dashboard API",

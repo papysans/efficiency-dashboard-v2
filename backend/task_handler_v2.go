@@ -14,33 +14,33 @@ import (
 
 type TaskListItem struct {
 	TaskID                         string     `json:"task_id"`
-	Title                          *string    `json:"title"`
-	UserID                         *string    `json:"user_id"`
-	UserName                       *string    `json:"user_name"`
-	ClientID                       *string    `json:"client_id"`
-	ClientIDE                      *string    `json:"client_ide"`
-	ClientVersion                  *string    `json:"client_version"`
-	ClientOS                       *string    `json:"client_os"`
-	ClientOSVersion                *string    `json:"client_os_version"`
-	Caller                         *string    `json:"caller"`
-	RepoAddr                       *string    `json:"repo_addr"`
-	RepoBranch                     *string    `json:"repo_branch"`
-	WorkDir                        *string    `json:"work_dir"`
-	WorkDirID                      *string    `json:"work_dir_id"`
+	Title                          string     `json:"title"`
+	UserID                         string     `json:"user_id"`
+	UserName                       string     `json:"user_name"`
+	ClientID                       string     `json:"client_id"`
+	ClientIDE                      string     `json:"client_ide"`
+	ClientVersion                  string     `json:"client_version"`
+	ClientOS                       string     `json:"client_os"`
+	ClientOSVersion                string     `json:"client_os_version"`
+	Caller                         string     `json:"caller"`
+	RepoAddr                       string     `json:"repo_addr"`
+	RepoBranch                     string     `json:"repo_branch"`
+	WorkDir                        string     `json:"work_dir"`
+	WorkDirID                      string     `json:"work_dir_id"`
 	StartTime                      *time.Time `json:"start_time"`
 	EndTime                        *time.Time `json:"end_time"`
-	UpstreamTokens                 *int64     `json:"upstream_tokens"`
-	DownstreamTokens               *int64     `json:"downstream_tokens"`
-	Cost                           *float64   `json:"cost"`
-	DiffLines                      *int       `json:"diff_lines"`
+	UpstreamTokens                 int64      `json:"upstream_tokens"`
+	DownstreamTokens               int64      `json:"downstream_tokens"`
+	Cost                           float64    `json:"cost"`
+	DiffLines                      int        `json:"diff_lines"`
 	TaskAncientMinutes             *float64   `json:"task_ancient_minutes"`
-	TaskAncientMinutesReason       *string    `json:"task_ancient_minutes_reason"`
+	TaskAncientMinutesReason       string     `json:"task_ancient_minutes_reason"`
 	TaskAncientMinutesManual       *float64   `json:"task_ancient_minutes_manual"`
-	TaskAncientMinutesReasonManual *string    `json:"task_ancient_minutes_reason_manual"`
+	TaskAncientMinutesReasonManual string     `json:"task_ancient_minutes_reason_manual"`
 	TaskRealMinutes                *float64   `json:"task_real_minutes"`
-	TaskRealMinutesReason          *string    `json:"task_real_minutes_reason"`
+	TaskRealMinutesReason          string     `json:"task_real_minutes_reason"`
 	TaskRealMinutesManual          *float64   `json:"task_real_minutes_manual"`
-	TaskRealMinutesReasonManual    *string    `json:"task_real_minutes_reason_manual"`
+	TaskRealMinutesReasonManual    string     `json:"task_real_minutes_reason_manual"`
 	CreatedAt                      *time.Time `json:"created_at"`
 	UpdatedAt                      *time.Time `json:"updated_at"`
 	EfficiencyRatio                *float64   `json:"efficiency_ratio"`
@@ -211,8 +211,8 @@ func listTasksV2(c *gin.Context) {
 			item.EfficiencyRatio = &ratio
 		}
 
-		if t.UserID != nil {
-			if om, ok := orgMappings[*t.UserID]; ok {
+		if t.UserID != "" {
+			if om, ok := orgMappings[t.UserID]; ok {
 				item.Org1 = om.Org1
 				item.Org2 = om.Org2
 				item.Org3 = om.Org3

@@ -91,6 +91,16 @@ definitions:
         type: string
       org4:
         type: string
+      org5:
+        type: string
+      org6:
+        type: string
+      org7:
+        type: string
+      org8:
+        type: string
+      org9:
+        type: string
       repo_addr:
         type: string
       repo_branch:
@@ -234,30 +244,6 @@ definitions:
     properties:
       error:
         example: 参数错误
-        type: string
-    type: object
-  main.EstimateAncientResponse:
-    properties:
-      results:
-        items:
-          $ref: '#/definitions/main.EstimateAncientResult'
-        type: array
-      status:
-        type: string
-      success:
-        type: integer
-      total:
-        type: integer
-    type: object
-  main.EstimateAncientResult:
-    properties:
-      error:
-        type: string
-      minutes:
-        type: number
-      reason:
-        type: string
-      task_id:
         type: string
     type: object
   main.GroupDetailResponse:
@@ -1102,10 +1088,6 @@ definitions:
         type: number
       task:
         $ref: '#/definitions/main.StatTask'
-      time_segments:
-        items:
-          $ref: '#/definitions/main.TimeSegment'
-        type: array
     type: object
   main.TaskListItem:
     properties:
@@ -1227,15 +1209,6 @@ definitions:
         type: number
       upstream_tokens:
         type: integer
-    type: object
-  main.TimeSegment:
-    properties:
-      conv_count:
-        type: integer
-      end:
-        type: string
-      start:
-        type: string
     type: object
   main.UpdateCommitManualRequest:
     properties:
@@ -1481,6 +1454,16 @@ definitions:
         type: string
       org4:
         type: string
+      org5:
+        type: string
+      org6:
+        type: string
+      org7:
+        type: string
+      org8:
+        type: string
+      org9:
+        type: string
       task_ancient_minutes:
         type: number
       task_count:
@@ -1610,7 +1593,6 @@ definitions:
       total:
         type: integer
     type: object
-host: localhost:9990
 info:
   contact:
     email: support@swagger.io
@@ -1679,6 +1661,26 @@ paths:
       - description: 四级组织
         in: query
         name: org4
+        type: string
+      - description: 五级组织
+        in: query
+        name: org5
+        type: string
+      - description: 六级组织
+        in: query
+        name: org6
+        type: string
+      - description: 七级组织
+        in: query
+        name: org7
+        type: string
+      - description: 八级组织
+        in: query
+        name: org8
+        type: string
+      - description: 九级组织
+        in: query
+        name: org9
         type: string
       - default: 1
         description: 页码
@@ -2624,32 +2626,6 @@ paths:
       summary: 更新任务人工数据
       tags:
       - Tasks
-  /api/v2/tasks/estimate-ancient:
-    post:
-      description: 使用AI估算指定任务或未估算任务的耗时
-      parameters:
-      - description: 指定任务ID(为空则批量估算最近50个未估算任务)
-        in: query
-        name: taskId
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/main.EstimateAncientResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: AI估算任务耗时
-      tags:
-      - Tasks
   /api/v2/tasks/file:
     get:
       description: 根据任务ID和日期获取任务的summary或conversation文件内容
@@ -2818,6 +2794,26 @@ paths:
       - description: 四级组织
         in: query
         name: org4
+        type: string
+      - description: 五级组织
+        in: query
+        name: org5
+        type: string
+      - description: 六级组织
+        in: query
+        name: org6
+        type: string
+      - description: 七级组织
+        in: query
+        name: org7
+        type: string
+      - description: 八级组织
+        in: query
+        name: org8
+        type: string
+      - description: 九级组织
+        in: query
+        name: org9
         type: string
       - default: 1
         description: 页码

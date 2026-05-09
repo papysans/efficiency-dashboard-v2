@@ -162,7 +162,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		TaskIDs:                    models.StringJSON("[]"),
 		TaskIDsSilica:              models.StringJSON("[]"),
 		CommitAncientMinutes:       &ancientMinutes,
-		CommitAncientMinutesReason: &ancientReason,
+		CommitAncientMinutesReason: ancientReason,
 	}
 
 	result := db.Clauses(clause.OnConflict{

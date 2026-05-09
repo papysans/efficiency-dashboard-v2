@@ -16,7 +16,7 @@ import (
 type ProjectListItem struct {
 	ProjectID                             string          `json:"project_id"`
 	Name                                  string          `json:"name"`
-	Description                           *string         `json:"description"`
+	Description                           string          `json:"description"`
 	Repos                                 json.RawMessage `json:"repos" swaggertype:"string"`
 	TaskIDs                               json.RawMessage `json:"task_ids" swaggertype:"string"`
 	TaskIDsSilica                         json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
@@ -28,17 +28,17 @@ type ProjectListItem struct {
 	DownstreamTokens                      *int64          `json:"downstream_tokens"`
 	Cost                                  *float64        `json:"cost"`
 	ProjectAncientMinutes                 *float64        `json:"project_ancient_minutes"`
-	ProjectAncientMinutesReason           *string         `json:"project_ancient_minutes_reason"`
+	ProjectAncientMinutesReason           string          `json:"project_ancient_minutes_reason"`
 	ProjectAncientMinutesManual           *float64        `json:"project_ancient_minutes_manual"`
-	ProjectAncientMinutesReasonManual     *string         `json:"project_ancient_minutes_reason_manual"`
+	ProjectAncientMinutesReasonManual     string          `json:"project_ancient_minutes_reason_manual"`
 	ProjectRealProcessMinutes             *float64        `json:"project_real_process_minutes"`
-	ProjectRealProcessMinutesReason       *string         `json:"project_real_process_minutes_reason"`
+	ProjectRealProcessMinutesReason       string          `json:"project_real_process_minutes_reason"`
 	ProjectRealProcessMinutesManual       *float64        `json:"project_real_process_minutes_manual"`
-	ProjectRealProcessMinutesReasonManual *string         `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealProcessMinutesReasonManual string          `json:"project_real_process_minutes_reason_manual"`
 	ProjectRealLeadMinutes                *float64        `json:"project_real_lead_minutes"`
-	ProjectRealLeadMinutesReason          *string         `json:"project_real_lead_minutes_reason"`
+	ProjectRealLeadMinutesReason          string          `json:"project_real_lead_minutes_reason"`
 	ProjectRealLeadMinutesManual          *float64        `json:"project_real_lead_minutes_manual"`
-	ProjectRealLeadMinutesReasonManual    *string         `json:"project_real_lead_minutes_reason_manual"`
+	ProjectRealLeadMinutesReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
 	CreatedAt                             *time.Time      `json:"created_at"`
 	UpdatedAt                             *time.Time      `json:"updated_at"`
 	RepoCount                             int             `json:"repo_count"`
@@ -58,10 +58,10 @@ type ProjectCommitItem struct {
 	CommitTime                 *time.Time `json:"commit_time"`
 	RepoAddr                   string     `json:"repo_addr"`
 	RepoBranch                 string     `json:"repo_branch"`
-	UserName                   *string    `json:"user_name"`
-	GitUserName                *string    `json:"git_user_name"`
+	UserName                   string     `json:"user_name"`
+	GitUserName                string     `json:"git_user_name"`
 	DiffLines                  *int       `json:"diff_lines"`
-	Comment                    *string    `json:"comment"`
+	Comment                    string     `json:"comment"`
 	CommitAncientMinutes       *float64   `json:"commit_ancient_minutes"`
 	CommitAncientMinutesManual *float64   `json:"commit_ancient_minutes_manual"`
 	CommitRealMinutes          *float64   `json:"commit_real_minutes"`
@@ -71,7 +71,7 @@ type ProjectCommitItem struct {
 
 type ProjectTaskItem struct {
 	TaskID                   string     `json:"task_id"`
-	UserName                 *string    `json:"user_name"`
+	UserName                 string     `json:"user_name"`
 	StartTime                *time.Time `json:"start_time"`
 	EndTime                  *time.Time `json:"end_time"`
 	UpstreamTokens           *int64     `json:"upstream_tokens"`
@@ -81,8 +81,8 @@ type ProjectTaskItem struct {
 	TaskAncientMinutesManual *float64   `json:"task_ancient_minutes_manual"`
 	TaskRealMinutes          *float64   `json:"task_real_minutes"`
 	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
-	Title                    *string    `json:"title"`
-	WorkDir                  *string    `json:"work_dir"`
+	Title                    string     `json:"title"`
+	WorkDir                  string     `json:"work_dir"`
 	Silica                   float64    `json:"silica"`
 }
 
@@ -263,15 +263,9 @@ func recalculateProjectAggregates(projectID string) error {
 		if task == nil {
 			continue
 		}
-		if task.UpstreamTokens != nil {
-			upstreamTokens += *task.UpstreamTokens
-		}
-		if task.DownstreamTokens != nil {
-			downstreamTokens += *task.DownstreamTokens
-		}
-		if task.Cost != nil {
-			cost += *task.Cost
-		}
+		upstreamTokens += task.UpstreamTokens
+		downstreamTokens += task.DownstreamTokens
+		cost += task.Cost
 		if task.TaskAncientMinutesManual != nil {
 			ancientMinutes += *task.TaskAncientMinutesManual
 		} else if task.TaskAncientMinutes != nil {
@@ -373,9 +367,13 @@ func createProjectV2(c *gin.Context) {
 		return
 	}
 
+	desc := ""
+	if req.Description != nil {
+		desc = *req.Description
+	}
 	p := &Project{
 		Name:        req.Name,
-		Description: req.Description,
+		Description: desc,
 	}
 	projectID, err := CreateProject(statDB, p)
 	if err != nil {
@@ -447,11 +445,11 @@ func listProjectsV2(c *gin.Context) {
 				continue
 			}
 			for _, lc := range lights {
-				if lc.UserName != nil && *lc.UserName != "" {
-					userSet[*lc.UserName] = true
+				if lc.UserName != "" {
+					userSet[lc.UserName] = true
 				}
-				if lc.DiffLines != nil {
-					totalCodeLines += int64(*lc.DiffLines)
+				if lc.DiffLines > 0 {
+					totalCodeLines += int64(lc.DiffLines)
 				}
 			}
 		}
@@ -460,8 +458,8 @@ func listProjectsV2(c *gin.Context) {
 			taskDetailMap, err := BatchGetStatTasks(statDB, taskIDs)
 			if err == nil {
 				for _, task := range taskDetailMap {
-					if task.UserName != nil && *task.UserName != "" {
-						userSet[*task.UserName] = true
+					if task.UserName != "" {
+						userSet[task.UserName] = true
 					}
 				}
 			}
@@ -608,22 +606,14 @@ func getProjectDetailV2(c *gin.Context) {
 	// 构建 commits 列表
 	commitItems := make([]ProjectCommitItem, 0, len(commitMap))
 	for _, cm := range commitMap {
-		repoAddr := ""
-		if cm.RepoAddr != nil {
-			repoAddr = *cm.RepoAddr
-		}
-		repoBranch := ""
-		if cm.RepoBranch != nil {
-			repoBranch = *cm.RepoBranch
-		}
 		commitItems = append(commitItems, ProjectCommitItem{
 			CommitID:                   cm.CommitID,
 			CommitTime:                 cm.CommitTime,
-			RepoAddr:                   repoAddr,
-			RepoBranch:                 repoBranch,
+			RepoAddr:                   cm.RepoAddr,
+			RepoBranch:                 cm.RepoBranch,
 			UserName:                   cm.UserName,
 			GitUserName:                cm.GitUserName,
-			DiffLines:                  cm.DiffLines,
+			DiffLines:                  toIntPtr(cm.DiffLines),
 			Comment:                    cm.Comment,
 			CommitAncientMinutes:       cm.CommitAncientMinutes,
 			CommitAncientMinutesManual: cm.CommitAncientMinutesManual,
@@ -644,9 +634,9 @@ func getProjectDetailV2(c *gin.Context) {
 			UserName:                 task.UserName,
 			StartTime:                task.StartTime,
 			EndTime:                  task.EndTime,
-			UpstreamTokens:           task.UpstreamTokens,
-			DownstreamTokens:         task.DownstreamTokens,
-			Cost:                     task.Cost,
+			UpstreamTokens:           &task.UpstreamTokens,
+			DownstreamTokens:         &task.DownstreamTokens,
+			Cost:                     &task.Cost,
 			TaskAncientMinutes:       task.TaskAncientMinutes,
 			TaskAncientMinutesManual: task.TaskAncientMinutesManual,
 			TaskRealMinutes:          task.TaskRealMinutes,
@@ -663,15 +653,15 @@ func getProjectDetailV2(c *gin.Context) {
 	// user_count: 统计参与的用户数
 	userSet := map[string]bool{}
 	for _, cm := range commitMap {
-		if cm.UserName != nil && *cm.UserName != "" {
-			userSet[*cm.UserName] = true
-		} else if cm.GitUserName != nil && *cm.GitUserName != "" {
-			userSet[*cm.GitUserName] = true
+		if cm.UserName != "" {
+			userSet[cm.UserName] = true
+		} else if cm.GitUserName != "" {
+			userSet[cm.GitUserName] = true
 		}
 	}
 	for _, task := range taskDetailMap {
-		if task.UserName != nil && *task.UserName != "" {
-			userSet[*task.UserName] = true
+		if task.UserName != "" {
+			userSet[task.UserName] = true
 		}
 	}
 
@@ -716,7 +706,9 @@ func updateProjectV2(c *gin.Context) {
 	}
 
 	project.Name = req.Name
-	project.Description = req.Description
+	if req.Description != nil {
+		project.Description = *req.Description
+	}
 	project.Repos = req.Repos
 	project.TaskIDs = req.TaskIDs
 	project.TaskIDsSilica = req.TaskIDsSilica

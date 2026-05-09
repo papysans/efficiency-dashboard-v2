@@ -18,26 +18,6 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
-        "/api/health": {
-            "get": {
-                "description": "检查服务器是否正常运行",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "health"
-                ],
-                "summary": "健康检查",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/main.HealthResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/tasks": {
             "get": {
                 "description": "获取所有异步任务的列表",
@@ -79,6 +59,52 @@
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/main.EfficiencyBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/main.CreateTaskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tasks/import": {
+            "post": {
+                "description": "将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-task → import-repo → import-org → silica → efficiency",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "提交 import 异步任务",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.ImportBody"
                         }
                     }
                 ],
@@ -379,6 +405,26 @@
                     }
                 }
             }
+        },
+        "/health": {
+            "get": {
+                "description": "检查服务器是否正常运行",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "健康检查",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.HealthResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -476,6 +522,39 @@
                 }
             }
         },
+        "main.ImportBody": {
+            "type": "object",
+            "properties": {
+                "analysed_dir": {
+                    "type": "string",
+                    "example": "./analysed"
+                },
+                "date": {
+                    "type": "string",
+                    "example": "20240101"
+                },
+                "force": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "from_csv": {
+                    "type": "string",
+                    "example": "./org.csv"
+                },
+                "from_db": {
+                    "type": "string",
+                    "example": "host=localhost dbname=auth"
+                },
+                "repo_dir": {
+                    "type": "string",
+                    "example": "/path/to/repo"
+                },
+                "task_dir": {
+                    "type": "string",
+                    "example": "/path/to/task"
+                }
+            }
+        },
         "main.ImportOrgBody": {
             "type": "object",
             "properties": {
@@ -537,6 +616,10 @@
                 "force": {
                     "type": "boolean",
                     "example": false
+                },
+                "max_days": {
+                    "type": "integer",
+                    "example": 7
                 }
             }
         },

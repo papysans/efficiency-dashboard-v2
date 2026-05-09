@@ -95,14 +95,6 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("flexString: cannot unmarshal %s", string(data))
 }
 
-func flexStrPtr(s flexString) *string {
-	if s == "" {
-		return nil
-	}
-	str := string(s)
-	return &str
-}
-
 func calcTaskRecord(summary *taskSummary, conversations []taskConversation) models.Task {
 	rec := models.Task{
 		TaskID:          summary.TaskID,
@@ -271,8 +263,8 @@ func saveConversations(db *gorm.DB, taskID string, conversations []taskConversat
 				ResponseContent:  utils.SanitizeText(conv.ResponseContent),
 				UserInput:        utils.SanitizeText(conv.UserInput),
 				DiffLines:        conv.DiffLines,
-				ErrorCode:        stringPtrToStr(flexStrPtr(conv.ErrorCode)),
-				ErrorReason:      utils.SanitizeText(stringPtrToStr(flexStrPtr(conv.ErrorReason))),
+				ErrorCode:        string(conv.ErrorCode),
+				ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
 			}
 
 			result := tx.Clauses(clause.OnConflict{
@@ -285,13 +277,6 @@ func saveConversations(db *gorm.DB, taskID string, conversations []taskConversat
 		}
 		return nil
 	})
-}
-
-func stringPtrToStr(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
 }
 
 func estimateTaskAncientMinutes(cfg EstimateConfig, convs []taskConversation, realMinutes float64) (float64, string) {

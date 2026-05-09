@@ -40,9 +40,9 @@ type Commit struct {
 	WorkDir                          string     `gorm:"type:text" json:"work_dir"`
 	DiffLines                        int        `gorm:"type:int" json:"diff_lines"`
 	CommitAncientMinutes             *float64   `gorm:"type:float8" json:"commit_ancient_minutes"`
-	CommitAncientMinutesReason       *string    `gorm:"type:text" json:"commit_ancient_minutes_reason"`
+	CommitAncientMinutesReason       string     `gorm:"type:text" json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64   `gorm:"type:float8" json:"commit_ancient_minutes_manual"`
-	CommitAncientMinutesReasonManual *string    `gorm:"type:text" json:"commit_ancient_minutes_reason_manual"`
+	CommitAncientMinutesReasonManual string     `gorm:"type:text" json:"commit_ancient_minutes_reason_manual"`
 	TaskIDs                          StringJSON `gorm:"type:jsonb" json:"task_ids"`
 	TaskIDsSilica                    StringJSON `gorm:"type:jsonb" json:"task_ids_silica"`
 	UpstreamTokens                   *int64     `gorm:"type:bigint" json:"upstream_tokens"`
@@ -52,9 +52,9 @@ type Commit struct {
 	CommitRealAIMinutes              *float64   `gorm:"type:float8" json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64   `gorm:"type:float8" json:"commit_real_ancient_minutes"`
 	CommitRealMinutes                *float64   `gorm:"type:float8" json:"commit_real_minutes"`
-	CommitRealMinutesReason          *string    `gorm:"type:text" json:"commit_real_minutes_reason"`
+	CommitRealMinutesReason          string     `gorm:"type:text" json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64   `gorm:"type:float8" json:"commit_real_minutes_manual"`
-	CommitRealMinutesReasonManual    *string    `gorm:"type:text" json:"commit_real_minutes_reason_manual"`
+	CommitRealMinutesReasonManual    string     `gorm:"type:text" json:"commit_real_minutes_reason_manual"`
 	Comment                          string     `gorm:"type:text" json:"comment"`
 	CreatedAt                        time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
@@ -85,11 +85,11 @@ type Task struct {
 	TaskRealMinutes                float64    `gorm:"type:float8" json:"task_real_minutes"`
 	TaskRealMinutesReason          string     `gorm:"type:text" json:"task_real_minutes_reason"`
 	TaskRealMinutesManual          *float64   `gorm:"type:float8" json:"task_real_minutes_manual"`
-	TaskRealMinutesReasonManual    *string    `gorm:"type:text" json:"task_real_minutes_reason_manual"`
+	TaskRealMinutesReasonManual    string     `gorm:"type:text" json:"task_real_minutes_reason_manual"`
 	TaskAncientMinutes             float64    `gorm:"type:float8" json:"task_ancient_minutes"`
 	TaskAncientMinutesReason       string     `gorm:"type:text" json:"task_ancient_minutes_reason"`
 	TaskAncientMinutesManual       *float64   `gorm:"type:float8" json:"task_ancient_minutes_manual"`
-	TaskAncientMinutesReasonManual *string    `gorm:"type:text" json:"task_ancient_minutes_reason_manual"`
+	TaskAncientMinutesReasonManual string     `gorm:"type:text" json:"task_ancient_minutes_reason_manual"`
 	Title                          string     `gorm:"type:varchar(200)" json:"title"`
 	CreatedAt                      time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
@@ -153,7 +153,7 @@ func (UserProductivity) TableName() string { return "user_productivity" }
 type Project struct {
 	ProjectID                             string     `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"project_id"`
 	Name                                  string     `gorm:"type:varchar(500);not null;index" json:"name"`
-	Description                           *string    `gorm:"type:text" json:"description"`
+	Description                           string     `gorm:"type:text" json:"description"`
 	Repos                                 StringJSON `gorm:"type:jsonb;default:'[]'" json:"repos"`
 	TaskIDs                               StringJSON `gorm:"type:jsonb;default:'[]'" json:"task_ids"`
 	TaskIDsSilica                         StringJSON `gorm:"type:jsonb;default:'[]'" json:"task_ids_silica"`
@@ -165,17 +165,17 @@ type Project struct {
 	DownstreamTokens                      int64      `gorm:"type:bigint;default:0" json:"downstream_tokens"`
 	Cost                                  float64    `gorm:"type:float8;default:0" json:"cost"`
 	ProjectAncientMinutes                 *float64   `gorm:"type:float8" json:"project_ancient_minutes"`
-	ProjectAncientMinutesReason           *string    `gorm:"type:text" json:"project_ancient_minutes_reason"`
+	ProjectAncientMinutesReason           string     `gorm:"type:text" json:"project_ancient_minutes_reason"`
 	ProjectAncientMinutesManual           *float64   `gorm:"type:float8" json:"project_ancient_minutes_manual"`
-	ProjectAncientMinutesReasonManual     *string    `gorm:"type:text" json:"project_ancient_minutes_reason_manual"`
+	ProjectAncientMinutesReasonManual     string     `gorm:"type:text" json:"project_ancient_minutes_reason_manual"`
 	ProjectRealProcessMinutes             *float64   `gorm:"type:float8" json:"project_real_process_minutes"`
-	ProjectRealProcessMinutesReason       *string    `gorm:"type:text" json:"project_real_process_minutes_reason"`
+	ProjectRealProcessMinutesReason       string     `gorm:"type:text" json:"project_real_process_minutes_reason"`
 	ProjectRealProcessMinutesManual       *float64   `gorm:"type:float8" json:"project_real_process_minutes_manual"`
-	ProjectRealProcessMinutesReasonManual *string    `gorm:"type:text" json:"project_real_process_minutes_reason_manual"`
+	ProjectRealProcessMinutesReasonManual string     `gorm:"type:text" json:"project_real_process_minutes_reason_manual"`
 	ProjectRealLeadMinutes                *float64   `gorm:"type:float8" json:"project_real_lead_minutes"`
-	ProjectRealLeadMinutesReason          *string    `gorm:"type:text" json:"project_real_lead_minutes_reason"`
+	ProjectRealLeadMinutesReason          string     `gorm:"type:text" json:"project_real_lead_minutes_reason"`
 	ProjectRealLeadMinutesManual          *float64   `gorm:"type:float8" json:"project_real_lead_minutes_manual"`
-	ProjectRealLeadMinutesReasonManual    *string    `gorm:"type:text" json:"project_real_lead_minutes_reason_manual"`
+	ProjectRealLeadMinutesReasonManual    string     `gorm:"type:text" json:"project_real_lead_minutes_reason_manual"`
 	CreatedAt                             time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                             time.Time  `gorm:"autoUpdateTime;index" json:"updated_at"`
 }
