@@ -43,8 +43,32 @@
                     },
                     {
                         "type": "string",
+                        "description": "git用户名",
+                        "name": "gitUserName",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "用户ID",
                         "name": "userId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户名",
+                        "name": "userName",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "客户端ID",
+                        "name": "clientId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "工作目录",
+                        "name": "workDir",
                         "in": "query"
                     },
                     {
@@ -1258,6 +1282,114 @@
                         "name": "endDate",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "userId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户名",
+                        "name": "userName",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "客户端ID",
+                        "name": "clientId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "IDE类型",
+                        "name": "clientIde",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "操作系统",
+                        "name": "clientOs",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "调用方",
+                        "name": "caller",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "仓库地址",
+                        "name": "repoAddr",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "分支",
+                        "name": "repoBranch",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "工作目录ID",
+                        "name": "workDirId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "一级组织",
+                        "name": "org1",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "二级组织",
+                        "name": "org2",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "三级组织",
+                        "name": "org3",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "四级组织",
+                        "name": "org4",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "五级组织",
+                        "name": "org5",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "六级组织",
+                        "name": "org6",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "七级组织",
+                        "name": "org7",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "八级组织",
+                        "name": "org8",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "九级组织",
+                        "name": "org9",
+                        "in": "query"
                     },
                     {
                         "type": "integer",
@@ -3522,6 +3654,21 @@
                     "type": "string"
                 },
                 "org4": {
+                    "type": "string"
+                },
+                "org5": {
+                    "type": "string"
+                },
+                "org6": {
+                    "type": "string"
+                },
+                "org7": {
+                    "type": "string"
+                },
+                "org8": {
+                    "type": "string"
+                },
+                "org9": {
                     "type": "string"
                 },
                 "repo_addr": {

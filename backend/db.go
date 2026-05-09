@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"kanban/core/config"
@@ -682,9 +683,171 @@ func ListStatTaskConversations(db *gorm.DB, taskID string) ([]StatTaskConversati
 	return result, nil
 }
 
+type UserFilter struct {
+	StartTime   string
+	EndTime     string
+	Granularity string
+	Org1        string
+	Org2        string
+	Org3        string
+	Org4        string
+	Org5        string
+	Org6        string
+	Org7        string
+	Org8        string
+	Org9        string
+}
+
+func (f *UserFilter) HasOrgFilter() bool {
+	return f.Org1 != "" || f.Org2 != "" || f.Org3 != "" || f.Org4 != "" ||
+		f.Org5 != "" || f.Org6 != "" || f.Org7 != "" || f.Org8 != "" || f.Org9 != ""
+}
+
+func (f *UserFilter) MatchOrg(userID string) (*models.UserOrg, bool) {
+	om, ok := orgMappings[userID]
+	if !ok {
+		return om, !f.HasOrgFilter()
+	}
+	if f.Org1 != "" && om.Org1 != f.Org1 {
+		return nil, false
+	}
+	if f.Org2 != "" && om.Org2 != f.Org2 {
+		return nil, false
+	}
+	if f.Org3 != "" && om.Org3 != f.Org3 {
+		return nil, false
+	}
+	if f.Org4 != "" && om.Org4 != f.Org4 {
+		return nil, false
+	}
+	if f.Org5 != "" && om.Org5 != f.Org5 {
+		return nil, false
+	}
+	if f.Org6 != "" && om.Org6 != f.Org6 {
+		return nil, false
+	}
+	if f.Org7 != "" && om.Org7 != f.Org7 {
+		return nil, false
+	}
+	if f.Org8 != "" && om.Org8 != f.Org8 {
+		return nil, false
+	}
+	if f.Org9 != "" && om.Org9 != f.Org9 {
+		return nil, false
+	}
+	return om, true
+}
+
+func (f *UserFilter) OrgDisplay(om *models.UserOrg) string {
+	parts := []string{}
+	for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9} {
+		if v != "" {
+			parts = append(parts, v)
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
 // ============================================================
 // commits CRUD (GORM)
 // ============================================================
+
+type CommitFilter struct {
+	RepoAddr    string
+	RepoBranch  string
+	GitUserName string
+	UserID      string
+	UserName    string
+	ClientID    string
+	WorkDir     string
+	StartTime   string
+	EndTime     string
+	Org1        string
+	Org2        string
+	Org3        string
+	Org4        string
+	Org5        string
+	Org6        string
+	Org7        string
+	Org8        string
+	Org9        string
+	OrgUserIDs  []string
+}
+
+func (f *CommitFilter) resolveOrgUserIDs() {
+	hasOrgFilter := f.Org1 != "" || f.Org2 != "" || f.Org3 != "" || f.Org4 != "" ||
+		f.Org5 != "" || f.Org6 != "" || f.Org7 != "" || f.Org8 != "" || f.Org9 != ""
+	if !hasOrgFilter {
+		return
+	}
+	for uid, m := range orgMappings {
+		if uid == "" {
+			continue
+		}
+		if f.Org1 != "" && m.Org1 != f.Org1 {
+			continue
+		}
+		if f.Org2 != "" && m.Org2 != f.Org2 {
+			continue
+		}
+		if f.Org3 != "" && m.Org3 != f.Org3 {
+			continue
+		}
+		if f.Org4 != "" && m.Org4 != f.Org4 {
+			continue
+		}
+		if f.Org5 != "" && m.Org5 != f.Org5 {
+			continue
+		}
+		if f.Org6 != "" && m.Org6 != f.Org6 {
+			continue
+		}
+		if f.Org7 != "" && m.Org7 != f.Org7 {
+			continue
+		}
+		if f.Org8 != "" && m.Org8 != f.Org8 {
+			continue
+		}
+		if f.Org9 != "" && m.Org9 != f.Org9 {
+			continue
+		}
+		f.OrgUserIDs = append(f.OrgUserIDs, uid)
+	}
+}
+
+func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
+	if f.RepoAddr != "" {
+		q = q.Where("repo_addr = ?", f.RepoAddr)
+	}
+	if f.RepoBranch != "" {
+		q = q.Where("repo_branch = ?", f.RepoBranch)
+	}
+	if f.GitUserName != "" {
+		q = q.Where("git_user_name = ?", f.GitUserName)
+	}
+	if f.UserID != "" {
+		q = q.Where("user_id = ?", f.UserID)
+	}
+	if f.UserName != "" {
+		q = q.Where("user_name = ?", f.UserName)
+	}
+	if f.ClientID != "" {
+		q = q.Where("client_id = ?", f.ClientID)
+	}
+	if f.WorkDir != "" {
+		q = q.Where("work_dir = ?", f.WorkDir)
+	}
+	if len(f.OrgUserIDs) > 0 {
+		q = q.Where("user_id IN ?", f.OrgUserIDs)
+	}
+	if f.StartTime != "" {
+		q = q.Where("commit_time >= ?", f.StartTime)
+	}
+	if f.EndTime != "" {
+		q = q.Where("commit_time <= ?", f.EndTime)
+	}
+	return q
+}
 
 func GetStatCommitByID(db *gorm.DB, commitID string) (*StatCommit, error) {
 	var c models.Commit
@@ -698,26 +861,9 @@ func GetStatCommitByID(db *gorm.DB, commitID string) (*StatCommit, error) {
 	return toStatCommit(&c), nil
 }
 
-func ListStatCommits(db *gorm.DB, repoAddr, repoBranch, userID, startTime, endTime string, page, pageSize int, orgUserIDs []string) ([]StatCommit, error) {
-	q := db.Model(&models.Commit{})
-	if repoAddr != "" {
-		q = q.Where("repo_addr = ?", repoAddr)
-	}
-	if repoBranch != "" {
-		q = q.Where("repo_branch = ?", repoBranch)
-	}
-	if userID != "" {
-		q = q.Where("user_id = ?", userID)
-	}
-	if len(orgUserIDs) > 0 {
-		q = q.Where("user_id IN ?", orgUserIDs)
-	}
-	if startTime != "" {
-		q = q.Where("commit_time >= ?", startTime)
-	}
-	if endTime != "" {
-		q = q.Where("commit_time <= ?", endTime)
-	}
+func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int) ([]StatCommit, error) {
+	filter.resolveOrgUserIDs()
+	q := filter.applyToQuery(db.Model(&models.Commit{}))
 	var commits []models.Commit
 	if err := q.Order("commit_time DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&commits).Error; err != nil {
 		return nil, fmt.Errorf("查询 commits 列表失败: %w", err)
@@ -726,26 +872,9 @@ func ListStatCommits(db *gorm.DB, repoAddr, repoBranch, userID, startTime, endTi
 	return result, nil
 }
 
-func CountStatCommits(db *gorm.DB, repoAddr, repoBranch, userID, startTime, endTime string, orgUserIDs []string) (int, error) {
-	q := db.Model(&models.Commit{})
-	if repoAddr != "" {
-		q = q.Where("repo_addr = ?", repoAddr)
-	}
-	if repoBranch != "" {
-		q = q.Where("repo_branch = ?", repoBranch)
-	}
-	if userID != "" {
-		q = q.Where("user_id = ?", userID)
-	}
-	if len(orgUserIDs) > 0 {
-		q = q.Where("user_id IN ?", orgUserIDs)
-	}
-	if startTime != "" {
-		q = q.Where("commit_time >= ?", startTime)
-	}
-	if endTime != "" {
-		q = q.Where("commit_time <= ?", endTime)
-	}
+func CountStatCommits(db *gorm.DB, filter CommitFilter) (int, error) {
+	filter.resolveOrgUserIDs()
+	q := filter.applyToQuery(db.Model(&models.Commit{}))
 	var count int64
 	if err := q.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("统计 commits 总数失败: %w", err)
@@ -1400,16 +1529,6 @@ func UpdateTaskRealMinutes(db *gorm.DB, taskID string, minutes float64, reason s
 		Updates(map[string]interface{}{"task_real_minutes": minutes, "task_real_minutes_reason": reason})
 	if result.Error != nil {
 		log.Printf("更新 task_real_minutes 失败: %v", result.Error)
-		return result.Error
-	}
-	return nil
-}
-
-func UpdateTaskTitle(db *gorm.DB, taskID string, title string) error {
-	result := db.Model(&models.Task{}).Where("task_id = ?", taskID).
-		Updates(map[string]interface{}{"title": title, "updated_at": time.Now()})
-	if result.Error != nil {
-		log.Printf("回写title失败: %v", result.Error)
 		return result.Error
 	}
 	return nil

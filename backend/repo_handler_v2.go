@@ -220,7 +220,12 @@ func getRepoDetailV2(c *gin.Context) {
 	}
 
 	// 步骤 1：获取 commits
-	commits, err := ListStatCommits(statDB, repoAddr, repoBranch, "", startTime, endTime, 1, 10000, nil)
+	commits, err := ListStatCommits(statDB, CommitFilter{
+		RepoAddr:   repoAddr,
+		RepoBranch: repoBranch,
+		StartTime:  startTime,
+		EndTime:    endTime,
+	}, 1, 10000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 commits 失败: " + err.Error()})
 		return

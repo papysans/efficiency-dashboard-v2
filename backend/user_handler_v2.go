@@ -34,6 +34,11 @@ type UserListItem struct {
 	Org2                  string  `json:"org2"`
 	Org3                  string  `json:"org3"`
 	Org4                  string  `json:"org4"`
+	Org5                  string  `json:"org5"`
+	Org6                  string  `json:"org6"`
+	Org7                  string  `json:"org7"`
+	Org8                  string  `json:"org8"`
+	Org9                  string  `json:"org9"`
 	OrgDisplay            string  `json:"org_display"`
 	IsVirtualGroup        bool    `json:"is_virtual_group"`
 	OrgName               string  `json:"org_name"`
@@ -112,6 +117,11 @@ type UserDetailResponse struct {
 // @Param org2 query string false "二级组织"
 // @Param org3 query string false "三级组织"
 // @Param org4 query string false "四级组织"
+// @Param org5 query string false "五级组织"
+// @Param org6 query string false "六级组织"
+// @Param org7 query string false "七级组织"
+// @Param org8 query string false "八级组织"
+// @Param org9 query string false "九级组织"
 // @Param page query int false "页码" default(1)
 // @Param pageSize query int false "每页数量" default(20)
 // @Success 200 {object} UsersListResponse
@@ -119,22 +129,28 @@ type UserDetailResponse struct {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v2/users [get]
 func listUsersV2(c *gin.Context) {
-	startDate := c.Query("startDate")
-	endDate := c.Query("endDate")
-	granularity := c.Query("granularity")
-	filterOrg1 := c.Query("org1")
-	filterOrg2 := c.Query("org2")
-	filterOrg3 := c.Query("org3")
-	filterOrg4 := c.Query("org4")
+	filter := UserFilter{
+		Granularity: strings.TrimSpace(c.Query("granularity")),
+		Org1:        strings.TrimSpace(c.Query("org1")),
+		Org2:        strings.TrimSpace(c.Query("org2")),
+		Org3:        strings.TrimSpace(c.Query("org3")),
+		Org4:        strings.TrimSpace(c.Query("org4")),
+		Org5:        strings.TrimSpace(c.Query("org5")),
+		Org6:        strings.TrimSpace(c.Query("org6")),
+		Org7:        strings.TrimSpace(c.Query("org7")),
+		Org8:        strings.TrimSpace(c.Query("org8")),
+		Org9:        strings.TrimSpace(c.Query("org9")),
+	}
 
-	var startTime, endTime string
+	startDate := strings.TrimSpace(c.Query("startDate"))
+	endDate := strings.TrimSpace(c.Query("endDate"))
 	if startDate != "" {
 		startT, err := parseDateParam(startDate)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 			return
 		}
-		startTime = startT.Format(time.RFC3339)
+		filter.StartTime = startT.Format(time.RFC3339)
 	}
 	if endDate != "" {
 		endT, err := parseDateParam(endDate)
@@ -142,10 +158,10 @@ func listUsersV2(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 			return
 		}
-		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
+		filter.EndTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 
-	aggRows, err := QueryUserProdAgg(statDB, startTime, endTime)
+	aggRows, err := QueryUserProdAgg(statDB, filter.StartTime, filter.EndTime)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -161,50 +177,45 @@ func listUsersV2(c *gin.Context) {
 			commitEffRatio = utils.CalcEfficiencyRatio(row.CommitAncientMinutes, row.CommitRealMinutes)
 		}
 
-		var org1, org2, org3, org4 string
-		if om, ok := orgMappings[row.UserID]; ok {
-			org1 = om.Org1
-			org2 = om.Org2
-			org3 = om.Org3
-			org4 = om.Org4
-		}
-
-		if filterOrg1 != "" && org1 != filterOrg1 {
-			continue
-		}
-		if filterOrg2 != "" && org2 != filterOrg2 {
-			continue
-		}
-		if filterOrg3 != "" && org3 != filterOrg3 {
-			continue
-		}
-		if filterOrg4 != "" && org4 != filterOrg4 {
+		om, matched := filter.MatchOrg(row.UserID)
+		if !matched {
 			continue
 		}
 
-		var orgParts []string
-		for _, v := range []string{org1, org2, org3, org4} {
-			if v != "" {
-				orgParts = append(orgParts, v)
-			}
-		}
-		orgDisplay := strings.Join(orgParts, "/")
-
-		all = append(all, UserListItem{
-			UserID: row.UserID, UserName: row.UserName, DayCount: row.DayCount,
-			TaskCount: row.TaskCount, CommitCount: row.CommitCount,
-			TaskDiffLines: row.TaskDiffLines, CommitDiffLines: row.CommitDiffLines,
-			UpstreamTokens: row.UpstreamTokens, DownstreamTokens: row.DownstreamTokens,
-			Cost: row.Cost, TaskRealMinutes: row.TaskRealMinutes,
+		orgDisplay := filter.OrgDisplay(om)
+		item := UserListItem{
+			UserID:                row.UserID,
+			UserName:              row.UserName,
+			DayCount:              row.DayCount,
+			TaskCount:             row.TaskCount,
+			CommitCount:           row.CommitCount,
+			TaskDiffLines:         row.TaskDiffLines,
+			CommitDiffLines:       row.CommitDiffLines,
+			UpstreamTokens:        row.UpstreamTokens,
+			DownstreamTokens:      row.DownstreamTokens,
+			Cost:                  row.Cost,
+			TaskRealMinutes:       row.TaskRealMinutes,
 			TaskAncientMinutes:    row.TaskAncientMinutes,
 			TaskEfficiencyRatio:   taskEffRatio,
 			CommitRealMinutes:     row.CommitRealMinutes,
 			CommitAncientMinutes:  row.CommitAncientMinutes,
 			CommitEfficiencyRatio: commitEffRatio,
-			Org1:                  org1, Org2: org2, Org3: org3, Org4: org4,
-			OrgDisplay: orgDisplay, IsVirtualGroup: false,
-			OrgName: "",
-		})
+			OrgDisplay:            orgDisplay,
+			IsVirtualGroup:        false,
+			OrgName:               "",
+		}
+		if om != nil {
+			item.Org1 = om.Org1
+			item.Org2 = om.Org2
+			item.Org3 = om.Org3
+			item.Org4 = om.Org4
+			item.Org5 = om.Org5
+			item.Org6 = om.Org6
+			item.Org7 = om.Org7
+			item.Org8 = om.Org8
+			item.Org9 = om.Org9
+		}
+		all = append(all, item)
 	}
 
 	groups, err := ListUserGroups(statDB)
@@ -221,7 +232,7 @@ func listUsersV2(c *gin.Context) {
 			var dayCount, taskCount, commitCount int
 
 			for _, uid := range userIDs {
-				daily, err := ListUserProductivity(statDB, uid, startTime, endTime, 1, 100000)
+				daily, err := ListUserProductivity(statDB, uid, filter.StartTime, filter.EndTime, 1, 100000)
 				if err != nil {
 					continue
 				}
@@ -312,7 +323,7 @@ func listUsersV2(c *gin.Context) {
 
 	series := []UserSeriesItem{}
 	allPeriods := []string{}
-	if granularity != "" && len(all) > 0 {
+	if filter.Granularity != "" && len(all) > 0 {
 		var allUserIDs []string
 		for _, u := range all {
 			if !u.IsVirtualGroup {
@@ -321,7 +332,7 @@ func listUsersV2(c *gin.Context) {
 		}
 
 		if len(allUserIDs) > 0 {
-			sRows, err := QueryUserProdTimeSeries(statDB, allUserIDs, startTime, endTime)
+			sRows, err := QueryUserProdTimeSeries(statDB, allUserIDs, filter.StartTime, filter.EndTime)
 			if err == nil {
 				type dayUserAgg struct {
 					taskCount        int
@@ -383,7 +394,7 @@ func listUsersV2(c *gin.Context) {
 
 				periodOf := func(dateStr string) string {
 					t, _ := time.Parse("2006-01-02", dateStr)
-					switch granularity {
+					switch filter.Granularity {
 					case "week":
 						weekOfMonth := getWeekOfMonth(t)
 						return fmt.Sprintf("%d%02d第%d周", t.Year(), t.Month(), weekOfMonth)

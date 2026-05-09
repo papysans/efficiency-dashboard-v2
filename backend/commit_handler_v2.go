@@ -48,6 +48,11 @@ type CommitListItem struct {
 	Org2                             string          `json:"org2"`
 	Org3                             string          `json:"org3"`
 	Org4                             string          `json:"org4"`
+	Org5                             string          `json:"org5"`
+	Org6                             string          `json:"org6"`
+	Org7                             string          `json:"org7"`
+	Org8                             string          `json:"org8"`
+	Org9                             string          `json:"org9"`
 	OrgDisplay                       string          `json:"org_display"`
 }
 
@@ -92,13 +97,22 @@ type CommitDetailResponse struct {
 // @Produce json
 // @Param repoAddr query string false "仓库地址"
 // @Param repoBranch query string false "分支名"
+// @Param gitUserName query string false "git用户名"
 // @Param userId query string false "用户ID"
+// @Param userName query string false "用户名"
+// @Param clientId query string false "客户端ID"
+// @Param workDir query string false "工作目录"
 // @Param startDate query string false "开始日期(YYYYMMDD)"
 // @Param endDate query string false "结束日期(YYYYMMDD)"
 // @Param org1 query string false "一级组织"
 // @Param org2 query string false "二级组织"
 // @Param org3 query string false "三级组织"
 // @Param org4 query string false "四级组织"
+// @Param org5 query string false "五级组织"
+// @Param org6 query string false "六级组织"
+// @Param org7 query string false "七级组织"
+// @Param org8 query string false "八级组织"
+// @Param org9 query string false "九级组织"
 // @Param page query int false "页码" default(1)
 // @Param pageSize query int false "每页数量" default(20)
 // @Success 200 {object} CommitListResponse
@@ -106,24 +120,34 @@ type CommitDetailResponse struct {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v2/commits [get]
 func listCommitsV2(c *gin.Context) {
-	repoAddr := c.Query("repoAddr")
-	repoBranch := c.Query("repoBranch")
-	userID := c.Query("userId")
-	startDate := c.Query("startDate")
-	endDate := c.Query("endDate")
-	org1 := c.Query("org1")
-	org2 := c.Query("org2")
-	org3 := c.Query("org3")
-	org4 := c.Query("org4")
+	filter := CommitFilter{
+		RepoAddr:    strings.TrimSpace(c.Query("repoAddr")),
+		RepoBranch:  strings.TrimSpace(c.Query("repoBranch")),
+		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
+		UserID:      strings.TrimSpace(c.Query("userId")),
+		UserName:    strings.TrimSpace(c.Query("userName")),
+		ClientID:    strings.TrimSpace(c.Query("clientId")),
+		WorkDir:     strings.TrimSpace(c.Query("workDir")),
+		Org1:        strings.TrimSpace(c.Query("org1")),
+		Org2:        strings.TrimSpace(c.Query("org2")),
+		Org3:        strings.TrimSpace(c.Query("org3")),
+		Org4:        strings.TrimSpace(c.Query("org4")),
+		Org5:        strings.TrimSpace(c.Query("org5")),
+		Org6:        strings.TrimSpace(c.Query("org6")),
+		Org7:        strings.TrimSpace(c.Query("org7")),
+		Org8:        strings.TrimSpace(c.Query("org8")),
+		Org9:        strings.TrimSpace(c.Query("org9")),
+	}
 
-	var startTime, endTime string
+	startDate := strings.TrimSpace(c.Query("startDate"))
+	endDate := strings.TrimSpace(c.Query("endDate"))
 	if startDate != "" {
 		startT, err := parseDateParam(startDate)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
 			return
 		}
-		startTime = startT.Format(time.RFC3339)
+		filter.StartTime = startT.Format(time.RFC3339)
 	}
 	if endDate != "" {
 		endT, err := parseDateParam(endDate)
@@ -131,42 +155,26 @@ func listCommitsV2(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
 			return
 		}
-		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
-	}
-
-	var orgFilterUserIDs []string
-	if org1 != "" || org2 != "" || org3 != "" || org4 != "" {
-		for uid, m := range orgMappings {
-			if org1 != "" && m.Org1 != org1 {
-				continue
-			}
-			if org2 != "" && m.Org2 != org2 {
-				continue
-			}
-			if org3 != "" && m.Org3 != org3 {
-				continue
-			}
-			if org4 != "" && m.Org4 != org4 {
-				continue
-			}
-			orgFilterUserIDs = append(orgFilterUserIDs, uid)
-		}
-		if len(orgFilterUserIDs) == 0 {
-			c.JSON(http.StatusOK, CommitListResponse{Total: 0, Page: 1, PageSize: 250, Data: []CommitListItem{}})
-			return
-		}
+		filter.EndTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 
 	page := getDefaultInt(c, "page", 1)
 	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
 
-	total, err := CountStatCommits(statDB, repoAddr, repoBranch, userID, startTime, endTime, orgFilterUserIDs)
+	filter.resolveOrgUserIDs()
+	if (filter.Org1 != "" || filter.Org2 != "" || filter.Org3 != "" || filter.Org4 != "" ||
+		filter.Org5 != "" || filter.Org6 != "" || filter.Org7 != "" || filter.Org8 != "" || filter.Org9 != "") && len(filter.OrgUserIDs) == 0 {
+		c.JSON(http.StatusOK, CommitListResponse{Total: 0, Page: 1, PageSize: pageSize, Data: []CommitListItem{}})
+		return
+	}
+
+	total, err := CountStatCommits(statDB, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	list, err := ListStatCommits(statDB, repoAddr, repoBranch, userID, startTime, endTime, page, pageSize, orgFilterUserIDs)
+	list, err := ListStatCommits(statDB, filter, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -218,19 +226,10 @@ func listCommitsV2(c *gin.Context) {
 			DownstreamTokens:                 downstreamTokens,
 			Silica:                           commit.Silica,
 		}
-
-		effectiveAncient := commit.CommitAncientMinutes
-		if commit.CommitAncientMinutesManual != nil {
-			effectiveAncient = commit.CommitAncientMinutesManual
-		}
-		effectiveReal := commit.CommitRealMinutes
-		if commit.CommitRealMinutesManual != nil {
-			effectiveReal = commit.CommitRealMinutesManual
-		}
-		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
-			item.EfficiencyRatio = &ratio
-		}
+		item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(commit.CommitAncientMinutes,
+			commit.CommitAncientMinutesManual,
+			commit.CommitRealMinutes,
+			commit.CommitRealMinutesManual)
 
 		if commit.UserID != nil {
 			if om, ok := orgMappings[*commit.UserID]; ok {
@@ -238,8 +237,13 @@ func listCommitsV2(c *gin.Context) {
 				item.Org2 = om.Org2
 				item.Org3 = om.Org3
 				item.Org4 = om.Org4
+				item.Org5 = om.Org5
+				item.Org6 = om.Org6
+				item.Org7 = om.Org7
+				item.Org8 = om.Org8
+				item.Org9 = om.Org9
 				parts := []string{}
-				for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4} {
+				for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9} {
 					if v != "" {
 						parts = append(parts, v)
 					}
@@ -318,19 +322,10 @@ func getCommitDetailV2(c *gin.Context) {
 		relatedTasks = append(relatedTasks, rt)
 	}
 
-	var efficiencyRatio *float64
-	effectiveAncient := commit.CommitAncientMinutes
-	if commit.CommitAncientMinutesManual != nil {
-		effectiveAncient = commit.CommitAncientMinutesManual
-	}
-	effectiveReal := commit.CommitRealMinutes
-	if commit.CommitRealMinutesManual != nil {
-		effectiveReal = commit.CommitRealMinutesManual
-	}
-	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-		ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
-		efficiencyRatio = &ratio
-	}
+	efficiencyRatio := utils.CalcEfficiencyRatioManual(commit.CommitAncientMinutes,
+		commit.CommitAncientMinutesManual,
+		commit.CommitRealMinutes,
+		commit.CommitRealMinutesManual)
 
 	var totalCost float64
 	if commit.Cost != nil {

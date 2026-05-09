@@ -173,7 +173,6 @@ func main() {
 		v2.GET("/tasks/file", getTaskFile)
 		v2.GET("/tasks/:taskId", getTaskDetailV2)
 		v2.PUT("/tasks/:taskId/manual", updateTaskManualV2)
-		v2.POST("/tasks/estimate-ancient", estimateAncientMinutes)
 
 		v2.GET("/commits", listCommitsV2)
 		v2.GET("/commits/:commitId", getCommitDetailV2)

@@ -1141,6 +1141,16 @@ definitions:
         type: string
       org4:
         type: string
+      org5:
+        type: string
+      org6:
+        type: string
+      org7:
+        type: string
+      org8:
+        type: string
+      org9:
+        type: string
       repo_addr:
         type: string
       repo_branch:
@@ -1626,9 +1636,25 @@ paths:
         in: query
         name: repoBranch
         type: string
+      - description: git用户名
+        in: query
+        name: gitUserName
+        type: string
       - description: 用户ID
         in: query
         name: userId
+        type: string
+      - description: 用户名
+        in: query
+        name: userName
+        type: string
+      - description: 客户端ID
+        in: query
+        name: clientId
+        type: string
+      - description: 工作目录
+        in: query
+        name: workDir
         type: string
       - description: 开始日期(YYYYMMDD)
         in: query
@@ -2431,6 +2457,78 @@ paths:
         in: query
         name: endDate
         required: true
+        type: string
+      - description: 用户ID
+        in: query
+        name: userId
+        type: string
+      - description: 用户名
+        in: query
+        name: userName
+        type: string
+      - description: 客户端ID
+        in: query
+        name: clientId
+        type: string
+      - description: IDE类型
+        in: query
+        name: clientIde
+        type: string
+      - description: 操作系统
+        in: query
+        name: clientOs
+        type: string
+      - description: 调用方
+        in: query
+        name: caller
+        type: string
+      - description: 仓库地址
+        in: query
+        name: repoAddr
+        type: string
+      - description: 分支
+        in: query
+        name: repoBranch
+        type: string
+      - description: 工作目录ID
+        in: query
+        name: workDirId
+        type: string
+      - description: 一级组织
+        in: query
+        name: org1
+        type: string
+      - description: 二级组织
+        in: query
+        name: org2
+        type: string
+      - description: 三级组织
+        in: query
+        name: org3
+        type: string
+      - description: 四级组织
+        in: query
+        name: org4
+        type: string
+      - description: 五级组织
+        in: query
+        name: org5
+        type: string
+      - description: 六级组织
+        in: query
+        name: org6
+        type: string
+      - description: 七级组织
+        in: query
+        name: org7
+        type: string
+      - description: 八级组织
+        in: query
+        name: org8
+        type: string
+      - description: 九级组织
+        in: query
+        name: org9
         type: string
       - default: 1
         description: 页码

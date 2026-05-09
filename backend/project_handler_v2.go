@@ -175,7 +175,12 @@ func collectProjectCommits(project *Project) (map[string]*StatCommit, error) {
 			endTime = *rf.EndTime
 		}
 
-		commits, err := ListStatCommits(statDB, rf.RepoAddr, rf.RepoBranch, "", startTime, endTime, 1, 999999, nil)
+		commits, err := ListStatCommits(statDB, CommitFilter{
+			RepoAddr:   rf.RepoAddr,
+			RepoBranch: rf.RepoBranch,
+			StartTime:  startTime,
+			EndTime:    endTime,
+		}, 1, 999999)
 		if err != nil {
 			return nil, fmt.Errorf("查询 commits 失败: %w", err)
 		}
@@ -652,20 +657,8 @@ func getProjectDetailV2(c *gin.Context) {
 		})
 	}
 
-	// efficiency_ratio
-	effectiveAncient := project.ProjectAncientMinutes
-	if project.ProjectAncientMinutesManual != nil {
-		effectiveAncient = project.ProjectAncientMinutesManual
-	}
-	effectiveReal := project.ProjectRealProcessMinutes
-	if project.ProjectRealProcessMinutesManual != nil {
-		effectiveReal = project.ProjectRealProcessMinutesManual
-	}
-	var effRatio *float64
-	if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-		ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
-		effRatio = &ratio
-	}
+	effRatio := utils.CalcEfficiencyRatioManual(project.ProjectAncientMinutes,
+		project.ProjectAncientMinutesManual, project.ProjectRealProcessMinutes, project.ProjectRealProcessMinutesManual)
 
 	// user_count: 统计参与的用户数
 	userSet := map[string]bool{}

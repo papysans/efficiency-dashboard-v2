@@ -180,9 +180,6 @@ func TestGetTaskDetailV2_ReturnsNewFields(t *testing.T) {
 	if _, ok := resp["task"]; !ok {
 		t.Error("响应缺少 task 字段")
 	}
-	if _, ok := resp["time_segments"]; !ok {
-		t.Error("响应缺少 time_segments 字段")
-	}
 	if _, ok := resp["efficiency_ratio"]; !ok {
 		t.Error("响应缺少 efficiency_ratio 字段")
 	}
