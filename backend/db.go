@@ -522,20 +522,114 @@ func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, err
 	return result, nil
 }
 
-func ListStatTasks(db *gorm.DB, userID, workDirID, startTime, endTime string, page, pageSize int) ([]StatTask, error) {
-	q := db.Model(&models.Task{})
-	if userID != "" {
-		q = q.Where("user_id = ?", userID)
+type TaskFilter struct {
+	UserID     string
+	UserName   string
+	ClientID   string
+	ClientIDE  string
+	ClientOS   string
+	Caller     string
+	RepoAddr   string
+	RepoBranch string
+	WorkDirID  string
+	StartTime  string
+	EndTime    string
+	Org1       string
+	Org2       string
+	Org3       string
+	Org4       string
+	Org5       string
+	Org6       string
+	Org7       string
+	Org8       string
+	Org9       string
+	OrgUserIDs []string
+}
+
+func (f *TaskFilter) resolveOrgUserIDs() {
+	hasOrgFilter := f.Org1 != "" || f.Org2 != "" || f.Org3 != "" || f.Org4 != "" ||
+		f.Org5 != "" || f.Org6 != "" || f.Org7 != "" || f.Org8 != "" || f.Org9 != ""
+	if !hasOrgFilter {
+		return
 	}
-	if workDirID != "" {
-		q = q.Where("work_dir_id = ?", workDirID)
+	for uid, m := range orgMappings {
+		if uid == "" {
+			continue
+		}
+		if f.Org1 != "" && m.Org1 != f.Org1 {
+			continue
+		}
+		if f.Org2 != "" && m.Org2 != f.Org2 {
+			continue
+		}
+		if f.Org3 != "" && m.Org3 != f.Org3 {
+			continue
+		}
+		if f.Org4 != "" && m.Org4 != f.Org4 {
+			continue
+		}
+		if f.Org5 != "" && m.Org5 != f.Org5 {
+			continue
+		}
+		if f.Org6 != "" && m.Org6 != f.Org6 {
+			continue
+		}
+		if f.Org7 != "" && m.Org7 != f.Org7 {
+			continue
+		}
+		if f.Org8 != "" && m.Org8 != f.Org8 {
+			continue
+		}
+		if f.Org9 != "" && m.Org9 != f.Org9 {
+			continue
+		}
+		f.OrgUserIDs = append(f.OrgUserIDs, uid)
 	}
-	if startTime != "" {
-		q = q.Where("start_time >= ?", startTime)
+}
+
+func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
+	if f.UserID != "" {
+		q = q.Where("user_id = ?", f.UserID)
 	}
-	if endTime != "" {
-		q = q.Where("start_time <= ?", endTime)
+	if f.UserName != "" {
+		q = q.Where("user_name = ?", f.UserName)
 	}
+	if f.ClientID != "" {
+		q = q.Where("client_id = ?", f.ClientID)
+	}
+	if f.ClientIDE != "" {
+		q = q.Where("client_ide = ?", f.ClientIDE)
+	}
+	if f.ClientOS != "" {
+		q = q.Where("client_os = ?", f.ClientOS)
+	}
+	if f.Caller != "" {
+		q = q.Where("caller = ?", f.Caller)
+	}
+	if f.RepoAddr != "" {
+		q = q.Where("repo_addr = ?", f.RepoAddr)
+	}
+	if f.RepoBranch != "" {
+		q = q.Where("repo_branch = ?", f.RepoBranch)
+	}
+	if f.WorkDirID != "" {
+		q = q.Where("work_dir_id = ?", f.WorkDirID)
+	}
+	if len(f.OrgUserIDs) > 0 {
+		q = q.Where("user_id IN ?", f.OrgUserIDs)
+	}
+	if f.StartTime != "" {
+		q = q.Where("start_time >= ?", f.StartTime)
+	}
+	if f.EndTime != "" {
+		q = q.Where("start_time <= ?", f.EndTime)
+	}
+	return q
+}
+
+func ListStatTasks(db *gorm.DB, filter TaskFilter, page, pageSize int) ([]StatTask, error) {
+	filter.resolveOrgUserIDs()
+	q := filter.applyToQuery(db.Model(&models.Task{}))
 	var tasks []models.Task
 	if err := q.Order("start_time DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&tasks).Error; err != nil {
 		return nil, fmt.Errorf("查询 tasks 列表失败: %w", err)
@@ -544,20 +638,9 @@ func ListStatTasks(db *gorm.DB, userID, workDirID, startTime, endTime string, pa
 	return result, nil
 }
 
-func CountStatTasks(db *gorm.DB, userID, workDirID, startTime, endTime string) (int, error) {
-	q := db.Model(&models.Task{})
-	if userID != "" {
-		q = q.Where("user_id = ?", userID)
-	}
-	if workDirID != "" {
-		q = q.Where("work_dir_id = ?", workDirID)
-	}
-	if startTime != "" {
-		q = q.Where("start_time >= ?", startTime)
-	}
-	if endTime != "" {
-		q = q.Where("start_time <= ?", endTime)
-	}
+func CountStatTasks(db *gorm.DB, filter TaskFilter) (int, error) {
+	filter.resolveOrgUserIDs()
+	q := filter.applyToQuery(db.Model(&models.Task{}))
 	var count int64
 	if err := q.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("统计 tasks 总数失败: %w", err)

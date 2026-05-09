@@ -54,6 +54,11 @@ type TaskListItem struct {
 	Org2                           string     `json:"org2"`
 	Org3                           string     `json:"org3"`
 	Org4                           string     `json:"org4"`
+	Org5                           string     `json:"org5"`
+	Org6                           string     `json:"org6"`
+	Org7                           string     `json:"org7"`
+	Org8                           string     `json:"org8"`
+	Org9                           string     `json:"org9"`
 }
 
 type TaskListResponse struct {
@@ -176,6 +181,24 @@ func joinStrings(ss []string, sep string) string {
 // @Produce json
 // @Param startDate query string true "开始日期(YYYYMMDD)"
 // @Param endDate query string true "结束日期(YYYYMMDD)"
+// @Param userId query string false "用户ID"
+// @Param userName query string false "用户名"
+// @Param clientId query string false "客户端ID"
+// @Param clientIde query string false "IDE类型"
+// @Param clientOs query string false "操作系统"
+// @Param caller query string false "调用方"
+// @Param repoAddr query string false "仓库地址"
+// @Param repoBranch query string false "分支"
+// @Param workDirId query string false "工作目录ID"
+// @Param org1 query string false "一级组织"
+// @Param org2 query string false "二级组织"
+// @Param org3 query string false "三级组织"
+// @Param org4 query string false "四级组织"
+// @Param org5 query string false "五级组织"
+// @Param org6 query string false "六级组织"
+// @Param org7 query string false "七级组织"
+// @Param org8 query string false "八级组织"
+// @Param org9 query string false "九级组织"
 // @Param page query int false "页码" default(1)
 // @Param pageSize query int false "每页数量" default(20)
 // @Success 200 {object} TaskListResponse
@@ -201,21 +224,39 @@ func listTasksV2(c *gin.Context) {
 		return
 	}
 
-	startTime := startT.Format(time.RFC3339)
-	endTime := endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
-
-	userID := c.Query("userId")
-	workDirID := c.Query("workDirId")
 	page := getDefaultInt(c, "page", 1)
 	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
 
-	total, err := CountStatTasks(statDB, userID, workDirID, startTime, endTime)
+	filter := TaskFilter{
+		UserID:     strings.TrimSpace(c.Query("userId")),
+		UserName:   strings.TrimSpace(c.Query("userName")),
+		ClientID:   strings.TrimSpace(c.Query("clientId")),
+		ClientIDE:  strings.TrimSpace(c.Query("clientIde")),
+		ClientOS:   strings.TrimSpace(c.Query("clientOs")),
+		Caller:     strings.TrimSpace(c.Query("caller")),
+		RepoAddr:   strings.TrimSpace(c.Query("repoAddr")),
+		RepoBranch: strings.TrimSpace(c.Query("repoBranch")),
+		WorkDirID:  strings.TrimSpace(c.Query("workDirId")),
+		StartTime:  startT.Format(time.RFC3339),
+		EndTime:    endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339),
+		Org1:       strings.TrimSpace(c.Query("org1")),
+		Org2:       strings.TrimSpace(c.Query("org2")),
+		Org3:       strings.TrimSpace(c.Query("org3")),
+		Org4:       strings.TrimSpace(c.Query("org4")),
+		Org5:       strings.TrimSpace(c.Query("org5")),
+		Org6:       strings.TrimSpace(c.Query("org6")),
+		Org7:       strings.TrimSpace(c.Query("org7")),
+		Org8:       strings.TrimSpace(c.Query("org8")),
+		Org9:       strings.TrimSpace(c.Query("org9")),
+	}
+
+	total, err := CountStatTasks(statDB, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	list, err := ListStatTasks(statDB, userID, workDirID, startTime, endTime, page, pageSize)
+	list, err := ListStatTasks(statDB, filter, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -275,6 +316,11 @@ func listTasksV2(c *gin.Context) {
 				item.Org2 = om.Org2
 				item.Org3 = om.Org3
 				item.Org4 = om.Org4
+				item.Org5 = om.Org5
+				item.Org6 = om.Org6
+				item.Org7 = om.Org7
+				item.Org8 = om.Org8
+				item.Org9 = om.Org9
 			}
 		}
 		results[i] = item

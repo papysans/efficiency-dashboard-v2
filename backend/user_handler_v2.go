@@ -122,6 +122,10 @@ func listUsersV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	granularity := c.Query("granularity")
+	filterOrg1 := c.Query("org1")
+	filterOrg2 := c.Query("org2")
+	filterOrg3 := c.Query("org3")
+	filterOrg4 := c.Query("org4")
 
 	var startTime, endTime string
 	if startDate != "" {
@@ -140,11 +144,6 @@ func listUsersV2(c *gin.Context) {
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
-
-	filterOrg1 := c.Query("org1")
-	filterOrg2 := c.Query("org2")
-	filterOrg3 := c.Query("org3")
-	filterOrg4 := c.Query("org4")
 
 	aggRows, err := QueryUserProdAgg(statDB, startTime, endTime)
 	if err != nil {
