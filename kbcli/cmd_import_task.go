@@ -58,6 +58,8 @@ type taskConversation struct {
 	ErrorReason      flexString `json:"error_reason"`
 
 	addedLines []addedLine
+	startTime  time.Time
+	endTime    time.Time
 }
 
 type taskSilicaData struct {
@@ -233,18 +235,6 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 func saveConversations(db *gorm.DB, taskID string, conversations []taskConversation) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
-			var convStartTime, convEndTime time.Time
-			if conv.StartTime != "" {
-				if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
-					convStartTime = t
-				}
-			}
-			if conv.EndTime != "" {
-				if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
-					convEndTime = t
-				}
-			}
-
 			tc := models.TaskConversation{
 				TaskID:           taskID,
 				RequestID:        conv.RequestID,
@@ -252,8 +242,8 @@ func saveConversations(db *gorm.DB, taskID string, conversations []taskConversat
 				PromptMode:       conv.PromptMode,
 				Mode:             conv.Mode,
 				Model:            conv.Model,
-				StartTime:        convStartTime,
-				EndTime:          convEndTime,
+				StartTime:        conv.startTime,
+				EndTime:          conv.endTime,
 				ProcessTime:      conv.ProcessTime,
 				ProcessTTFT:      conv.ProcessTTFT,
 				UpstreamTokens:   conv.UpstreamTokens,
@@ -407,7 +397,28 @@ func parseUserInput(userInput string) string {
 	return userInput[startIdx : startIdx+endIdx]
 }
 
-func calcConversation(conv *taskConversation) {
+func calcConversation(conv *taskConversation) error {
+	if conv.RequestID == "" {
+		return fmt.Errorf("对话缺失request_id字段")
+	}
+	if conv.StartTime == "" {
+		return fmt.Errorf("对话[%s]缺失start_time字段", conv.RequestID)
+	}
+	if t, err := time.Parse(time.RFC3339, conv.StartTime); err != nil {
+		return err
+	} else {
+		conv.startTime = t
+	}
+
+	if conv.EndTime == "" {
+		return fmt.Errorf("对话[%s]缺失end_time字段", conv.RequestID)
+	}
+	if t, err := time.Parse(time.RFC3339, conv.EndTime); err != nil {
+		return err
+	} else {
+		conv.endTime = t
+	}
+
 	if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
 		conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, cfg.ModelPrices)
 	}
@@ -417,6 +428,20 @@ func calcConversation(conv *taskConversation) {
 	}
 	conv.DiffLines = int64(len(conv.addedLines))
 	conv.Diff = ""
+	return nil
+}
+
+func parseConversation(path string, lineNum int, content []byte) (*taskConversation, error) {
+	var conv taskConversation
+	if err := json.Unmarshal(content, &conv); err != nil {
+		logWarnf("解析[%s:%d]失败: %v, 内容: %s", path, lineNum, err, string(content[0:64]))
+		return nil, err
+	}
+	if err := calcConversation(&conv); err != nil {
+		logWarnf("解析[%s:%d]中的对话发生错误: %v", path, lineNum, err)
+		return nil, nil
+	}
+	return &conv, nil
 }
 
 func parseConversationFile(path string) ([]taskConversation, error) {
@@ -436,26 +461,20 @@ func parseConversationFile(path string) ([]taskConversation, error) {
 		if line == "" {
 			continue
 		}
-
-		// 尝试直接解析整行
-		var conv taskConversation
-		if err := json.Unmarshal([]byte(line), &conv); err == nil {
-			calcConversation(&conv)
-			convs = append(convs, conv)
+		if c, err := parseConversation(path, lineNum, []byte(line)); err == nil {
+			if c != nil {
+				convs = append(convs, *c)
+			}
 			continue
 		}
-
 		// 容错：尝试将单行按独立的JSON对象拆分解析
 		// 处理上游写入时缺少换行符的情况: {"a":1}{"a":2}
 		parts, splitErr := splitConversations(line)
 		if splitErr == nil && len(parts) > 0 {
 			for _, part := range parts {
-				var conv taskConversation
-				if err := json.Unmarshal([]byte(part), &conv); err != nil {
-					return nil, fmt.Errorf("第%d行JSON解析失败: %w, 内容: %s", lineNum, err, part)
+				if c, err := parseConversation(path, lineNum, []byte(part)); err == nil && c != nil {
+					convs = append(convs, *c)
 				}
-				calcConversation(&conv)
-				convs = append(convs, conv)
 			}
 			continue
 		}
