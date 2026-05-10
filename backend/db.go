@@ -8,7 +8,6 @@ import (
 
 	"kanban/core/config"
 	"kanban/core/models"
-	"kanban/core/utils"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -946,17 +945,7 @@ func UpdateStatCommitTaskAssoc(db *gorm.DB, commitID string, taskIDs, taskIDsSil
 }
 
 func ListRepoAggregates(db *gorm.DB, startTime, endTime string) ([]RepoAggregate, error) {
-	type rawRow struct {
-		RepoAddr          string
-		RepoBranch        string
-		CommitCount       int
-		StartTime         *time.Time
-		EndTime           *time.Time
-		SumAncientMinutes *float64
-		SumRealMinutes    *float64
-		TaskCount         int
-	}
-	var rows []rawRow
+	var list []RepoAggregate
 
 	q := db.Model(&models.Commit{}).
 		Select(`repo_addr, repo_branch,
@@ -965,7 +954,8 @@ func ListRepoAggregates(db *gorm.DB, startTime, endTime string) ([]RepoAggregate
 			MAX(commit_time) AS end_time,
 			SUM(commit_ancient_minutes) AS sum_ancient_minutes,
 			SUM(commit_real_minutes) AS sum_real_minutes,
-			SUM(CASE WHEN task_ids IS NOT NULL AND task_ids::text NOT IN ('null', '[]') THEN jsonb_array_length(task_ids) ELSE 0 END) AS task_count`).
+			SUM(CASE WHEN task_ids IS NOT NULL AND task_ids::text NOT IN ('null', '[]') THEN jsonb_array_length(task_ids) ELSE 0 END) AS task_count,
+			CASE WHEN SUM(commit_real_minutes) > 0 THEN ROUND(SUM(commit_ancient_minutes)::numeric / SUM(commit_real_minutes)::numeric * 100, 1) END as efficiency_ratio`).
 		Where("repo_addr IS NOT NULL AND repo_addr != ''")
 
 	if startTime != "" {
@@ -975,28 +965,10 @@ func ListRepoAggregates(db *gorm.DB, startTime, endTime string) ([]RepoAggregate
 		q = q.Where("commit_time <= ?", endTime)
 	}
 
-	if err := q.Group("repo_addr, repo_branch").Order("repo_addr, repo_branch").Scan(&rows).Error; err != nil {
+	if err := q.Group("repo_addr, repo_branch").Order("repo_addr, repo_branch").Scan(&list).Error; err != nil {
 		return nil, fmt.Errorf("查询 commits 聚合失败: %w", err)
 	}
 
-	list := make([]RepoAggregate, len(rows))
-	for i, row := range rows {
-		item := RepoAggregate{
-			RepoAddr:          row.RepoAddr,
-			RepoBranch:        row.RepoBranch,
-			CommitCount:       row.CommitCount,
-			StartTime:         row.StartTime,
-			EndTime:           row.EndTime,
-			SumAncientMinutes: row.SumAncientMinutes,
-			SumRealMinutes:    row.SumRealMinutes,
-			TaskCount:         row.TaskCount,
-		}
-		if item.SumAncientMinutes != nil && item.SumRealMinutes != nil && *item.SumRealMinutes > 0 {
-			ratio := utils.CalcEfficiencyRatio(*item.SumAncientMinutes, *item.SumRealMinutes)
-			item.EfficiencyRatio = &ratio
-		}
-		list[i] = item
-	}
 	return list, nil
 }
 
@@ -1326,6 +1298,7 @@ type dashboardTaskAgg struct {
 	TotalAiDays         float64
 	TotalRealMinutes    float64
 	TotalAncientMinutes float64
+	AvgEfficiencyRatio  float64
 }
 
 func queryDashboardTaskAgg(db *gorm.DB, startTime, endTime string) (*dashboardTaskAgg, error) {
@@ -1338,7 +1311,8 @@ func queryDashboardTaskAgg(db *gorm.DB, startTime, endTime string) (*dashboardTa
 			COALESCE(SUM(upstream_tokens + downstream_tokens), 0) as total_tokens,
 			COALESCE(SUM(task_ancient_minutes), 0) as total_ai_days,
 			COALESCE(SUM(CASE WHEN task_real_minutes_manual IS NOT NULL THEN task_real_minutes_manual ELSE task_real_minutes END), 0) as total_real_minutes,
-			COALESCE(SUM(CASE WHEN task_ancient_minutes_manual IS NOT NULL THEN task_ancient_minutes_manual ELSE task_ancient_minutes END), 0) as total_ancient_minutes`)
+			COALESCE(SUM(CASE WHEN task_ancient_minutes_manual IS NOT NULL THEN task_ancient_minutes_manual ELSE task_ancient_minutes END), 0) as total_ancient_minutes,
+			CASE WHEN COALESCE(SUM(CASE WHEN task_real_minutes_manual IS NOT NULL THEN task_real_minutes_manual ELSE task_real_minutes END), 0) > 0 THEN ROUND(COALESCE(SUM(CASE WHEN task_ancient_minutes_manual IS NOT NULL THEN task_ancient_minutes_manual ELSE task_ancient_minutes END), 0)::numeric / COALESCE(SUM(CASE WHEN task_real_minutes_manual IS NOT NULL THEN task_real_minutes_manual ELSE task_real_minutes END), 0)::numeric * 100, 1) ELSE 0 END as avg_efficiency_ratio`)
 	if startTime != "" {
 		q = q.Where("start_time >= ?", startTime)
 	}
@@ -1386,20 +1360,22 @@ func countDistinctWorkDirs(db *gorm.DB) (int, error) {
 // ============================================================
 
 type userProdAggRow struct {
-	UserID               string
-	UserName             string
-	DayCount             int
-	TaskCount            int
-	CommitCount          int
-	TaskDiffLines        int
-	CommitDiffLines      int
-	UpstreamTokens       int64
-	DownstreamTokens     int64
-	Cost                 float64
-	TaskRealMinutes      float64
-	TaskAncientMinutes   float64
-	CommitRealMinutes    float64
-	CommitAncientMinutes float64
+	UserID                string
+	UserName              string
+	DayCount              int
+	TaskCount             int
+	CommitCount           int
+	TaskDiffLines         int
+	CommitDiffLines       int
+	UpstreamTokens        int64
+	DownstreamTokens      int64
+	Cost                  float64
+	TaskRealMinutes       float64
+	TaskAncientMinutes    float64
+	CommitRealMinutes     float64
+	CommitAncientMinutes  float64
+	TaskEfficiencyRatio   float64
+	CommitEfficiencyRatio float64
 }
 
 func queryUserProdAgg(db *gorm.DB, startTime, endTime string) ([]userProdAggRow, error) {
@@ -1418,7 +1394,9 @@ func queryUserProdAgg(db *gorm.DB, startTime, endTime string) ([]userProdAggRow,
 			COALESCE(SUM(task_real_minutes), 0) as task_real_minutes,
 			COALESCE(SUM(task_ancient_minutes), 0) as task_ancient_minutes,
 			COALESCE(SUM(commit_real_minutes), 0) as commit_real_minutes,
-			COALESCE(SUM(commit_ancient_minutes), 0) as commit_ancient_minutes`)
+			COALESCE(SUM(commit_ancient_minutes), 0) as commit_ancient_minutes,
+			CASE WHEN SUM(task_real_minutes) > 0 THEN ROUND(SUM(task_ancient_minutes)::numeric / SUM(task_real_minutes)::numeric * 100, 1) ELSE 0 END as task_efficiency_ratio,
+			CASE WHEN SUM(commit_real_minutes) > 0 THEN ROUND(SUM(commit_ancient_minutes)::numeric / SUM(commit_real_minutes)::numeric * 100, 1) ELSE 0 END as commit_efficiency_ratio`)
 	if startTime != "" {
 		q = q.Where("create_time >= ?", startTime)
 	}
@@ -1448,7 +1426,9 @@ func queryUserProdAggForIDs(db *gorm.DB, userIDs []string, startTime, endTime st
 			COALESCE(SUM(task_real_minutes), 0) as task_real_minutes,
 			COALESCE(SUM(task_ancient_minutes), 0) as task_ancient_minutes,
 			COALESCE(SUM(commit_real_minutes), 0) as commit_real_minutes,
-			COALESCE(SUM(commit_ancient_minutes), 0) as commit_ancient_minutes`).
+			COALESCE(SUM(commit_ancient_minutes), 0) as commit_ancient_minutes,
+			CASE WHEN SUM(task_real_minutes) > 0 THEN ROUND(SUM(task_ancient_minutes)::numeric / SUM(task_real_minutes)::numeric * 100, 1) ELSE 0 END as task_efficiency_ratio,
+			CASE WHEN SUM(commit_real_minutes) > 0 THEN ROUND(SUM(commit_ancient_minutes)::numeric / SUM(commit_real_minutes)::numeric * 100, 1) ELSE 0 END as commit_efficiency_ratio`).
 		Where("user_id IN ?", userIDs)
 	if startTime != "" {
 		q = q.Where("create_time >= ?", startTime)

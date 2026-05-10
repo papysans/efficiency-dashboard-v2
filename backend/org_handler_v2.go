@@ -346,6 +346,8 @@ func listOrgV2(c *gin.Context) {
 		taskAncientMin   float64
 		commitRealMin    float64
 		commitAncientMin float64
+		taskEffRatio     float64
+		commitEffRatio   float64
 	}
 	orgAggMap := make(map[string]*orgAgg)
 	for orgName, g := range groupMap {
@@ -365,24 +367,23 @@ func listOrgV2(c *gin.Context) {
 				oa.commitAncientMin += ua.CommitAncientMinutes
 			}
 		}
+		if oa.taskRealMin > 0 {
+			oa.taskEffRatio = utils.CalcEfficiencyRatio(oa.taskAncientMin, oa.taskRealMin)
+		}
+		if oa.commitRealMin > 0 {
+			oa.commitEffRatio = utils.CalcEfficiencyRatio(oa.commitAncientMin, oa.commitRealMin)
+		}
 		orgAggMap[orgName] = oa
 	}
 
 	data := make([]OrgDataItem, 0, len(orgAggMap))
 	for orgName, oa := range orgAggMap {
-		var taskEffRatio, commitEffRatio float64
-		if oa.taskRealMin > 0 {
-			taskEffRatio = utils.CalcEfficiencyRatio(oa.taskAncientMin, oa.taskRealMin)
-		}
-		if oa.commitRealMin > 0 {
-			commitEffRatio = utils.CalcEfficiencyRatio(oa.commitAncientMin, oa.commitRealMin)
-		}
 		data = append(data, OrgDataItem{
 			OrgName: orgName, UserCount: oa.userCount,
 			TaskCount: oa.taskCount, CommitCount: oa.commitCount,
 			TaskDiffLines: oa.taskDiffLines, CommitDiffLines: oa.commitDiffLines,
-			TaskEfficiencyRatio:   taskEffRatio,
-			CommitEfficiencyRatio: commitEffRatio,
+			TaskEfficiencyRatio:   oa.taskEffRatio,
+			CommitEfficiencyRatio: oa.commitEffRatio,
 			TotalTokens:           oa.upTokens + oa.downTokens,
 			TotalCost:             oa.cost,
 		})

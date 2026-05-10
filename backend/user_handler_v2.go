@@ -169,14 +169,6 @@ func listUsersV2(c *gin.Context) {
 
 	all := make([]UserListItem, 0)
 	for _, row := range aggRows {
-		var taskEffRatio, commitEffRatio float64
-		if row.TaskRealMinutes > 0 {
-			taskEffRatio = utils.CalcEfficiencyRatio(row.TaskAncientMinutes, row.TaskRealMinutes)
-		}
-		if row.CommitRealMinutes > 0 {
-			commitEffRatio = utils.CalcEfficiencyRatio(row.CommitAncientMinutes, row.CommitRealMinutes)
-		}
-
 		om, matched := filter.MatchOrg(row.UserID)
 		if !matched {
 			continue
@@ -196,10 +188,10 @@ func listUsersV2(c *gin.Context) {
 			Cost:                  row.Cost,
 			TaskRealMinutes:       row.TaskRealMinutes,
 			TaskAncientMinutes:    row.TaskAncientMinutes,
-			TaskEfficiencyRatio:   taskEffRatio,
+			TaskEfficiencyRatio:   row.TaskEfficiencyRatio,
 			CommitRealMinutes:     row.CommitRealMinutes,
 			CommitAncientMinutes:  row.CommitAncientMinutes,
-			CommitEfficiencyRatio: commitEffRatio,
+			CommitEfficiencyRatio: row.CommitEfficiencyRatio,
 			OrgDisplay:            orgDisplay,
 			IsVirtualGroup:        false,
 			OrgName:               "",

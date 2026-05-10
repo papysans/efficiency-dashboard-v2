@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/core/models"
 	"kanban/core/utils"
 	"log"
 	"math"
@@ -253,41 +254,40 @@ func recalculateProjectAggregates(projectID string) error {
 	var ancientMinutes, realProcessMinutes float64
 	var minTime, maxTime *time.Time
 
-	// 遍历 tasks
-	for taskID := range taskIDSet {
-		task, err := GetStatTask(statDB, taskID)
-		if err != nil {
-			log.Printf("查询 task %s 失败: %v", taskID, err)
-			continue
+	// 批量聚合 tasks
+	if len(taskIDSet) > 0 {
+		taskIDs := make([]string, 0, len(taskIDSet))
+		for tid := range taskIDSet {
+			taskIDs = append(taskIDs, tid)
 		}
-		if task == nil {
-			continue
+		var taskAgg struct {
+			UpstreamTokens   int64
+			DownstreamTokens int64
+			Cost             float64
+			AncientMinutes   float64
+			RealMinutes      float64
+			MinTime          *time.Time
+			MaxTime          *time.Time
 		}
-		upstreamTokens += task.UpstreamTokens
-		downstreamTokens += task.DownstreamTokens
-		cost += task.Cost
-		if task.TaskAncientMinutesManual != nil {
-			ancientMinutes += *task.TaskAncientMinutesManual
-		} else if task.TaskAncientMinutes != nil {
-			ancientMinutes += *task.TaskAncientMinutes
+		if err := statDB.Model(&models.Task{}).
+			Select(`COALESCE(SUM(upstream_tokens), 0) as upstream_tokens,
+				COALESCE(SUM(downstream_tokens), 0) as downstream_tokens,
+				COALESCE(SUM(cost), 0) as cost,
+				COALESCE(SUM(COALESCE(task_ancient_minutes_manual, task_ancient_minutes)), 0) as ancient_minutes,
+				COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)), 0) as real_minutes,
+				MIN(start_time) as min_time,
+				MAX(end_time) as max_time`).
+			Where("task_id IN ?", taskIDs).
+			Scan(&taskAgg).Error; err != nil {
+			return fmt.Errorf("批量聚合 tasks 失败: %w", err)
 		}
-		if task.TaskRealMinutesManual != nil {
-			realProcessMinutes += *task.TaskRealMinutesManual
-		} else if task.TaskRealMinutes != nil {
-			realProcessMinutes += *task.TaskRealMinutes
-		}
-		if task.StartTime != nil {
-			if minTime == nil || task.StartTime.Before(*minTime) {
-				t := *task.StartTime
-				minTime = &t
-			}
-		}
-		if task.EndTime != nil {
-			if maxTime == nil || task.EndTime.After(*maxTime) {
-				t := *task.EndTime
-				maxTime = &t
-			}
-		}
+		upstreamTokens = taskAgg.UpstreamTokens
+		downstreamTokens = taskAgg.DownstreamTokens
+		cost = taskAgg.Cost
+		ancientMinutes = taskAgg.AncientMinutes
+		realProcessMinutes = taskAgg.RealMinutes
+		minTime = taskAgg.MinTime
+		maxTime = taskAgg.MaxTime
 	}
 
 	// 遍历 commits
