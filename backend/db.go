@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -53,28 +52,28 @@ type StatTask struct {
 }
 
 type StatTaskConversation struct {
-	ID               int        `json:"id"`
-	TaskID           string     `json:"task_id"`
-	RequestID        string     `json:"request_id"`
-	Sender           *string    `json:"sender"`
-	PromptMode       *string    `json:"prompt_mode"`
-	Mode             *string    `json:"mode"`
-	Model            *string    `json:"model"`
-	StartTime        *time.Time `json:"start_time"`
-	EndTime          *time.Time `json:"end_time"`
-	ProcessTime      *int64     `json:"process_time"`
-	ProcessTTFT      *int64     `json:"process_ttft"`
-	UpstreamTokens   *int64     `json:"upstream_tokens"`
-	DownstreamTokens *int64     `json:"downstream_tokens"`
-	Cost             *float64   `json:"cost"`
-	RequestContent   *string    `json:"request_content"`
-	ResponseContent  *string    `json:"response_content"`
-	UserInput        *string    `json:"user_input"`
-	Diff             *string    `json:"diff"`
-	DiffLines        *int64     `json:"diff_lines"`
-	ErrorCode        *string    `json:"error_code"`
-	ErrorReason      *string    `json:"error_reason"`
-	CreatedAt        *time.Time `json:"created_at"`
+	ID               int       `json:"id"`
+	TaskID           string    `json:"task_id"`
+	RequestID        string    `json:"request_id"`
+	Sender           string    `json:"sender"`
+	PromptMode       string    `json:"prompt_mode"`
+	Mode             string    `json:"mode"`
+	Model            string    `json:"model"`
+	StartTime        time.Time `json:"start_time"`
+	EndTime          time.Time `json:"end_time"`
+	ProcessTime      int64     `json:"process_time"`
+	ProcessTTFT      int64     `json:"process_ttft"`
+	UpstreamTokens   int64     `json:"upstream_tokens"`
+	DownstreamTokens int64     `json:"downstream_tokens"`
+	Cost             float64   `json:"cost"`
+	RequestContent   string    `json:"request_content"`
+	ResponseContent  string    `json:"response_content"`
+	UserInput        string    `json:"user_input"`
+	Diff             string    `json:"diff"`
+	DiffLines        int64     `json:"diff_lines"`
+	ErrorCode        string    `json:"error_code"`
+	ErrorReason      string    `json:"error_reason"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type StatCommit struct {
@@ -142,27 +141,27 @@ type Project struct {
 
 type UserProductivity struct {
 	UserProductivityID       string          `json:"user_productivity_id"`
-	CreateTime               *time.Time      `json:"create_time"`
-	UserID                   *string         `json:"user_id"`
-	UserName                 *string         `json:"user_name"`
+	CreateTime               time.Time       `json:"create_time"`
+	UserID                   string          `json:"user_id"`
+	UserName                 string          `json:"user_name"`
 	TaskIDs                  json.RawMessage `json:"task_ids" swaggertype:"string"`
 	WorkDirIDs               json.RawMessage `json:"work_dir_ids" swaggertype:"string"`
-	TaskDiffLines            *int            `json:"task_diff_lines"`
-	UpstreamTokens           *int64          `json:"upstream_tokens"`
-	DownstreamTokens         *int64          `json:"downstream_tokens"`
-	Cost                     *float64        `json:"cost"`
-	TaskRealMinutes          *float64        `json:"task_real_minutes"`
-	TaskAncientMinutes       *float64        `json:"task_ancient_minutes"`
-	TaskEfficiencyRatio      *float64        `json:"task_efficiency_ratio"`
+	TaskDiffLines            int             `json:"task_diff_lines"`
+	UpstreamTokens           int64           `json:"upstream_tokens"`
+	DownstreamTokens         int64           `json:"downstream_tokens"`
+	Cost                     float64         `json:"cost"`
+	TaskRealMinutes          float64         `json:"task_real_minutes"`
+	TaskAncientMinutes       float64         `json:"task_ancient_minutes"`
+	TaskEfficiencyRatio      float64         `json:"task_efficiency_ratio"`
 	CommitIDs                json.RawMessage `json:"commit_ids" swaggertype:"string"`
-	CommitDiffLines          *int            `json:"commit_diff_lines"`
-	CommitAncientMinutes     *float64        `json:"commit_ancient_minutes"`
-	CommitRealAIMinutes      *float64        `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes *float64        `json:"commit_real_ancient_minutes"`
-	CommitRealMinutes        *float64        `json:"commit_real_minutes"`
-	CommitEfficiencyRatio    *float64        `json:"commit_efficiency_ratio"`
-	CreatedAt                *time.Time      `json:"created_at"`
-	UpdatedAt                *time.Time      `json:"updated_at"`
+	CommitDiffLines          int             `json:"commit_diff_lines"`
+	CommitAncientMinutes     float64         `json:"commit_ancient_minutes"`
+	CommitRealAIMinutes      float64         `json:"commit_real_ai_minutes"`
+	CommitRealAncientMinutes float64         `json:"commit_real_ancient_minutes"`
+	CommitRealMinutes        float64         `json:"commit_real_minutes"`
+	CommitEfficiencyRatio    float64         `json:"commit_efficiency_ratio"`
+	CreatedAt                time.Time       `json:"created_at"`
+	UpdatedAt                time.Time       `json:"updated_at"`
 }
 
 type UserGroup struct {
@@ -170,8 +169,8 @@ type UserGroup struct {
 	Name      string          `json:"name"`
 	OrgName   string          `json:"org_name"`
 	UserIDs   json.RawMessage `json:"user_ids" swaggertype:"string" example:"[\"user1\", \"user2\"]"`
-	CreatedAt *time.Time      `json:"created_at"`
-	UpdatedAt *time.Time      `json:"updated_at"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 // ============================================================
@@ -386,25 +385,25 @@ func toStatTaskConversation(c *models.TaskConversation) *StatTaskConversation {
 		ID:               c.ID,
 		TaskID:           c.TaskID,
 		RequestID:        c.RequestID,
-		Sender:           toStrPtr(c.Sender),
-		PromptMode:       toStrPtr(c.PromptMode),
-		Mode:             toStrPtr(c.Mode),
-		Model:            toStrPtr(c.Model),
+		Sender:           c.Sender,
+		PromptMode:       c.PromptMode,
+		Mode:             c.Mode,
+		Model:            c.Model,
 		StartTime:        c.StartTime,
 		EndTime:          c.EndTime,
-		ProcessTime:      toInt64Ptr(c.ProcessTime),
-		ProcessTTFT:      toInt64Ptr(c.ProcessTTFT),
-		UpstreamTokens:   toInt64Ptr(c.UpstreamTokens),
-		DownstreamTokens: toInt64Ptr(c.DownstreamTokens),
-		Cost:             toFloat64Ptr(c.Cost),
-		RequestContent:   toStrPtr(c.RequestContent),
-		ResponseContent:  toStrPtr(c.ResponseContent),
-		UserInput:        toStrPtr(c.UserInput),
-		Diff:             nil,
-		DiffLines:        toInt64Ptr(c.DiffLines),
-		ErrorCode:        toStrPtr(c.ErrorCode),
-		ErrorReason:      toStrPtr(c.ErrorReason),
-		CreatedAt:        toTimePtr(c.CreatedAt),
+		ProcessTime:      c.ProcessTime,
+		ProcessTTFT:      c.ProcessTTFT,
+		UpstreamTokens:   c.UpstreamTokens,
+		DownstreamTokens: c.DownstreamTokens,
+		Cost:             c.Cost,
+		RequestContent:   c.RequestContent,
+		ResponseContent:  c.ResponseContent,
+		UserInput:        c.UserInput,
+		Diff:             "",
+		DiffLines:        c.DiffLines,
+		ErrorCode:        c.ErrorCode,
+		ErrorReason:      c.ErrorReason,
+		CreatedAt:        c.CreatedAt,
 	}
 }
 
@@ -458,26 +457,26 @@ func toUserProductivity(up *models.UserProductivity) *UserProductivity {
 	return &UserProductivity{
 		UserProductivityID:       up.UserProductivityID,
 		CreateTime:               up.CreateTime,
-		UserID:                   toStrPtr(up.UserID),
-		UserName:                 toStrPtr(up.UserName),
+		UserID:                   up.UserID,
+		UserName:                 up.UserName,
 		TaskIDs:                  strJSONToRaw(up.TaskIDs),
 		WorkDirIDs:               strJSONToRaw(up.WorkDirIDs),
-		TaskDiffLines:            toIntPtr(up.TaskDiffLines),
-		UpstreamTokens:           toInt64Ptr(up.UpstreamTokens),
-		DownstreamTokens:         toInt64Ptr(up.DownstreamTokens),
-		Cost:                     toFloat64Ptr(up.Cost),
-		TaskRealMinutes:          toFloat64Ptr(up.TaskRealMinutes),
-		TaskAncientMinutes:       toFloat64Ptr(up.TaskAncientMinutes),
-		TaskEfficiencyRatio:      toFloat64Ptr(up.TaskEfficiencyRatio),
+		TaskDiffLines:            up.TaskDiffLines,
+		UpstreamTokens:           up.UpstreamTokens,
+		DownstreamTokens:         up.DownstreamTokens,
+		Cost:                     up.Cost,
+		TaskRealMinutes:          up.TaskRealMinutes,
+		TaskAncientMinutes:       up.TaskAncientMinutes,
+		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
 		CommitIDs:                strJSONToRaw(up.CommitIDs),
-		CommitDiffLines:          toIntPtr(up.CommitDiffLines),
-		CommitAncientMinutes:     toFloat64Ptr(up.CommitAncientMinutes),
-		CommitRealAIMinutes:      toFloat64Ptr(up.CommitRealAIMinutes),
-		CommitRealAncientMinutes: toFloat64Ptr(up.CommitRealAncientMinutes),
-		CommitRealMinutes:        toFloat64Ptr(up.CommitRealMinutes),
-		CommitEfficiencyRatio:    toFloat64Ptr(up.CommitEfficiencyRatio),
-		CreatedAt:                toTimePtr(up.CreatedAt),
-		UpdatedAt:                toTimePtr(up.UpdatedAt),
+		CommitDiffLines:          up.CommitDiffLines,
+		CommitAncientMinutes:     up.CommitAncientMinutes,
+		CommitRealAIMinutes:      up.CommitRealAIMinutes,
+		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
+		CommitRealMinutes:        up.CommitRealMinutes,
+		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
+		CreatedAt:                up.CreatedAt,
+		UpdatedAt:                up.UpdatedAt,
 	}
 }
 
@@ -498,8 +497,8 @@ func toUserGroup(g *models.UserGroup) *UserGroup {
 		Name:      g.Name,
 		OrgName:   g.OrgName,
 		UserIDs:   strJSONToRaw(g.UserIDs),
-		CreatedAt: toTimePtr(g.CreatedAt),
-		UpdatedAt: toTimePtr(g.UpdatedAt),
+		CreatedAt: g.CreatedAt,
+		UpdatedAt: g.UpdatedAt,
 	}
 }
 
@@ -1156,24 +1155,24 @@ func UpsertUserProductivity(db *gorm.DB, up *UserProductivity) error {
 	mup := models.UserProductivity{
 		UserProductivityID:       up.UserProductivityID,
 		CreateTime:               up.CreateTime,
-		UserID:                   strPtrToVal(up.UserID),
-		UserName:                 strPtrToVal(up.UserName),
+		UserID:                   up.UserID,
+		UserName:                 up.UserName,
 		TaskIDs:                  rawToStrJSON(up.TaskIDs),
 		WorkDirIDs:               rawToStrJSON(up.WorkDirIDs),
-		TaskDiffLines:            intPtrToVal(up.TaskDiffLines),
-		UpstreamTokens:           int64PtrToVal(up.UpstreamTokens),
-		DownstreamTokens:         int64PtrToVal(up.DownstreamTokens),
-		Cost:                     float64PtrToVal(up.Cost),
-		TaskRealMinutes:          float64PtrToVal(up.TaskRealMinutes),
-		TaskAncientMinutes:       float64PtrToVal(up.TaskAncientMinutes),
-		TaskEfficiencyRatio:      float64PtrToVal(up.TaskEfficiencyRatio),
+		TaskDiffLines:            up.TaskDiffLines,
+		UpstreamTokens:           up.UpstreamTokens,
+		DownstreamTokens:         up.DownstreamTokens,
+		Cost:                     up.Cost,
+		TaskRealMinutes:          up.TaskRealMinutes,
+		TaskAncientMinutes:       up.TaskAncientMinutes,
+		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
 		CommitIDs:                rawToStrJSON(up.CommitIDs),
-		CommitDiffLines:          intPtrToVal(up.CommitDiffLines),
-		CommitAncientMinutes:     float64PtrToVal(up.CommitAncientMinutes),
-		CommitRealAIMinutes:      float64PtrToVal(up.CommitRealAIMinutes),
-		CommitRealAncientMinutes: float64PtrToVal(up.CommitRealAncientMinutes),
-		CommitRealMinutes:        float64PtrToVal(up.CommitRealMinutes),
-		CommitEfficiencyRatio:    float64PtrToVal(up.CommitEfficiencyRatio),
+		CommitDiffLines:          up.CommitDiffLines,
+		CommitAncientMinutes:     up.CommitAncientMinutes,
+		CommitRealAIMinutes:      up.CommitRealAIMinutes,
+		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
+		CommitRealMinutes:        up.CommitRealMinutes,
+		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
 	}
 	err := db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_productivity_id"}},
@@ -1192,34 +1191,6 @@ func UpsertUserProductivity(db *gorm.DB, up *UserProductivity) error {
 		return fmt.Errorf("upsert user_productivity 失败: %w", err)
 	}
 	return nil
-}
-
-func strPtrToVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-func intPtrToVal(i *int) int {
-	if i == nil {
-		return 0
-	}
-	return *i
-}
-
-func int64PtrToVal(i *int64) int64 {
-	if i == nil {
-		return 0
-	}
-	return *i
-}
-
-func float64PtrToVal(f *float64) float64 {
-	if f == nil {
-		return 0
-	}
-	return *f
 }
 
 func ListUserProductivity(db *gorm.DB, userId, startTime, endTime string, page, pageSize int) ([]UserProductivity, error) {
@@ -1532,88 +1503,10 @@ func queryUserProdTimeSeries(db *gorm.DB, userIDs []string, startTime, endTime s
 	if endTime != "" {
 		q = q.Where("create_time <= ?", endTime)
 	}
-	if err := q.Order("create_time").Scan(&rows).Error; err != nil {
+	if err := q.Order("create_time DESC").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
-}
-
-// ============================================================
-// 任务内联操作
-// ============================================================
-
-func UpdateTaskRealMinutes(db *gorm.DB, taskID string, minutes float64, reason string) error {
-	result := db.Model(&models.Task{}).Where("task_id = ?", taskID).
-		Updates(map[string]interface{}{"task_real_minutes": minutes, "task_real_minutes_reason": reason})
-	if result.Error != nil {
-		log.Printf("更新 task_real_minutes 失败: %v", result.Error)
-		return result.Error
-	}
-	return nil
-}
-
-func GetTaskIDsForEstimation(db *gorm.DB, specificTaskID string) ([]string, error) {
-	var taskIDs []string
-	q := db.Model(&models.Task{}).Select("task_id").
-		Where("task_ancient_minutes IS NULL AND task_ancient_minutes_manual IS NULL")
-	if specificTaskID != "" {
-		q = q.Where("task_id = ?", specificTaskID)
-	} else {
-		q = q.Order("start_time DESC").Limit(50)
-	}
-	if err := q.Pluck("task_id", &taskIDs).Error; err != nil {
-		return nil, err
-	}
-	return taskIDs, nil
-}
-
-func GetConvInputForEstimation(db *gorm.DB, taskID string) ([]string, []string, int64, int64, error) {
-	type row struct {
-		UserInput        *string
-		Diff             *string
-		DiffLines        *int64
-		UpstreamTokens   *int64
-		DownstreamTokens *int64
-	}
-	var rows []row
-	if err := db.Model(&models.TaskConversation{}).
-		Select("user_input, diff, diff_lines, upstream_tokens, downstream_tokens").
-		Where("task_id = ?", taskID).
-		Order("start_time").
-		Scan(&rows).Error; err != nil {
-		return nil, nil, 0, 0, err
-	}
-
-	var userInputs []string
-	var codeOutputs []string
-	var totalLines int64
-	var totalChars int64
-	for _, r := range rows {
-		if r.UserInput != nil && *r.UserInput != "" {
-			userInputs = append(userInputs, *r.UserInput)
-			totalChars += int64(len(*r.UserInput))
-		}
-		if r.Diff != nil && *r.Diff != "" {
-			codeOutputs = append(codeOutputs, *r.Diff)
-		}
-		if r.DiffLines != nil {
-			totalLines += *r.DiffLines
-		}
-	}
-	return userInputs, codeOutputs, totalChars, totalLines, nil
-}
-
-func UpdateTaskAncientEstimation(db *gorm.DB, taskID string, minutes float64, reason string) error {
-	result := db.Model(&models.Task{}).Where("task_id = ?", taskID).
-		Updates(map[string]interface{}{
-			"task_ancient_minutes":        minutes,
-			"task_ancient_minutes_reason": reason,
-			"updated_at":                  time.Now(),
-		})
-	if result.Error != nil {
-		return fmt.Errorf("db update failed: %w", result.Error)
-	}
-	return nil
 }
 
 // ============================================================

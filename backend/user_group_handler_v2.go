@@ -193,8 +193,8 @@ func getUserGroupDetailHandler(c *gin.Context) {
 
 		dayCount = len(daily)
 		for _, d := range daily {
-			if d.UserName != nil && userName == "" {
-				userName = *d.UserName
+			if userName == "" {
+				userName = d.UserName
 			}
 			if d.TaskIDs != nil {
 				var ids []interface{}
@@ -208,33 +208,15 @@ func getUserGroupDetailHandler(c *gin.Context) {
 					commitCount += len(ids)
 				}
 			}
-			if d.TaskDiffLines != nil {
-				taskDiffLines += *d.TaskDiffLines
-			}
-			if d.UpstreamTokens != nil {
-				upTokens += *d.UpstreamTokens
-			}
-			if d.DownstreamTokens != nil {
-				downTokens += *d.DownstreamTokens
-			}
-			if d.Cost != nil {
-				cost += *d.Cost
-			}
-			if d.TaskRealMinutes != nil {
-				taskRealMin += *d.TaskRealMinutes
-			}
-			if d.TaskAncientMinutes != nil {
-				taskAncientMin += *d.TaskAncientMinutes
-			}
-			if d.CommitDiffLines != nil {
-				commitDiffLines += *d.CommitDiffLines
-			}
-			if d.CommitAncientMinutes != nil {
-				commitAncientMin += *d.CommitAncientMinutes
-			}
-			if d.CommitRealMinutes != nil {
-				commitRealMin += *d.CommitRealMinutes
-			}
+			taskDiffLines += d.TaskDiffLines
+			upTokens += d.UpstreamTokens
+			downTokens += d.DownstreamTokens
+			cost += d.Cost
+			taskRealMin += d.TaskRealMinutes
+			taskAncientMin += d.TaskAncientMinutes
+			commitDiffLines += d.CommitDiffLines
+			commitAncientMin += d.CommitAncientMinutes
+			commitRealMin += d.CommitRealMinutes
 		}
 
 		var taskEffRatio, commitEffRatio float64

@@ -233,15 +233,15 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 func saveConversations(db *gorm.DB, taskID string, conversations []taskConversation) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
-			var convStartTime, convEndTime *time.Time
+			var convStartTime, convEndTime time.Time
 			if conv.StartTime != "" {
 				if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
-					convStartTime = &t
+					convStartTime = t
 				}
 			}
 			if conv.EndTime != "" {
 				if t, err := time.Parse(time.RFC3339, conv.EndTime); err == nil {
-					convEndTime = &t
+					convEndTime = t
 				}
 			}
 

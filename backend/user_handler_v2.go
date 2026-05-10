@@ -250,33 +250,15 @@ func listUsersV2(c *gin.Context) {
 							commitCount += len(ids)
 						}
 					}
-					if d.TaskDiffLines != nil {
-						taskDiffLines += *d.TaskDiffLines
-					}
-					if d.CommitDiffLines != nil {
-						commitDiffLines += *d.CommitDiffLines
-					}
-					if d.UpstreamTokens != nil {
-						upTokens += *d.UpstreamTokens
-					}
-					if d.DownstreamTokens != nil {
-						downTokens += *d.DownstreamTokens
-					}
-					if d.Cost != nil {
-						cost += *d.Cost
-					}
-					if d.TaskRealMinutes != nil {
-						taskRealMin += *d.TaskRealMinutes
-					}
-					if d.TaskAncientMinutes != nil {
-						taskAncientMin += *d.TaskAncientMinutes
-					}
-					if d.CommitRealMinutes != nil {
-						commitRealMin += *d.CommitRealMinutes
-					}
-					if d.CommitAncientMinutes != nil {
-						commitAncientMin += *d.CommitAncientMinutes
-					}
+					taskDiffLines += d.TaskDiffLines
+					commitDiffLines += d.CommitDiffLines
+					upTokens += d.UpstreamTokens
+					downTokens += d.DownstreamTokens
+					cost += d.Cost
+					taskRealMin += d.TaskRealMinutes
+					taskAncientMin += d.TaskAncientMinutes
+					commitRealMin += d.CommitRealMinutes
+					commitAncientMin += d.CommitAncientMinutes
 				}
 			}
 
@@ -580,10 +562,10 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 	periodMap := make(map[string]*periodData)
 
 	for _, d := range daily {
-		if d.CreateTime == nil {
+		if d.CreateTime.IsZero() {
 			continue
 		}
-		key, label := periodKeyForTime(*d.CreateTime, granularity)
+		key, label := periodKeyForTime(d.CreateTime, granularity)
 		pd, exists := periodMap[key]
 		if !exists {
 			pd = &periodData{key: key, label: label}
@@ -602,33 +584,15 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 				pd.commitCount += len(ids)
 			}
 		}
-		if d.TaskDiffLines != nil {
-			pd.taskDiffLines += *d.TaskDiffLines
-		}
-		if d.CommitDiffLines != nil {
-			pd.commitDiffLines += *d.CommitDiffLines
-		}
-		if d.UpstreamTokens != nil {
-			pd.upTokens += *d.UpstreamTokens
-		}
-		if d.DownstreamTokens != nil {
-			pd.downTokens += *d.DownstreamTokens
-		}
-		if d.Cost != nil {
-			pd.cost += *d.Cost
-		}
-		if d.TaskRealMinutes != nil {
-			pd.taskRealMin += *d.TaskRealMinutes
-		}
-		if d.TaskAncientMinutes != nil {
-			pd.taskAncientMin += *d.TaskAncientMinutes
-		}
-		if d.CommitRealMinutes != nil {
-			pd.commitRealMin += *d.CommitRealMinutes
-		}
-		if d.CommitAncientMinutes != nil {
-			pd.commitAncientMin += *d.CommitAncientMinutes
-		}
+		pd.taskDiffLines += d.TaskDiffLines
+		pd.commitDiffLines += d.CommitDiffLines
+		pd.upTokens += d.UpstreamTokens
+		pd.downTokens += d.DownstreamTokens
+		pd.cost += d.Cost
+		pd.taskRealMin += d.TaskRealMinutes
+		pd.taskAncientMin += d.TaskAncientMinutes
+		pd.commitRealMin += d.CommitRealMinutes
+		pd.commitAncientMin += d.CommitAncientMinutes
 	}
 
 	commitsList := make([]CommitTimeSeriesItem, 0, len(orderKeys))
@@ -725,8 +689,8 @@ func getUserDetailV2(c *gin.Context) {
 
 	dayCount = len(daily)
 	for i, d := range daily {
-		if i == 0 && d.UserName != nil {
-			userName = *d.UserName
+		if i == 0 {
+			userName = d.UserName
 		}
 		if d.TaskIDs != nil {
 			var ids []interface{}
@@ -740,33 +704,15 @@ func getUserDetailV2(c *gin.Context) {
 				commitCount += len(ids)
 			}
 		}
-		if d.TaskDiffLines != nil {
-			taskDiffLines += *d.TaskDiffLines
-		}
-		if d.CommitDiffLines != nil {
-			commitDiffLines += *d.CommitDiffLines
-		}
-		if d.UpstreamTokens != nil {
-			upTokens += *d.UpstreamTokens
-		}
-		if d.DownstreamTokens != nil {
-			downTokens += *d.DownstreamTokens
-		}
-		if d.Cost != nil {
-			cost += *d.Cost
-		}
-		if d.TaskRealMinutes != nil {
-			taskRealMin += *d.TaskRealMinutes
-		}
-		if d.TaskAncientMinutes != nil {
-			taskAncientMin += *d.TaskAncientMinutes
-		}
-		if d.CommitRealMinutes != nil {
-			commitRealMin += *d.CommitRealMinutes
-		}
-		if d.CommitAncientMinutes != nil {
-			commitAncientMin += *d.CommitAncientMinutes
-		}
+		taskDiffLines += d.TaskDiffLines
+		commitDiffLines += d.CommitDiffLines
+		upTokens += d.UpstreamTokens
+		downTokens += d.DownstreamTokens
+		cost += d.Cost
+		taskRealMin += d.TaskRealMinutes
+		taskAncientMin += d.TaskAncientMinutes
+		commitRealMin += d.CommitRealMinutes
+		commitAncientMin += d.CommitAncientMinutes
 	}
 
 	var taskEffRatio, commitEffRatio float64

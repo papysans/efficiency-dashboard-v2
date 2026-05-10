@@ -134,7 +134,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 
 			up := models.UserProductivity{
 				UserProductivityID:       uid + "_" + dateStr,
-				CreateTime:               &createTime,
+				CreateTime:               createTime,
 				UserID:                   uid,
 				UserName:                 userName,
 				TaskIDs:                  models.StringJSON(taskIDsJSON),

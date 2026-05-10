@@ -10,12 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ptrFloat64(v float64) *float64  { return &v }
-func ptrInt64(v int64) *int64        { return &v }
-func ptrInt(v int) *int              { return &v }
-func ptrString(v string) *string     { return &v }
-func ptrTime(v time.Time) *time.Time { return &v }
-
 var safeIDRegex = regexp.MustCompile("[^a-zA-Z0-9]")
 
 func makeSafeID(id string) string {

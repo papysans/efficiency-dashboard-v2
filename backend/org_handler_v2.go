@@ -739,7 +739,7 @@ func getOrgDetailV2(c *gin.Context) {
 			continue
 		}
 		for _, d := range daily {
-			if d.CreateTime == nil {
+			if d.CreateTime.IsZero() {
 				continue
 			}
 			dateStr := d.CreateTime.Format("2006-01-02")
@@ -749,42 +749,24 @@ func getOrgDetailV2(c *gin.Context) {
 			da := dailyMap[dateStr]
 			ma := memberMap[u.UserID]
 
-			if d.TaskDiffLines != nil {
-				da.taskDiffLines += *d.TaskDiffLines
-				ma.taskDiffLines += *d.TaskDiffLines
-			}
-			if d.CommitDiffLines != nil {
-				da.commitDiffLines += *d.CommitDiffLines
-				ma.commitDiffLines += *d.CommitDiffLines
-			}
-			if d.TaskRealMinutes != nil {
-				da.taskRealMin += *d.TaskRealMinutes
-				ma.taskRealMin += *d.TaskRealMinutes
-			}
-			if d.TaskAncientMinutes != nil {
-				da.taskAncientMin += *d.TaskAncientMinutes
-				ma.taskAncientMin += *d.TaskAncientMinutes
-			}
-			if d.CommitRealMinutes != nil {
-				da.commitRealMin += *d.CommitRealMinutes
-				ma.commitRealMin += *d.CommitRealMinutes
-			}
-			if d.CommitAncientMinutes != nil {
-				da.commitAncientMin += *d.CommitAncientMinutes
-				ma.commitAncientMin += *d.CommitAncientMinutes
-			}
-			if d.UpstreamTokens != nil {
-				da.upTokens += *d.UpstreamTokens
-				ma.upTokens += *d.UpstreamTokens
-			}
-			if d.DownstreamTokens != nil {
-				da.downTokens += *d.DownstreamTokens
-				ma.downTokens += *d.DownstreamTokens
-			}
-			if d.Cost != nil {
-				da.cost += *d.Cost
-				ma.cost += *d.Cost
-			}
+			da.taskDiffLines += d.TaskDiffLines
+			ma.taskDiffLines += d.TaskDiffLines
+			da.commitDiffLines += d.CommitDiffLines
+			ma.commitDiffLines += d.CommitDiffLines
+			da.taskRealMin += d.TaskRealMinutes
+			ma.taskRealMin += d.TaskRealMinutes
+			da.taskAncientMin += d.TaskAncientMinutes
+			ma.taskAncientMin += d.TaskAncientMinutes
+			da.commitRealMin += d.CommitRealMinutes
+			ma.commitRealMin += d.CommitRealMinutes
+			da.commitAncientMin += d.CommitAncientMinutes
+			ma.commitAncientMin += d.CommitAncientMinutes
+			da.upTokens += d.UpstreamTokens
+			ma.upTokens += d.UpstreamTokens
+			da.downTokens += d.DownstreamTokens
+			ma.downTokens += d.DownstreamTokens
+			da.cost += d.Cost
+			ma.cost += d.Cost
 		}
 	}
 
@@ -800,16 +782,16 @@ func getOrgDetailV2(c *gin.Context) {
 		da := dailyMap[date]
 		t, _ := time.Parse("2006-01-02", date)
 		dailySlice = append(dailySlice, UserProductivity{
-			CreateTime:           ptrTime(t),
-			TaskDiffLines:        ptrInt(da.taskDiffLines),
-			CommitDiffLines:      ptrInt(da.commitDiffLines),
-			TaskRealMinutes:      ptrFloat64(da.taskRealMin),
-			TaskAncientMinutes:   ptrFloat64(da.taskAncientMin),
-			CommitRealMinutes:    ptrFloat64(da.commitRealMin),
-			CommitAncientMinutes: ptrFloat64(da.commitAncientMin),
-			UpstreamTokens:       ptrInt64(da.upTokens),
-			DownstreamTokens:     ptrInt64(da.downTokens),
-			Cost:                 ptrFloat64(da.cost),
+			CreateTime:           t,
+			TaskDiffLines:        da.taskDiffLines,
+			CommitDiffLines:      da.commitDiffLines,
+			TaskRealMinutes:      da.taskRealMin,
+			TaskAncientMinutes:   da.taskAncientMin,
+			CommitRealMinutes:    da.commitRealMin,
+			CommitAncientMinutes: da.commitAncientMin,
+			UpstreamTokens:       da.upTokens,
+			DownstreamTokens:     da.downTokens,
+			Cost:                 da.cost,
 		})
 	}
 	commitsList, tasksList := aggregateDailyByGranularity(dailySlice, granularity)
@@ -1010,7 +992,7 @@ func getGroupDetailV2(c *gin.Context) {
 		}
 
 		for _, d := range daily {
-			if d.CreateTime == nil {
+			if d.CreateTime.IsZero() {
 				continue
 			}
 			dateStr := d.CreateTime.Format("2006-01-02")
@@ -1021,40 +1003,22 @@ func getGroupDetailV2(c *gin.Context) {
 			da := dailyMap[dateStr]
 			ma := memberMap[u.UserID]
 
-			if d.TaskDiffLines != nil {
-				da.taskDiffLines += *d.TaskDiffLines
-				ma.taskDiffLines += *d.TaskDiffLines
-			}
-			if d.CommitDiffLines != nil {
-				da.commitDiffLines += *d.CommitDiffLines
-				ma.commitDiffLines += *d.CommitDiffLines
-			}
-			if d.TaskRealMinutes != nil {
-				da.taskRealMin += *d.TaskRealMinutes
-				ma.taskRealMin += *d.TaskRealMinutes
-			}
-			if d.TaskAncientMinutes != nil {
-				da.taskAncientMin += *d.TaskAncientMinutes
-				ma.taskAncientMin += *d.TaskAncientMinutes
-			}
-			if d.CommitRealMinutes != nil {
-				da.commitRealMin += *d.CommitRealMinutes
-				ma.commitRealMin += *d.CommitRealMinutes
-			}
-			if d.CommitAncientMinutes != nil {
-				da.commitAncientMin += *d.CommitAncientMinutes
-				ma.commitAncientMin += *d.CommitAncientMinutes
-			}
-			if d.UpstreamTokens != nil {
-				da.upTokens += *d.UpstreamTokens
-			}
-			if d.DownstreamTokens != nil {
-				da.downTokens += *d.DownstreamTokens
-			}
-			if d.Cost != nil {
-				da.cost += *d.Cost
-				ma.cost += *d.Cost
-			}
+			da.taskDiffLines += d.TaskDiffLines
+			ma.taskDiffLines += d.TaskDiffLines
+			da.commitDiffLines += d.CommitDiffLines
+			ma.commitDiffLines += d.CommitDiffLines
+			da.taskRealMin += d.TaskRealMinutes
+			ma.taskRealMin += d.TaskRealMinutes
+			da.taskAncientMin += d.TaskAncientMinutes
+			ma.taskAncientMin += d.TaskAncientMinutes
+			da.commitRealMin += d.CommitRealMinutes
+			ma.commitRealMin += d.CommitRealMinutes
+			da.commitAncientMin += d.CommitAncientMinutes
+			ma.commitAncientMin += d.CommitAncientMinutes
+			da.upTokens += d.UpstreamTokens
+			da.downTokens += d.DownstreamTokens
+			da.cost += d.Cost
+			ma.cost += d.Cost
 		}
 	}
 

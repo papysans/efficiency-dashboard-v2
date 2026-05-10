@@ -98,34 +98,34 @@ type Task struct {
 func (Task) TableName() string { return "tasks" }
 
 type TaskConversation struct {
-	ID               int        `gorm:"primaryKey;autoIncrement" json:"id"`
-	TaskID           string     `gorm:"type:varchar(500);not null;uniqueIndex:idx_task_request" json:"task_id"`
-	RequestID        string     `gorm:"type:varchar(500);not null;uniqueIndex:idx_task_request" json:"request_id"`
-	Sender           string     `gorm:"type:varchar(50)" json:"sender"`
-	PromptMode       string     `gorm:"type:varchar(50)" json:"prompt_mode"`
-	Mode             string     `gorm:"type:varchar(100)" json:"mode"`
-	Model            string     `gorm:"type:varchar(200)" json:"model"`
-	StartTime        *time.Time `gorm:"type:timestamptz;index" json:"start_time"`
-	EndTime          *time.Time `gorm:"type:timestamptz" json:"end_time"`
-	ProcessTime      int64      `gorm:"type:bigint" json:"process_time"`
-	ProcessTTFT      int64      `gorm:"type:bigint" json:"process_ttft"`
-	UpstreamTokens   int64      `gorm:"type:bigint" json:"upstream_tokens"`
-	DownstreamTokens int64      `gorm:"type:bigint" json:"downstream_tokens"`
-	Cost             float64    `gorm:"type:float8" json:"cost"`
-	RequestContent   string     `gorm:"type:text" json:"request_content"`
-	ResponseContent  string     `gorm:"type:text" json:"response_content"`
-	UserInput        string     `gorm:"type:text" json:"user_input"`
-	DiffLines        int64      `gorm:"type:bigint" json:"diff_lines"`
-	ErrorCode        string     `gorm:"type:varchar(100)" json:"error_code"`
-	ErrorReason      string     `gorm:"type:text" json:"error_reason"`
-	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	ID               int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	TaskID           string    `gorm:"type:varchar(500);not null;uniqueIndex:idx_task_request" json:"task_id"`
+	RequestID        string    `gorm:"type:varchar(500);not null;uniqueIndex:idx_task_request" json:"request_id"`
+	Sender           string    `gorm:"type:varchar(50)" json:"sender"`
+	PromptMode       string    `gorm:"type:varchar(50)" json:"prompt_mode"`
+	Mode             string    `gorm:"type:varchar(100)" json:"mode"`
+	Model            string    `gorm:"type:varchar(200)" json:"model"`
+	StartTime        time.Time `gorm:"type:timestamptz;index" json:"start_time"`
+	EndTime          time.Time `gorm:"type:timestamptz" json:"end_time"`
+	ProcessTime      int64     `gorm:"type:bigint" json:"process_time"`
+	ProcessTTFT      int64     `gorm:"type:bigint" json:"process_ttft"`
+	UpstreamTokens   int64     `gorm:"type:bigint" json:"upstream_tokens"`
+	DownstreamTokens int64     `gorm:"type:bigint" json:"downstream_tokens"`
+	Cost             float64   `gorm:"type:float8" json:"cost"`
+	RequestContent   string    `gorm:"type:text" json:"request_content"`
+	ResponseContent  string    `gorm:"type:text" json:"response_content"`
+	UserInput        string    `gorm:"type:text" json:"user_input"`
+	DiffLines        int64     `gorm:"type:bigint" json:"diff_lines"`
+	ErrorCode        string    `gorm:"type:varchar(100)" json:"error_code"`
+	ErrorReason      string    `gorm:"type:text" json:"error_reason"`
+	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 func (TaskConversation) TableName() string { return "task_conversations" }
 
 type UserProductivity struct {
 	UserProductivityID       string     `gorm:"primaryKey;type:varchar(500)" json:"user_productivity_id"`
-	CreateTime               *time.Time `gorm:"type:timestamptz;index" json:"create_time"`
+	CreateTime               time.Time  `gorm:"type:timestamptz;index" json:"create_time"`
 	UserID                   string     `gorm:"type:varchar(255);index" json:"user_id"`
 	UserName                 string     `gorm:"type:varchar(500)" json:"user_name"`
 	TaskIDs                  StringJSON `gorm:"type:jsonb" json:"task_ids"`
