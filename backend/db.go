@@ -855,14 +855,14 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.UserName != "" {
 		q = q.Where("user_name = ?", f.UserName)
 	}
+	if len(f.OrgUserIDs) > 0 {
+		q = q.Where("user_id IN ?", f.OrgUserIDs)
+	}
 	if f.ClientID != "" {
 		q = q.Where("client_id = ?", f.ClientID)
 	}
 	if f.WorkDir != "" {
 		q = q.Where("work_dir = ?", f.WorkDir)
-	}
-	if len(f.OrgUserIDs) > 0 {
-		q = q.Where("user_id IN ?", f.OrgUserIDs)
 	}
 	if f.StartTime != "" {
 		q = q.Where("commit_time >= ?", f.StartTime)

@@ -380,6 +380,7 @@ func calculateCost(model string, inTokens, outTokens int64, prices map[string]Mo
 
 	return (float64(inTokens)/1e6)*price.InPrice + (float64(outTokens)/1e6)*price.OutPrice
 }
+
 func parseUserInput(userInput string) string {
 	const prefix = "<user_message>"
 	const suffix = "</user_message>"
@@ -431,10 +432,26 @@ func calcConversation(conv *taskConversation) error {
 	return nil
 }
 
-func parseConversation(path string, lineNum int, content []byte) (*taskConversation, error) {
+func skeletonize(content string, head, maxSize int) string {
+	if len(content) <= maxSize {
+		return content
+	}
+	if head > len(content) {
+		head = len(content)
+	}
+	tail := maxSize - head - 3
+	if tail < 0 {
+		tail = 0
+	}
+	return content[:head] + "..." + content[len(content)-tail:]
+}
+
+func parseConversation(path string, lineNum int, content []byte, ignoreUnmarshalWarning bool) (*taskConversation, error) {
 	var conv taskConversation
 	if err := json.Unmarshal(content, &conv); err != nil {
-		logWarnf("解析[%s:%d]失败: %v, 内容: %s", path, lineNum, err, string(content[0:64]))
+		if !ignoreUnmarshalWarning {
+			logWarnf("解析[%s:%d]失败: %v, 内容: %s", path, lineNum, err, skeletonize(string(content), 40, 64))
+		}
 		return nil, err
 	}
 	if err := calcConversation(&conv); err != nil {
@@ -461,7 +478,7 @@ func parseConversationFile(path string) ([]taskConversation, error) {
 		if line == "" {
 			continue
 		}
-		if c, err := parseConversation(path, lineNum, []byte(line)); err == nil {
+		if c, err := parseConversation(path, lineNum, []byte(line), true); err == nil {
 			if c != nil {
 				convs = append(convs, *c)
 			}
@@ -472,7 +489,7 @@ func parseConversationFile(path string) ([]taskConversation, error) {
 		parts, splitErr := splitConversations(line)
 		if splitErr == nil && len(parts) > 0 {
 			for _, part := range parts {
-				if c, err := parseConversation(path, lineNum, []byte(part)); err == nil && c != nil {
+				if c, err := parseConversation(path, lineNum, []byte(part), false); err == nil && c != nil {
 					convs = append(convs, *c)
 				}
 			}
