@@ -77,7 +77,7 @@ type StatTaskConversation struct {
 
 type StatCommit struct {
 	CommitID                         string          `json:"commit_id"`
-	CommitTime                       *time.Time      `json:"commit_time"`
+	CommitTime                       time.Time       `json:"commit_time"`
 	RepoAddr                         string          `json:"repo_addr"`
 	RepoBranch                       string          `json:"repo_branch"`
 	GitUserName                      string          `json:"git_user_name"`
@@ -86,6 +86,7 @@ type StatCommit struct {
 	UserName                         string          `json:"user_name"`
 	ClientID                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
+	WorkDirID                        string          `json:"work_dir_id"`
 	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
 	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
@@ -345,6 +346,7 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		UserName:                         c.UserName,
 		ClientID:                         c.ClientID,
 		WorkDir:                          c.WorkDir,
+		WorkDirID:                        c.WorkDirID,
 		DiffLines:                        c.DiffLines,
 		CommitAncientMinutes:             c.CommitAncientMinutes,
 		CommitAncientMinutesReason:       c.CommitAncientMinutesReason,
@@ -512,6 +514,9 @@ func InitDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 // ============================================================
 // tasks CRUD (GORM)
 // ============================================================
+func GetCommitStatTasks(db *gorm.DB, commit_id string) (map[string]*StatTask, error) {
+
+}
 
 func GetStatTask(db *gorm.DB, taskID string) (*StatTask, error) {
 	var t models.Task
@@ -784,6 +789,7 @@ type CommitFilter struct {
 	UserName    string
 	ClientID    string
 	WorkDir     string
+	WorkDirID   string
 	StartTime   string
 	EndTime     string
 	Org1        string
@@ -863,6 +869,9 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	}
 	if f.WorkDir != "" {
 		q = q.Where("work_dir = ?", f.WorkDir)
+	}
+	if f.WorkDirID != "" {
+		q = q.Where("work_dir_id = ?", f.WorkDirID)
 	}
 	if f.StartTime != "" {
 		q = q.Where("commit_time >= ?", f.StartTime)

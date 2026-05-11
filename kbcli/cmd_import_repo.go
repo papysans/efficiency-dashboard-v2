@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/core/models"
+	"kanban/core/utils"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -148,7 +149,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 
 	commit := models.Commit{
 		CommitID:                   commitData.CommitID,
-		CommitTime:                 &commitTime,
+		CommitTime:                 commitTime,
 		RepoAddr:                   commitData.RepoAddr,
 		RepoBranch:                 commitData.RepoBranch,
 		GitUserName:                commitData.GitUserName,
@@ -157,6 +158,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		UserName:                   commitData.UserName,
 		ClientID:                   commitData.ClientID,
 		WorkDir:                    workDir,
+		WorkDirID:                  utils.GenerateWorkDirID(commitData.ClientID, workDir),
 		Comment:                    commitData.Comment,
 		DiffLines:                  commitData.DiffLines,
 		TaskIDs:                    models.StringJSON("[]"),
@@ -170,7 +172,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		DoUpdates: clause.AssignmentColumns([]string{
 			"commit_time", "repo_addr", "repo_branch",
 			"git_user_name", "git_user_email", "user_id", "user_name",
-			"client_id", "work_dir", "comment", "diff_lines", "updated_at",
+			"client_id", "work_dir", "work_dir_id", "comment", "diff_lines", "updated_at",
 			"commit_ancient_minutes", "commit_ancient_minutes_reason",
 		}),
 	}).Create(&commit)

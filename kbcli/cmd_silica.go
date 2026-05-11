@@ -364,11 +364,11 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 		}
 
 		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserID}
-		if commit.CommitTime == nil {
+		if commit.CommitTime.IsZero() {
 			logErrorf("Commit [%s] 缺少提交时间", commitID)
 			continue
 		}
-		candidateHashes := idx.buildCandidateHashIndex(gk, *commit.CommitTime, maxDays)
+		candidateHashes := idx.buildCandidateHashIndex(gk, commit.CommitTime, maxDays)
 		commitPs.computeCommitSilica(candidateHashes)
 
 		if len(commitPs.taskIDs) == 0 {

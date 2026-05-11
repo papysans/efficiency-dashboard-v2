@@ -55,19 +55,19 @@ type ProjectListResponse struct {
 }
 
 type ProjectCommitItem struct {
-	CommitID                   string     `json:"commit_id"`
-	CommitTime                 *time.Time `json:"commit_time"`
-	RepoAddr                   string     `json:"repo_addr"`
-	RepoBranch                 string     `json:"repo_branch"`
-	UserName                   string     `json:"user_name"`
-	GitUserName                string     `json:"git_user_name"`
-	DiffLines                  *int       `json:"diff_lines"`
-	Comment                    string     `json:"comment"`
-	CommitAncientMinutes       *float64   `json:"commit_ancient_minutes"`
-	CommitAncientMinutesManual *float64   `json:"commit_ancient_minutes_manual"`
-	CommitRealMinutes          *float64   `json:"commit_real_minutes"`
-	CommitRealMinutesManual    *float64   `json:"commit_real_minutes_manual"`
-	Silica                     *float64   `json:"silica"`
+	CommitID                   string    `json:"commit_id"`
+	CommitTime                 time.Time `json:"commit_time"`
+	RepoAddr                   string    `json:"repo_addr"`
+	RepoBranch                 string    `json:"repo_branch"`
+	UserName                   string    `json:"user_name"`
+	GitUserName                string    `json:"git_user_name"`
+	DiffLines                  *int      `json:"diff_lines"`
+	Comment                    string    `json:"comment"`
+	CommitAncientMinutes       *float64  `json:"commit_ancient_minutes"`
+	CommitAncientMinutesManual *float64  `json:"commit_ancient_minutes_manual"`
+	CommitRealMinutes          *float64  `json:"commit_real_minutes"`
+	CommitRealMinutesManual    *float64  `json:"commit_real_minutes_manual"`
+	Silica                     *float64  `json:"silica"`
 }
 
 type ProjectTaskItem struct {
@@ -302,13 +302,13 @@ func recalculateProjectAggregates(projectID string) error {
 		} else if commit.CommitRealMinutes != nil {
 			realProcessMinutes += *commit.CommitRealMinutes
 		}
-		if commit.CommitTime != nil {
+		if !commit.CommitTime.IsZero() {
 			if minTime == nil || commit.CommitTime.Before(*minTime) {
-				t := *commit.CommitTime
+				t := commit.CommitTime
 				minTime = &t
 			}
 			if maxTime == nil || commit.CommitTime.After(*maxTime) {
-				t := *commit.CommitTime
+				t := commit.CommitTime
 				maxTime = &t
 			}
 		}

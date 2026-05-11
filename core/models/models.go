@@ -29,7 +29,7 @@ func (UserOrg) TableName() string { return "user_org" }
 
 type Commit struct {
 	CommitID                         string     `gorm:"primaryKey;type:varchar(500)" json:"commit_id"`
-	CommitTime                       *time.Time `gorm:"type:timestamptz;index" json:"commit_time"`
+	CommitTime                       time.Time  `gorm:"type:timestamptz;index" json:"commit_time"`
 	RepoAddr                         string     `gorm:"type:text;index;index:idx_commits_repo_addr_branch" json:"repo_addr"`
 	RepoBranch                       string     `gorm:"type:varchar(500);index:idx_commits_repo_addr_branch" json:"repo_branch"`
 	GitUserName                      string     `gorm:"type:varchar(255)" json:"git_user_name"`
@@ -38,6 +38,7 @@ type Commit struct {
 	UserName                         string     `gorm:"type:varchar(255)" json:"user_name"`
 	ClientID                         string     `gorm:"type:varchar(255)" json:"client_id"`
 	WorkDir                          string     `gorm:"type:text" json:"work_dir"`
+	WorkDirID                        string     `gorm:"type:varchar(500);index" json:"work_dir_id"`
 	DiffLines                        int        `gorm:"type:int" json:"diff_lines"`
 	CommitAncientMinutes             *float64   `gorm:"type:float8" json:"commit_ancient_minutes"`
 	CommitAncientMinutesReason       string     `gorm:"type:text" json:"commit_ancient_minutes_reason"`

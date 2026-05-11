@@ -14,7 +14,7 @@ import (
 
 type CommitListItem struct {
 	CommitID                         string          `json:"commit_id"`
-	CommitTime                       *time.Time      `json:"commit_time"`
+	CommitTime                       time.Time       `json:"commit_time"`
 	RepoAddr                         string          `json:"repo_addr"`
 	RepoBranch                       string          `json:"repo_branch"`
 	GitUserName                      string          `json:"git_user_name"`

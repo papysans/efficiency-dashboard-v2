@@ -46,7 +46,7 @@ type RepoSummary struct {
 
 type RepoCommitItem struct {
 	CommitID                         string          `json:"commit_id"`
-	CommitTime                       *time.Time      `json:"commit_time"`
+	CommitTime                       time.Time       `json:"commit_time"`
 	RepoAddr                         string          `json:"repo_addr"`
 	RepoBranch                       string          `json:"repo_branch"`
 	GitUserName                      string          `json:"git_user_name"`
@@ -55,6 +55,7 @@ type RepoCommitItem struct {
 	UserName                         string          `json:"user_name"`
 	ClientID                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
+	WorkDirID                        string          `json:"work_dir_id"`
 	DiffLines                        *int            `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
 	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
@@ -184,8 +185,23 @@ func listReposV2(c *gin.Context) {
 // @Produce json
 // @Param repoAddr query string true "仓库地址"
 // @Param repoBranch query string false "分支名"
+// @Param gitUserName query string false "git用户名"
+// @Param userId query string false "用户ID"
+// @Param userName query string false "用户名"
+// @Param clientId query string false "客户端ID"
+// @Param workDir query string false "工作目录"
+// @Param workDirId query string false "工作目录ID"
 // @Param startDate query string false "开始日期(YYYYMMDD)"
 // @Param endDate query string false "结束日期(YYYYMMDD)"
+// @Param org1 query string false "一级组织"
+// @Param org2 query string false "二级组织"
+// @Param org3 query string false "三级组织"
+// @Param org4 query string false "四级组织"
+// @Param org5 query string false "五级组织"
+// @Param org6 query string false "六级组织"
+// @Param org7 query string false "七级组织"
+// @Param org8 query string false "八级组织"
+// @Param org9 query string false "九级组织"
 // @Success 200 {object} RepoDetailResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -200,6 +216,26 @@ func getRepoDetailV2(c *gin.Context) {
 	repoBranch := c.Query("repoBranch")
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
+
+	filter := CommitFilter{
+		RepoAddr:    repoAddr,
+		RepoBranch:  repoBranch,
+		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
+		UserID:      strings.TrimSpace(c.Query("userId")),
+		UserName:    strings.TrimSpace(c.Query("userName")),
+		ClientID:    strings.TrimSpace(c.Query("clientId")),
+		WorkDir:     strings.TrimSpace(c.Query("workDir")),
+		WorkDirID:   strings.TrimSpace(c.Query("workDirId")),
+		Org1:        strings.TrimSpace(c.Query("org1")),
+		Org2:        strings.TrimSpace(c.Query("org2")),
+		Org3:        strings.TrimSpace(c.Query("org3")),
+		Org4:        strings.TrimSpace(c.Query("org4")),
+		Org5:        strings.TrimSpace(c.Query("org5")),
+		Org6:        strings.TrimSpace(c.Query("org6")),
+		Org7:        strings.TrimSpace(c.Query("org7")),
+		Org8:        strings.TrimSpace(c.Query("org8")),
+		Org9:        strings.TrimSpace(c.Query("org9")),
+	}
 
 	var startTime, endTime string
 	if startDate != "" {
@@ -218,14 +254,11 @@ func getRepoDetailV2(c *gin.Context) {
 		}
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
+	filter.StartTime = startTime
+	filter.EndTime = endTime
 
 	// 步骤 1：获取 commits
-	commits, err := ListStatCommits(statDB, CommitFilter{
-		RepoAddr:   repoAddr,
-		RepoBranch: repoBranch,
-		StartTime:  startTime,
-		EndTime:    endTime,
-	}, 1, 10000)
+	commits, err := ListStatCommits(statDB, filter, 1, 10000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 commits 失败: " + err.Error()})
 		return
@@ -314,6 +347,7 @@ func getRepoDetailV2(c *gin.Context) {
 			UserName:                         cm.UserName,
 			ClientID:                         cm.ClientID,
 			WorkDir:                          cm.WorkDir,
+			WorkDirID:                        cm.WorkDirID,
 			DiffLines:                        toIntPtr(cm.DiffLines),
 			CommitAncientMinutes:             cm.CommitAncientMinutes,
 			CommitAncientMinutesReason:       cm.CommitAncientMinutesReason,
