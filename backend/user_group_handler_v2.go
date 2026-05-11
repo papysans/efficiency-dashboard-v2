@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"kanban/core/utils"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -257,10 +256,10 @@ func getUserGroupDetailHandler(c *gin.Context) {
 
 	var groupTaskEffRatio, groupCommitEffRatio float64
 	if groupTaskRealMin > 0 {
-		groupTaskEffRatio = math.Round(groupTaskAncientMin / groupTaskRealMin * 100)
+		groupTaskEffRatio = utils.CalcEfficiencyRatio(groupTaskAncientMin, groupTaskRealMin)
 	}
 	if groupCommitRealMin > 0 {
-		groupCommitEffRatio = math.Round(groupCommitAncientMin / groupCommitRealMin * 100)
+		groupCommitEffRatio = utils.CalcEfficiencyRatio(groupCommitAncientMin, groupCommitRealMin)
 	}
 
 	groupSummary := UserGroupSummary{

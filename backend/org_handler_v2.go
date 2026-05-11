@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
-	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -90,7 +89,6 @@ type CommitTimeSeriesItem struct {
 	PeriodKey             string  `json:"period_key"`
 	PeriodLabel           string  `json:"period_label"`
 	CommitCount           int     `json:"commit_count"`
-	TaskCount             int     `json:"task_count"`
 	CommitDiffLines       int     `json:"commit_diff_lines"`
 	CommitRealMinutes     float64 `json:"commit_real_minutes"`
 	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
@@ -104,7 +102,6 @@ type TaskTimeSeriesItem struct {
 	PeriodKey           string  `json:"period_key"`
 	PeriodLabel         string  `json:"period_label"`
 	TaskCount           int     `json:"task_count"`
-	CommitCount         int     `json:"commit_count"`
 	TaskDiffLines       int     `json:"task_diff_lines"`
 	TaskRealMinutes     float64 `json:"task_real_minutes"`
 	TaskAncientMinutes  float64 `json:"task_ancient_minutes"`
@@ -813,13 +810,8 @@ func getOrgDetailV2(c *gin.Context) {
 		sumDownTokens += da.downTokens
 		sumCost += da.cost
 	}
-	var sumTaskEffRatio, sumCommitEffRatio float64
-	if sumTaskRealMin > 0 {
-		sumTaskEffRatio = math.Round(sumTaskAncientMin / sumTaskRealMin * 100)
-	}
-	if sumCommitRealMin > 0 {
-		sumCommitEffRatio = math.Round(sumCommitAncientMin / sumCommitRealMin * 100)
-	}
+	sumTaskEffRatio := utils.CalcEfficiencyRatio(sumTaskAncientMin, sumTaskRealMin)
+	sumCommitEffRatio := utils.CalcEfficiencyRatio(sumCommitAncientMin, sumCommitRealMin)
 	summary := OrgSummary{
 		UserCount:             len(matchedUsers),
 		TaskDiffLines:         sumTaskDiffLines,
@@ -1072,14 +1064,8 @@ func getGroupDetailV2(c *gin.Context) {
 		sumDownTokens += da.downTokens
 		sumCost += da.cost
 	}
-	var sumTaskEffRatio, sumCommitEffRatio float64
-	if sumTaskRealMin > 0 {
-		sumTaskEffRatio = math.Round(sumTaskAncientMin / sumTaskRealMin * 100)
-	}
-	if sumCommitRealMin > 0 {
-		sumCommitEffRatio = math.Round(sumCommitAncientMin / sumCommitRealMin * 100)
-	}
-
+	sumTaskEffRatio := utils.CalcEfficiencyRatio(sumTaskAncientMin, sumTaskRealMin)
+	sumCommitEffRatio := utils.CalcEfficiencyRatio(sumCommitAncientMin, sumCommitRealMin)
 	summary := GroupSummary{
 		TaskDiffLines:         sumTaskDiffLines,
 		CommitDiffLines:       sumCommitDiffLines,

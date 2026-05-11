@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/core/utils"
 	"net/http"
 	"time"
 
@@ -72,6 +73,8 @@ func getDashboardSummary(c *gin.Context) {
 		return
 	}
 
+	avgEfficiencyRatio := utils.CalcEfficiencyRatio(taskAgg.TotalAncientMinutes, taskAgg.TotalRealMinutes)
+
 	c.JSON(http.StatusOK, DashboardSummaryResponse{
 		TotalTasks:              taskAgg.TotalTasks,
 		TotalUsers:              taskAgg.TotalUsers,
@@ -83,6 +86,6 @@ func getDashboardSummary(c *gin.Context) {
 		TotalTokens:             taskAgg.TotalTokens,
 		TotalTaskAncientMinutes: taskAgg.TotalAiDays,
 		TotalRealMinutes:        taskAgg.TotalRealMinutes,
-		AvgEfficiencyRatio:      taskAgg.AvgEfficiencyRatio,
+		AvgEfficiencyRatio:      avgEfficiencyRatio,
 	})
 }

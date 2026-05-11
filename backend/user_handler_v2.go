@@ -188,10 +188,10 @@ func listUsersV2(c *gin.Context) {
 			Cost:                  row.Cost,
 			TaskRealMinutes:       row.TaskRealMinutes,
 			TaskAncientMinutes:    row.TaskAncientMinutes,
-			TaskEfficiencyRatio:   row.TaskEfficiencyRatio,
+			TaskEfficiencyRatio:   utils.CalcEfficiencyRatio(row.TaskAncientMinutes, row.TaskRealMinutes),
 			CommitRealMinutes:     row.CommitRealMinutes,
 			CommitAncientMinutes:  row.CommitAncientMinutes,
-			CommitEfficiencyRatio: row.CommitEfficiencyRatio,
+			CommitEfficiencyRatio: utils.CalcEfficiencyRatio(row.CommitAncientMinutes, row.CommitRealMinutes),
 			OrgDisplay:            orgDisplay,
 			IsVirtualGroup:        false,
 			OrgName:               "",
@@ -592,17 +592,12 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 
 	for _, key := range orderKeys {
 		pd := periodMap[key]
-		var commitEffRatio, taskEffRatio float64
-		if pd.commitRealMin > 0 {
-			commitEffRatio = utils.CalcEfficiencyRatio(pd.commitAncientMin, pd.commitRealMin)
-		}
-		if pd.taskRealMin > 0 {
-			taskEffRatio = utils.CalcEfficiencyRatio(pd.taskAncientMin, pd.taskRealMin)
-		}
+		commitEffRatio := utils.CalcEfficiencyRatio(pd.commitAncientMin, pd.commitRealMin)
+		taskEffRatio := utils.CalcEfficiencyRatio(pd.taskAncientMin, pd.taskRealMin)
 
 		commitsList = append(commitsList, CommitTimeSeriesItem{
 			PeriodKey: key, PeriodLabel: pd.label,
-			CommitCount: pd.commitCount, TaskCount: pd.taskCount,
+			CommitCount:           pd.commitCount,
 			CommitDiffLines:       pd.commitDiffLines,
 			CommitRealMinutes:     pd.commitRealMin,
 			CommitAncientMinutes:  pd.commitAncientMin,
@@ -614,7 +609,7 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 
 		tasksList = append(tasksList, TaskTimeSeriesItem{
 			PeriodKey: key, PeriodLabel: pd.label,
-			TaskCount: pd.taskCount, CommitCount: pd.commitCount,
+			TaskCount:           pd.taskCount,
 			TaskDiffLines:       pd.taskDiffLines,
 			TaskRealMinutes:     pd.taskRealMin,
 			TaskAncientMinutes:  pd.taskAncientMin,
@@ -707,21 +702,21 @@ func getUserDetailV2(c *gin.Context) {
 		commitAncientMin += d.CommitAncientMinutes
 	}
 
-	var taskEffRatio, commitEffRatio float64
-	if taskRealMin > 0 {
-		taskEffRatio = utils.CalcEfficiencyRatio(taskAncientMin, taskRealMin)
-	}
-	if commitRealMin > 0 {
-		commitEffRatio = utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
-	}
+	taskEffRatio := utils.CalcEfficiencyRatio(taskAncientMin, taskRealMin)
+	commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
 
 	summary := UserDetailSummary{
-		UserID: userID, UserName: userName,
-		DayCount: dayCount, TaskCount: taskCount,
-		CommitCount:   commitCount,
-		TaskDiffLines: taskDiffLines, CommitDiffLines: commitDiffLines,
-		UpstreamTokens: upTokens, DownstreamTokens: downTokens,
-		Cost: cost, TaskRealMinutes: taskRealMin,
+		UserID:                userID,
+		UserName:              userName,
+		DayCount:              dayCount,
+		TaskCount:             taskCount,
+		CommitCount:           commitCount,
+		TaskDiffLines:         taskDiffLines,
+		CommitDiffLines:       commitDiffLines,
+		UpstreamTokens:        upTokens,
+		DownstreamTokens:      downTokens,
+		Cost:                  cost,
+		TaskRealMinutes:       taskRealMin,
 		TaskAncientMinutes:    taskAncientMin,
 		TaskEfficiencyRatio:   taskEffRatio,
 		CommitRealMinutes:     commitRealMin,

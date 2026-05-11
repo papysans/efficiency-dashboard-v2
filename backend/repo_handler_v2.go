@@ -151,7 +151,10 @@ func listReposV2(c *gin.Context) {
 		ri.SumAncientMinutes = agg.SumAncientMinutes
 		ri.SumRealMinutes = agg.SumRealMinutes
 		ri.TaskCount = agg.TaskCount
-		ri.EfficiencyRatio = agg.EfficiencyRatio
+		if agg.SumAncientMinutes != nil && agg.SumRealMinutes != nil && *agg.SumAncientMinutes > 0 && *agg.SumRealMinutes > 0 {
+			ratio := utils.CalcEfficiencyRatio(*agg.SumAncientMinutes, *agg.SumRealMinutes)
+			ri.EfficiencyRatio = &ratio
+		}
 		items = append(items, ri)
 	}
 

@@ -66,7 +66,7 @@ type Config struct {
 	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
 	OrgDSN         string                `yaml:"org_dsn"`
 	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
-	SilicaMaxDays  int                   `yaml:"silica_max_days"`
+	SilicaMaxDays  int                   `yaml:"silica_max_days"` //计算task和commit相关性/硅含量时的最大关联天数
 	Serve          ServeConfig           `yaml:"serve"`
 }
 
