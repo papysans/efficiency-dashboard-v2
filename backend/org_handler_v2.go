@@ -15,27 +15,27 @@ import (
 type OrgDataItem struct {
 	OrgName               string  `json:"org_name"`
 	UserCount             int     `json:"user_count"`
-	TaskCount             int     `json:"task_count"`
-	CommitCount           int     `json:"commit_count"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
-	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
-	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
 	TotalTokens           int64   `json:"total_tokens"`
 	TotalCost             float64 `json:"total_cost"`
+	TaskCount             int     `json:"task_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitCount           int     `json:"commit_count"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
 }
 
 type OrgSeriesPoint struct {
 	Period                string  `json:"period"`
 	UserCount             int     `json:"user_count"`
-	TaskCount             int     `json:"task_count"`
-	CommitCount           int     `json:"commit_count"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
-	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
-	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
 	TotalTokens           int64   `json:"total_tokens"`
 	TotalCost             float64 `json:"total_cost"`
+	TaskCount             int     `json:"task_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitCount           int     `json:"commit_count"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
 }
 
 type OrgSeriesItem struct {
@@ -583,21 +583,20 @@ func listOrgV2(c *gin.Context) {
 				upTok = pa.upTokens
 				downTok = pa.downTokens
 				cost = pa.cost
-				if pa.taskRealMin > 0 {
-					taskEffRatio = utils.CalcEfficiencyRatio(pa.taskAncientMin, pa.taskRealMin)
-				}
-				if pa.commitRealMin > 0 {
-					commitEffRatio = utils.CalcEfficiencyRatio(pa.commitAncientMin, pa.commitRealMin)
-				}
+				taskEffRatio = utils.CalcEfficiencyRatio(pa.taskAncientMin, pa.taskRealMin)
+				commitEffRatio = utils.CalcEfficiencyRatio(pa.commitAncientMin, pa.commitRealMin)
 			}
 			points = append(points, OrgSeriesPoint{
-				Period: period, UserCount: userCount,
-				TaskCount: taskCount, CommitCount: commitCount,
-				TaskDiffLines: taskDiff, CommitDiffLines: commitDiff,
-				TaskEfficiencyRatio:   taskEffRatio,
-				CommitEfficiencyRatio: commitEffRatio,
+				Period:                period,
+				UserCount:             userCount,
 				TotalTokens:           upTok + downTok,
 				TotalCost:             cost,
+				TaskCount:             taskCount,
+				TaskDiffLines:         taskDiff,
+				TaskEfficiencyRatio:   taskEffRatio,
+				CommitCount:           commitCount,
+				CommitDiffLines:       commitDiff,
+				CommitEfficiencyRatio: commitEffRatio,
 			})
 		}
 		series = append(series, OrgSeriesItem{
@@ -830,16 +829,16 @@ func getOrgDetailV2(c *gin.Context) {
 	// 构建 members 列表
 	membersResult := make([]OrgMemberItem, 0, len(memberMap))
 	for _, ma := range memberMap {
-		var taskEffRatio, commitEffRatio float64
-		if ma.taskRealMin > 0 {
-			taskEffRatio = utils.CalcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
-		}
-		if ma.commitRealMin > 0 {
-			commitEffRatio = utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
-		}
+		taskEffRatio := utils.CalcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
+		commitEffRatio := utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
+
 		membersResult = append(membersResult, OrgMemberItem{
-			UserID: ma.userID, UserName: ma.userName,
-			Org1: ma.org1, Org2: ma.org2, Org3: ma.org3, Org4: ma.org4,
+			UserID:                ma.userID,
+			UserName:              ma.userName,
+			Org1:                  ma.org1,
+			Org2:                  ma.org2,
+			Org3:                  ma.org3,
+			Org4:                  ma.org4,
 			TaskDiffLines:         ma.taskDiffLines,
 			CommitDiffLines:       ma.commitDiffLines,
 			TaskRealMinutes:       ma.taskRealMin,

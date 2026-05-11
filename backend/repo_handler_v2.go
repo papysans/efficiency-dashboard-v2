@@ -211,18 +211,11 @@ func listReposV2(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v2/repos/detail [get]
 func getRepoDetailV2(c *gin.Context) {
-	repoAddr := c.Query("repoAddr")
-	if repoAddr == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repoAddr is required"})
-		return
-	}
-	repoBranch := c.Query("repoBranch")
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
-
 	filter := CommitFilter{
-		RepoAddr:    repoAddr,
-		RepoBranch:  repoBranch,
+		RepoAddr:    strings.TrimSpace(c.Query("repoAddr")),
+		RepoBranch:  strings.TrimSpace(c.Query("repoBranch")),
 		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
 		UserID:      strings.TrimSpace(c.Query("userId")),
 		UserName:    strings.TrimSpace(c.Query("userName")),
@@ -326,7 +319,7 @@ func getRepoDetailV2(c *gin.Context) {
 	efficiencyRatio := utils.CalcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
 
 	// 步骤 4：获取分支列表
-	branches, err := ListBranchesByRepoAddr(statDB, repoAddr)
+	branches, err := ListBranchesByRepoAddr(statDB, filter.RepoAddr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询分支列表失败: " + err.Error()})
 		return
@@ -379,8 +372,8 @@ func getRepoDetailV2(c *gin.Context) {
 
 	// 步骤 5：返回结果
 	c.JSON(http.StatusOK, RepoDetailResponse{
-		RepoAddr:   repoAddr,
-		RepoBranch: repoBranch,
+		RepoAddr:   filter.RepoAddr,
+		RepoBranch: filter.RepoBranch,
 		Branches:   branches,
 		Commits:    commitItems,
 		Tasks:      tasks,

@@ -17,16 +17,16 @@ type UserListItem struct {
 	UserID                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
 	DayCount              int     `json:"day_count"`
-	TaskCount             int     `json:"task_count"`
-	CommitCount           int     `json:"commit_count"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
 	UpstreamTokens        int64   `json:"upstream_tokens"`
 	DownstreamTokens      int64   `json:"downstream_tokens"`
 	Cost                  float64 `json:"cost"`
+	TaskCount             int     `json:"task_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
 	TaskRealMinutes       float64 `json:"task_real_minutes"`
 	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
 	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitCount           int     `json:"commit_count"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
 	CommitRealMinutes     float64 `json:"commit_real_minutes"`
 	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
 	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
@@ -47,16 +47,16 @@ type UserListItem struct {
 
 type UserSeriesPoint struct {
 	Period                string  `json:"period"`
-	TaskCount             int     `json:"task_count"`
-	CommitCount           int     `json:"commit_count"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
-	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
-	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
 	TotalTokens           int64   `json:"total_tokens"`
 	TotalCost             float64 `json:"total_cost"`
+	TaskCount             int     `json:"task_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
+	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
 	TaskRealMinutes       float64 `json:"task_real_minutes"`
 	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
+	CommitCount           int     `json:"commit_count"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
+	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
 	CommitRealMinutes     float64 `json:"commit_real_minutes"`
 	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
 }
@@ -81,16 +81,16 @@ type UserDetailSummary struct {
 	UserID                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
 	DayCount              int     `json:"day_count"`
-	TaskCount             int     `json:"task_count"`
-	CommitCount           int     `json:"commit_count"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
 	UpstreamTokens        int64   `json:"upstream_tokens"`
 	DownstreamTokens      int64   `json:"downstream_tokens"`
 	Cost                  float64 `json:"cost"`
+	TaskCount             int     `json:"task_count"`
+	TaskDiffLines         int     `json:"task_diff_lines"`
 	TaskRealMinutes       float64 `json:"task_real_minutes"`
 	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
 	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitCount           int     `json:"commit_count"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
 	CommitRealMinutes     float64 `json:"commit_real_minutes"`
 	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
 	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
@@ -179,16 +179,16 @@ func listUsersV2(c *gin.Context) {
 			UserID:                row.UserID,
 			UserName:              row.UserName,
 			DayCount:              row.DayCount,
-			TaskCount:             row.TaskCount,
-			CommitCount:           row.CommitCount,
-			TaskDiffLines:         row.TaskDiffLines,
-			CommitDiffLines:       row.CommitDiffLines,
 			UpstreamTokens:        row.UpstreamTokens,
 			DownstreamTokens:      row.DownstreamTokens,
 			Cost:                  row.Cost,
+			TaskCount:             row.TaskCount,
+			TaskDiffLines:         row.TaskDiffLines,
 			TaskRealMinutes:       row.TaskRealMinutes,
 			TaskAncientMinutes:    row.TaskAncientMinutes,
 			TaskEfficiencyRatio:   utils.CalcEfficiencyRatio(row.TaskAncientMinutes, row.TaskRealMinutes),
+			CommitCount:           row.CommitCount,
+			CommitDiffLines:       row.CommitDiffLines,
 			CommitRealMinutes:     row.CommitRealMinutes,
 			CommitAncientMinutes:  row.CommitAncientMinutes,
 			CommitEfficiencyRatio: utils.CalcEfficiencyRatio(row.CommitAncientMinutes, row.CommitRealMinutes),
@@ -254,29 +254,30 @@ func listUsersV2(c *gin.Context) {
 				}
 			}
 
-			var taskEffRatio, commitEffRatio float64
-			if taskRealMin > 0 {
-				taskEffRatio = utils.CalcEfficiencyRatio(taskAncientMin, taskRealMin)
-			}
-			if commitRealMin > 0 {
-				commitEffRatio = utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
-			}
+			taskEffRatio := utils.CalcEfficiencyRatio(taskAncientMin, taskRealMin)
+			commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
 
 			all = append(all, UserListItem{
-				UserID: group.GroupID, UserName: group.Name,
-				GroupID:  group.GroupID,
-				DayCount: dayCount, TaskCount: taskCount,
-				CommitCount:   commitCount,
-				TaskDiffLines: taskDiffLines, CommitDiffLines: commitDiffLines,
-				UpstreamTokens: upTokens, DownstreamTokens: downTokens,
-				Cost: cost, TaskRealMinutes: taskRealMin,
+				UserID:                group.GroupID,
+				UserName:              group.Name,
+				GroupID:               group.GroupID,
+				DayCount:              dayCount,
+				UpstreamTokens:        upTokens,
+				DownstreamTokens:      downTokens,
+				Cost:                  cost,
+				TaskCount:             taskCount,
+				TaskDiffLines:         taskDiffLines,
+				TaskRealMinutes:       taskRealMin,
 				TaskAncientMinutes:    taskAncientMin,
 				TaskEfficiencyRatio:   taskEffRatio,
+				CommitCount:           commitCount,
+				CommitDiffLines:       commitDiffLines,
 				CommitRealMinutes:     commitRealMin,
 				CommitAncientMinutes:  commitAncientMin,
 				CommitEfficiencyRatio: commitEffRatio,
 				IsVirtualGroup:        true,
-				OrgDisplay:            group.OrgName, OrgName: group.OrgName,
+				OrgDisplay:            group.OrgName,
+				OrgName:               group.OrgName,
 			})
 		}
 	}
