@@ -46,8 +46,8 @@ type StatTask struct {
 	TaskAncientMinutesManual       *float64   `json:"task_ancient_minutes_manual"`
 	TaskAncientMinutesReasonManual string     `json:"task_ancient_minutes_reason_manual"`
 	Title                          string     `json:"title"`
-	CreatedAt                      *time.Time `json:"created_at"`
-	UpdatedAt                      *time.Time `json:"updated_at"`
+	CreatedAt                      time.Time  `json:"created_at"`
+	UpdatedAt                      time.Time  `json:"updated_at"`
 }
 
 type StatTaskConversation struct {
@@ -105,8 +105,8 @@ type StatCommit struct {
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
 	CommitRealMinutesReasonManual    string          `json:"commit_real_minutes_reason_manual"`
 	Comment                          string          `json:"comment"`
-	CreatedAt                        *time.Time      `json:"created_at"`
-	UpdatedAt                        *time.Time      `json:"updated_at"`
+	CreatedAt                        time.Time       `json:"created_at"`
+	UpdatedAt                        time.Time       `json:"updated_at"`
 }
 
 type Project struct {
@@ -135,8 +135,8 @@ type Project struct {
 	ProjectRealLeadMinutesReason          string          `json:"project_real_lead_minutes_reason"`
 	ProjectRealLeadMinutesManual          *float64        `json:"project_real_lead_minutes_manual"`
 	ProjectRealLeadMinutesReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
-	CreatedAt                             *time.Time      `json:"created_at"`
-	UpdatedAt                             *time.Time      `json:"updated_at"`
+	CreatedAt                             time.Time       `json:"created_at"`
+	UpdatedAt                             time.Time       `json:"updated_at"`
 }
 
 type UserProductivity struct {
@@ -240,13 +240,6 @@ func toFloat64Ptr(f float64) *float64 {
 	v := f
 	return &v
 }
-func toTimePtr(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	v := t
-	return &v
-}
 
 func ptrToInt64(p *int64) int64 {
 	if p == nil {
@@ -318,8 +311,8 @@ func toStatTask(t *models.Task) *StatTask {
 		TaskAncientMinutesManual:       t.TaskAncientMinutesManual,
 		TaskAncientMinutesReasonManual: t.TaskAncientMinutesReasonManual,
 		Title:                          t.Title,
-		CreatedAt:                      toTimePtr(t.CreatedAt),
-		UpdatedAt:                      toTimePtr(t.UpdatedAt),
+		CreatedAt:                      t.CreatedAt,
+		UpdatedAt:                      t.UpdatedAt,
 	}
 }
 
@@ -365,8 +358,8 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		CommitRealMinutesManual:          c.CommitRealMinutesManual,
 		CommitRealMinutesReasonManual:    c.CommitRealMinutesReasonManual,
 		Comment:                          c.Comment,
-		CreatedAt:                        toTimePtr(c.CreatedAt),
-		UpdatedAt:                        toTimePtr(c.UpdatedAt),
+		CreatedAt:                        c.CreatedAt,
+		UpdatedAt:                        c.UpdatedAt,
 	}
 }
 
@@ -438,8 +431,8 @@ func toProject(p *models.Project) *Project {
 		ProjectRealLeadMinutesReason:          p.ProjectRealLeadMinutesReason,
 		ProjectRealLeadMinutesManual:          p.ProjectRealLeadMinutesManual,
 		ProjectRealLeadMinutesReasonManual:    p.ProjectRealLeadMinutesReasonManual,
-		CreatedAt:                             toTimePtr(p.CreatedAt),
-		UpdatedAt:                             toTimePtr(p.UpdatedAt),
+		CreatedAt:                             p.CreatedAt,
+		UpdatedAt:                             p.UpdatedAt,
 	}
 }
 
@@ -514,9 +507,9 @@ func InitDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 // ============================================================
 // tasks CRUD (GORM)
 // ============================================================
-func GetCommitStatTasks(db *gorm.DB, commit_id string) (map[string]*StatTask, error) {
+// func GetCommitStatTasks(db *gorm.DB, commit_id string) ([]StatTask, error) {
 
-}
+// }
 
 func GetStatTask(db *gorm.DB, taskID string) (*StatTask, error) {
 	var t models.Task

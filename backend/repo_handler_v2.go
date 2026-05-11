@@ -70,8 +70,8 @@ type RepoCommitItem struct {
 	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	Comment                          string          `json:"comment"`
-	CreatedAt                        *time.Time      `json:"created_at"`
-	UpdatedAt                        *time.Time      `json:"updated_at"`
+	CreatedAt                        time.Time       `json:"created_at"`
+	UpdatedAt                        time.Time       `json:"updated_at"`
 	Cost                             float64         `json:"cost"`
 	UpstreamTokens                   int64           `json:"upstream_tokens"`
 	DownstreamTokens                 int64           `json:"downstream_tokens"`

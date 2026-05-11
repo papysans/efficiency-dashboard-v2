@@ -40,8 +40,8 @@ type ProjectListItem struct {
 	ProjectRealLeadMinutesReason          string          `json:"project_real_lead_minutes_reason"`
 	ProjectRealLeadMinutesManual          *float64        `json:"project_real_lead_minutes_manual"`
 	ProjectRealLeadMinutesReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
-	CreatedAt                             *time.Time      `json:"created_at"`
-	UpdatedAt                             *time.Time      `json:"updated_at"`
+	CreatedAt                             time.Time       `json:"created_at"`
+	UpdatedAt                             time.Time       `json:"updated_at"`
 	RepoCount                             int             `json:"repo_count"`
 	TaskCount                             int             `json:"task_count"`
 	UserCount                             int             `json:"user_count"`

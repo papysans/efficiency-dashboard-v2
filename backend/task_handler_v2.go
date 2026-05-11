@@ -41,8 +41,8 @@ type TaskListItem struct {
 	TaskRealMinutesReason          string     `json:"task_real_minutes_reason"`
 	TaskRealMinutesManual          *float64   `json:"task_real_minutes_manual"`
 	TaskRealMinutesReasonManual    string     `json:"task_real_minutes_reason_manual"`
-	CreatedAt                      *time.Time `json:"created_at"`
-	UpdatedAt                      *time.Time `json:"updated_at"`
+	CreatedAt                      time.Time  `json:"created_at"`
+	UpdatedAt                      time.Time  `json:"updated_at"`
 	EfficiencyRatio                *float64   `json:"efficiency_ratio"`
 	Org1                           string     `json:"org1"`
 	Org2                           string     `json:"org2"`

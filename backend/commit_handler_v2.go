@@ -37,8 +37,8 @@ type CommitListItem struct {
 	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
 	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
 	Comment                          string          `json:"comment"`
-	CreatedAt                        *time.Time      `json:"created_at"`
-	UpdatedAt                        *time.Time      `json:"updated_at"`
+	CreatedAt                        time.Time       `json:"created_at"`
+	UpdatedAt                        time.Time       `json:"updated_at"`
 	Cost                             float64         `json:"cost"`
 	UpstreamTokens                   int64           `json:"upstream_tokens"`
 	DownstreamTokens                 int64           `json:"downstream_tokens"`
