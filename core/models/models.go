@@ -129,12 +129,12 @@ type UserProductivity struct {
 	CreateTime               time.Time  `gorm:"type:timestamptz;index" json:"create_time"`
 	UserID                   string     `gorm:"type:varchar(255);index" json:"user_id"`
 	UserName                 string     `gorm:"type:varchar(500)" json:"user_name"`
-	TaskIDs                  StringJSON `gorm:"type:jsonb" json:"task_ids"`
 	WorkDirIDs               StringJSON `gorm:"type:jsonb" json:"work_dir_ids"`
-	TaskDiffLines            int        `gorm:"type:int" json:"task_diff_lines"`
 	UpstreamTokens           int64      `gorm:"type:bigint" json:"upstream_tokens"`
 	DownstreamTokens         int64      `gorm:"type:bigint" json:"downstream_tokens"`
 	Cost                     float64    `gorm:"type:float8" json:"cost"`
+	TaskIDs                  StringJSON `gorm:"type:jsonb" json:"task_ids"`
+	TaskDiffLines            int        `gorm:"type:int" json:"task_diff_lines"`
 	TaskRealMinutes          float64    `gorm:"type:float8" json:"task_real_minutes"`
 	TaskAncientMinutes       float64    `gorm:"type:float8" json:"task_ancient_minutes"`
 	TaskEfficiencyRatio      float64    `gorm:"type:float8" json:"task_efficiency_ratio"`

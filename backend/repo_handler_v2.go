@@ -32,11 +32,11 @@ type ReposListResponse struct {
 }
 
 type RepoEfficiency struct {
-	RepoAncientMinutes       float64  `json:"repo_ancient_minutes"`
-	RepoRealMinutes          float64  `json:"repo_real_minutes"`
-	EfficiencyRatio          *float64 `json:"efficiency_ratio"`
-	RepoAncientMinutesReason string   `json:"repo_ancient_minutes_reason"`
-	RepoRealMinutesReason    string   `json:"repo_real_minutes_reason"`
+	RepoAncientMinutes       float64 `json:"repo_ancient_minutes"`
+	RepoRealMinutes          float64 `json:"repo_real_minutes"`
+	EfficiencyRatio          float64 `json:"efficiency_ratio"`
+	RepoAncientMinutesReason string  `json:"repo_ancient_minutes_reason"`
+	RepoRealMinutesReason    string  `json:"repo_real_minutes_reason"`
 }
 
 type RepoSummary struct {
@@ -56,7 +56,7 @@ type RepoCommitItem struct {
 	ClientID                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
 	WorkDirID                        string          `json:"work_dir_id"`
-	DiffLines                        *int            `json:"diff_lines"`
+	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
 	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
@@ -323,11 +323,7 @@ func getRepoDetailV2(c *gin.Context) {
 			realReasons = append(realReasons, cm.CommitID[:8]+": "+realReason)
 		}
 	}
-	var efficiencyRatio *float64
-	if repoAncientMinutes > 0 && repoRealMinutes > 0 {
-		ratio := utils.CalcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
-		efficiencyRatio = &ratio
-	}
+	efficiencyRatio := utils.CalcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
 
 	// 步骤 4：获取分支列表
 	branches, err := ListBranchesByRepoAddr(statDB, repoAddr)
@@ -351,7 +347,7 @@ func getRepoDetailV2(c *gin.Context) {
 			ClientID:                         cm.ClientID,
 			WorkDir:                          cm.WorkDir,
 			WorkDirID:                        cm.WorkDirID,
-			DiffLines:                        toIntPtr(cm.DiffLines),
+			DiffLines:                        cm.DiffLines,
 			CommitAncientMinutes:             cm.CommitAncientMinutes,
 			CommitAncientMinutesReason:       cm.CommitAncientMinutesReason,
 			CommitAncientMinutesManual:       cm.CommitAncientMinutesManual,
@@ -376,18 +372,8 @@ func getRepoDetailV2(c *gin.Context) {
 			item.Silica = &s
 		}
 		// 计算单条 commit 的效率比率
-		commitAncient := cm.CommitAncientMinutes
-		if cm.CommitAncientMinutesManual != nil {
-			commitAncient = cm.CommitAncientMinutesManual
-		}
-		commitReal := cm.CommitRealMinutes
-		if cm.CommitRealMinutesManual != nil {
-			commitReal = cm.CommitRealMinutesManual
-		}
-		if commitAncient != nil && commitReal != nil && *commitAncient > 0 && *commitReal > 0 {
-			ratio := utils.CalcEfficiencyRatio(*commitAncient, *commitReal)
-			item.EfficiencyRatio = &ratio
-		}
+		item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(cm.CommitAncientMinutes,
+			cm.CommitAncientMinutesManual, cm.CommitRealMinutes, cm.CommitRealMinutesManual)
 		commitItems = append(commitItems, item)
 	}
 

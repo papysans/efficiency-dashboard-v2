@@ -10,7 +10,6 @@ import (
 	"kanban/core/models"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // ============================================================
@@ -1124,47 +1123,47 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 // user_productivity CRUD (GORM)
 // ============================================================
 
-func UpsertUserProductivity(db *gorm.DB, up *UserProductivity) error {
-	mup := models.UserProductivity{
-		UserProductivityID:       up.UserProductivityID,
-		CreateTime:               up.CreateTime,
-		UserID:                   up.UserID,
-		UserName:                 up.UserName,
-		TaskIDs:                  rawToStrJSON(up.TaskIDs),
-		WorkDirIDs:               rawToStrJSON(up.WorkDirIDs),
-		TaskDiffLines:            up.TaskDiffLines,
-		UpstreamTokens:           up.UpstreamTokens,
-		DownstreamTokens:         up.DownstreamTokens,
-		Cost:                     up.Cost,
-		TaskRealMinutes:          up.TaskRealMinutes,
-		TaskAncientMinutes:       up.TaskAncientMinutes,
-		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
-		CommitIDs:                rawToStrJSON(up.CommitIDs),
-		CommitDiffLines:          up.CommitDiffLines,
-		CommitAncientMinutes:     up.CommitAncientMinutes,
-		CommitRealAIMinutes:      up.CommitRealAIMinutes,
-		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
-		CommitRealMinutes:        up.CommitRealMinutes,
-		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
-	}
-	err := db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "user_productivity_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"create_time", "user_id", "user_name",
-			"task_ids", "work_dir_ids", "task_diff_lines",
-			"upstream_tokens", "downstream_tokens", "cost",
-			"task_real_minutes", "task_ancient_minutes", "task_efficiency_ratio",
-			"commit_ids", "commit_diff_lines",
-			"commit_ancient_minutes", "commit_real_ai_minutes", "commit_real_ancient_minutes",
-			"commit_real_minutes", "commit_efficiency_ratio",
-			"updated_at",
-		}),
-	}).Create(&mup).Error
-	if err != nil {
-		return fmt.Errorf("upsert user_productivity 失败: %w", err)
-	}
-	return nil
-}
+// func UpsertUserProductivity(db *gorm.DB, up *UserProductivity) error {
+// 	mup := models.UserProductivity{
+// 		UserProductivityID:       up.UserProductivityID,
+// 		CreateTime:               up.CreateTime,
+// 		UserID:                   up.UserID,
+// 		UserName:                 up.UserName,
+// 		TaskIDs:                  rawToStrJSON(up.TaskIDs),
+// 		WorkDirIDs:               rawToStrJSON(up.WorkDirIDs),
+// 		TaskDiffLines:            up.TaskDiffLines,
+// 		UpstreamTokens:           up.UpstreamTokens,
+// 		DownstreamTokens:         up.DownstreamTokens,
+// 		Cost:                     up.Cost,
+// 		TaskRealMinutes:          up.TaskRealMinutes,
+// 		TaskAncientMinutes:       up.TaskAncientMinutes,
+// 		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
+// 		CommitIDs:                rawToStrJSON(up.CommitIDs),
+// 		CommitDiffLines:          up.CommitDiffLines,
+// 		CommitAncientMinutes:     up.CommitAncientMinutes,
+// 		CommitRealAIMinutes:      up.CommitRealAIMinutes,
+// 		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
+// 		CommitRealMinutes:        up.CommitRealMinutes,
+// 		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
+// 	}
+// 	err := db.Clauses(clause.OnConflict{
+// 		Columns: []clause.Column{{Name: "user_productivity_id"}},
+// 		DoUpdates: clause.AssignmentColumns([]string{
+// 			"create_time", "user_id", "user_name",
+// 			"task_ids", "work_dir_ids", "task_diff_lines",
+// 			"upstream_tokens", "downstream_tokens", "cost",
+// 			"task_real_minutes", "task_ancient_minutes", "task_efficiency_ratio",
+// 			"commit_ids", "commit_diff_lines",
+// 			"commit_ancient_minutes", "commit_real_ai_minutes", "commit_real_ancient_minutes",
+// 			"commit_real_minutes", "commit_efficiency_ratio",
+// 			"updated_at",
+// 		}),
+// 	}).Create(&mup).Error
+// 	if err != nil {
+// 		return fmt.Errorf("upsert user_productivity 失败: %w", err)
+// 	}
+// 	return nil
+// }
 
 func ListUserProductivity(db *gorm.DB, userId, startTime, endTime string, page, pageSize int) ([]UserProductivity, error) {
 	q := db.Model(&models.UserProductivity{})
