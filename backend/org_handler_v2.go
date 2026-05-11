@@ -72,6 +72,7 @@ type OrgMemberItem struct {
 	Org2                  string  `json:"org2"`
 	Org3                  string  `json:"org3"`
 	Org4                  string  `json:"org4"`
+	OrgDisplay            string  `json:"org_display"`
 	TaskDiffLines         int     `json:"task_diff_lines"`
 	CommitDiffLines       int     `json:"commit_diff_lines"`
 	TaskRealMinutes       float64 `json:"task_real_minutes"`
@@ -156,6 +157,7 @@ type GroupMemberItem struct {
 	Org2                  string  `json:"org2"`
 	Org3                  string  `json:"org3"`
 	Org4                  string  `json:"org4"`
+	OrgDisplay            string  `json:"org_display"`
 	TaskDiffLines         int     `json:"task_diff_lines"`
 	CommitDiffLines       int     `json:"commit_diff_lines"`
 	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
@@ -172,6 +174,16 @@ type GroupDetailResponse struct {
 
 // orgMappings 全局组织映射表，key=user_id
 var orgMappings map[string]*models.UserOrg
+
+func getOrgDisplay(org1, org2, org3, org4, org5, org6, org7, org8, org9 string) string {
+	parts := []string{}
+	for _, v := range []string{org1, org2, org3, org4, org5, org6, org7, org8, org9} {
+		if v != "" {
+			parts = append(parts, v)
+		}
+	}
+	return strings.Join(parts, "/")
+}
 
 // getOrgValue 根据 level 获取 models.UserOrg 中对应的 org 值
 func getOrgValue(m *models.UserOrg, level string) string {
@@ -839,6 +851,7 @@ func getOrgDetailV2(c *gin.Context) {
 			Org2:                  ma.org2,
 			Org3:                  ma.org3,
 			Org4:                  ma.org4,
+			OrgDisplay:            getOrgDisplay(ma.org1, ma.org2, ma.org3, ma.org4, "", "", "", "", ""),
 			TaskDiffLines:         ma.taskDiffLines,
 			CommitDiffLines:       ma.commitDiffLines,
 			TaskRealMinutes:       ma.taskRealMin,
@@ -1090,8 +1103,13 @@ func getGroupDetailV2(c *gin.Context) {
 			commitEffRatio = utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
 		}
 		membersResult = append(membersResult, GroupMemberItem{
-			UserID: ma.userID, UserName: ma.userName,
-			Org1: ma.org1, Org2: ma.org2, Org3: ma.org3, Org4: ma.org4,
+			UserID:                ma.userID,
+			UserName:              ma.userName,
+			Org1:                  ma.org1,
+			Org2:                  ma.org2,
+			Org3:                  ma.org3,
+			Org4:                  ma.org4,
+			OrgDisplay:            getOrgDisplay(ma.org1, ma.org2, ma.org3, ma.org4, "", "", "", "", ""),
 			TaskDiffLines:         ma.taskDiffLines,
 			CommitDiffLines:       ma.commitDiffLines,
 			TaskEfficiencyRatio:   taskEffRatio,

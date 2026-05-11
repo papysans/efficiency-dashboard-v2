@@ -230,13 +230,7 @@ func listCommitsV2(c *gin.Context) {
 				item.Org7 = om.Org7
 				item.Org8 = om.Org8
 				item.Org9 = om.Org9
-				parts := []string{}
-				for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9} {
-					if v != "" {
-						parts = append(parts, v)
-					}
-				}
-				item.OrgDisplay = strings.Join(parts, "/")
+				item.OrgDisplay = getOrgDisplay(om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9)
 			}
 		}
 

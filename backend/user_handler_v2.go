@@ -473,15 +473,17 @@ func listUsersV2(c *gin.Context) {
 							}
 						}
 						points = append(points, UserSeriesPoint{
-							Period:    period,
-							TaskCount: taskCount, CommitCount: commitCount,
-							TaskDiffLines: taskDiff, CommitDiffLines: commitDiff,
-							TaskEfficiencyRatio:   taskEffRatio,
-							CommitEfficiencyRatio: commitEffRatio,
+							Period:                period,
 							TotalTokens:           upTok + downTok,
 							TotalCost:             cost,
+							TaskCount:             taskCount,
+							TaskDiffLines:         taskDiff,
+							TaskEfficiencyRatio:   taskEffRatio,
 							TaskRealMinutes:       taskRealMin,
 							TaskAncientMinutes:    taskAncientMin,
+							CommitCount:           commitCount,
+							CommitDiffLines:       commitDiff,
+							CommitEfficiencyRatio: commitEffRatio,
 							CommitRealMinutes:     commitRealMin,
 							CommitAncientMinutes:  commitAncientMin,
 						})
@@ -705,13 +707,14 @@ func getUserDetailV2(c *gin.Context) {
 
 	taskEffRatio := utils.CalcEfficiencyRatio(taskAncientMin, taskRealMin)
 	commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
+	commitsList, tasksList := aggregateDailyByGranularity(daily, granularity)
 
 	summary := UserDetailSummary{
 		UserID:                userID,
 		UserName:              userName,
 		DayCount:              dayCount,
-		TaskCount:             taskCount,
-		CommitCount:           commitCount,
+		TaskCount:             len(tasksList),
+		CommitCount:           len(commitsList),
 		TaskDiffLines:         taskDiffLines,
 		CommitDiffLines:       commitDiffLines,
 		UpstreamTokens:        upTokens,
@@ -724,8 +727,6 @@ func getUserDetailV2(c *gin.Context) {
 		CommitAncientMinutes:  commitAncientMin,
 		CommitEfficiencyRatio: commitEffRatio,
 	}
-
-	commitsList, tasksList := aggregateDailyByGranularity(daily, granularity)
 
 	c.JSON(http.StatusOK, UserDetailResponse{
 		Summary:     summary,

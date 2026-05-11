@@ -53,6 +53,7 @@ type TaskListItem struct {
 	Org7                           string     `json:"org7"`
 	Org8                           string     `json:"org8"`
 	Org9                           string     `json:"org9"`
+	OrgDisplay                     string     `json:"org_display"`
 }
 
 type TaskListResponse struct {
@@ -222,6 +223,8 @@ func listTasksV2(c *gin.Context) {
 				item.Org7 = om.Org7
 				item.Org8 = om.Org8
 				item.Org9 = om.Org9
+				item.OrgDisplay = getOrgDisplay(om.Org1, om.Org2, om.Org3, om.Org4,
+					om.Org5, om.Org6, om.Org7, om.Org8, om.Org9)
 			}
 		}
 		results[i] = item
