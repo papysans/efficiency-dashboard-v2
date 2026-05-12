@@ -23,6 +23,8 @@ var importCmd = &cobra.Command{
 		fromDB, _ := cmd.Flags().GetString("from-db")
 		fromCSV, _ := cmd.Flags().GetString("from-csv")
 		dateStr, _ := cmd.Flags().GetString("date")
+		startDateStr, _ := cmd.Flags().GetString("start-date")
+		endDateStr, _ := cmd.Flags().GetString("end-date")
 		maxDays, _ := cmd.Flags().GetInt("max-days")
 		remote, _ := cmd.Flags().GetString("remote")
 
@@ -36,6 +38,8 @@ var importCmd = &cobra.Command{
 				"from_db":      fromDB,
 				"from_csv":     fromCSV,
 				"date":         dateStr,
+				"start_date":   startDateStr,
+				"end_date":     endDateStr,
 				"max_days":     maxDays,
 			})
 		}
@@ -59,11 +63,11 @@ var importCmd = &cobra.Command{
 			name string
 			fn   func() error
 		}{
-			{"import-task", func() error { return runImportTask(taskDir, analysedDir, force) }},
-			{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force) }},
+			{"import-task", func() error { return runImportTask(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
+			{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
 			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-			{"silica", func() error { return runSilica(analysedDir, force, maxDays) }},
-			{"efficiency", func() error { return runEfficiency(dateStr) }},
+			{"silica", func() error { return runSilica(analysedDir, force, maxDays, startDateStr, endDateStr, dateStr) }},
+			{"efficiency", func() error { return runEfficiency(startDateStr, endDateStr, dateStr) }},
 		}
 
 		for _, step := range steps {
@@ -87,7 +91,9 @@ func init() {
 	importCmd.Flags().String("from-db", "", "源数据库DSN（import-org用）")
 	importCmd.Flags().String("to-csv", "", "导出CSV文件路径（import-org用，可选，不指定则不导出）")
 	importCmd.Flags().String("from-csv", "", "从指定的CSV文件加载UserOrg数据，替代从数据库加载（import-org用）")
-	importCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期（efficiency用）")
+	importCmd.Flags().String("date", "", "限定日期，格式YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
+	importCmd.Flags().String("start-date", "", "限定起始日期，格式YYYYMMDD，限定活跃时间在该日期之后（含）")
+	importCmd.Flags().String("end-date", "", "限定结束日期，格式YYYYMMDD，限定活跃时间在该日期之前（含）")
 	importCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（silica用，默认从config读取）")
 	importCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
@@ -161,7 +162,7 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 //  5. 调用 estimateCommitAncientMinutes 根据新增行数估算 commit 的 "Ancient Minutes"（原始人分钟）
 //  6. 使用 GORM 的 clause.OnConflict 实现 UPSERT：以 commit_id 为唯一键，冲突时更新除主键外的所有字段
 //  7. 将新增行的指纹逐行写入 .fp 文件，用于后续代码相似度/抄袭检测等场景
-func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error {
+func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string, startDate, endDate *time.Time) error {
 	// 读取磁盘上的 JSON 文件内容
 	data, err := os.ReadFile(meta.Path)
 	if err != nil {
@@ -191,6 +192,11 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	commitTime, err := time.Parse(time.RFC3339, commitData.CommitTime)
 	if err != nil {
 		return fmt.Errorf("解析commit_time失败: %w", err)
+	}
+
+	// 日期范围过滤
+	if !isActiveTimeInRange(commitTime, startDate, endDate) {
+		return errSkipTask
 	}
 
 	// 兼容新旧字段：优先使用 work_dir，不存在时回退到 work_path
@@ -321,13 +327,20 @@ func fpPathForMeta(analysedDir string, meta repoFileMeta) string {
 //  4. 批量处理：逐个文件调用 importCommitFile，失败时记录日志并计数，不中断整体流程
 //  5. 进度提示：每成功导入 50 个文件调用 logPromptProgress 输出进度信息
 //  6. 命令埋点：通过 recordCommandRun 记录命令执行时间、成功/失败/跳过数量，用于运维监控
-func runImportRepo(repoDir, analysedDir string, force bool) error {
+func runImportRepo(repoDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 
 	// 检查 repo 目录是否存在，不存在则直接返回错误并记录执行结果
 	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
 		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("repo目录不存在: %s", repoDir)
+	}
+
+	// 解析日期范围
+	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	if err != nil {
+		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
+		return err
 	}
 
 	// 打开数据库连接，获取底层 *sql.DB 以便在函数结束时关闭
@@ -360,7 +373,12 @@ func runImportRepo(repoDir, analysedDir string, force bool) error {
 
 	// 逐个导入文件，失败不中断，继续处理下一个
 	for _, fileMeta := range files {
-		if err := importCommitFile(db, fileMeta, analysedDir); err != nil {
+		if err := importCommitFile(db, fileMeta, analysedDir, startDate, endDate); err != nil {
+			if errors.Is(err, errSkipTask) {
+				logDebugf("跳过(日期范围过滤): %s", fileMeta.Path)
+				skipCount++
+				continue
+			}
 			logWarnf("导入失败 [%s]: %v", fileMeta.Path, err)
 			failCount++
 		} else {
@@ -395,6 +413,9 @@ var importRepoCmd = &cobra.Command{
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
 		remote, _ := cmd.Flags().GetString("remote")
+		startDate, _ := cmd.Flags().GetString("start-date")
+		endDate, _ := cmd.Flags().GetString("end-date")
+		date, _ := cmd.Flags().GetString("date")
 
 		// 若指定了 remote，将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
@@ -402,6 +423,9 @@ var importRepoCmd = &cobra.Command{
 				"repo_dir":     repoDir,
 				"analysed_dir": analysedDir,
 				"force":        force,
+				"start_date":   startDate,
+				"end_date":     endDate,
+				"date":         date,
 			})
 		}
 
@@ -414,7 +438,7 @@ var importRepoCmd = &cobra.Command{
 		}
 
 		// 执行本地导入流程
-		return runImportRepo(repoDir, analysedDir, force)
+		return runImportRepo(repoDir, analysedDir, force, startDate, endDate, date)
 	},
 }
 
@@ -428,6 +452,9 @@ func init() {
 	importRepoCmd.Flags().String("repo-dir", "", "repo 目录路径")
 	importRepoCmd.Flags().String("analysed-dir", "", "已处理文件的输出目录")
 	importRepoCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
+	importRepoCmd.Flags().String("start-date", "", "限定起始日期，格式 YYYYMMDD，为空则不限")
+	importRepoCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
+	importRepoCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
 	importRepoCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importRepoCmd)
 }

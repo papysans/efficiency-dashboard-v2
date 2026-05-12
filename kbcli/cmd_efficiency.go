@@ -447,27 +447,28 @@ func loadUserNamesFromCommits(db *gorm.DB) (map[string]string, error) {
 // runEfficiency 执行效能计算的主流程，支持按指定日期或全量日期计算用户生产力。
 //
 // 参数:
-//   - dateStr: 指定日期，格式 YYYYMMDD；为空字符串时处理所有历史日期
+//   - startDateStr: 限定起始日期，格式 2006-01-02
+//   - endDateStr: 限定结束日期，格式 2006-01-02
+//   - dateStr: 限定日期，格式 2006-01-02；与 startDateStr/endDateStr 互斥
 //
 // 返回值:
 //   - error: 参数校验、数据库连接、数据聚合或写入过程中发生的错误
 //
 // 关键技术原理:
-//  1. 参数校验：若传入 dateStr，则校验其是否符合 YYYYMMDD 格式，避免无效日期导致全表扫描
+//  1. 参数校验：解析日期参数为统一格式，避免无效日期导致全表扫描
 //  2. 数据源：从 tasks 和 commits 两张表提取有数据的日期，支持全量自动发现和单日期定点计算两种模式
 //  3. 用户名加载：分别加载 user_org、tasks、commits 三个来源的用户名，形成三级回退策略
 //  4. 逐日处理：循环 dates 列表，每天独立调用 calculateUserProductivity，日志按日期分段，便于排查
 //  5. 容错设计：loadUserNamesFromTasks / loadUserNamesFromCommits 失败时仅输出警告，不中断主流程
 //  6. 命令埋点：通过 recordCommandRun 记录执行结果，用于监控和告警
-func runEfficiency(dateStr string) error {
+func runEfficiency(startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 
-	// 若指定了日期，先校验格式是否正确
-	if dateStr != "" {
-		if _, err := time.Parse("20060102", dateStr); err != nil {
-			recordCommandRun("efficiency", startTime, 0, 0, 0, err)
-			return fmt.Errorf("--date 格式应为 YYYYMMDD，当前: %s, 详情: %w", dateStr, err)
-		}
+	// 解析日期范围
+	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	if err != nil {
+		recordCommandRun("efficiency", startTime, 0, 0, 0, err)
+		return err
 	}
 
 	// 建立数据库连接，并在函数退出时关闭底层连接
@@ -483,7 +484,8 @@ func runEfficiency(dateStr string) error {
 	var dates []string
 	if dateStr != "" {
 		// 单日期模式：直接处理指定日期
-		dates = []string{dateStr}
+		t, _ := time.Parse("2006-01-02", dateStr)
+		dates = []string{t.Format("20060102")}
 	} else {
 		// 全量模式：从数据库中提取所有有数据的日期
 		dates, err = getAllDates(db)
@@ -493,6 +495,25 @@ func runEfficiency(dateStr string) error {
 		}
 		if len(dates) == 0 {
 			logInfo("没有找到任何task或commit数据")
+			recordCommandRun("efficiency", startTime, 0, 0, 0, nil)
+			return nil
+		}
+		// 根据日期范围过滤
+		if startDate != nil || endDate != nil {
+			var filtered []string
+			for _, d := range dates {
+				t, err := time.Parse("20060102", d)
+				if err != nil {
+					continue
+				}
+				if isActiveTimeInRange(t, startDate, endDate) {
+					filtered = append(filtered, d)
+				}
+			}
+			dates = filtered
+		}
+		if len(dates) == 0 {
+			logInfo("日期过滤后没有待处理的日期")
 			recordCommandRun("efficiency", startTime, 0, 0, 0, nil)
 			return nil
 		}
@@ -554,17 +575,21 @@ var efficiencyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// 从命令行标志读取参数
 		dateStr, _ := cmd.Flags().GetString("date")
+		startDate, _ := cmd.Flags().GetString("start-date")
+		endDate, _ := cmd.Flags().GetString("end-date")
 		remote, _ := cmd.Flags().GetString("remote")
 
 		// 若指定了 remote，将参数发送到远程执行
 		if remote != "" {
 			return sendToRemote(remote, "efficiency", map[string]interface{}{
-				"date": dateStr,
+				"date":       dateStr,
+				"start_date": startDate,
+				"end_date":   endDate,
 			})
 		}
 
 		// 本地执行效能计算
-		return runEfficiency(dateStr)
+		return runEfficiency(startDate, endDate, dateStr)
 	},
 }
 
@@ -575,7 +600,9 @@ var efficiencyCmd = &cobra.Command{
 //	SortFlags 设为 false 保持标志按定义顺序显示，提升可读性。
 func init() {
 	efficiencyCmd.Flags().SortFlags = false
-	efficiencyCmd.Flags().String("date", "", "聚合日期，格式YYYYMMDD，不指定则处理所有日期")
+	efficiencyCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
+	efficiencyCmd.Flags().String("start-date", "", "限定起始日期，格式 YYYYMMDD，为空则不限")
+	efficiencyCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
 	efficiencyCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(efficiencyCmd)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -126,6 +127,8 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 //   - 累加 UpstreamTokens、DownstreamTokens、Cost、DiffLines 得到任务级指标。
 //   - calcTaskRealMinutes 基于对话时间分布，用“时间片段合并”算法计算真实工作时长。
 //   - estimateTaskAncientMinutes 基于输入字符数和代码行数，用线性因子模型估算原始工作量。
+var errSkipTask = errors.New("task skipped by date filter")
+
 func calcTaskRecord(summary *taskSummary, conversations []taskConversation) models.Task {
 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
 	rec := models.Task{
@@ -213,7 +216,7 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) mode
 //
 // 返回值：导入过程中发生的错误。
 // 关键技术原理：使用 GORM 的 clause.OnConflict 实现 UPSERT（冲突时更新指定列），保证多次导入幂等。
-func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath string) error {
+func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath string, startDate, endDate *time.Time) error {
 	// 读取并解析 summary JSON 文件
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
@@ -241,6 +244,20 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 
 	// 根据 summary 和 conversations 计算完整的 Task 记录
 	task := calcTaskRecord(&summary, conversations)
+
+	// 日期范围过滤：EndTime 不在 [startDate, endDate] 范围内时跳过
+	if task.EndTime == nil {
+		logWarnf("任务[%s]的结束时间EndTime为空", task.TaskId)
+		return fmt.Errorf("end_time为空")
+	}
+	if startDate != nil && task.EndTime.Before(*startDate) {
+		logDebugf("跳过(EndTime在startDate之前): %s", summary.TaskId)
+		return errSkipTask
+	}
+	if endDate != nil && !task.EndTime.Before(*endDate) {
+		logDebugf("跳过(EndTime在endDate之后): %s", summary.TaskId)
+		return errSkipTask
+	}
 
 	// 生成 task silica 文件用于后续增量检测；失败仅记录警告，不阻断主流程
 	if err := generateTaskSilicaFile(&summary, conversations, conversationPath, silicaPath); err != nil {
@@ -943,7 +960,7 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 //  2. 对每个 conversation 文件，先检查是否存在对应 summary；再调用 needUpdateConversations 进行增量检测。
 //  3. 调用 importSingleTask 完成单任务导入，并统计成功/失败/跳过数量。
 //  4. 通过 recordCommandRun 记录命令执行结果，便于运维监控和审计。
-func runImportTask(taskDir, analysedDir string, force bool) error {
+func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 	summaryDir := filepath.Join(taskDir, "summary")
 	conversationDir := filepath.Join(taskDir, "conversation")
@@ -952,6 +969,13 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
 		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return fmt.Errorf("summary目录不存在: %s", summaryDir)
+	}
+
+	// 解析日期范围
+	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	if err != nil {
+		recordCommandRun("import-task", startTime, 0, 0, 0, err)
+		return err
 	}
 
 	// 连接数据库
@@ -1005,7 +1029,12 @@ func runImportTask(taskDir, analysedDir string, force bool) error {
 		}
 
 		// 执行单任务导入
-		if err := importSingleTask(db, summaryPath, conversationPath, silicaPath); err != nil {
+		if err := importSingleTask(db, summaryPath, conversationPath, silicaPath, startDate, endDate); err != nil {
+			if errors.Is(err, errSkipTask) {
+				logDebugf("跳过(日期范围过滤): %s", taskID)
+				skipCount++
+				continue
+			}
 			logWarnf("导入失败 [%s]: %v", taskID, err)
 			failCount++
 		} else {
@@ -1030,6 +1059,9 @@ var importTasksCmd = &cobra.Command{
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
 		remote, _ := cmd.Flags().GetString("remote")
+		startDate, _ := cmd.Flags().GetString("start-date")
+		endDate, _ := cmd.Flags().GetString("end-date")
+		date, _ := cmd.Flags().GetString("date")
 
 		// 若指定了 remote 地址，则将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
@@ -1037,6 +1069,9 @@ var importTasksCmd = &cobra.Command{
 				"task_dir":     taskDir,
 				"analysed_dir": analysedDir,
 				"force":        force,
+				"start_date":   startDate,
+				"end_date":     endDate,
+				"date":         date,
 			})
 		}
 		// 若未显式指定目录，回退到配置文件中的默认值
@@ -1047,7 +1082,7 @@ var importTasksCmd = &cobra.Command{
 			analysedDir = cfg.AnalysedDir
 		}
 
-		return runImportTask(taskDir, analysedDir, force)
+		return runImportTask(taskDir, analysedDir, force, startDate, endDate, date)
 	},
 }
 
@@ -1058,6 +1093,9 @@ func init() {
 	importTasksCmd.Flags().String("task-dir", "", "task 目录路径")
 	importTasksCmd.Flags().String("analysed-dir", "", "输出目录路径")
 	importTasksCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
+	importTasksCmd.Flags().String("start-date", "", "限定起始日期，格式 YYYYMMDD，为空则不限")
+	importTasksCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
+	importTasksCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
 	importTasksCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importTasksCmd)
 }

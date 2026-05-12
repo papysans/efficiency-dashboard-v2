@@ -462,7 +462,7 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 //  2. 扫描所有commit的 .fp 指纹文件。
 //  3. 对每个commit：查询数据库元数据 -> 筛选候选指纹 -> 计算含硅量 -> 计算衍生指标 -> 更新数据库。
 //  4. 汇总统计成功/跳过/失败的数量。
-func runSilica(analysedDir string, force bool, maxDays int) error {
+func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 	// 构建task指纹目录和仓库指纹目录的路径
 	taskFPDir := filepath.Join(analysedDir, "task", "conversation")
@@ -472,6 +472,13 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 	if _, err := os.Stat(taskFPDir); os.IsNotExist(err) {
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("task指纹目录不存在: %s", taskFPDir)
+	}
+
+	// 解析日期范围
+	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	if err != nil {
+		recordCommandRun("silica", startTime, 0, 0, 0, err)
+		return err
 	}
 
 	// 建立数据库连接
@@ -543,13 +550,20 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			failCount++
 			continue
 		}
-
-		// 使用commit的仓库地址和用户ID构建分组键
-		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserId}
 		if commit.CommitTime.IsZero() {
 			logErrorf("Commit [%s] 缺少提交时间", commitID)
 			continue
 		}
+
+		// 日期范围过滤
+		if !isActiveTimeInRange(commit.CommitTime, startDate, endDate) {
+			logDebugf("跳过(日期范围过滤): %s", commitID)
+			skipCount++
+			continue
+		}
+
+		// 使用commit的仓库地址和用户ID构建分组键
+		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserId}
 
 		// 在时间窗口内筛选候选指纹，并计算含硅量
 		candidateHashes := idx.buildCandidateHashIndex(gk, commit.CommitTime, maxDays)
@@ -627,6 +641,9 @@ var silicaCmd = &cobra.Command{
 		force, _ := cmd.Flags().GetBool("force")
 		maxDays, _ := cmd.Flags().GetInt("max-days")
 		remote, _ := cmd.Flags().GetString("remote")
+		startDate, _ := cmd.Flags().GetString("start-date")
+		endDate, _ := cmd.Flags().GetString("end-date")
+		date, _ := cmd.Flags().GetString("date")
 
 		// 如果指定了remote地址，将命令转发到远程kbcli服务执行
 		if remote != "" {
@@ -634,6 +651,9 @@ var silicaCmd = &cobra.Command{
 				"analysed_dir": analysedDir,
 				"force":        force,
 				"max_days":     maxDays,
+				"start_date":   startDate,
+				"end_date":     endDate,
+				"date":         date,
 			})
 		}
 
@@ -645,7 +665,7 @@ var silicaCmd = &cobra.Command{
 			maxDays = cfg.SilicaMaxDays
 		}
 
-		return runSilica(analysedDir, force, maxDays)
+		return runSilica(analysedDir, force, maxDays, startDate, endDate, date)
 	},
 }
 
@@ -654,6 +674,9 @@ func init() {
 	silicaCmd.Flags().SortFlags = false // 保持标志定义顺序，便于文档生成
 	silicaCmd.Flags().String("analysed-dir", "", "已分析文件目录路径")
 	silicaCmd.Flags().BoolP("force", "f", false, "强制重新计算，覆盖已存在数据")
+	silicaCmd.Flags().String("start-date", "", "限定起始日期，格式 YYYYMMDD，为空则不限")
+	silicaCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
+	silicaCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
 	silicaCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（默认从config读取）")
 	silicaCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(silicaCmd)

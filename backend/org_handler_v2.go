@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
@@ -716,6 +717,8 @@ func getOrgDetailV2(c *gin.Context) {
 		upTokens         int64
 		downTokens       int64
 		cost             float64
+		taskIDs          map[string]bool
+		commitIDs        map[string]bool
 	}
 	type memberAgg struct {
 		userID                 string
@@ -753,10 +756,34 @@ func getOrgDetailV2(c *gin.Context) {
 			}
 			dateStr := d.CreateTime.Format("2006-01-02")
 			if _, ok := dailyMap[dateStr]; !ok {
-				dailyMap[dateStr] = &dailyAgg{}
+				dailyMap[dateStr] = &dailyAgg{
+					taskIDs:   make(map[string]bool),
+					commitIDs: make(map[string]bool),
+				}
 			}
 			da := dailyMap[dateStr]
 			ma := memberMap[u.UserId]
+
+			if d.TaskIds != nil {
+				var ids []interface{}
+				if err := json.Unmarshal(d.TaskIds, &ids); err == nil {
+					for _, id := range ids {
+						if s, ok := id.(string); ok {
+							da.taskIDs[s] = true
+						}
+					}
+				}
+			}
+			if d.CommitIds != nil {
+				var ids []interface{}
+				if err := json.Unmarshal(d.CommitIds, &ids); err == nil {
+					for _, id := range ids {
+						if s, ok := id.(string); ok {
+							da.commitIDs[s] = true
+						}
+					}
+				}
+			}
 
 			da.taskDiffLines += d.TaskDiffLines
 			ma.taskDiffLines += d.TaskDiffLines
@@ -790,8 +817,21 @@ func getOrgDetailV2(c *gin.Context) {
 	for _, date := range dates {
 		da := dailyMap[date]
 		t, _ := time.Parse("2006-01-02", date)
+
+		var taskIDList, commitIDList []string
+		for id := range da.taskIDs {
+			taskIDList = append(taskIDList, id)
+		}
+		for id := range da.commitIDs {
+			commitIDList = append(commitIDList, id)
+		}
+		taskIDsJSON, _ := json.Marshal(taskIDList)
+		commitIDsJSON, _ := json.Marshal(commitIDList)
+
 		dailySlice = append(dailySlice, UserProductivity{
 			CreateTime:           t,
+			TaskIds:              taskIDsJSON,
+			CommitIds:            commitIDsJSON,
 			TaskDiffLines:        da.taskDiffLines,
 			CommitDiffLines:      da.commitDiffLines,
 			TaskRealMinutes:      da.taskRealMin,

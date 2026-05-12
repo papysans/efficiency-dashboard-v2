@@ -72,6 +72,8 @@ type ImportTaskBody struct {
 	TaskDir     string `json:"task_dir" example:"/path/to/task"`
 	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
 	Force       bool   `json:"force" example:"false"`
+	StartDate   string `json:"start_date" example:"2024-01-01"`
+	EndDate     string `json:"end_date" example:"2024-01-31"`
 }
 
 // ImportRepoBody import-repo 请求体

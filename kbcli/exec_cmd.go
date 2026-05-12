@@ -76,14 +76,20 @@ func executeImportTask(params map[string]interface{}) error {
 	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
 	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
-	return runImportTask(taskDir, analysedDir, force)
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
+	date := getStringParam(params, "date", "")
+	return runImportTask(taskDir, analysedDir, force, startDate, endDate, date)
 }
 
 func executeImportRepo(params map[string]interface{}) error {
 	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
 	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
-	return runImportRepo(repoDir, analysedDir, force)
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
+	date := getStringParam(params, "date", "")
+	return runImportRepo(repoDir, analysedDir, force, startDate, endDate, date)
 }
 
 func executeImportOrg(params map[string]interface{}) error {
@@ -97,12 +103,17 @@ func executeSilica(params map[string]interface{}) error {
 	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
 	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
-	return runSilica(analysedDir, force, maxDays)
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
+	date := getStringParam(params, "date", "")
+	return runSilica(analysedDir, force, maxDays, startDate, endDate, date)
 }
 
 func executeEfficiency(params map[string]interface{}) error {
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	return runEfficiency(date)
+	return runEfficiency(startDate, endDate, date)
 }
 
 func executeImport(params map[string]interface{}) error {
@@ -112,6 +123,8 @@ func executeImport(params map[string]interface{}) error {
 	force := getBoolParam(params, "force", false)
 	fromDB := getStringParam(params, "from_db", cfg.OrgDSN)
 	fromCSV := getStringParam(params, "from_csv", "")
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
 	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
 
@@ -119,11 +132,11 @@ func executeImport(params map[string]interface{}) error {
 		name string
 		fn   func() error
 	}{
-		{"import-task", func() error { return runImportTask(taskDir, analysedDir, force) }},
-		{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force) }},
+		{"import-task", func() error { return runImportTask(taskDir, analysedDir, force, startDate, endDate, date) }},
+		{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force, startDate, endDate, date) }},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-		{"silica", func() error { return runSilica(analysedDir, force, maxDays) }},
-		{"efficiency", func() error { return runEfficiency(date) }},
+		{"silica", func() error { return runSilica(analysedDir, force, maxDays, startDate, endDate, date) }},
+		{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }},
 	}
 
 	for _, step := range steps {
