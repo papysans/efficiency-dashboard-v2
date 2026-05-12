@@ -15,45 +15,66 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// convMeta 存储单个对话（conversation）的元数据，用于在组内标识一次AI交互。
 type convMeta struct {
-	taskID    string
-	requestID string
-	endTime   time.Time
+	taskID    string    // 所属的任务ID
+	requestID string    // 对话请求ID，唯一标识一次AI请求
+	endTime   time.Time // 对话结束时间，用于与commit时间进行先后比较
 }
 
+// groupKey 定义分组的复合键，将同一仓库下同一用户的对话归为一组。
+// 原理：AI对话产生的代码行通常与特定仓库和特定开发者强相关，
+// 按(repoAddr, userID)分组可避免跨仓库/跨用户的指纹误匹配。
 type groupKey struct {
-	repoAddr string
-	userID   string
+	repoAddr string // 仓库地址
+	userID   string // 用户ID
 }
 
+// groupIndexer 管理同一分组内的对话列表及其产生的代码行指纹索引。
+// 关键技术原理： Lines 采用 map[string]int 结构，键为代码行指纹（hash），
+// 值为该指纹在 Convs 切片中的索引。当同一指纹被多个对话生成时，
+// 保留 endTime 最晚的对话（见 buildConversationsIndexer 中的冲突处理逻辑），
+// 确保“最接近commit时间”的对话获得该指纹的归属权。
 type groupIndexer struct {
 	Lines map[string]int // 代码行指纹 -> Convs数组索引，映射到生成该行的对话
 	Convs []convMeta     // 同属于该组的对话
 }
 
+// conversationsIndexer 全局conversation指纹索引，聚合所有分组的数据。
+// 用于快速判断某行代码是否由某次AI对话生成。
 type conversationsIndexer struct {
-	groups    map[groupKey]groupIndexer
-	convCount int
-	hashCount int
+	groups    map[groupKey]groupIndexer // 分组索引
+	convCount int                       // 已加载的对话总数（仅用于统计）
+	hashCount int                       // 已加载的唯一指纹总数（仅用于统计）
 }
 
+// commitParser 用于解析单个commit的指纹文件并计算含硅量及相关衍生指标。
 type commitParser struct {
-	fpHashs          []string
-	taskIDs          []string
-	taskSilicas      []float64
-	totalLines       int
-	totalMatchLines  int
-	totalSilica      float64
-	aiMinutes        float64
-	ancientMinutes   float64
-	realMinutes      float64
-	realReason       string
-	upstreamTokens   int64
-	downstreamTokens int64
-	cost             float64
+	fpHashs          []string  // commit指纹文件中的全部代码行指纹
+	taskIDs          []string  // 匹配的taskID列表（去重后）
+	taskSilicas      []float64 // 每个task对当前commit的含硅量贡献值
+	totalLines       int       // commit总行数（指纹总数）
+	totalMatchLines  int       // 与AI对话指纹匹配的行数
+	totalSilica      float64   // 总含硅量（所有task贡献值之和）
+	aiMinutes        float64   // AI生成代码对应的实际耗时（分钟）
+	ancientMinutes   float64   // 非AI代码（远古代码）的估算耗时（分钟）
+	realMinutes      float64   // 总实际耗时 = aiMinutes + ancientMinutes
+	realReason       string    // 实际耗时的计算说明文本
+	upstreamTokens   int64     // 上游token消耗总数
+	downstreamTokens int64     // 下游token消耗总数
+	cost             float64   // AI调用成本总数
 }
 
+// buildCommitParser 从指定的指纹文件路径构建commitParser实例。
+//
+// 参数:
+//   - fpPath: commit指纹文件路径，每行一个代码行指纹（hash）。
+//
+// 返回值:
+//   - *commitParser: 解析器实例，包含已加载的指纹列表。
+//   - nil: 如果指纹文件读取失败。
 func buildCommitParser(fpPath string) *commitParser {
+	// 加载commit指纹文件中的所有hash值
 	fpHashs, err := loadFPHashes(fpPath)
 	if err != nil {
 		return nil
@@ -63,15 +84,33 @@ func buildCommitParser(fpPath string) *commitParser {
 	}
 }
 
+// buildConversationsIndexer 扫描task指纹目录，构建全局conversation索引。
+//
+// 参数:
+//   - taskFPDir: task/conversation指纹目录，预期包含若干 .silica.json 文件。
+//
+// 返回值:
+//   - *conversationsIndexer: 构建完成的索引对象。
+//   - error: 目录扫描或文件解析过程中的错误。
+//
+// 关键技术原理:
+//  1. 遍历 taskFPDir 下所有 .silica.json 文件，每个文件记录了一个task的所有AI对话及其生成的代码行指纹。
+//  2. 按 (repoAddr, userID) 将对话分组，因为同一开发者在同一仓库中的对话最可能与该仓库后续commit相关。
+//  3. 在 groupIndexer.Lines 中维护“指纹 -> 对话索引”的映射。当同一指纹出现在多个对话中时，
+//     采用 endTime 最晚的对话作为归属（时间最近优先原则），这基于一个假设：
+//     越接近commit时间的对话，其生成代码被直接采纳的概率越高。
+//  4. 索引构建完成后，可通过 buildCandidateHashIndex 按时间窗口快速筛选候选指纹。
 func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) {
 	idx := &conversationsIndexer{
 		groups: make(map[groupKey]groupIndexer),
 	}
 
+	// 目录不存在时返回空索引，不报错（兼容增量分析场景）
 	if _, err := os.Stat(taskFPDir); os.IsNotExist(err) {
 		return idx, nil
 	}
 
+	// 第一步：递归扫描所有 .silica.json 文件
 	var silicaFiles []string
 	err := filepath.Walk(taskFPDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -86,14 +125,17 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		return nil, fmt.Errorf("扫描task silica目录失败: %w", err)
 	}
 
+	// 第二步：逐个解析文件并构建索引
 	for i, silicaFile := range silicaFiles {
-		logPromptProgress(i, 50)
+		logPromptProgress(i, 50) // 每处理50个文件打印一次进度
 
+		// 加载单个task的silica数据文件
 		tsd, err := loadTaskSilicaFile(silicaFile)
 		if err != nil {
 			logWarnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
 			continue
 		}
+		// 跳过缺少关键字段的文件，避免索引中出现无效分组
 		if tsd.TaskId == "" {
 			logWarnf("文件[%s]缺失字段[task_id]", silicaFile)
 			continue
@@ -103,8 +145,10 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			continue
 		}
 
+		// 按 repoAddr + userID 确定分组键
 		gk := groupKey{repoAddr: tsd.RepoAddr, userID: tsd.UserId}
 
+		// 获取或初始化该分组索引器
 		gi, exists := idx.groups[gk]
 		if !exists {
 			gi = groupIndexer{
@@ -113,45 +157,61 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			}
 		}
 
+		// 第三步：遍历该task下的所有对话，将指纹注册到分组索引中
 		for i, conv := range tsd.Conversations {
 			if conv.RequestId == "" {
 				logWarnf("文件[%s]对话[%d]缺失字段[request_id]", silicaFile, i)
 				continue
 			}
 
+			// 解析对话结束时间，用于后续的时间窗口筛选和冲突仲裁
 			var endTime time.Time
 			if conv.EndTime != "" {
 				endTime, _ = time.Parse(time.RFC3339, conv.EndTime)
 			}
 
+			// 创建对话元数据对象
 			cm := convMeta{
 				taskID:    tsd.TaskId,
 				requestID: conv.RequestId,
 				endTime:   endTime,
 			}
 
+			// 将该对话追加到分组的 Convs 切片中，记录其索引位置
 			convIdx := len(gi.Convs)
 			gi.Convs = append(gi.Convs, cm)
 
+			// 第四步：注册该对话产生的所有代码行指纹
 			for _, h := range conv.Fingerprints {
 				prevIdx, prevExists := gi.Lines[h]
+				// 冲突仲裁：如果该指纹已存在，仅当当前对话的 endTime 更晚时才替换归属
+				// 这确保“最接近commit”的对话优先获得指纹归属权
 				if !prevExists || endTime.After(gi.Convs[prevIdx].endTime) {
 					gi.Lines[h] = convIdx
 					if !prevExists {
-						idx.hashCount++
+						idx.hashCount++ // 仅当新增唯一指纹时计数
 					}
 				}
 			}
 
-			idx.convCount++
+			idx.convCount++ // 累计对话总数
 		}
 
+		// 更新分组索引回全局索引
 		idx.groups[gk] = gi
 	}
 
 	return idx, nil
 }
 
+// loadTaskSilicaFile 读取并解析单个task的silica数据文件。
+//
+// 参数:
+//   - path: .silica.json 文件的完整路径。
+//
+// 返回值:
+//   - *taskSilicaData: 解析后的数据结构。
+//   - error: 文件读取或JSON解析错误。
 func loadTaskSilicaFile(path string) (*taskSilicaData, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -164,18 +224,38 @@ func loadTaskSilicaFile(path string) (*taskSilicaData, error) {
 	return &tsd, nil
 }
 
+// buildCandidateHashIndex 根据分组键和commit时间，构建候选指纹索引。
+//
+// 参数:
+//   - gk: 分组键（repoAddr + userID），用于定位对应的分组数据。
+//   - commitTime: commit的提交时间。
+//   - maxDays: 最大时间窗口（天数），仅选取在commit提交前 maxDays 天内结束的对话。
+//
+// 返回值:
+//   - map[string]convMeta: 符合条件的指纹到对话元数据的映射。
+//   - nil: 如果分组不存在或无符合条件的对话。
+//
+// 关键技术原理:
+//
+//	采用“时间窗口过滤”策略。一个对话结束后，其生成的代码可能在短期内被开发者采纳并提交。
+//	超过 maxDays 的对话被认为与当前commit的关联性过低，予以排除。
+//	先筛选出符合条件的对话索引集合，再遍历 Lines 映射过滤出属于这些对话的指纹。
 func (idx *conversationsIndexer) buildCandidateHashIndex(gk groupKey, commitTime time.Time, maxDays int) map[string]convMeta {
 	gi, exists := idx.groups[gk]
 	if !exists || len(gi.Lines) == 0 {
 		return nil
 	}
 
+	// 计算允许的最大时间差：maxDays 转换为 Duration
 	maxDuration := time.Duration(maxDays) * 24 * time.Hour
+
+	// 第一步：筛选出结束时间在 [commitTime-maxDuration, commitTime) 区间内的对话
 	candidateIndices := make(map[int]bool)
 	for i, m := range gi.Convs {
 		if m.endTime.IsZero() {
-			continue
+			continue // 跳过无结束时间的对话（无法判断时间关联性）
 		}
+		// 对话必须在commit之前结束，且与commit的时间差不超过maxDuration
 		if m.endTime.Before(commitTime) && commitTime.Sub(m.endTime) <= maxDuration {
 			candidateIndices[i] = true
 		}
@@ -185,6 +265,7 @@ func (idx *conversationsIndexer) buildCandidateHashIndex(gk groupKey, commitTime
 		return nil
 	}
 
+	// 第二步：从 Lines 映射中提取仅属于候选对话的指纹
 	result := make(map[string]convMeta)
 	for hash, convIdx := range gi.Lines {
 		if candidateIndices[convIdx] {
@@ -194,6 +275,14 @@ func (idx *conversationsIndexer) buildCandidateHashIndex(gk groupKey, commitTime
 	return result
 }
 
+// loadFPHashes 从指纹文件中逐行读取所有非空指纹。
+//
+// 参数:
+//   - fpPath: 指纹文件路径，预期每行一个hash字符串。
+//
+// 返回值:
+//   - []string: 指纹字符串切片。
+//   - error: 文件打开或读取错误。
 func loadFPHashes(fpPath string) ([]string, error) {
 	f, err := os.Open(fpPath)
 	if err != nil {
@@ -203,21 +292,30 @@ func loadFPHashes(fpPath string) ([]string, error) {
 
 	var hashes []string
 	scanner := bufio.NewScanner(f)
+	// 扩大扫描缓冲区以支持较大的指纹文件（最大10MB行）
 	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
-			continue
+			continue // 跳过空行
 		}
 		hashes = append(hashes, line)
 	}
 	return hashes, scanner.Err()
 }
 
+// scanCommitFPFiles 递归扫描仓库指纹目录下的所有 .fp 文件。
+//
+// 参数:
+//   - repoFPDir: 仓库指纹文件根目录。
+//
+// 返回值:
+//   - []string: .fp 文件的完整路径列表。
+//   - error: 目录遍历过程中的错误。
 func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 	var files []string
 	if _, err := os.Stat(repoFPDir); os.IsNotExist(err) {
-		return files, nil
+		return files, nil // 目录不存在时返回空列表，不报错
 	}
 
 	err := filepath.Walk(repoFPDir, func(path string, info os.FileInfo, err error) error {
@@ -232,13 +330,33 @@ func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 	return files, err
 }
 
+// computeCommitSilica 计算commit的含硅量（silica）。
+//
+// 参数:
+//   - hashToConv: 候选指纹索引，键为指纹，值为生成该指纹的对话元数据。
+//
+// 关键技术原理:
+//
+//	含硅量定义为：commit中与AI对话指纹匹配的代码行所占的比例。
+//	具体计算步骤：
+//	1. 遍历commit的所有指纹，统计在 hashToConv 中存在的匹配行数。
+//	2. 按 (taskID, requestID) 聚合匹配行数，实现对话级精确归因。
+//	3. 按 taskID 二次聚合，计算每个task的含硅量 = 该task下所有对话匹配行数 / commit总行数。
+//	4. 总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
+//
+// 注意：
+//
+//	同一task可能包含多个对话，这些对话的匹配行数会合并到该task的silica中。
 func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
+	// convMatchedLines 用于按对话维度聚合匹配行数，键格式为 "taskID|requestID"
 	convMatchedLines := make(map[string]float64)
 	p.totalLines = len(p.fpHashs)
 	matchedLines := 0
 
+	// 第一步：逐行匹配commit指纹与候选AI指纹
 	for _, hash := range p.fpHashs {
 		if cm, ok := hashToConv[hash]; ok {
+			// 使用 taskID|requestID 组合键区分不同对话的匹配贡献
 			key := cm.taskID + "|" + cm.requestID
 			convMatchedLines[key] += 1.0
 			matchedLines++
@@ -250,18 +368,22 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
 	p.taskSilicas = make([]float64, 0)
 	p.totalSilica = 0
 
+	// 无匹配或commit为空时直接返回零值
 	if p.totalLines == 0 || len(convMatchedLines) == 0 {
 		return
 	}
 
+	// 第二步：按 taskID 聚合，计算每个task的含硅量
 	taskSilicaMap := make(map[string]float64)
 	for convKey, matched := range convMatchedLines {
+		// 单个对话的含硅量 = 其匹配行数 / commit总行数
 		silica := matched / float64(p.totalLines)
 		parts := strings.SplitN(convKey, "|", 2)
 		taskID := parts[0]
-		taskSilicaMap[taskID] += silica
+		taskSilicaMap[taskID] += silica // 同一task下多个对话的silica累加
 	}
 
+	// 第三步：将map结果转存为有序切片（按taskID遍历顺序）
 	for taskID, silica := range taskSilicaMap {
 		p.taskIDs = append(p.taskIDs, taskID)
 		p.taskSilicas = append(p.taskSilicas, silica)
@@ -269,54 +391,95 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
 	}
 }
 
+// calcCommitDerivedMinutes 根据已匹配的task列表，计算commit的衍生耗时与成本指标。
+//
+// 参数:
+//   - db: GORM数据库连接，用于查询task表中的原始数据。
+//
+// 返回值:
+//   - error: 数据库查询过程中的错误（当前实现中关键错误仅记录日志，不阻断流程）。
+//
+// 关键技术原理:
+//  1. AI耗时（aiMinutes）: 累加各匹配task的 task_real_minutes（优先取手动修正值）。
+//     这基于一个假设：commit中匹配到的AI代码所对应的开发耗时，可近似由各task的实际耗时按silica比例分摊。
+//  2. 远古耗时（ancientMinutes）: 对于未匹配到的代码行（ancientLines = totalLines * (1 - totalSilica)），
+//     调用 estimateCommitAncientMinutes 基于代码行数进行经验估算。
+//  3. 总实际耗时（realMinutes）= aiMinutes + ancientMinutes，代表该commit的完整人力成本估算。
+//  4. Token与Cost：直接累加各匹配task的 upstream_tokens、downstream_tokens 和 cost。
 func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
+	// 遍历所有匹配到的task，累加AI相关指标
 	for _, taskID := range p.taskIDs {
 		var task models.Task
+		// 优先查询手动修正值（*_manual），若无则使用自动计算值
 		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes, upstream_tokens, downstream_tokens, cost").
 			Where("task_id = ?", taskID).First(&task).Error; err != nil {
 			if err != gorm.ErrRecordNotFound {
 				logWarnf("查询task数据失败 [%s]: %v", taskID, err)
 			}
-			continue
+			continue // task不存在时跳过，不影响其他task的累加
 		}
 		p.aiMinutes += task.TaskRealMinutes
 		p.upstreamTokens += task.UpstreamTokens
 		p.downstreamTokens += task.DownstreamTokens
 		p.cost += task.Cost
 	}
+
+	// 计算非AI代码行数（远古代码），基于总含硅量的反比
 	ancientLines := int((1 - p.totalSilica) * float64(p.totalLines))
 
+	// 估算远古代码的开发耗时
 	var ancientReason string
 	p.ancientMinutes = 0
 	if ancientLines > 0 {
 		p.ancientMinutes, ancientReason = estimateCommitAncientMinutes(ancientLines)
 	} else {
-		ancientReason = "纯AI生成"
+		ancientReason = "纯AI生成" // 全部代码均匹配AI指纹
 	}
+
+	// 汇总总实际耗时并生成计算说明文本
 	p.realMinutes = p.aiMinutes + p.ancientMinutes
 	p.realReason = fmt.Sprintf("AI耗时%.1f分钟 + 剩余代码%.1f分钟(%s) = %.1f分钟", p.aiMinutes, p.ancientMinutes, ancientReason, p.realMinutes)
 
 	return nil
 }
 
+// runSilica 执行含硅量计算的主流程。
+//
+// 参数:
+//   - analysedDir: 已分析数据的根目录，预期包含 task/conversation/ 和 repo/ 子目录。
+//   - force: 是否强制重新计算。为false时跳过已存在task_ids的commit。
+//   - maxDays: 对话与commit的最大关联时间窗口（天数）。
+//
+// 返回值:
+//   - error: 流程中断错误（如目录不存在、数据库连接失败等）。
+//
+// 主流程说明:
+//  1. 构建全局conversation指纹索引。
+//  2. 扫描所有commit的 .fp 指纹文件。
+//  3. 对每个commit：查询数据库元数据 -> 筛选候选指纹 -> 计算含硅量 -> 计算衍生指标 -> 更新数据库。
+//  4. 汇总统计成功/跳过/失败的数量。
 func runSilica(analysedDir string, force bool, maxDays int) error {
 	startTime := time.Now()
+	// 构建task指纹目录和仓库指纹目录的路径
 	taskFPDir := filepath.Join(analysedDir, "task", "conversation")
 	repoFPDir := filepath.Join(analysedDir, "repo")
 
+	// 前置校验：task指纹目录必须存在
 	if _, err := os.Stat(taskFPDir); os.IsNotExist(err) {
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("task指纹目录不存在: %s", taskFPDir)
 	}
 
+	// 建立数据库连接
 	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
-	defer sqlDB.Close()
+	defer sqlDB.Close() // 确保函数退出时关闭数据库连接
 
+	// 构建conversation指纹索引
 	idx, err := buildConversationsIndexer(taskFPDir)
 	if err != nil {
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
@@ -324,6 +487,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 	}
 	logInfof("已加载conversation指纹索引: %d个conversation, %d个分组, %d个哈希, max_days=%d", idx.convCount, len(idx.groups), idx.hashCount, maxDays)
 
+	// 扫描所有commit指纹文件
 	commitFPFiles, err := scanCommitFPFiles(repoFPDir)
 	if err != nil {
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
@@ -331,23 +495,31 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 	}
 	logInfof("找到%d个commit指纹文件", len(commitFPFiles))
 
+	// 统计计数器
 	successCount := 0
 	skipCount := 0
 	failCount := 0
 
+	// 逐文件处理每个commit
 	for i, commitFpFile := range commitFPFiles {
-		logPromptProgress(i, 50)
+		logPromptProgress(i, 50) // 每50个文件打印进度
 
+		// 从文件名中提取commitID（去掉 .fp 后缀）
 		commitID := strings.TrimSuffix(filepath.Base(commitFpFile), ".fp")
+
+		// 非强制模式下，跳过已计算过含硅量的commit
 		if !force {
 			var commit models.Commit
 			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
+				// 如果task_ids已存在且非空（非 "null" 或 "[]"），则视为已处理
 				if string(commit.TaskIds) != "" && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
 					skipCount++
 					continue
 				}
 			}
 		}
+
+		// 加载commit指纹
 		commitPs := buildCommitParser(commitFpFile)
 		if commitPs == nil {
 			logWarnf("读取commit指纹文件失败 [%s]", commitFpFile)
@@ -355,6 +527,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			continue
 		}
 
+		// 查询commit的元数据（仓库地址、用户ID、提交时间）
 		var commit models.Commit
 		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -367,22 +540,26 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			continue
 		}
 
+		// 使用commit的仓库地址和用户ID构建分组键
 		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserId}
 		if commit.CommitTime.IsZero() {
 			logErrorf("Commit [%s] 缺少提交时间", commitID)
 			continue
 		}
+
+		// 在时间窗口内筛选候选指纹，并计算含硅量
 		candidateHashes := idx.buildCandidateHashIndex(gk, commit.CommitTime, maxDays)
 		commitPs.computeCommitSilica(candidateHashes)
 
+		// 未匹配到任何task时，将commit的含硅量置零并更新数据库
 		if len(commitPs.taskIDs) == 0 {
 			if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 				"task_ids":                    "[]",
 				"task_ids_silica":             "[]",
 				"silica":                      0,
 				"commit_real_ai_minutes":      0,
-				"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
-				"commit_real_minutes":         gorm.Expr("COALESCE(commit_ancient_minutes, 0)"),
+				"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"), // 保留原有的ancient值
+				"commit_real_minutes":         gorm.Expr("COALESCE(commit_ancient_minutes, 0)"), // 无AI贡献时等于ancient
 				"upstream_tokens":             0,
 				"downstream_tokens":           0,
 				"cost":                        0,
@@ -395,15 +572,18 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			continue
 		}
 
+		// 计算衍生指标：AI耗时、远古耗时、token、cost等
 		if err := commitPs.calcCommitDerivedMinutes(db); err != nil {
 			logWarnf("计算衍生数据失败 [%s]: %v", commitID, err)
 			failCount++
 			continue
 		}
 
+		// 将taskID列表和含硅量列表序列化为JSON字符串
 		taskIDsJSON, _ := json.Marshal(commitPs.taskIDs)
 		silicaJSON, _ := json.Marshal(commitPs.taskSilicas)
 
+		// 更新数据库：写入含硅量及所有衍生指标
 		if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 			"task_ids":                    string(taskIDsJSON),
 			"task_ids_silica":             string(silicaJSON),
@@ -419,26 +599,32 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			logWarnf("更新commits表失败 [%s]: %v", commitID, err)
 			failCount++
 		} else {
+			// 调试日志：输出该commit的核心计算结果
 			logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
 				commitID, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitPs.realMinutes)
 			successCount++
 		}
 	}
 
+	// 打印最终统计并记录命令执行历史
 	logInfof("含硅量计算完成: 成功 %d 个，跳过 %d 个，失败 %d 个", successCount, skipCount, failCount)
 	recordCommandRun("silica", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
 
+// silicaCmd 定义了 "silica" 子命令的Cobra命令对象。
+// 功能：计算commit的含硅量（task贡献比例），并更新commits表的task_ids和task_ids_silica字段。
 var silicaCmd = &cobra.Command{
 	Use:   "silica",
 	Short: "计算commit的含硅量（task贡献比例），更新commits表的task_ids和task_ids_silica",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// 解析命令行参数
 		analysedDir, _ := cmd.Flags().GetString("analysed-dir")
 		force, _ := cmd.Flags().GetBool("force")
 		maxDays, _ := cmd.Flags().GetInt("max-days")
 		remote, _ := cmd.Flags().GetString("remote")
 
+		// 如果指定了remote地址，将命令转发到远程kbcli服务执行
 		if remote != "" {
 			return sendToRemote(remote, "silica", map[string]interface{}{
 				"analysed_dir": analysedDir,
@@ -447,6 +633,7 @@ var silicaCmd = &cobra.Command{
 			})
 		}
 
+		// 参数默认值处理：空值时从全局配置读取
 		if analysedDir == "" {
 			analysedDir = cfg.AnalysedDir
 		}
@@ -458,8 +645,9 @@ var silicaCmd = &cobra.Command{
 	},
 }
 
+// init 注册silica命令及其命令行标志到rootCmd。
 func init() {
-	silicaCmd.Flags().SortFlags = false
+	silicaCmd.Flags().SortFlags = false // 保持标志定义顺序，便于文档生成
 	silicaCmd.Flags().String("analysed-dir", "", "已分析文件目录路径")
 	silicaCmd.Flags().BoolP("force", "f", false, "强制重新计算，覆盖已存在数据")
 	silicaCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（默认从config读取）")
