@@ -112,13 +112,9 @@ if [ "$CONNECTED" = false ]; then
     exit 1
 fi
 
-./kbcli import --force --remote "$KBCLI_REMOTE_URL"
-if [ $? -ne 0 ]; then
-    echo "错误：kbcli import --force --remote 执行失败"
-    cd ..
-    exit 1
-fi
-echo "✓ kbcli import --force --remote 执行完成"
+curl -sf --connect-timeout 3 "$KBCLI_REMOTE_URL/api/tasks" 
+
+echo "✓ kbcli 启动完成，正在导入数据"
 cd ..
 
 echo ""

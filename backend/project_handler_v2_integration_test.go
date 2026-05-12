@@ -441,7 +441,7 @@ func TestProjectUpdate_Normal(t *testing.T) {
 
 	// 验证 task_ids
 	var taskIDs []string
-	json.Unmarshal(project.TaskIDs, &taskIDs)
+	json.Unmarshal(project.TaskIds, &taskIDs)
 	if len(taskIDs) != 2 {
 		t.Errorf("task_ids 长度 = %d, want 2", len(taskIDs))
 	}
@@ -616,7 +616,7 @@ func TestProjectAddTasks_Deduplication(t *testing.T) {
 	}
 
 	var taskIDs []string
-	json.Unmarshal(project.TaskIDs, &taskIDs)
+	json.Unmarshal(project.TaskIds, &taskIDs)
 	if len(taskIDs) != 3 {
 		t.Errorf("task_ids 长度 = %d, want 3 (去重后 t1,t2,t3), actual: %v", len(taskIDs), taskIDs)
 	}

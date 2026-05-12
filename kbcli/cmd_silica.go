@@ -99,7 +99,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			continue
 		}
 
-		gk := groupKey{repoAddr: tsd.RepoAddr, userID: tsd.UserID}
+		gk := groupKey{repoAddr: tsd.RepoAddr, userID: tsd.UserId}
 
 		gi, exists := idx.groups[gk]
 		if !exists {
@@ -338,7 +338,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 		if !force {
 			var commit models.Commit
 			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
-				if string(commit.TaskIDs) != "" && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
+				if string(commit.TaskIds) != "" && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
 					skipCount++
 					continue
 				}
@@ -363,7 +363,7 @@ func runSilica(analysedDir string, force bool, maxDays int) error {
 			continue
 		}
 
-		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserID}
+		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserId}
 		if commit.CommitTime.IsZero() {
 			logErrorf("Commit [%s] 缺少提交时间", commitID)
 			continue

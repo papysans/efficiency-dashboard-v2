@@ -302,7 +302,7 @@ func (ctx *checkContext) checkSummaries() error {
 			ctx.addIssue("warn", path, taskID, "", "task-id-mismatch", "task_id",
 				fmt.Sprintf("文件内task_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", summary.TaskID, taskID))
 		}
-		if summary.UserID == "" {
+		if summary.UserId == "" {
 			ctx.addIssue("warn", path, taskID, "", "missing-user-id", "user_id", "user_id为空，将导致该任务无法按用户聚合统计")
 		}
 		if summary.UserName == "" {
@@ -590,7 +590,7 @@ func (ctx *checkContext) checkRepos() error {
 					fmt.Sprintf("commit_time格式错误(%s)，无法解析为有效时间", commitData.CommitTime))
 			}
 		}
-		if commitData.UserID == "" {
+		if commitData.UserId == "" {
 			ctx.addIssue("warn", path, "", commitID, "missing-user-id", "user_id", "user_id为空，该提交无法按用户聚合统计")
 		}
 		if commitData.RepoAddr == "" {

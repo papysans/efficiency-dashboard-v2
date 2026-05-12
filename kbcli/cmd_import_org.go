@@ -68,7 +68,7 @@ func loadUserOrgsFromCSV(csvFile string) ([]models.UserOrg, error) {
 		}
 
 		userOrg := models.UserOrg{
-			UserID:       record[0],
+			UserId:       record[0],
 			UserName:     record[1],
 			Org1:         record[2],
 			Org2:         record[3],
@@ -145,7 +145,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]models.UserOrg, error) {
 		}
 
 		org := models.UserOrg{
-			UserID:       userID,
+			UserId:       userID,
 			UserName:     userName,
 			GitUserName:  gitUserName,
 			GitUserEmail: gitUserEmail,
@@ -187,7 +187,7 @@ func writeOrgCSV(path string, rows []models.UserOrg) error {
 	}
 
 	for _, r := range rows {
-		if err := w.Write([]string{r.UserID, r.UserName, r.Org1, r.Org2, r.Org3, r.Org4, r.Org5, r.Org6, r.Org7, r.Org8, r.Org9, r.GitUserName, r.GitUserEmail}); err != nil {
+		if err := w.Write([]string{r.UserId, r.UserName, r.Org1, r.Org2, r.Org3, r.Org4, r.Org5, r.Org6, r.Org7, r.Org8, r.Org9, r.GitUserName, r.GitUserEmail}); err != nil {
 			return err
 		}
 	}
@@ -206,7 +206,7 @@ func saveUserOrgs(db *gorm.DB, rows []models.UserOrg) error {
 				}),
 			}).Create(&r)
 			if result.Error != nil {
-				return fmt.Errorf("写入记录失败 [user_id=%s]: %w", r.UserID, result.Error)
+				return fmt.Errorf("写入记录失败 [user_id=%s]: %w", r.UserId, result.Error)
 			}
 		}
 		return nil

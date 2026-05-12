@@ -36,7 +36,7 @@ func setupListTasksOrgTestRouter(t *testing.T) (*gin.Engine, func()) {
 	return r, cleanup
 }
 
-// TP-01: UserID 存在且在 orgMappings 中能找到 → 返回对应 org 值
+// TP-01: UserId 存在且在 orgMappings 中能找到 → 返回对应 org 值
 func TestListTasksV2_OrgFields_UserInMapping(t *testing.T) {
 	r, cleanup := setupListTasksOrgTestRouter(t)
 	defer cleanup()
@@ -58,7 +58,7 @@ func TestListTasksV2_OrgFields_UserInMapping(t *testing.T) {
 	origMappings := orgMappings
 	orgMappings = map[string]*models.UserOrg{
 		testUserID: {
-			UserID: testUserID, UserName: "测试用户",
+			UserId: testUserID, UserName: "测试用户",
 			Org1: "研发中心", Org2: "平台部", Org3: "基础架构组", Org4: "云原生团队",
 		},
 	}
@@ -104,7 +104,7 @@ func TestListTasksV2_OrgFields_UserInMapping(t *testing.T) {
 	}
 }
 
-// TP-02: UserID 存在但不在 orgMappings 中 → 返回空字符串
+// TP-02: UserId 存在但不在 orgMappings 中 → 返回空字符串
 func TestListTasksV2_OrgFields_UserNotInMapping(t *testing.T) {
 	r, cleanup := setupListTasksOrgTestRouter(t)
 	defer cleanup()
@@ -124,7 +124,7 @@ func TestListTasksV2_OrgFields_UserNotInMapping(t *testing.T) {
 	// orgMappings 不包含该 user
 	origMappings := orgMappings
 	orgMappings = map[string]*models.UserOrg{
-		"some-other-user": {UserID: "some-other-user", Org1: "其他"},
+		"some-other-user": {UserId: "some-other-user", Org1: "其他"},
 	}
 	defer func() { orgMappings = origMappings }()
 
@@ -161,7 +161,7 @@ func TestListTasksV2_OrgFields_UserNotInMapping(t *testing.T) {
 	}
 }
 
-// TP-03: UserID 为 nil（task 没有 user_id）→ 返回空字符串
+// TP-03: UserId 为 nil（task 没有 user_id）→ 返回空字符串
 func TestListTasksV2_OrgFields_UserIDNil(t *testing.T) {
 	r, cleanup := setupListTasksOrgTestRouter(t)
 	defer cleanup()

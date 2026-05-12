@@ -15,7 +15,7 @@ import (
 type TaskListItem struct {
 	TaskID                         string     `json:"task_id"`
 	Title                          string     `json:"title"`
-	UserID                         string     `json:"user_id"`
+	UserId                         string     `json:"user_id"`
 	UserName                       string     `json:"user_name"`
 	ClientID                       string     `json:"client_id"`
 	ClientIDE                      string     `json:"client_ide"`
@@ -130,7 +130,7 @@ func listTasksV2(c *gin.Context) {
 	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
 
 	filter := TaskFilter{
-		UserID:     strings.TrimSpace(c.Query("userId")),
+		UserId:     strings.TrimSpace(c.Query("userId")),
 		UserName:   strings.TrimSpace(c.Query("userName")),
 		ClientID:   strings.TrimSpace(c.Query("clientId")),
 		ClientIDE:  strings.TrimSpace(c.Query("clientIde")),
@@ -169,7 +169,7 @@ func listTasksV2(c *gin.Context) {
 		item := TaskListItem{
 			TaskID:                         t.TaskID,
 			Title:                          t.Title,
-			UserID:                         t.UserID,
+			UserId:                         t.UserId,
 			UserName:                       t.UserName,
 			ClientID:                       t.ClientID,
 			ClientIDE:                      t.ClientIDE,
@@ -212,8 +212,8 @@ func listTasksV2(c *gin.Context) {
 			item.EfficiencyRatio = &ratio
 		}
 
-		if t.UserID != "" {
-			if om, ok := orgMappings[t.UserID]; ok {
+		if t.UserId != "" {
+			if om, ok := orgMappings[t.UserId]; ok {
 				item.Org1 = om.Org1
 				item.Org2 = om.Org2
 				item.Org3 = om.Org3

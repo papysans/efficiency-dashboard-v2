@@ -8,7 +8,7 @@ import (
 )
 
 type UserOrg struct {
-	UserID       string    `gorm:"primaryKey;type:varchar(255)" json:"user_id"`
+	UserId       string    `gorm:"primaryKey;type:varchar(255)" json:"user_id"`
 	UserName     string    `gorm:"type:varchar(255);index" json:"user_name"`
 	Org1         string    `gorm:"type:varchar(255)" json:"org1"`
 	Org2         string    `gorm:"type:varchar(255)" json:"org2"`
@@ -34,7 +34,7 @@ type Commit struct {
 	RepoBranch                       string     `gorm:"type:varchar(500);index:idx_commits_repo_addr_branch" json:"repo_branch"`
 	GitUserName                      string     `gorm:"type:varchar(255)" json:"git_user_name"`
 	GitUserEmail                     string     `gorm:"type:varchar(255)" json:"git_user_email"`
-	UserID                           string     `gorm:"type:varchar(255);index" json:"user_id"`
+	UserId                           string     `gorm:"type:varchar(255);index" json:"user_id"`
 	UserName                         string     `gorm:"type:varchar(255)" json:"user_name"`
 	ClientID                         string     `gorm:"type:varchar(255)" json:"client_id"`
 	WorkDir                          string     `gorm:"type:text" json:"work_dir"`
@@ -44,13 +44,13 @@ type Commit struct {
 	CommitAncientMinutesReason       string     `gorm:"type:text" json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64   `gorm:"type:float8" json:"commit_ancient_minutes_manual"`
 	CommitAncientMinutesReasonManual string     `gorm:"type:text" json:"commit_ancient_minutes_reason_manual"`
-	TaskIDs                          StringJSON `gorm:"type:jsonb" json:"task_ids"`
+	TaskIds                          StringJSON `gorm:"type:jsonb" json:"task_ids"`
 	TaskIDsSilica                    StringJSON `gorm:"type:jsonb" json:"task_ids_silica"`
 	UpstreamTokens                   *int64     `gorm:"type:bigint" json:"upstream_tokens"`
 	DownstreamTokens                 *int64     `gorm:"type:bigint" json:"downstream_tokens"`
 	Cost                             *float64   `gorm:"type:float8" json:"cost"`
 	Silica                           *float64   `gorm:"type:float8;default:0" json:"silica"`
-	CommitRealAIMinutes              *float64   `gorm:"type:float8" json:"commit_real_ai_minutes"`
+	CommitRealAiMinutes              *float64   `gorm:"type:float8" json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64   `gorm:"type:float8" json:"commit_real_ancient_minutes"`
 	CommitRealMinutes                *float64   `gorm:"type:float8" json:"commit_real_minutes"`
 	CommitRealMinutesReason          string     `gorm:"type:text" json:"commit_real_minutes_reason"`
@@ -65,7 +65,7 @@ func (Commit) TableName() string { return "commits" }
 
 type Task struct {
 	TaskID                         string     `gorm:"primaryKey;type:varchar(500)" json:"task_id"`
-	UserID                         string     `gorm:"type:varchar(255);index" json:"user_id"`
+	UserId                         string     `gorm:"type:varchar(255);index" json:"user_id"`
 	UserName                       string     `gorm:"type:varchar(255)" json:"user_name"`
 	ClientID                       string     `gorm:"column:client_id;type:varchar(255)" json:"client_id"`
 	ClientIDE                      string     `gorm:"column:client_ide;type:varchar(100)" json:"client_ide"`
@@ -127,21 +127,21 @@ func (TaskConversation) TableName() string { return "task_conversations" }
 type UserProductivity struct {
 	UserProductivityID       string     `gorm:"primaryKey;type:varchar(500)" json:"user_productivity_id"`
 	CreateTime               time.Time  `gorm:"type:timestamptz;index" json:"create_time"`
-	UserID                   string     `gorm:"type:varchar(255);index" json:"user_id"`
+	UserId                   string     `gorm:"type:varchar(255);index" json:"user_id"`
 	UserName                 string     `gorm:"type:varchar(500)" json:"user_name"`
-	WorkDirIDs               StringJSON `gorm:"type:jsonb" json:"work_dir_ids"`
+	WorkDirIds               StringJSON `gorm:"type:jsonb" json:"work_dir_ids"`
 	UpstreamTokens           int64      `gorm:"type:bigint" json:"upstream_tokens"`
 	DownstreamTokens         int64      `gorm:"type:bigint" json:"downstream_tokens"`
 	Cost                     float64    `gorm:"type:float8" json:"cost"`
-	TaskIDs                  StringJSON `gorm:"type:jsonb" json:"task_ids"`
+	TaskIds                  StringJSON `gorm:"type:jsonb" json:"task_ids"`
 	TaskDiffLines            int        `gorm:"type:int" json:"task_diff_lines"`
 	TaskRealMinutes          float64    `gorm:"type:float8" json:"task_real_minutes"`
 	TaskAncientMinutes       float64    `gorm:"type:float8" json:"task_ancient_minutes"`
 	TaskEfficiencyRatio      float64    `gorm:"type:float8" json:"task_efficiency_ratio"`
-	CommitIDs                StringJSON `gorm:"type:jsonb" json:"commit_ids"`
+	CommitIds                StringJSON `gorm:"type:jsonb" json:"commit_ids"`
 	CommitDiffLines          int        `gorm:"type:int" json:"commit_diff_lines"`
 	CommitAncientMinutes     float64    `gorm:"type:float8" json:"commit_ancient_minutes"`
-	CommitRealAIMinutes      float64    `gorm:"type:float8" json:"commit_real_ai_minutes"`
+	CommitRealAiMinutes      float64    `gorm:"type:float8" json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes float64    `gorm:"column:commit_real_ancient_minutes;type:float8" json:"commit_real_ancient_minutes"`
 	CommitRealMinutes        float64    `gorm:"type:float8" json:"commit_real_minutes"`
 	CommitEfficiencyRatio    float64    `gorm:"column:commit_efficiency_ratio;type:float8" json:"commit_efficiency_ratio"`
@@ -156,7 +156,7 @@ type Project struct {
 	Name                                  string     `gorm:"type:varchar(500);not null;index" json:"name"`
 	Description                           string     `gorm:"type:text" json:"description"`
 	Repos                                 StringJSON `gorm:"type:jsonb;default:'[]'" json:"repos"`
-	TaskIDs                               StringJSON `gorm:"type:jsonb;default:'[]'" json:"task_ids"`
+	TaskIds                               StringJSON `gorm:"type:jsonb;default:'[]'" json:"task_ids"`
 	TaskIDsSilica                         StringJSON `gorm:"type:jsonb;default:'[]'" json:"task_ids_silica"`
 	StartTime                             *time.Time `gorm:"type:timestamptz" json:"start_time"`
 	EndTime                               *time.Time `gorm:"type:timestamptz" json:"end_time"`

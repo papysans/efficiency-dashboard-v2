@@ -13,9 +13,9 @@ import (
 )
 
 type userTaskAgg struct {
-	UserID             string
-	TaskIDs            models.StringJSON
-	WorkDirIDs         models.StringJSON
+	UserId             string
+	TaskIds            models.StringJSON
+	WorkDirIds         models.StringJSON
 	TaskDiffLines      int64
 	UpstreamTokens     int64
 	DownstreamTokens   int64
@@ -25,11 +25,11 @@ type userTaskAgg struct {
 }
 
 type userCommitAgg struct {
-	UserID                   string
-	CommitIDs                models.StringJSON
+	UserId                   string
+	CommitIds                models.StringJSON
 	CommitDiffLines          int64
 	CommitAncientMinutes     float64
-	CommitRealAIMinutes      float64
+	commitRealAiMinutes      float64
 	CommitRealAncientMinutes float64
 	CommitRealMinutes        float64
 }
@@ -88,15 +88,15 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				userName = commitUserNameMap[uid]
 			}
 
-			var taskIDsJSON, workDirIDsJSON, commitIDsJSON []byte
+			var TaskIdsJSON, WorkDirIdsJson, commitIDsJSON []byte
 			var taskDiffLines, upstreamTokens, downstreamTokens int64
 			var cost, taskRealMinutes, taskAncientMinutes float64
 			var commitDiffLines int64
-			var commitAncientMinutes, commitRealAIMinutes, commitRealAncientMinutes, commitRealMinutes float64
+			var commitAncientMinutes, commitRealAiMinutes, commitRealAncientMinutes, commitRealMinutes float64
 
 			if ta != nil {
-				taskIDsJSON = defaultSliceJSON(ta.TaskIDs)
-				workDirIDsJSON = defaultSliceJSON(ta.WorkDirIDs)
+				TaskIdsJSON = defaultSliceJSON(ta.TaskIds)
+				WorkDirIdsJson = defaultSliceJSON(ta.WorkDirIds)
 				taskDiffLines = ta.TaskDiffLines
 				upstreamTokens = ta.UpstreamTokens
 				downstreamTokens = ta.DownstreamTokens
@@ -105,10 +105,10 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				taskAncientMinutes = ta.TaskAncientMinutes
 			}
 			if ca != nil {
-				commitIDsJSON = defaultSliceJSON(ca.CommitIDs)
+				commitIDsJSON = defaultSliceJSON(ca.CommitIds)
 				commitDiffLines = ca.CommitDiffLines
 				commitAncientMinutes = ca.CommitAncientMinutes
-				commitRealAIMinutes = ca.CommitRealAIMinutes
+				commitRealAiMinutes = ca.commitRealAiMinutes
 				commitRealAncientMinutes = ca.CommitRealAncientMinutes
 				commitRealMinutes = ca.CommitRealMinutes
 			}
@@ -116,11 +116,11 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			taskEffRatio := utils.CalcEfficiencyRatio(taskAncientMinutes, taskRealMinutes)
 			commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMinutes, commitRealMinutes)
 
-			if taskIDsJSON == nil {
-				taskIDsJSON = []byte("[]")
+			if TaskIdsJSON == nil {
+				TaskIdsJSON = []byte("[]")
 			}
-			if workDirIDsJSON == nil {
-				workDirIDsJSON = []byte("[]")
+			if WorkDirIdsJson == nil {
+				WorkDirIdsJson = []byte("[]")
 			}
 			if commitIDsJSON == nil {
 				commitIDsJSON = []byte("[]")
@@ -135,10 +135,10 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			up := models.UserProductivity{
 				UserProductivityID:       uid + "_" + dateStr,
 				CreateTime:               createTime,
-				UserID:                   uid,
+				UserId:                   uid,
 				UserName:                 userName,
-				TaskIDs:                  models.StringJSON(taskIDsJSON),
-				WorkDirIDs:               models.StringJSON(workDirIDsJSON),
+				TaskIds:                  models.StringJSON(TaskIdsJSON),
+				WorkDirIds:               models.StringJSON(WorkDirIdsJson),
 				TaskDiffLines:            int(taskDiffLines),
 				UpstreamTokens:           upstreamTokens,
 				DownstreamTokens:         downstreamTokens,
@@ -146,10 +146,10 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				TaskRealMinutes:          taskRealMinutes,
 				TaskAncientMinutes:       taskAncientMinutes,
 				TaskEfficiencyRatio:      taskEffRatio,
-				CommitIDs:                models.StringJSON(commitIDsJSON),
+				CommitIds:                models.StringJSON(commitIDsJSON),
 				CommitDiffLines:          int(commitDiffLines),
 				CommitAncientMinutes:     commitAncientMinutes,
-				CommitRealAIMinutes:      commitRealAIMinutes,
+				CommitRealAiMinutes:      commitRealAiMinutes,
 				CommitRealAncientMinutes: commitRealAncientMinutes,
 				CommitRealMinutes:        commitRealMinutes,
 				CommitEfficiencyRatio:    commitEffRatio,
@@ -186,25 +186,13 @@ func loadUserNames(db *gorm.DB) (map[string]string, error) {
 	}
 	result := make(map[string]string)
 	for _, uo := range userOrgs {
-		result[uo.UserID] = uo.UserName
+		result[uo.UserId] = uo.UserName
 	}
 	return result, nil
 }
 
 func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg, error) {
-	type row struct {
-		UserID             string
-		TaskIDs            models.StringJSON
-		WorkDirIDs         models.StringJSON
-		TaskDiffLines      int64
-		UpstreamTokens     int64
-		DownstreamTokens   int64
-		Cost               float64
-		TaskRealMinutes    float64
-		TaskAncientMinutes float64
-	}
-
-	var rows []row
+	var rows []userTaskAgg
 	if err := db.Raw(`
 		SELECT
 			user_id,
@@ -225,33 +213,13 @@ func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg,
 
 	result := make(map[string]*userTaskAgg)
 	for i := range rows {
-		result[rows[i].UserID] = &userTaskAgg{
-			UserID:             rows[i].UserID,
-			TaskIDs:            rows[i].TaskIDs,
-			WorkDirIDs:         rows[i].WorkDirIDs,
-			TaskDiffLines:      rows[i].TaskDiffLines,
-			UpstreamTokens:     rows[i].UpstreamTokens,
-			DownstreamTokens:   rows[i].DownstreamTokens,
-			Cost:               rows[i].Cost,
-			TaskRealMinutes:    rows[i].TaskRealMinutes,
-			TaskAncientMinutes: rows[i].TaskAncientMinutes,
-		}
+		result[rows[i].UserId] = &rows[i]
 	}
 	return result, nil
 }
 
 func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommitAgg, error) {
-	type row struct {
-		UserID                   string
-		CommitIDs                models.StringJSON
-		CommitDiffLines          int64
-		CommitAncientMinutes     float64
-		CommitRealAIMinutes      float64
-		CommitRealAncientMinutes float64
-		CommitRealMinutes        float64
-	}
-
-	var rows []row
+	var rows []userCommitAgg
 	if err := db.Raw(`
 		SELECT
 			user_id,
@@ -270,15 +238,7 @@ func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommit
 
 	result := make(map[string]*userCommitAgg)
 	for i := range rows {
-		result[rows[i].UserID] = &userCommitAgg{
-			UserID:                   rows[i].UserID,
-			CommitIDs:                rows[i].CommitIDs,
-			CommitDiffLines:          rows[i].CommitDiffLines,
-			CommitAncientMinutes:     rows[i].CommitAncientMinutes,
-			CommitRealAIMinutes:      rows[i].CommitRealAIMinutes,
-			CommitRealAncientMinutes: rows[i].CommitRealAncientMinutes,
-			CommitRealMinutes:        rows[i].CommitRealMinutes,
-		}
+		result[rows[i].UserId] = &rows[i]
 	}
 	return result, nil
 }
@@ -292,7 +252,7 @@ func defaultSliceJSON(j models.StringJSON) []byte {
 
 func loadUserNamesFromTasks(db *gorm.DB) (map[string]string, error) {
 	type row struct {
-		UserID   string
+		UserId   string
 		UserName string
 	}
 	var rows []row
@@ -301,8 +261,8 @@ func loadUserNamesFromTasks(db *gorm.DB) (map[string]string, error) {
 	}
 	result := make(map[string]string)
 	for _, r := range rows {
-		if _, exists := result[r.UserID]; !exists {
-			result[r.UserID] = r.UserName
+		if _, exists := result[r.UserId]; !exists {
+			result[r.UserId] = r.UserName
 		}
 	}
 	return result, nil
@@ -310,7 +270,7 @@ func loadUserNamesFromTasks(db *gorm.DB) (map[string]string, error) {
 
 func loadUserNamesFromCommits(db *gorm.DB) (map[string]string, error) {
 	type row struct {
-		UserID   string
+		UserId   string
 		UserName string
 	}
 	var rows []row
@@ -319,8 +279,8 @@ func loadUserNamesFromCommits(db *gorm.DB) (map[string]string, error) {
 	}
 	result := make(map[string]string)
 	for _, r := range rows {
-		if _, exists := result[r.UserID]; !exists {
-			result[r.UserID] = r.UserName
+		if _, exists := result[r.UserId]; !exists {
+			result[r.UserId] = r.UserName
 		}
 	}
 	return result, nil

@@ -51,7 +51,7 @@ type RepoCommitItem struct {
 	RepoBranch                       string          `json:"repo_branch"`
 	GitUserName                      string          `json:"git_user_name"`
 	GitUserEmail                     string          `json:"git_user_email"`
-	UserID                           string          `json:"user_id"`
+	UserId                           string          `json:"user_id"`
 	UserName                         string          `json:"user_name"`
 	ClientID                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
@@ -61,13 +61,13 @@ type RepoCommitItem struct {
 	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
 	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
-	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
+	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
 	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
 	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
 	CommitRealMinutesReasonManual    string          `json:"commit_real_minutes_reason_manual"`
-	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
+	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	Comment                          string          `json:"comment"`
 	CreatedAt                        time.Time       `json:"created_at"`
@@ -217,7 +217,7 @@ func getRepoDetailV2(c *gin.Context) {
 		RepoAddr:    strings.TrimSpace(c.Query("repoAddr")),
 		RepoBranch:  strings.TrimSpace(c.Query("repoBranch")),
 		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
-		UserID:      strings.TrimSpace(c.Query("userId")),
+		UserId:      strings.TrimSpace(c.Query("userId")),
 		UserName:    strings.TrimSpace(c.Query("userName")),
 		ClientID:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
@@ -264,8 +264,8 @@ func getRepoDetailV2(c *gin.Context) {
 	taskIDSet := make(map[string]struct{})
 	for _, cm := range commits {
 		var ids []string
-		if len(cm.TaskIDs) > 0 && string(cm.TaskIDs) != "null" && string(cm.TaskIDs) != "[]" {
-			json.Unmarshal(cm.TaskIDs, &ids)
+		if len(cm.TaskIds) > 0 && string(cm.TaskIds) != "null" && string(cm.TaskIds) != "[]" {
+			json.Unmarshal(cm.TaskIds, &ids)
 		}
 		for _, id := range ids {
 			taskIDSet[id] = struct{}{}
@@ -335,7 +335,7 @@ func getRepoDetailV2(c *gin.Context) {
 			RepoBranch:                       cm.RepoBranch,
 			GitUserName:                      cm.GitUserName,
 			GitUserEmail:                     cm.GitUserEmail,
-			UserID:                           cm.UserID,
+			UserId:                           cm.UserId,
 			UserName:                         cm.UserName,
 			ClientID:                         cm.ClientID,
 			WorkDir:                          cm.WorkDir,
@@ -345,13 +345,13 @@ func getRepoDetailV2(c *gin.Context) {
 			CommitAncientMinutesReason:       cm.CommitAncientMinutesReason,
 			CommitAncientMinutesManual:       cm.CommitAncientMinutesManual,
 			CommitAncientMinutesReasonManual: cm.CommitAncientMinutesReasonManual,
-			TaskIDs:                          cm.TaskIDs,
+			TaskIds:                          cm.TaskIds,
 			TaskIDsSilica:                    cm.TaskIDsSilica,
 			CommitRealMinutes:                cm.CommitRealMinutes,
 			CommitRealMinutesReason:          cm.CommitRealMinutesReason,
 			CommitRealMinutesManual:          cm.CommitRealMinutesManual,
 			CommitRealMinutesReasonManual:    cm.CommitRealMinutesReasonManual,
-			CommitRealAIMinutes:              cm.CommitRealAIMinutes,
+			CommitRealAiMinutes:              cm.CommitRealAiMinutes,
 			CommitRealAncientMinutes:         cm.CommitRealAncientMinutes,
 			Comment:                          cm.Comment,
 			CreatedAt:                        cm.CreatedAt,

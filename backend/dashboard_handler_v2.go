@@ -16,6 +16,8 @@ type DashboardSummaryResponse struct {
 	TotalWorkDirs           int     `json:"total_work_dirs"`
 	TotalCost               float64 `json:"total_cost"`
 	TotalTokens             int64   `json:"total_tokens"`
+	TotalTaskLines          int64   `json:"total_task_lines"`
+	TotalCommitLines        int64   `json:"total_commit_lines"`
 	TotalDiffLines          int64   `json:"total_diff_lines"`
 	TotalTaskAncientMinutes float64 `json:"total_task_ancient_minutes"`
 	TotalRealMinutes        float64 `json:"total_real_minutes"`
@@ -84,6 +86,8 @@ func getDashboardSummary(c *gin.Context) {
 		TotalWorkDirs:           totalWorkDirs,
 		TotalCost:               taskAgg.TotalCost,
 		TotalTokens:             taskAgg.TotalTokens,
+		TotalTaskLines:          taskAgg.TotalLines,
+		TotalCommitLines:        commitAgg.TotalDiffLines,
 		TotalTaskAncientMinutes: taskAgg.TotalAiDays,
 		TotalRealMinutes:        taskAgg.TotalRealMinutes,
 		AvgEfficiencyRatio:      avgEfficiencyRatio,

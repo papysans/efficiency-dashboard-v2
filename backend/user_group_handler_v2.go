@@ -11,7 +11,7 @@ import (
 )
 
 type UserGroupMember struct {
-	UserID                string  `json:"user_id"`
+	UserId                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
 	DayCount              int     `json:"day_count"`
 	TaskCount             int     `json:"task_count"`
@@ -195,15 +195,15 @@ func getUserGroupDetailHandler(c *gin.Context) {
 			if userName == "" {
 				userName = d.UserName
 			}
-			if d.TaskIDs != nil {
+			if d.TaskIds != nil {
 				var ids []interface{}
-				if json.Unmarshal(d.TaskIDs, &ids) == nil {
+				if json.Unmarshal(d.TaskIds, &ids) == nil {
 					taskCount += len(ids)
 				}
 			}
-			if d.CommitIDs != nil {
+			if d.CommitIds != nil {
 				var ids []interface{}
-				if json.Unmarshal(d.CommitIDs, &ids) == nil {
+				if json.Unmarshal(d.CommitIds, &ids) == nil {
 					commitCount += len(ids)
 				}
 			}
@@ -227,7 +227,7 @@ func getUserGroupDetailHandler(c *gin.Context) {
 		}
 
 		members = append(members, UserGroupMember{
-			UserID: uid, UserName: userName, DayCount: dayCount,
+			UserId: uid, UserName: userName, DayCount: dayCount,
 			TaskCount: taskCount, CommitCount: commitCount,
 			TaskDiffLines: taskDiffLines, UpstreamTokens: upTokens,
 			DownstreamTokens: downTokens, Cost: cost,

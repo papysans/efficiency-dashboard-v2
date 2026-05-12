@@ -18,7 +18,7 @@ import (
 
 type StatTask struct {
 	TaskID                         string     `json:"task_id"`
-	UserID                         string     `json:"user_id"`
+	UserId                         string     `json:"user_id"`
 	UserName                       string     `json:"user_name"`
 	ClientID                       string     `json:"client_id"`
 	ClientIDE                      string     `json:"client_ide"`
@@ -81,7 +81,7 @@ type StatCommit struct {
 	RepoBranch                       string          `json:"repo_branch"`
 	GitUserName                      string          `json:"git_user_name"`
 	GitUserEmail                     string          `json:"git_user_email"`
-	UserID                           string          `json:"user_id"`
+	UserId                           string          `json:"user_id"`
 	UserName                         string          `json:"user_name"`
 	ClientID                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
@@ -91,13 +91,13 @@ type StatCommit struct {
 	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
 	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
-	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	UpstreamTokens                   int64           `json:"upstream_tokens"`
 	DownstreamTokens                 int64           `json:"downstream_tokens"`
 	Cost                             float64         `json:"cost"`
 	Silica                           *float64        `json:"silica"`
-	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
+	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
 	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
@@ -113,7 +113,7 @@ type Project struct {
 	Name                                  string          `json:"name"`
 	Description                           string          `json:"description"`
 	Repos                                 json.RawMessage `json:"repos" swaggertype:"string"`
-	TaskIDs                               json.RawMessage `json:"task_ids" swaggertype:"string"`
+	TaskIds                               json.RawMessage `json:"task_ids" swaggertype:"string"`
 	TaskIDsSilica                         json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
 	StartTime                             *time.Time      `json:"start_time"`
 	EndTime                               *time.Time      `json:"end_time"`
@@ -141,10 +141,10 @@ type Project struct {
 type UserProductivity struct {
 	UserProductivityID       string          `json:"user_productivity_id"`
 	CreateTime               time.Time       `json:"create_time"`
-	UserID                   string          `json:"user_id"`
+	UserId                   string          `json:"user_id"`
 	UserName                 string          `json:"user_name"`
-	TaskIDs                  json.RawMessage `json:"task_ids" swaggertype:"string"`
-	WorkDirIDs               json.RawMessage `json:"work_dir_ids" swaggertype:"string"`
+	TaskIds                  json.RawMessage `json:"task_ids" swaggertype:"string"`
+	WorkDirIds               json.RawMessage `json:"work_dir_ids" swaggertype:"string"`
 	TaskDiffLines            int             `json:"task_diff_lines"`
 	UpstreamTokens           int64           `json:"upstream_tokens"`
 	DownstreamTokens         int64           `json:"downstream_tokens"`
@@ -152,10 +152,10 @@ type UserProductivity struct {
 	TaskRealMinutes          float64         `json:"task_real_minutes"`
 	TaskAncientMinutes       float64         `json:"task_ancient_minutes"`
 	TaskEfficiencyRatio      float64         `json:"task_efficiency_ratio"`
-	CommitIDs                json.RawMessage `json:"commit_ids" swaggertype:"string"`
+	CommitIds                json.RawMessage `json:"commit_ids" swaggertype:"string"`
 	CommitDiffLines          int             `json:"commit_diff_lines"`
 	CommitAncientMinutes     float64         `json:"commit_ancient_minutes"`
-	CommitRealAIMinutes      float64         `json:"commit_real_ai_minutes"`
+	CommitRealAiMinutes      float64         `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes float64         `json:"commit_real_ancient_minutes"`
 	CommitRealMinutes        float64         `json:"commit_real_minutes"`
 	CommitEfficiencyRatio    float64         `json:"commit_efficiency_ratio"`
@@ -283,7 +283,7 @@ func toStatTask(t *models.Task) *StatTask {
 	}
 	return &StatTask{
 		TaskID:                         t.TaskID,
-		UserID:                         t.UserID,
+		UserId:                         t.UserId,
 		UserName:                       t.UserName,
 		ClientID:                       t.ClientID,
 		ClientIDE:                      t.ClientIDE,
@@ -334,7 +334,7 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		RepoBranch:                       c.RepoBranch,
 		GitUserName:                      c.GitUserName,
 		GitUserEmail:                     c.GitUserEmail,
-		UserID:                           c.UserID,
+		UserId:                           c.UserId,
 		UserName:                         c.UserName,
 		ClientID:                         c.ClientID,
 		WorkDir:                          c.WorkDir,
@@ -344,13 +344,13 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		CommitAncientMinutesReason:       c.CommitAncientMinutesReason,
 		CommitAncientMinutesManual:       c.CommitAncientMinutesManual,
 		CommitAncientMinutesReasonManual: c.CommitAncientMinutesReasonManual,
-		TaskIDs:                          strJSONToRaw(c.TaskIDs),
+		TaskIds:                          strJSONToRaw(c.TaskIds),
 		TaskIDsSilica:                    strJSONToRaw(c.TaskIDsSilica),
 		UpstreamTokens:                   ptrToInt64(c.UpstreamTokens),
 		DownstreamTokens:                 ptrToInt64(c.DownstreamTokens),
 		Cost:                             ptrToFloat64(c.Cost),
 		Silica:                           c.Silica,
-		CommitRealAIMinutes:              c.CommitRealAIMinutes,
+		CommitRealAiMinutes:              c.CommitRealAiMinutes,
 		CommitRealAncientMinutes:         c.CommitRealAncientMinutes,
 		CommitRealMinutes:                c.CommitRealMinutes,
 		CommitRealMinutesReason:          c.CommitRealMinutesReason,
@@ -409,7 +409,7 @@ func toProject(p *models.Project) *Project {
 		Name:                                  p.Name,
 		Description:                           p.Description,
 		Repos:                                 strJSONToRaw(p.Repos),
-		TaskIDs:                               strJSONToRaw(p.TaskIDs),
+		TaskIds:                               strJSONToRaw(p.TaskIds),
 		TaskIDsSilica:                         strJSONToRaw(p.TaskIDsSilica),
 		StartTime:                             p.StartTime,
 		EndTime:                               p.EndTime,
@@ -450,10 +450,10 @@ func toUserProductivity(up *models.UserProductivity) *UserProductivity {
 	return &UserProductivity{
 		UserProductivityID:       up.UserProductivityID,
 		CreateTime:               up.CreateTime,
-		UserID:                   up.UserID,
+		UserId:                   up.UserId,
 		UserName:                 up.UserName,
-		TaskIDs:                  strJSONToRaw(up.TaskIDs),
-		WorkDirIDs:               strJSONToRaw(up.WorkDirIDs),
+		TaskIds:                  strJSONToRaw(up.TaskIds),
+		WorkDirIds:               strJSONToRaw(up.WorkDirIds),
 		TaskDiffLines:            up.TaskDiffLines,
 		UpstreamTokens:           up.UpstreamTokens,
 		DownstreamTokens:         up.DownstreamTokens,
@@ -461,10 +461,10 @@ func toUserProductivity(up *models.UserProductivity) *UserProductivity {
 		TaskRealMinutes:          up.TaskRealMinutes,
 		TaskAncientMinutes:       up.TaskAncientMinutes,
 		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
-		CommitIDs:                strJSONToRaw(up.CommitIDs),
+		CommitIds:                strJSONToRaw(up.CommitIds),
 		CommitDiffLines:          up.CommitDiffLines,
 		CommitAncientMinutes:     up.CommitAncientMinutes,
-		CommitRealAIMinutes:      up.CommitRealAIMinutes,
+		CommitRealAiMinutes:      up.CommitRealAiMinutes,
 		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
 		CommitRealMinutes:        up.CommitRealMinutes,
 		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
@@ -538,7 +538,7 @@ func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, err
 }
 
 type TaskFilter struct {
-	UserID     string
+	UserId     string
 	UserName   string
 	ClientID   string
 	ClientIDE  string
@@ -603,8 +603,8 @@ func (f *TaskFilter) resolveOrgUserIDs() {
 }
 
 func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
-	if f.UserID != "" {
-		q = q.Where("user_id = ?", f.UserID)
+	if f.UserId != "" {
+		q = q.Where("user_id = ?", f.UserId)
 	}
 	if f.UserName != "" {
 		q = q.Where("user_name = ?", f.UserName)
@@ -777,7 +777,7 @@ type CommitFilter struct {
 	RepoAddr    string
 	RepoBranch  string
 	GitUserName string
-	UserID      string
+	UserId      string
 	UserName    string
 	ClientID    string
 	WorkDir     string
@@ -847,8 +847,8 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.GitUserName != "" {
 		q = q.Where("git_user_name = ?", f.GitUserName)
 	}
-	if f.UserID != "" {
-		q = q.Where("user_id = ?", f.UserID)
+	if f.UserId != "" {
+		q = q.Where("user_id = ?", f.UserId)
 	}
 	if f.UserName != "" {
 		q = q.Where("user_name = ?", f.UserName)
@@ -993,7 +993,7 @@ func CreateProject(db *gorm.DB, p *Project) (string, error) {
 		Name:          p.Name,
 		Description:   p.Description,
 		Repos:         rawToStrJSON(p.Repos),
-		TaskIDs:       rawToStrJSON(p.TaskIDs),
+		TaskIds:       rawToStrJSON(p.TaskIds),
 		TaskIDsSilica: rawToStrJSON(p.TaskIDsSilica),
 	}
 	if err := db.Create(&mp).Error; err != nil {
@@ -1027,7 +1027,7 @@ func UpdateProject(db *gorm.DB, p *Project) error {
 		"name":            p.Name,
 		"description":     p.Description,
 		"repos":           rawToStrJSON(p.Repos),
-		"task_ids":        rawToStrJSON(p.TaskIDs),
+		"task_ids":        rawToStrJSON(p.TaskIds),
 		"task_ids_silica": rawToStrJSON(p.TaskIDsSilica),
 		"updated_at":      time.Now(),
 	}
@@ -1127,10 +1127,10 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 // 	mup := models.UserProductivity{
 // 		UserProductivityID:       up.UserProductivityID,
 // 		CreateTime:               up.CreateTime,
-// 		UserID:                   up.UserID,
+// 		UserId:                   up.UserId,
 // 		UserName:                 up.UserName,
-// 		TaskIDs:                  rawToStrJSON(up.TaskIDs),
-// 		WorkDirIDs:               rawToStrJSON(up.WorkDirIDs),
+// 		TaskIds:                  rawToStrJSON(up.TaskIds),
+// 		WorkDirIds:               rawToStrJSON(up.WorkDirIds),
 // 		TaskDiffLines:            up.TaskDiffLines,
 // 		UpstreamTokens:           up.UpstreamTokens,
 // 		DownstreamTokens:         up.DownstreamTokens,
@@ -1138,10 +1138,10 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 // 		TaskRealMinutes:          up.TaskRealMinutes,
 // 		TaskAncientMinutes:       up.TaskAncientMinutes,
 // 		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
-// 		CommitIDs:                rawToStrJSON(up.CommitIDs),
+// 		CommitIds:                rawToStrJSON(up.CommitIds),
 // 		CommitDiffLines:          up.CommitDiffLines,
 // 		CommitAncientMinutes:     up.CommitAncientMinutes,
-// 		CommitRealAIMinutes:      up.CommitRealAIMinutes,
+// 		CommitRealAiMinutes:      up.CommitRealAiMinutes,
 // 		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
 // 		CommitRealMinutes:        up.CommitRealMinutes,
 // 		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
@@ -1295,6 +1295,7 @@ type dashboardTaskAgg struct {
 	TotalRepos          int
 	TotalCost           float64
 	TotalTokens         int64
+	TotalLines          int64
 	TotalAiDays         float64
 	TotalRealMinutes    float64
 	TotalAncientMinutes float64
@@ -1308,6 +1309,7 @@ func queryDashboardTaskAgg(db *gorm.DB, startTime, endTime string) (*dashboardTa
 			COUNT(DISTINCT user_id) as total_users,
 			COUNT(DISTINCT work_dir_id) as total_repos,
 			COALESCE(SUM(cost), 0) as total_cost,
+			COALESCE(SUM(diff_lines), 0) as total_lines,
 			COALESCE(SUM(upstream_tokens + downstream_tokens), 0) as total_tokens,
 			COALESCE(SUM(task_ancient_minutes), 0) as total_ai_days,
 			COALESCE(SUM(CASE WHEN task_real_minutes_manual IS NOT NULL THEN task_real_minutes_manual ELSE task_real_minutes END), 0) as total_real_minutes,
@@ -1359,7 +1361,7 @@ func countDistinctWorkDirs(db *gorm.DB) (int, error) {
 // ============================================================
 
 type userProdAggRow struct {
-	UserID               string
+	UserId               string
 	UserName             string
 	DayCount             int
 	TaskCount            int
@@ -1436,7 +1438,7 @@ func queryUserProdAggForIDs(db *gorm.DB, userIDs []string, startTime, endTime st
 }
 
 type userProdTimeSeriesRow struct {
-	UserID               string
+	UserId               string
 	CreateTime           time.Time
 	TaskCount            int
 	CommitCount          int
@@ -1493,10 +1495,10 @@ func LoadUserOrgs(db *gorm.DB) (map[string]*models.UserOrg, error) {
 	}
 	result := make(map[string]*models.UserOrg, len(uos))
 	for i := range uos {
-		if uos[i].UserID == "" {
+		if uos[i].UserId == "" {
 			continue
 		}
-		result[uos[i].UserID] = &uos[i]
+		result[uos[i].UserId] = &uos[i]
 	}
 	return result, nil
 }

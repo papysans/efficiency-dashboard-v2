@@ -21,7 +21,7 @@ import (
 
 type taskSummary struct {
 	TaskID          string `json:"task_id"`
-	UserID          string `json:"user_id"`
+	UserId          string `json:"user_id"`
 	UserName        string `json:"user_name"`
 	ClientID        string `json:"client_id"`
 	ClientIDE       string `json:"client_ide"`
@@ -65,7 +65,7 @@ type taskConversation struct {
 type taskSilicaData struct {
 	TaskID          string                   `json:"task_id"`
 	RepoAddr        string                   `json:"repo_addr"`
-	UserID          string                   `json:"user_id"`
+	UserId          string                   `json:"user_id"`
 	Size            int64                    `json:"size"`
 	ConversationNum int                      `json:"conversation_num"`
 	Conversations   []taskSilicaConversation `json:"conversations"`
@@ -100,7 +100,7 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 func calcTaskRecord(summary *taskSummary, conversations []taskConversation) models.Task {
 	rec := models.Task{
 		TaskID:          summary.TaskID,
-		UserID:          summary.UserID,
+		UserId:          summary.UserId,
 		UserName:        summary.UserName,
 		ClientID:        summary.ClientID,
 		ClientIDE:       summary.ClientIDE,
@@ -181,7 +181,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	if summary.TaskID == "" {
 		return fmt.Errorf("task_id为空")
 	}
-	if summary.UserID == "" {
+	if summary.UserId == "" {
 		return fmt.Errorf("user_id为空")
 	}
 
@@ -580,7 +580,7 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 	tsd := taskSilicaData{
 		TaskID:          summary.TaskID,
 		RepoAddr:        summary.RepoAddr,
-		UserID:          summary.UserID,
+		UserId:          summary.UserId,
 		Size:            fileSize,
 		ConversationNum: len(conversations),
 	}

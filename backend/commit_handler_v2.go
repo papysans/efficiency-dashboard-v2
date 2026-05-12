@@ -19,7 +19,7 @@ type CommitListItem struct {
 	RepoBranch                       string          `json:"repo_branch"`
 	GitUserName                      string          `json:"git_user_name"`
 	GitUserEmail                     string          `json:"git_user_email"`
-	UserID                           string          `json:"user_id"`
+	UserId                           string          `json:"user_id"`
 	UserName                         string          `json:"user_name"`
 	ClientID                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
@@ -32,9 +32,9 @@ type CommitListItem struct {
 	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
 	CommitRealMinutesReasonManual    string          `json:"commit_real_minutes_reason_manual"`
-	CommitRealAIMinutes              *float64        `json:"commit_real_ai_minutes"`
+	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
-	TaskIDs                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
+	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
 	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
 	Comment                          string          `json:"comment"`
 	CreatedAt                        time.Time       `json:"created_at"`
@@ -124,7 +124,7 @@ func listCommitsV2(c *gin.Context) {
 		RepoAddr:    strings.TrimSpace(c.Query("repoAddr")),
 		RepoBranch:  strings.TrimSpace(c.Query("repoBranch")),
 		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
-		UserID:      strings.TrimSpace(c.Query("userId")),
+		UserId:      strings.TrimSpace(c.Query("userId")),
 		UserName:    strings.TrimSpace(c.Query("userName")),
 		ClientID:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
@@ -189,7 +189,7 @@ func listCommitsV2(c *gin.Context) {
 			RepoBranch:                       commit.RepoBranch,
 			GitUserName:                      commit.GitUserName,
 			GitUserEmail:                     commit.GitUserEmail,
-			UserID:                           commit.UserID,
+			UserId:                           commit.UserId,
 			UserName:                         commit.UserName,
 			ClientID:                         commit.ClientID,
 			WorkDir:                          commit.WorkDir,
@@ -202,9 +202,9 @@ func listCommitsV2(c *gin.Context) {
 			CommitRealMinutesReason:          commit.CommitRealMinutesReason,
 			CommitRealMinutesManual:          commit.CommitRealMinutesManual,
 			CommitRealMinutesReasonManual:    commit.CommitRealMinutesReasonManual,
-			CommitRealAIMinutes:              commit.CommitRealAIMinutes,
+			CommitRealAiMinutes:              commit.CommitRealAiMinutes,
 			CommitRealAncientMinutes:         commit.CommitRealAncientMinutes,
-			TaskIDs:                          commit.TaskIDs,
+			TaskIds:                          commit.TaskIds,
 			TaskIDsSilica:                    commit.TaskIDsSilica,
 			Comment:                          commit.Comment,
 			CreatedAt:                        commit.CreatedAt,
@@ -219,8 +219,8 @@ func listCommitsV2(c *gin.Context) {
 			commit.CommitRealMinutes,
 			commit.CommitRealMinutesManual)
 
-		if commit.UserID != "" {
-			if om, ok := orgMappings[commit.UserID]; ok {
+		if commit.UserId != "" {
+			if om, ok := orgMappings[commit.UserId]; ok {
 				item.Org1 = om.Org1
 				item.Org2 = om.Org2
 				item.Org3 = om.Org3
@@ -271,8 +271,8 @@ func getCommitDetailV2(c *gin.Context) {
 
 	var relatedTasks []RelatedTask
 	var taskIDs []string
-	if len(commit.TaskIDs) > 0 && string(commit.TaskIDs) != "null" && string(commit.TaskIDs) != "[]" {
-		if err := json.Unmarshal(commit.TaskIDs, &taskIDs); err != nil {
+	if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
+		if err := json.Unmarshal(commit.TaskIds, &taskIDs); err != nil {
 			log.Printf("解析 commit task_ids 失败: %v", err)
 		}
 	}

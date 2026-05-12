@@ -14,7 +14,7 @@ import (
 )
 
 type UserListItem struct {
-	UserID                string  `json:"user_id"`
+	UserId                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
 	DayCount              int     `json:"day_count"`
 	UpstreamTokens        int64   `json:"upstream_tokens"`
@@ -62,7 +62,7 @@ type UserSeriesPoint struct {
 }
 
 type UserSeriesItem struct {
-	UserID   string            `json:"user_id"`
+	UserId   string            `json:"user_id"`
 	UserName string            `json:"user_name"`
 	Periods  []string          `json:"periods"`
 	Points   []UserSeriesPoint `json:"points"`
@@ -78,7 +78,7 @@ type UsersListResponse struct {
 }
 
 type UserDetailSummary struct {
-	UserID                string  `json:"user_id"`
+	UserId                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
 	DayCount              int     `json:"day_count"`
 	UpstreamTokens        int64   `json:"upstream_tokens"`
@@ -169,14 +169,14 @@ func listUsersV2(c *gin.Context) {
 
 	all := make([]UserListItem, 0)
 	for _, row := range aggRows {
-		om, matched := filter.MatchOrg(row.UserID)
+		om, matched := filter.MatchOrg(row.UserId)
 		if !matched {
 			continue
 		}
 
 		orgDisplay := filter.OrgDisplay(om)
 		item := UserListItem{
-			UserID:                row.UserID,
+			UserId:                row.UserId,
 			UserName:              row.UserName,
 			DayCount:              row.DayCount,
 			UpstreamTokens:        row.UpstreamTokens,
@@ -230,15 +230,15 @@ func listUsersV2(c *gin.Context) {
 				}
 				dayCount += len(daily)
 				for _, d := range daily {
-					if d.TaskIDs != nil {
+					if d.TaskIds != nil {
 						var ids []interface{}
-						if json.Unmarshal(d.TaskIDs, &ids) == nil {
+						if json.Unmarshal(d.TaskIds, &ids) == nil {
 							taskCount += len(ids)
 						}
 					}
-					if d.CommitIDs != nil {
+					if d.CommitIds != nil {
 						var ids []interface{}
-						if json.Unmarshal(d.CommitIDs, &ids) == nil {
+						if json.Unmarshal(d.CommitIds, &ids) == nil {
 							commitCount += len(ids)
 						}
 					}
@@ -258,7 +258,7 @@ func listUsersV2(c *gin.Context) {
 			commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
 
 			all = append(all, UserListItem{
-				UserID:                group.GroupID,
+				UserId:                group.GroupID,
 				UserName:              group.Name,
 				GroupID:               group.GroupID,
 				DayCount:              dayCount,
@@ -302,7 +302,7 @@ func listUsersV2(c *gin.Context) {
 		var allUserIDs []string
 		for _, u := range all {
 			if !u.IsVirtualGroup {
-				allUserIDs = append(allUserIDs, u.UserID)
+				allUserIDs = append(allUserIDs, u.UserId)
 			}
 		}
 
@@ -330,7 +330,7 @@ func listUsersV2(c *gin.Context) {
 
 				for _, row := range sRows {
 					dateStr := row.CreateTime.Format("2006-01-02")
-					key := dayUserKey{date: dateStr, userID: row.UserID}
+					key := dayUserKey{date: dateStr, userID: row.UserId}
 					if _, ok := dayUserMap[key]; !ok {
 						dayUserMap[key] = &dayUserAgg{}
 					}
@@ -439,7 +439,7 @@ func listUsersV2(c *gin.Context) {
 					if u.IsVirtualGroup {
 						continue
 					}
-					uid := u.UserID
+					uid := u.UserId
 					userName := u.UserName
 					if userName == "" {
 						userName = uid
@@ -489,7 +489,7 @@ func listUsersV2(c *gin.Context) {
 						})
 					}
 					series = append(series, UserSeriesItem{
-						UserID: uid, UserName: userName,
+						UserId: uid, UserName: userName,
 						Periods: allPeriods,
 						Points:  points,
 					})
@@ -567,15 +567,15 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 			periodMap[key] = pd
 			orderKeys = append(orderKeys, key)
 		}
-		if d.TaskIDs != nil {
+		if d.TaskIds != nil {
 			var ids []interface{}
-			if json.Unmarshal(d.TaskIDs, &ids) == nil {
+			if json.Unmarshal(d.TaskIds, &ids) == nil {
 				pd.taskCount += len(ids)
 			}
 		}
-		if d.CommitIDs != nil {
+		if d.CommitIds != nil {
 			var ids []interface{}
-			if json.Unmarshal(d.CommitIDs, &ids) == nil {
+			if json.Unmarshal(d.CommitIds, &ids) == nil {
 				pd.commitCount += len(ids)
 			}
 		}
@@ -682,15 +682,15 @@ func getUserDetailV2(c *gin.Context) {
 		if i == 0 {
 			userName = d.UserName
 		}
-		if d.TaskIDs != nil {
+		if d.TaskIds != nil {
 			var ids []interface{}
-			if json.Unmarshal(d.TaskIDs, &ids) == nil {
+			if json.Unmarshal(d.TaskIds, &ids) == nil {
 				taskCount += len(ids)
 			}
 		}
-		if d.CommitIDs != nil {
+		if d.CommitIds != nil {
 			var ids []interface{}
-			if json.Unmarshal(d.CommitIDs, &ids) == nil {
+			if json.Unmarshal(d.CommitIds, &ids) == nil {
 				commitCount += len(ids)
 			}
 		}
@@ -710,7 +710,7 @@ func getUserDetailV2(c *gin.Context) {
 	commitsList, tasksList := aggregateDailyByGranularity(daily, granularity)
 
 	summary := UserDetailSummary{
-		UserID:                userID,
+		UserId:                userID,
 		UserName:              userName,
 		DayCount:              dayCount,
 		TaskCount:             len(tasksList),

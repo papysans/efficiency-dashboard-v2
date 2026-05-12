@@ -66,7 +66,7 @@ type OrgSummary struct {
 }
 
 type OrgMemberItem struct {
-	UserID                string  `json:"user_id"`
+	UserId                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
 	Org1                  string  `json:"org1"`
 	Org2                  string  `json:"org2"`
@@ -151,7 +151,7 @@ type DailyDataItem struct {
 }
 
 type GroupMemberItem struct {
-	UserID                string  `json:"user_id"`
+	UserId                string  `json:"user_id"`
 	UserName              string  `json:"user_name"`
 	Org1                  string  `json:"org1"`
 	Org2                  string  `json:"org2"`
@@ -312,9 +312,9 @@ func listOrgV2(c *gin.Context) {
 			continue
 		}
 		if g, ok := groupMap[orgName]; ok {
-			g.userIDs = append(g.userIDs, u.UserID)
+			g.userIDs = append(g.userIDs, u.UserId)
 		} else {
-			groupMap[orgName] = &orgGroup{orgName: orgName, userIDs: []string{u.UserID}}
+			groupMap[orgName] = &orgGroup{orgName: orgName, userIDs: []string{u.UserId}}
 		}
 	}
 
@@ -338,7 +338,7 @@ func listOrgV2(c *gin.Context) {
 	}
 
 	for _, row := range prodRows {
-		userAggMap[row.UserID] = &row
+		userAggMap[row.UserId] = &row
 	}
 
 	// 按 org 分组汇总 → data[]
@@ -443,7 +443,7 @@ func listOrgV2(c *gin.Context) {
 	}
 
 	for _, row := range sRows {
-		orgName, ok := uidToOrg[row.UserID]
+		orgName, ok := uidToOrg[row.UserId]
 		if !ok {
 			continue
 		}
@@ -453,7 +453,7 @@ func listOrgV2(c *gin.Context) {
 			dayOrgMap[key] = &dayOrgAgg{users: make(map[string]bool)}
 		}
 		da := dayOrgMap[key]
-		da.users[row.UserID] = true
+		da.users[row.UserId] = true
 		da.taskCount += row.TaskCount
 		da.commitCount += row.CommitCount
 		da.taskDiffLines += row.TaskDiffLines
@@ -735,15 +735,15 @@ func getOrgDetailV2(c *gin.Context) {
 	dailyMap := make(map[string]*dailyAgg)
 	memberMap := make(map[string]*memberAgg)
 	for _, u := range matchedUsers {
-		memberMap[u.UserID] = &memberAgg{
-			userID: u.UserID, userName: u.UserName,
+		memberMap[u.UserId] = &memberAgg{
+			userID: u.UserId, userName: u.UserName,
 			org1: u.Org1, org2: u.Org2, org3: u.Org3, org4: u.Org4,
 		}
 	}
 
 	// 从 user_productivity 逐用户聚合
 	for _, u := range matchedUsers {
-		daily, err := ListUserProductivity(statDB, u.UserID, startTime, endTime, 1, 100000)
+		daily, err := ListUserProductivity(statDB, u.UserId, startTime, endTime, 1, 100000)
 		if err != nil {
 			continue
 		}
@@ -756,7 +756,7 @@ func getOrgDetailV2(c *gin.Context) {
 				dailyMap[dateStr] = &dailyAgg{}
 			}
 			da := dailyMap[dateStr]
-			ma := memberMap[u.UserID]
+			ma := memberMap[u.UserId]
 
 			da.taskDiffLines += d.TaskDiffLines
 			ma.taskDiffLines += d.TaskDiffLines
@@ -845,7 +845,7 @@ func getOrgDetailV2(c *gin.Context) {
 		commitEffRatio := utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
 
 		membersResult = append(membersResult, OrgMemberItem{
-			UserID:                ma.userID,
+			UserId:                ma.userID,
 			UserName:              ma.userName,
 			Org1:                  ma.org1,
 			Org2:                  ma.org2,
@@ -980,8 +980,8 @@ func getGroupDetailV2(c *gin.Context) {
 	memberMap := make(map[string]*memberAgg)
 
 	for _, u := range matchedUsers {
-		memberMap[u.UserID] = &memberAgg{
-			userID:   u.UserID,
+		memberMap[u.UserId] = &memberAgg{
+			userID:   u.UserId,
 			userName: u.UserName,
 			org1:     u.Org1,
 			org2:     u.Org2,
@@ -991,7 +991,7 @@ func getGroupDetailV2(c *gin.Context) {
 	}
 
 	for _, u := range matchedUsers {
-		daily, err := ListUserProductivity(statDB, u.UserID, startTime, endTime, 1, 100000)
+		daily, err := ListUserProductivity(statDB, u.UserId, startTime, endTime, 1, 100000)
 		if err != nil {
 			continue
 		}
@@ -1006,7 +1006,7 @@ func getGroupDetailV2(c *gin.Context) {
 				dailyMap[dateStr] = &dailyAgg{}
 			}
 			da := dailyMap[dateStr]
-			ma := memberMap[u.UserID]
+			ma := memberMap[u.UserId]
 
 			da.taskDiffLines += d.TaskDiffLines
 			ma.taskDiffLines += d.TaskDiffLines
@@ -1103,7 +1103,7 @@ func getGroupDetailV2(c *gin.Context) {
 			commitEffRatio = utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
 		}
 		membersResult = append(membersResult, GroupMemberItem{
-			UserID:                ma.userID,
+			UserId:                ma.userID,
 			UserName:              ma.userName,
 			Org1:                  ma.org1,
 			Org2:                  ma.org2,

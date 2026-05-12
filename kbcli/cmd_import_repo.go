@@ -24,7 +24,7 @@ type RepoCommitData struct {
 	RepoBranch   string `json:"repo_branch"`
 	GitUserName  string `json:"git_user_name"`
 	GitUserEmail string `json:"git_user_email"`
-	UserID       string `json:"user_id"`
+	UserId       string `json:"user_id"`
 	UserName     string `json:"user_name"`
 	ClientID     string `json:"client_id"`
 	WorkPath     string `json:"work_path,omitempty"`
@@ -123,7 +123,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	if err := json.Unmarshal(data, &commitData); err != nil {
 		return fmt.Errorf("解析JSON失败: %w", err)
 	}
-	if commitData.UserID == "" {
+	if commitData.UserId == "" {
 		return fmt.Errorf("user_id为空")
 	}
 	if commitData.CommitID == "" {
@@ -154,14 +154,14 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		RepoBranch:                 commitData.RepoBranch,
 		GitUserName:                commitData.GitUserName,
 		GitUserEmail:               commitData.GitUserEmail,
-		UserID:                     commitData.UserID,
+		UserId:                     commitData.UserId,
 		UserName:                   commitData.UserName,
 		ClientID:                   commitData.ClientID,
 		WorkDir:                    workDir,
 		WorkDirID:                  utils.GenerateWorkDirID(commitData.ClientID, workDir),
 		Comment:                    commitData.Comment,
 		DiffLines:                  commitData.DiffLines,
-		TaskIDs:                    models.StringJSON("[]"),
+		TaskIds:                    models.StringJSON("[]"),
 		TaskIDsSilica:              models.StringJSON("[]"),
 		CommitAncientMinutes:       &ancientMinutes,
 		CommitAncientMinutesReason: ancientReason,
