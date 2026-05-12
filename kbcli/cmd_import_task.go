@@ -790,6 +790,9 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 		Size:            fileSize,
 		ConversationNum: len(conversations),
 	}
+	if summary.RepoAddr == "" {
+		logDebugf("任务[%s]无法关联Commit,忽略代码指纹信息生成", summary.TaskId)
+	}
 
 	// 逐条对话提取新增代码行的指纹
 	for _, conv := range conversations {
@@ -799,10 +802,11 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 		}
 
 		var fingerprints []string
-		for _, al := range conv.addedLines {
-			fingerprints = append(fingerprints, calcLineFingerprint(al))
+		if summary.RepoAddr != "" {
+			for _, al := range conv.addedLines {
+				fingerprints = append(fingerprints, calcLineFingerprint(al))
+			}
 		}
-
 		tsc := taskSilicaConversation{
 			RequestId:    conv.RequestId,
 			EndTime:      conv.EndTime,

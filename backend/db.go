@@ -1292,7 +1292,7 @@ func ListCommitLightByRepoRange(db *gorm.DB, repoAddr, repoBranch, startTime, en
 type dashboardTaskAgg struct {
 	TotalTasks          int
 	TotalUsers          int
-	TotalRepos          int
+	TotalWorkDirs       int
 	TotalCost           float64
 	TotalTokens         int64
 	TotalLines          int64
@@ -1307,7 +1307,7 @@ func queryDashboardTaskAgg(db *gorm.DB, startTime, endTime string) (*dashboardTa
 	q := db.Model(&models.Task{}).
 		Select(`COUNT(task_id) as total_tasks,
 			COUNT(DISTINCT user_id) as total_users,
-			COUNT(DISTINCT work_dir_id) as total_repos,
+			COUNT(DISTINCT work_dir_id) as total_work_dirs,
 			COALESCE(SUM(cost), 0) as total_cost,
 			COALESCE(SUM(diff_lines), 0) as total_lines,
 			COALESCE(SUM(upstream_tokens + downstream_tokens), 0) as total_tokens,
@@ -1327,15 +1327,22 @@ func queryDashboardTaskAgg(db *gorm.DB, startTime, endTime string) (*dashboardTa
 }
 
 type dashboardCommitAgg struct {
-	TotalCommits   int
-	TotalDiffLines int64
+	TotalRepos          int
+	TotalCommits        int
+	TotalDiffLines      int64
+	TotalBranchs        int
+	TotalRealMinutes    float64
+	TotalAncientMinutes float64
 }
 
 func queryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboardCommitAgg, error) {
 	var agg dashboardCommitAgg
-	q := db.Model(&models.Commit{}).
-		Select(`COUNT(*) as total_commits,
-			COALESCE(SUM(diff_lines), 0) as total_diff_lines`)
+	q := db.Model(&models.Commit{}).Select(`COUNT(*) as total_commits,
+		COALESCE(SUM(diff_lines), 0) as total_diff_lines,
+		COUNT(DISTINCT NULLIF(repo_addr, '')) as total_repos,
+		(SELECT COUNT(*) FROM (SELECT DISTINCT repo_addr, repo_branch FROM commits WHERE repo_addr IS NOT NULL AND repo_addr != '') sub) as total_branchs,
+		COALESCE(SUM(CASE WHEN commit_real_minutes_manual IS NOT NULL THEN commit_real_minutes_manual ELSE commit_real_minutes END), 0) as total_real_minutes,
+		COALESCE(SUM(CASE WHEN commit_ancient_minutes_manual IS NOT NULL THEN commit_ancient_minutes_manual ELSE commit_ancient_minutes END), 0) as total_ancient_minutes`)
 	if startTime != "" {
 		q = q.Where("commit_time >= ?", startTime)
 	}
@@ -1346,14 +1353,6 @@ func queryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboard
 		return nil, fmt.Errorf("查询 commits 仪表盘聚合失败: %w", err)
 	}
 	return &agg, nil
-}
-
-func countDistinctWorkDirs(db *gorm.DB) (int, error) {
-	var count int
-	if err := db.Raw(`SELECT COUNT(*) FROM (SELECT DISTINCT repo_addr, repo_branch FROM commits WHERE repo_addr IS NOT NULL AND repo_addr != '') sub`).Scan(&count).Error; err != nil {
-		return 0, fmt.Errorf("查询 work_dirs 聚合失败: %w", err)
-	}
-	return count, nil
 }
 
 // ============================================================
@@ -1513,10 +1512,6 @@ func QueryDashboardTaskAgg(db *gorm.DB, startTime, endTime string) (*dashboardTa
 
 func QueryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboardCommitAgg, error) {
 	return queryDashboardCommitAgg(db, startTime, endTime)
-}
-
-func QueryDistinctWorkDirs(db *gorm.DB) (int, error) {
-	return countDistinctWorkDirs(db)
 }
 
 func QueryUserProdAgg(db *gorm.DB, startTime, endTime string) ([]userProdAggRow, error) {

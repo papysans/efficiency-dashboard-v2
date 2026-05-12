@@ -28,13 +28,14 @@ type AIEstimationConfig struct {
 }
 
 type EstimateConfig struct {
-	MaxInputChars     float64 `yaml:"max_input_chars"`     //最大输入字符数
-	MaxRatio          float64 `yaml:"max_ratio"`           //工作量的最大倍数(相比real_minutes)
-	MaxFactor         float64 `yaml:"max_factor"`          //最大的加权系数
-	MinFactor         float64 `yaml:"min_factor"`          //最小的加权系数
-	IncharsPerMinutes float64 `yaml:"inchars_per_minutes"` //人每分钟输入20个字
-	LinesPerMinutes   float64 `yaml:"lines_per_minutes"`   //人每分钟输入2行代码
-	MinMinutes        float64 `yaml:"min_minutes"`         //最小分钟数
+	MaxInputChars        float64 `yaml:"max_input_chars"`         //最大输入字符数
+	MaxRatio             float64 `yaml:"max_ratio"`               //工作量的最大倍数(相比real_minutes)
+	MaxFactor            float64 `yaml:"max_factor"`              //最大的加权系数
+	MinFactor            float64 `yaml:"min_factor"`              //最小的加权系数
+	IncharsPerMinutes    float64 `yaml:"inchars_per_minutes"`     //人每分钟输入20个字
+	LinesPerMinutes      float64 `yaml:"lines_per_minutes"`       //人每分钟输入2行代码
+	MinMinutes           float64 `yaml:"min_minutes"`             //最小分钟数
+	CommitLinePerMinutes float64 `yaml:"commit_line_per_minutes"` //传统开发人天代码量基准值（行/人天），默认值100行/人天
 }
 
 type TaskTimeStatistics struct {
@@ -96,6 +97,11 @@ func LoadFirstConfig(files []string) (*Config, error) {
 	}
 	return nil, fmt.Errorf("load config [%s] failed", strings.Join(files, ","))
 }
+
+const (
+	DefaultPageSize                  = 50
+	DefaultTraditionalDevLinesPerDay = 100 // 传统开发人天代码量基准值（行/人天）
+)
 
 // LoadConfig 从 YAML 文件加载配置
 func LoadConfig(filename string) (*Config, error) {
@@ -169,6 +175,9 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 	if c.AlgoEstimation.MinMinutes == 0 {
 		c.AlgoEstimation.MinMinutes = 5
+	}
+	if c.AlgoEstimation.CommitLinePerMinutes == 0 {
+		c.AlgoEstimation.CommitLinePerMinutes = DefaultTraditionalDevLinesPerDay / 480.0
 	}
 	if c.TaskStatistics.ExtensionMinutes == 0 {
 		c.TaskStatistics.ExtensionMinutes = 5

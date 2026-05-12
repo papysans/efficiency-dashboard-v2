@@ -126,6 +126,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 	}
 
 	// 第二步：逐个解析文件并构建索引
+	var skipCount int
 	for i, silicaFile := range silicaFiles {
 		logPromptProgress(i, 50) // 每处理50个文件打印一次进度
 
@@ -133,15 +134,18 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		tsd, err := loadTaskSilicaFile(silicaFile)
 		if err != nil {
 			logWarnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
+			skipCount++
 			continue
 		}
 		// 跳过缺少关键字段的文件，避免索引中出现无效分组
 		if tsd.TaskId == "" {
 			logWarnf("文件[%s]缺失字段[task_id]", silicaFile)
+			skipCount++
 			continue
 		}
 		if tsd.RepoAddr == "" {
-			logWarnf("文件[%s]缺失字段[repo_addr]", silicaFile)
+			logDebugf("文件[%s]缺失字段[repo_addr]", silicaFile)
+			skipCount++
 			continue
 		}
 
@@ -200,7 +204,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		// 更新分组索引回全局索引
 		idx.groups[gk] = gi
 	}
-
+	logInfof("加载[%d]个对话文件，忽略[%d]个文件，共[%d]组对话", len(silicaFiles), skipCount, idx.convCount)
 	return idx, nil
 }
 
