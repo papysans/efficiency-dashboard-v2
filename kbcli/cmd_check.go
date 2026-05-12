@@ -15,8 +15,8 @@ import (
 type CheckIssue struct {
 	Severity string `json:"severity"`
 	Path     string `json:"path"`
-	TaskID   string `json:"task_id"`
-	CommitID string `json:"commit_id"`
+	TaskId   string `json:"task_id"`
+	CommitId string `json:"commit_id"`
 	Issue    string `json:"issue"`
 	Field    string `json:"field"`
 	Comment  string `json:"comment"`
@@ -62,8 +62,8 @@ func (ctx *checkContext) addIssue(severity, path, taskID, commitID, issue, field
 	ctx.issues = append(ctx.issues, CheckIssue{
 		Severity: severity,
 		Path:     path,
-		TaskID:   taskID,
-		CommitID: commitID,
+		TaskId:   taskID,
+		CommitId: commitID,
 		Issue:    issue,
 		Field:    field,
 		Comment:  comment,
@@ -296,11 +296,11 @@ func (ctx *checkContext) checkSummaries() error {
 			continue
 		}
 
-		if summary.TaskID == "" {
+		if summary.TaskId == "" {
 			ctx.addIssue("error", path, taskID, "", "missing-task-id", "task_id", "task_id为空，该数据无法被索引和关联")
-		} else if summary.TaskID != taskID {
+		} else if summary.TaskId != taskID {
 			ctx.addIssue("warn", path, taskID, "", "task-id-mismatch", "task_id",
-				fmt.Sprintf("文件内task_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", summary.TaskID, taskID))
+				fmt.Sprintf("文件内task_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", summary.TaskId, taskID))
 		}
 		if summary.UserId == "" {
 			ctx.addIssue("warn", path, taskID, "", "missing-user-id", "user_id", "user_id为空，将导致该任务无法按用户聚合统计")
@@ -311,7 +311,7 @@ func (ctx *checkContext) checkSummaries() error {
 		if summary.RepoAddr == "" {
 			ctx.addIssue("info", path, taskID, "", "missing-repo-addr", "repo_addr", "repo_addr为空，该任务无法参与silica含硅量计算")
 		}
-		if summary.ClientID == "" {
+		if summary.ClientId == "" {
 			ctx.addIssue("info", path, taskID, "", "missing-client-id", "client_id", "client_id为空，work_dir_id生成将受影响")
 		}
 		if summary.WorkDir == "" {
@@ -376,7 +376,7 @@ func (ctx *checkContext) checkConversations() error {
 		lineNum := 0
 		for _, conv := range convs {
 			lineNum++
-			if conv.RequestID == "" {
+			if conv.RequestId == "" {
 				ctx.addIssue("warn", path, taskID, "", "missing-request-id", "request_id",
 					fmt.Sprintf("第%d行request_id为空，该对话无法被去重和追踪", lineNum))
 			}
@@ -576,11 +576,11 @@ func (ctx *checkContext) checkRepos() error {
 			continue
 		}
 
-		if commitData.CommitID == "" {
+		if commitData.CommitId == "" {
 			ctx.addIssue("error", path, "", commitID, "missing-commit-id", "commit_id", "commit_id为空，该提交无法被索引")
-		} else if commitData.CommitID != commitID {
+		} else if commitData.CommitId != commitID {
 			ctx.addIssue("warn", path, "", commitID, "commit-id-mismatch", "commit_id",
-				fmt.Sprintf("文件内commit_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", commitData.CommitID, commitID))
+				fmt.Sprintf("文件内commit_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", commitData.CommitId, commitID))
 		}
 		if commitData.CommitTime == "" {
 			ctx.addIssue("error", path, "", commitID, "missing-commit-time", "commit_time", "commit_time为空，该提交无法按日期聚合")

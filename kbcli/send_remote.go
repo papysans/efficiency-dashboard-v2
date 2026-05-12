@@ -39,7 +39,7 @@ func sendToRemote(remoteURL, taskType string, params map[string]interface{}) err
 	}
 
 	var result struct {
-		TaskID string `json:"task_id"`
+		TaskId string `json:"task_id"`
 		Status string `json:"status"`
 		Type   string `json:"type"`
 	}
@@ -48,7 +48,7 @@ func sendToRemote(remoteURL, taskType string, params map[string]interface{}) err
 		return nil
 	}
 
-	logInfof("远程任务已提交: task_id=%s, status=%s, type=%s", result.TaskID, result.Status, result.Type)
-	logInfof("可通过 curl %s/api/tasks/%s 查询任务状态", remoteURL, result.TaskID)
+	logInfof("远程任务已提交: task_id=%s, status=%s, type=%s", result.TaskId, result.Status, result.Type)
+	logInfof("可通过 curl %s/api/tasks/%s 查询任务状态", remoteURL, result.TaskId)
 	return nil
 }

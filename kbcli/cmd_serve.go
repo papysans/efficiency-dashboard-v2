@@ -47,7 +47,7 @@ type ErrorResponse struct {
 // CreateTaskResponse 创建任务响应
 // swagger:response CreateTaskResponse
 type CreateTaskResponse struct {
-	TaskID string `json:"task_id" example:"abc123"`
+	TaskId string `json:"task_id" example:"abc123"`
 	Status string `json:"status" example:"pending"`
 	Type   string `json:"type" example:"import-task"`
 }
@@ -55,7 +55,7 @@ type CreateTaskResponse struct {
 // CancelTaskResponse 取消任务响应
 // swagger:response CancelTaskResponse
 type CancelTaskResponse struct {
-	TaskID  string `json:"task_id" example:"abc123"`
+	TaskId  string `json:"task_id" example:"abc123"`
 	Status  string `json:"status" example:"cancelled"`
 	Message string `json:"message" example:"任务已取消"`
 }
@@ -235,7 +235,7 @@ func createTaskHandlerFunc(taskType string, c *gin.Context) {
 
 	task := taskQueue.Submit(taskType, params, fn)
 	c.JSON(http.StatusAccepted, CreateTaskResponse{
-		TaskID: task.ID,
+		TaskId: task.ID,
 		Status: string(task.Status),
 		Type:   task.Type,
 	})
@@ -308,7 +308,7 @@ func cancelTaskHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, CancelTaskResponse{
-		TaskID:  task.ID,
+		TaskId:  task.ID,
 		Status:  string(task.Status),
 		Message: "任务已取消",
 	})

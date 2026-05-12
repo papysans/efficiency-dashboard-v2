@@ -17,19 +17,19 @@ import (
 // ============================================================
 
 type StatTask struct {
-	TaskID                         string     `json:"task_id"`
+	TaskId                         string     `json:"task_id"`
 	UserId                         string     `json:"user_id"`
 	UserName                       string     `json:"user_name"`
-	ClientID                       string     `json:"client_id"`
-	ClientIDE                      string     `json:"client_ide"`
+	ClientId                       string     `json:"client_id"`
+	ClientIde                      string     `json:"client_ide"`
 	ClientVersion                  string     `json:"client_version"`
-	ClientOS                       string     `json:"client_os"`
-	ClientOSVersion                string     `json:"client_os_version"`
+	ClientOs                       string     `json:"client_os"`
+	ClientOsVersion                string     `json:"client_os_version"`
 	Caller                         string     `json:"caller"`
 	RepoAddr                       string     `json:"repo_addr"`
 	RepoBranch                     string     `json:"repo_branch"`
 	WorkDir                        string     `json:"work_dir"`
-	WorkDirID                      string     `json:"work_dir_id"`
+	WorkDirId                      string     `json:"work_dir_id"`
 	DiffLines                      int        `json:"diff_lines"`
 	StartTime                      *time.Time `json:"start_time"`
 	EndTime                        *time.Time `json:"end_time"`
@@ -51,8 +51,8 @@ type StatTask struct {
 
 type StatTaskConversation struct {
 	ID               int       `json:"id"`
-	TaskID           string    `json:"task_id"`
-	RequestID        string    `json:"request_id"`
+	TaskId           string    `json:"task_id"`
+	RequestId        string    `json:"request_id"`
 	Sender           string    `json:"sender"`
 	PromptMode       string    `json:"prompt_mode"`
 	Mode             string    `json:"mode"`
@@ -60,7 +60,7 @@ type StatTaskConversation struct {
 	StartTime        time.Time `json:"start_time"`
 	EndTime          time.Time `json:"end_time"`
 	ProcessTime      int64     `json:"process_time"`
-	ProcessTTFT      int64     `json:"process_ttft"`
+	ProcessTtft      int64     `json:"process_ttft"`
 	UpstreamTokens   int64     `json:"upstream_tokens"`
 	DownstreamTokens int64     `json:"downstream_tokens"`
 	Cost             float64   `json:"cost"`
@@ -75,7 +75,7 @@ type StatTaskConversation struct {
 }
 
 type StatCommit struct {
-	CommitID                         string          `json:"commit_id"`
+	CommitId                         string          `json:"commit_id"`
 	CommitTime                       time.Time       `json:"commit_time"`
 	RepoAddr                         string          `json:"repo_addr"`
 	RepoBranch                       string          `json:"repo_branch"`
@@ -83,16 +83,16 @@ type StatCommit struct {
 	GitUserEmail                     string          `json:"git_user_email"`
 	UserId                           string          `json:"user_id"`
 	UserName                         string          `json:"user_name"`
-	ClientID                         string          `json:"client_id"`
+	ClientId                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
-	WorkDirID                        string          `json:"work_dir_id"`
+	WorkDirId                        string          `json:"work_dir_id"`
 	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
 	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
 	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
-	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	UpstreamTokens                   int64           `json:"upstream_tokens"`
 	DownstreamTokens                 int64           `json:"downstream_tokens"`
 	Cost                             float64         `json:"cost"`
@@ -109,12 +109,12 @@ type StatCommit struct {
 }
 
 type Project struct {
-	ProjectID                             string          `json:"project_id"`
+	ProjectId                             string          `json:"project_id"`
 	Name                                  string          `json:"name"`
 	Description                           string          `json:"description"`
 	Repos                                 json.RawMessage `json:"repos" swaggertype:"string"`
 	TaskIds                               json.RawMessage `json:"task_ids" swaggertype:"string"`
-	TaskIDsSilica                         json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
+	TaskIdsSilica                         json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
 	StartTime                             *time.Time      `json:"start_time"`
 	EndTime                               *time.Time      `json:"end_time"`
 	StartTimeManual                       *time.Time      `json:"start_time_manual"`
@@ -139,7 +139,7 @@ type Project struct {
 }
 
 type UserProductivity struct {
-	UserProductivityID       string          `json:"user_productivity_id"`
+	UserProductivityId       string          `json:"user_productivity_id"`
 	CreateTime               time.Time       `json:"create_time"`
 	UserId                   string          `json:"user_id"`
 	UserName                 string          `json:"user_name"`
@@ -282,19 +282,19 @@ func toStatTask(t *models.Task) *StatTask {
 		return nil
 	}
 	return &StatTask{
-		TaskID:                         t.TaskID,
+		TaskId:                         t.TaskId,
 		UserId:                         t.UserId,
 		UserName:                       t.UserName,
-		ClientID:                       t.ClientID,
-		ClientIDE:                      t.ClientIDE,
+		ClientId:                       t.ClientId,
+		ClientIde:                      t.ClientIde,
 		ClientVersion:                  t.ClientVersion,
-		ClientOS:                       t.ClientOS,
-		ClientOSVersion:                t.ClientOSVersion,
+		ClientOs:                       t.ClientOs,
+		ClientOsVersion:                t.ClientOsVersion,
 		Caller:                         t.Caller,
 		RepoAddr:                       t.RepoAddr,
 		RepoBranch:                     t.RepoBranch,
 		WorkDir:                        t.WorkDir,
-		WorkDirID:                      t.WorkDirID,
+		WorkDirId:                      t.WorkDirId,
 		DiffLines:                      t.DiffLines,
 		StartTime:                      t.StartTime,
 		EndTime:                        t.EndTime,
@@ -328,7 +328,7 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		return nil
 	}
 	return &StatCommit{
-		CommitID:                         c.CommitID,
+		CommitId:                         c.CommitId,
 		CommitTime:                       c.CommitTime,
 		RepoAddr:                         c.RepoAddr,
 		RepoBranch:                       c.RepoBranch,
@@ -336,16 +336,16 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		GitUserEmail:                     c.GitUserEmail,
 		UserId:                           c.UserId,
 		UserName:                         c.UserName,
-		ClientID:                         c.ClientID,
+		ClientId:                         c.ClientId,
 		WorkDir:                          c.WorkDir,
-		WorkDirID:                        c.WorkDirID,
+		WorkDirId:                        c.WorkDirId,
 		DiffLines:                        c.DiffLines,
 		CommitAncientMinutes:             c.CommitAncientMinutes,
 		CommitAncientMinutesReason:       c.CommitAncientMinutesReason,
 		CommitAncientMinutesManual:       c.CommitAncientMinutesManual,
 		CommitAncientMinutesReasonManual: c.CommitAncientMinutesReasonManual,
 		TaskIds:                          strJSONToRaw(c.TaskIds),
-		TaskIDsSilica:                    strJSONToRaw(c.TaskIDsSilica),
+		TaskIdsSilica:                    strJSONToRaw(c.TaskIdsSilica),
 		UpstreamTokens:                   ptrToInt64(c.UpstreamTokens),
 		DownstreamTokens:                 ptrToInt64(c.DownstreamTokens),
 		Cost:                             ptrToFloat64(c.Cost),
@@ -376,8 +376,8 @@ func toStatTaskConversation(c *models.TaskConversation) *StatTaskConversation {
 	}
 	return &StatTaskConversation{
 		ID:               c.ID,
-		TaskID:           c.TaskID,
-		RequestID:        c.RequestID,
+		TaskId:           c.TaskId,
+		RequestId:        c.RequestId,
 		Sender:           c.Sender,
 		PromptMode:       c.PromptMode,
 		Mode:             c.Mode,
@@ -385,7 +385,7 @@ func toStatTaskConversation(c *models.TaskConversation) *StatTaskConversation {
 		StartTime:        c.StartTime,
 		EndTime:          c.EndTime,
 		ProcessTime:      c.ProcessTime,
-		ProcessTTFT:      c.ProcessTTFT,
+		ProcessTtft:      c.ProcessTtft,
 		UpstreamTokens:   c.UpstreamTokens,
 		DownstreamTokens: c.DownstreamTokens,
 		Cost:             c.Cost,
@@ -405,12 +405,12 @@ func toProject(p *models.Project) *Project {
 		return nil
 	}
 	return &Project{
-		ProjectID:                             p.ProjectID,
+		ProjectId:                             p.ProjectId,
 		Name:                                  p.Name,
 		Description:                           p.Description,
 		Repos:                                 strJSONToRaw(p.Repos),
 		TaskIds:                               strJSONToRaw(p.TaskIds),
-		TaskIDsSilica:                         strJSONToRaw(p.TaskIDsSilica),
+		TaskIdsSilica:                         strJSONToRaw(p.TaskIdsSilica),
 		StartTime:                             p.StartTime,
 		EndTime:                               p.EndTime,
 		StartTimeManual:                       p.StartTimeManual,
@@ -448,7 +448,7 @@ func toUserProductivity(up *models.UserProductivity) *UserProductivity {
 		return nil
 	}
 	return &UserProductivity{
-		UserProductivityID:       up.UserProductivityID,
+		UserProductivityId:       up.UserProductivityId,
 		CreateTime:               up.CreateTime,
 		UserId:                   up.UserId,
 		UserName:                 up.UserName,
@@ -532,7 +532,7 @@ func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, err
 		return nil, fmt.Errorf("批量查询 tasks 失败: %w", err)
 	}
 	for i := range tasks {
-		result[tasks[i].TaskID] = toStatTask(&tasks[i])
+		result[tasks[i].TaskId] = toStatTask(&tasks[i])
 	}
 	return result, nil
 }
@@ -540,13 +540,13 @@ func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, err
 type TaskFilter struct {
 	UserId     string
 	UserName   string
-	ClientID   string
-	ClientIDE  string
-	ClientOS   string
+	ClientId   string
+	ClientIde  string
+	ClientOs   string
 	Caller     string
 	RepoAddr   string
 	RepoBranch string
-	WorkDirID  string
+	WorkDirId  string
 	StartTime  string
 	EndTime    string
 	Org1       string
@@ -609,14 +609,14 @@ func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.UserName != "" {
 		q = q.Where("user_name = ?", f.UserName)
 	}
-	if f.ClientID != "" {
-		q = q.Where("client_id = ?", f.ClientID)
+	if f.ClientId != "" {
+		q = q.Where("client_id = ?", f.ClientId)
 	}
-	if f.ClientIDE != "" {
-		q = q.Where("client_ide = ?", f.ClientIDE)
+	if f.ClientIde != "" {
+		q = q.Where("client_ide = ?", f.ClientIde)
 	}
-	if f.ClientOS != "" {
-		q = q.Where("client_os = ?", f.ClientOS)
+	if f.ClientOs != "" {
+		q = q.Where("client_os = ?", f.ClientOs)
 	}
 	if f.Caller != "" {
 		q = q.Where("caller = ?", f.Caller)
@@ -627,8 +627,8 @@ func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.RepoBranch != "" {
 		q = q.Where("repo_branch = ?", f.RepoBranch)
 	}
-	if f.WorkDirID != "" {
-		q = q.Where("work_dir_id = ?", f.WorkDirID)
+	if f.WorkDirId != "" {
+		q = q.Where("work_dir_id = ?", f.WorkDirId)
 	}
 	if len(f.OrgUserIDs) > 0 {
 		q = q.Where("user_id IN ?", f.OrgUserIDs)
@@ -779,9 +779,9 @@ type CommitFilter struct {
 	GitUserName string
 	UserId      string
 	UserName    string
-	ClientID    string
+	ClientId    string
 	WorkDir     string
-	WorkDirID   string
+	WorkDirId   string
 	StartTime   string
 	EndTime     string
 	Org1        string
@@ -856,14 +856,14 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if len(f.OrgUserIDs) > 0 {
 		q = q.Where("user_id IN ?", f.OrgUserIDs)
 	}
-	if f.ClientID != "" {
-		q = q.Where("client_id = ?", f.ClientID)
+	if f.ClientId != "" {
+		q = q.Where("client_id = ?", f.ClientId)
 	}
 	if f.WorkDir != "" {
 		q = q.Where("work_dir = ?", f.WorkDir)
 	}
-	if f.WorkDirID != "" {
-		q = q.Where("work_dir_id = ?", f.WorkDirID)
+	if f.WorkDirId != "" {
+		q = q.Where("work_dir_id = ?", f.WorkDirId)
 	}
 	if f.StartTime != "" {
 		q = q.Where("commit_time >= ?", f.StartTime)
@@ -994,12 +994,12 @@ func CreateProject(db *gorm.DB, p *Project) (string, error) {
 		Description:   p.Description,
 		Repos:         rawToStrJSON(p.Repos),
 		TaskIds:       rawToStrJSON(p.TaskIds),
-		TaskIDsSilica: rawToStrJSON(p.TaskIDsSilica),
+		TaskIdsSilica: rawToStrJSON(p.TaskIdsSilica),
 	}
 	if err := db.Create(&mp).Error; err != nil {
 		return "", fmt.Errorf("创建 project 失败: %w", err)
 	}
-	return mp.ProjectID, nil
+	return mp.ProjectId, nil
 }
 
 func GetProject(db *gorm.DB, projectID string) (*Project, error) {
@@ -1028,15 +1028,15 @@ func UpdateProject(db *gorm.DB, p *Project) error {
 		"description":     p.Description,
 		"repos":           rawToStrJSON(p.Repos),
 		"task_ids":        rawToStrJSON(p.TaskIds),
-		"task_ids_silica": rawToStrJSON(p.TaskIDsSilica),
+		"task_ids_silica": rawToStrJSON(p.TaskIdsSilica),
 		"updated_at":      time.Now(),
 	}
-	result := db.Model(&models.Project{}).Where("project_id = ?", p.ProjectID).Updates(updates)
+	result := db.Model(&models.Project{}).Where("project_id = ?", p.ProjectId).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("更新 project 失败: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("project project_id=%s 不存在", p.ProjectID)
+		return fmt.Errorf("project project_id=%s 不存在", p.ProjectId)
 	}
 	return nil
 }
@@ -1125,7 +1125,7 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 
 // func UpsertUserProductivity(db *gorm.DB, up *UserProductivity) error {
 // 	mup := models.UserProductivity{
-// 		UserProductivityID:       up.UserProductivityID,
+// 		UserProductivityId:       up.UserProductivityId,
 // 		CreateTime:               up.CreateTime,
 // 		UserId:                   up.UserId,
 // 		UserName:                 up.UserName,

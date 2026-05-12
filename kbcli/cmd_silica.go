@@ -94,7 +94,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			logWarnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
 			continue
 		}
-		if tsd.TaskID == "" || tsd.RepoAddr == "" {
+		if tsd.TaskId == "" || tsd.RepoAddr == "" {
 			logWarnf("文件[%s]缺失字段[task_id/repo_addr]", silicaFile)
 			continue
 		}
@@ -110,7 +110,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		}
 
 		for i, conv := range tsd.Conversations {
-			if conv.RequestID == "" {
+			if conv.RequestId == "" {
 				logWarnf("文件[%s]对话[%d]缺失字段[request_id]", silicaFile, i)
 				continue
 			}
@@ -121,8 +121,8 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			}
 
 			cm := convMeta{
-				taskID:    tsd.TaskID,
-				requestID: conv.RequestID,
+				taskID:    tsd.TaskId,
+				requestID: conv.RequestId,
 				endTime:   endTime,
 			}
 

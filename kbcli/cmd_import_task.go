@@ -20,14 +20,14 @@ import (
 )
 
 type taskSummary struct {
-	TaskID          string `json:"task_id"`
+	TaskId          string `json:"task_id"`
 	UserId          string `json:"user_id"`
 	UserName        string `json:"user_name"`
-	ClientID        string `json:"client_id"`
-	ClientIDE       string `json:"client_ide"`
+	ClientId        string `json:"client_id"`
+	ClientIde       string `json:"client_ide"`
 	ClientVersion   string `json:"client_version"`
-	ClientOS        string `json:"client_os"`
-	ClientOSVersion string `json:"client_os_version"`
+	ClientOs        string `json:"client_os"`
+	ClientOsVersion string `json:"client_os_version"`
 	Caller          string `json:"caller"`
 	RepoAddr        string `json:"repo_addr"`
 	RepoBranch      string `json:"repo_branch"`
@@ -38,14 +38,14 @@ type taskSummary struct {
 
 type taskConversation struct {
 	Sender           string     `json:"sender"`
-	RequestID        string     `json:"request_id"`
+	RequestId        string     `json:"request_id"`
 	PromptMode       string     `json:"prompt_mode"`
 	Mode             string     `json:"mode"`
 	Model            string     `json:"model"`
 	StartTime        string     `json:"start_time"`
 	EndTime          string     `json:"end_time"`
 	ProcessTime      int64      `json:"process_time"`
-	ProcessTTFT      int64      `json:"process_ttft"`
+	ProcessTtft      int64      `json:"process_ttft"`
 	UpstreamTokens   int64      `json:"upstream_tokens"`
 	DownstreamTokens int64      `json:"downstream_tokens"`
 	Cost             float64    `json:"cost"`
@@ -63,7 +63,7 @@ type taskConversation struct {
 }
 
 type taskSilicaData struct {
-	TaskID          string                   `json:"task_id"`
+	TaskId          string                   `json:"task_id"`
 	RepoAddr        string                   `json:"repo_addr"`
 	UserId          string                   `json:"user_id"`
 	Size            int64                    `json:"size"`
@@ -72,7 +72,7 @@ type taskSilicaData struct {
 }
 
 type taskSilicaConversation struct {
-	RequestID    string   `json:"request_id"`
+	RequestId    string   `json:"request_id"`
 	EndTime      string   `json:"end_time"`
 	Fingerprints []string `json:"fingerprints"`
 }
@@ -99,19 +99,19 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 
 func calcTaskRecord(summary *taskSummary, conversations []taskConversation) models.Task {
 	rec := models.Task{
-		TaskID:          summary.TaskID,
+		TaskId:          summary.TaskId,
 		UserId:          summary.UserId,
 		UserName:        summary.UserName,
-		ClientID:        summary.ClientID,
-		ClientIDE:       summary.ClientIDE,
+		ClientId:        summary.ClientId,
+		ClientIde:       summary.ClientIde,
 		ClientVersion:   summary.ClientVersion,
-		ClientOS:        summary.ClientOS,
-		ClientOSVersion: summary.ClientOSVersion,
+		ClientOs:        summary.ClientOs,
+		ClientOsVersion: summary.ClientOsVersion,
 		Caller:          summary.Caller,
 		RepoAddr:        summary.RepoAddr,
 		RepoBranch:      summary.RepoBranch,
 		WorkDir:         summary.WorkDir,
-		WorkDirID:       utils.GenerateWorkDirID(summary.ClientID, summary.WorkDir),
+		WorkDirId:       utils.GenerateWorkDirID(summary.ClientId, summary.WorkDir),
 	}
 
 	var startTime, endTime *time.Time
@@ -121,21 +121,21 @@ func calcTaskRecord(summary *taskSummary, conversations []taskConversation) mode
 
 	for _, conv := range conversations {
 		if conv.StartTime == "" {
-			logWarnf("conversation [%s-%s] 缺少start_time字段", summary.TaskID, conv.RequestID)
+			logWarnf("conversation [%s-%s] 缺少start_time字段", summary.TaskId, conv.RequestId)
 			continue
 		}
 		if conv.EndTime == "" {
-			logWarnf("conversation [%s-%s] 缺少end_time字段", summary.TaskID, conv.RequestID)
+			logWarnf("conversation [%s-%s] 缺少end_time字段", summary.TaskId, conv.RequestId)
 			continue
 		}
 		t1, err := time.Parse(time.RFC3339, conv.StartTime)
 		if err != nil {
-			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", summary.TaskID, conv.RequestID, err)
+			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", summary.TaskId, conv.RequestId, err)
 			continue
 		}
 		t2, err := time.Parse(time.RFC3339, conv.EndTime)
 		if err != nil {
-			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", summary.TaskID, conv.RequestID, err)
+			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", summary.TaskId, conv.RequestId, err)
 			continue
 		}
 		if startTime == nil || t1.Before(*startTime) {
@@ -178,7 +178,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 		return fmt.Errorf("解析summary JSON失败: %w", err)
 	}
 
-	if summary.TaskID == "" {
+	if summary.TaskId == "" {
 		return fmt.Errorf("task_id为空")
 	}
 	if summary.UserId == "" {
@@ -193,7 +193,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	task := calcTaskRecord(&summary, conversations)
 
 	if err := generateTaskSilicaFile(&summary, conversations, conversationPath, silicaPath); err != nil {
-		logWarnf("生成task silica文件失败 [%s]: %v", summary.TaskID, err)
+		logWarnf("生成task silica文件失败 [%s]: %v", summary.TaskId, err)
 	}
 
 	result := db.Clauses(clause.OnConflict{
@@ -223,12 +223,12 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	}
 
 	if len(conversations) > 0 {
-		if err := saveConversations(db, task.TaskID, conversations); err != nil {
+		if err := saveConversations(db, task.TaskId, conversations); err != nil {
 			return fmt.Errorf("保存conversations失败: %w", err)
 		}
 	}
 
-	logDebugf("导入成功: %s", task.TaskID)
+	logDebugf("导入成功: %s", task.TaskId)
 	return nil
 }
 
@@ -236,8 +236,8 @@ func saveConversations(db *gorm.DB, taskID string, conversations []taskConversat
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
 			tc := models.TaskConversation{
-				TaskID:           taskID,
-				RequestID:        conv.RequestID,
+				TaskId:           taskID,
+				RequestId:        conv.RequestId,
 				Sender:           conv.Sender,
 				PromptMode:       conv.PromptMode,
 				Mode:             conv.Mode,
@@ -245,7 +245,7 @@ func saveConversations(db *gorm.DB, taskID string, conversations []taskConversat
 				StartTime:        conv.startTime,
 				EndTime:          conv.endTime,
 				ProcessTime:      conv.ProcessTime,
-				ProcessTTFT:      conv.ProcessTTFT,
+				ProcessTtft:      conv.ProcessTtft,
 				UpstreamTokens:   conv.UpstreamTokens,
 				DownstreamTokens: conv.DownstreamTokens,
 				Cost:             conv.Cost,
@@ -399,11 +399,11 @@ func parseUserInput(userInput string) string {
 }
 
 func calcConversation(conv *taskConversation) error {
-	if conv.RequestID == "" {
+	if conv.RequestId == "" {
 		return fmt.Errorf("对话缺失request_id字段")
 	}
 	if conv.StartTime == "" {
-		return fmt.Errorf("对话[%s]缺失start_time字段", conv.RequestID)
+		return fmt.Errorf("对话[%s]缺失start_time字段", conv.RequestId)
 	}
 	if t, err := time.Parse(time.RFC3339, conv.StartTime); err != nil {
 		return err
@@ -412,7 +412,7 @@ func calcConversation(conv *taskConversation) error {
 	}
 
 	if conv.EndTime == "" {
-		return fmt.Errorf("对话[%s]缺失end_time字段", conv.RequestID)
+		return fmt.Errorf("对话[%s]缺失end_time字段", conv.RequestId)
 	}
 	if t, err := time.Parse(time.RFC3339, conv.EndTime); err != nil {
 		return err
@@ -578,7 +578,7 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 	}
 
 	tsd := taskSilicaData{
-		TaskID:          summary.TaskID,
+		TaskId:          summary.TaskId,
 		RepoAddr:        summary.RepoAddr,
 		UserId:          summary.UserId,
 		Size:            fileSize,
@@ -596,7 +596,7 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 		}
 
 		tsc := taskSilicaConversation{
-			RequestID:    conv.RequestID,
+			RequestId:    conv.RequestId,
 			EndTime:      conv.EndTime,
 			Fingerprints: fingerprints,
 		}

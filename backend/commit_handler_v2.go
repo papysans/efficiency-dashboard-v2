@@ -13,7 +13,7 @@ import (
 )
 
 type CommitListItem struct {
-	CommitID                         string          `json:"commit_id"`
+	CommitId                         string          `json:"commit_id"`
 	CommitTime                       time.Time       `json:"commit_time"`
 	RepoAddr                         string          `json:"repo_addr"`
 	RepoBranch                       string          `json:"repo_branch"`
@@ -21,7 +21,7 @@ type CommitListItem struct {
 	GitUserEmail                     string          `json:"git_user_email"`
 	UserId                           string          `json:"user_id"`
 	UserName                         string          `json:"user_name"`
-	ClientID                         string          `json:"client_id"`
+	ClientId                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
 	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
@@ -35,7 +35,7 @@ type CommitListItem struct {
 	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
-	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
+	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
 	Comment                          string          `json:"comment"`
 	CreatedAt                        time.Time       `json:"created_at"`
 	UpdatedAt                        time.Time       `json:"updated_at"`
@@ -64,7 +64,7 @@ type CommitListResponse struct {
 }
 
 type RelatedTask struct {
-	TaskID          string    `json:"task_id"`
+	TaskId          string    `json:"task_id"`
 	UserName        string    `json:"user_name"`
 	StartTime       time.Time `json:"start_time"`
 	TaskRealMinutes float64   `json:"task_real_minutes"`
@@ -126,7 +126,7 @@ func listCommitsV2(c *gin.Context) {
 		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
 		UserId:      strings.TrimSpace(c.Query("userId")),
 		UserName:    strings.TrimSpace(c.Query("userName")),
-		ClientID:    strings.TrimSpace(c.Query("clientId")),
+		ClientId:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
 		Org1:        strings.TrimSpace(c.Query("org1")),
 		Org2:        strings.TrimSpace(c.Query("org2")),
@@ -183,7 +183,7 @@ func listCommitsV2(c *gin.Context) {
 	results := make([]CommitListItem, len(list))
 	for i, commit := range list {
 		item := CommitListItem{
-			CommitID:                         commit.CommitID,
+			CommitId:                         commit.CommitId,
 			CommitTime:                       commit.CommitTime,
 			RepoAddr:                         commit.RepoAddr,
 			RepoBranch:                       commit.RepoBranch,
@@ -191,7 +191,7 @@ func listCommitsV2(c *gin.Context) {
 			GitUserEmail:                     commit.GitUserEmail,
 			UserId:                           commit.UserId,
 			UserName:                         commit.UserName,
-			ClientID:                         commit.ClientID,
+			ClientId:                         commit.ClientId,
 			WorkDir:                          commit.WorkDir,
 			DiffLines:                        commit.DiffLines,
 			CommitAncientMinutes:             commit.CommitAncientMinutes,
@@ -205,7 +205,7 @@ func listCommitsV2(c *gin.Context) {
 			CommitRealAiMinutes:              commit.CommitRealAiMinutes,
 			CommitRealAncientMinutes:         commit.CommitRealAncientMinutes,
 			TaskIds:                          commit.TaskIds,
-			TaskIDsSilica:                    commit.TaskIDsSilica,
+			TaskIdsSilica:                    commit.TaskIdsSilica,
 			Comment:                          commit.Comment,
 			CreatedAt:                        commit.CreatedAt,
 			UpdatedAt:                        commit.UpdatedAt,
@@ -278,14 +278,14 @@ func getCommitDetailV2(c *gin.Context) {
 	}
 
 	var silicaList []float64
-	if len(commit.TaskIDsSilica) > 0 && string(commit.TaskIDsSilica) != "null" && string(commit.TaskIDsSilica) != "[]" {
-		if err := json.Unmarshal(commit.TaskIDsSilica, &silicaList); err != nil {
+	if len(commit.TaskIdsSilica) > 0 && string(commit.TaskIdsSilica) != "null" && string(commit.TaskIdsSilica) != "[]" {
+		if err := json.Unmarshal(commit.TaskIdsSilica, &silicaList); err != nil {
 			log.Printf("解析 commit task_ids_silica 失败: %v", err)
 		}
 	}
 
 	for i, taskID := range taskIDs {
-		rt := RelatedTask{TaskID: taskID}
+		rt := RelatedTask{TaskId: taskID}
 		task, err := GetStatTask(statDB, taskID)
 		if err != nil {
 			log.Printf("查询关联 task %s 失败: %v", taskID, err)

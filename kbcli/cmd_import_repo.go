@@ -18,7 +18,7 @@ import (
 )
 
 type RepoCommitData struct {
-	CommitID     string `json:"commit_id"`
+	CommitId     string `json:"commit_id"`
 	CommitTime   string `json:"commit_time"`
 	RepoAddr     string `json:"repo_addr"`
 	RepoBranch   string `json:"repo_branch"`
@@ -26,7 +26,7 @@ type RepoCommitData struct {
 	GitUserEmail string `json:"git_user_email"`
 	UserId       string `json:"user_id"`
 	UserName     string `json:"user_name"`
-	ClientID     string `json:"client_id"`
+	ClientId     string `json:"client_id"`
 	WorkPath     string `json:"work_path,omitempty"`
 	WorkDir      string `json:"work_dir,omitempty"`
 	Comment      string `json:"comment"`
@@ -42,7 +42,7 @@ type repoFileMeta struct {
 	Year     string
 	Month    string
 	Day      string
-	CommitID string
+	CommitId string
 }
 
 var reRepoPath = regexp.MustCompile(`^([^/]+)/([^/]+)/(\d{4})/(\d{2})/(\d{2})/([^/]+)\.json$`)
@@ -94,7 +94,7 @@ func scanRepoDir(repoDir, analysedDir string, force bool) ([]repoFileMeta, int, 
 			Year:     matches[3],
 			Month:    matches[4],
 			Day:      matches[5],
-			CommitID: matches[6],
+			CommitId: matches[6],
 		}
 
 		if !force {
@@ -126,7 +126,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	if commitData.UserId == "" {
 		return fmt.Errorf("user_id为空")
 	}
-	if commitData.CommitID == "" {
+	if commitData.CommitId == "" {
 		return fmt.Errorf("commit_id为空")
 	}
 	if commitData.CommitTime == "" {
@@ -148,7 +148,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 	logDebugf("  commit_ancient_minutes=%.1f (%s)", ancientMinutes, ancientReason)
 
 	commit := models.Commit{
-		CommitID:                   commitData.CommitID,
+		CommitId:                   commitData.CommitId,
 		CommitTime:                 commitTime,
 		RepoAddr:                   commitData.RepoAddr,
 		RepoBranch:                 commitData.RepoBranch,
@@ -156,13 +156,13 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		GitUserEmail:               commitData.GitUserEmail,
 		UserId:                     commitData.UserId,
 		UserName:                   commitData.UserName,
-		ClientID:                   commitData.ClientID,
+		ClientId:                   commitData.ClientId,
 		WorkDir:                    workDir,
-		WorkDirID:                  utils.GenerateWorkDirID(commitData.ClientID, workDir),
+		WorkDirId:                  utils.GenerateWorkDirID(commitData.ClientId, workDir),
 		Comment:                    commitData.Comment,
 		DiffLines:                  commitData.DiffLines,
 		TaskIds:                    models.StringJSON("[]"),
-		TaskIDsSilica:              models.StringJSON("[]"),
+		TaskIdsSilica:              models.StringJSON("[]"),
 		CommitAncientMinutes:       &ancientMinutes,
 		CommitAncientMinutesReason: ancientReason,
 	}
@@ -185,7 +185,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string) error 
 		return fmt.Errorf("写入fp文件失败 [%s]: %w", fpPath, err)
 	}
 
-	logDebugf("导入成功: %s (新增行指纹: %d)", commitData.CommitID, len(addedLines))
+	logDebugf("导入成功: %s (新增行指纹: %d)", commitData.CommitId, len(addedLines))
 	return nil
 }
 
@@ -208,7 +208,7 @@ func writeFingerprintsToFile(addedLines []addedLine, fpPath string) error {
 }
 
 func fpPathForMeta(analysedDir string, meta repoFileMeta) string {
-	return filepath.Join(analysedDir, "repo", meta.Repo, meta.Branch, meta.Year, meta.Month, meta.Day, meta.CommitID+".fp")
+	return filepath.Join(analysedDir, "repo", meta.Repo, meta.Branch, meta.Year, meta.Month, meta.Day, meta.CommitId+".fp")
 }
 
 func runImportRepo(repoDir, analysedDir string, force bool) error {

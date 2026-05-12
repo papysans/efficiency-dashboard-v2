@@ -13,20 +13,20 @@ import (
 )
 
 type TaskListItem struct {
-	TaskID                         string     `json:"task_id"`
+	TaskId                         string     `json:"task_id"`
 	Title                          string     `json:"title"`
 	UserId                         string     `json:"user_id"`
 	UserName                       string     `json:"user_name"`
-	ClientID                       string     `json:"client_id"`
-	ClientIDE                      string     `json:"client_ide"`
+	ClientId                       string     `json:"client_id"`
+	ClientIde                      string     `json:"client_ide"`
 	ClientVersion                  string     `json:"client_version"`
-	ClientOS                       string     `json:"client_os"`
-	ClientOSVersion                string     `json:"client_os_version"`
+	ClientOs                       string     `json:"client_os"`
+	ClientOsVersion                string     `json:"client_os_version"`
 	Caller                         string     `json:"caller"`
 	RepoAddr                       string     `json:"repo_addr"`
 	RepoBranch                     string     `json:"repo_branch"`
 	WorkDir                        string     `json:"work_dir"`
-	WorkDirID                      string     `json:"work_dir_id"`
+	WorkDirId                      string     `json:"work_dir_id"`
 	StartTime                      *time.Time `json:"start_time"`
 	EndTime                        *time.Time `json:"end_time"`
 	UpstreamTokens                 int64      `json:"upstream_tokens"`
@@ -132,13 +132,13 @@ func listTasksV2(c *gin.Context) {
 	filter := TaskFilter{
 		UserId:     strings.TrimSpace(c.Query("userId")),
 		UserName:   strings.TrimSpace(c.Query("userName")),
-		ClientID:   strings.TrimSpace(c.Query("clientId")),
-		ClientIDE:  strings.TrimSpace(c.Query("clientIde")),
-		ClientOS:   strings.TrimSpace(c.Query("clientOs")),
+		ClientId:   strings.TrimSpace(c.Query("clientId")),
+		ClientIde:  strings.TrimSpace(c.Query("clientIde")),
+		ClientOs:   strings.TrimSpace(c.Query("clientOs")),
 		Caller:     strings.TrimSpace(c.Query("caller")),
 		RepoAddr:   strings.TrimSpace(c.Query("repoAddr")),
 		RepoBranch: strings.TrimSpace(c.Query("repoBranch")),
-		WorkDirID:  strings.TrimSpace(c.Query("workDirId")),
+		WorkDirId:  strings.TrimSpace(c.Query("workDirId")),
 		StartTime:  startT.Format(time.RFC3339),
 		EndTime:    endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339),
 		Org1:       strings.TrimSpace(c.Query("org1")),
@@ -167,20 +167,20 @@ func listTasksV2(c *gin.Context) {
 	results := make([]TaskListItem, len(list))
 	for i, t := range list {
 		item := TaskListItem{
-			TaskID:                         t.TaskID,
+			TaskId:                         t.TaskId,
 			Title:                          t.Title,
 			UserId:                         t.UserId,
 			UserName:                       t.UserName,
-			ClientID:                       t.ClientID,
-			ClientIDE:                      t.ClientIDE,
+			ClientId:                       t.ClientId,
+			ClientIde:                      t.ClientIde,
 			ClientVersion:                  t.ClientVersion,
-			ClientOS:                       t.ClientOS,
-			ClientOSVersion:                t.ClientOSVersion,
+			ClientOs:                       t.ClientOs,
+			ClientOsVersion:                t.ClientOsVersion,
 			Caller:                         t.Caller,
 			RepoAddr:                       t.RepoAddr,
 			RepoBranch:                     t.RepoBranch,
 			WorkDir:                        t.WorkDir,
-			WorkDirID:                      t.WorkDirID,
+			WorkDirId:                      t.WorkDirId,
 			StartTime:                      t.StartTime,
 			EndTime:                        t.EndTime,
 			UpstreamTokens:                 t.UpstreamTokens,

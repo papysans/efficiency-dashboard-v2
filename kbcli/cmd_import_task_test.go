@@ -18,7 +18,7 @@ func convWithStart(startTimes ...*string) []taskConversation {
 	var out []taskConversation
 	for _, st := range startTimes {
 		c := taskConversation{
-			RequestID: "req-test",
+			RequestId: "req-test",
 		}
 		if st != nil {
 			c.StartTime = *st
@@ -154,8 +154,8 @@ func TestCalcTaskRealMinutes_CustomParams(t *testing.T) {
 func TestCalcTaskRealMinutes_InvalidTimeFormat(t *testing.T) {
 	t1 := mkRFC3339("2026-04-01 10:00:00")
 	convs := []taskConversation{
-		{StartTime: "not-a-valid-time", RequestID: "r1"},
-		{StartTime: t1, RequestID: "r2"},
+		{StartTime: "not-a-valid-time", RequestId: "r1"},
+		{StartTime: t1, RequestId: "r2"},
 	}
 	mins, reason := calcTaskRealMinutes(convs, 30, 5)
 	assertFloat(t, "minutes", mins, 5, 0.01)

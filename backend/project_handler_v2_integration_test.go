@@ -622,7 +622,7 @@ func TestProjectAddTasks_Deduplication(t *testing.T) {
 	}
 
 	var silica []float64
-	json.Unmarshal(project.TaskIDsSilica, &silica)
+	json.Unmarshal(project.TaskIdsSilica, &silica)
 	if len(silica) != 3 {
 		t.Errorf("task_ids_silica 长度 = %d, want 3, actual: %v", len(silica), silica)
 	}

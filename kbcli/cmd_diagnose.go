@@ -187,7 +187,7 @@ func runDiagnose(UserId, dateStr string) error {
 	logInfof("3. tasks 表中用户 %s 的所有记录（不限日期）", UserId)
 	type taskInfo struct {
 		UserId        string
-		TaskID        string
+		TaskId        string
 		StartTime     string
 		StartDate     string
 		DateStrFormat string
@@ -208,7 +208,7 @@ func runDiagnose(UserId, dateStr string) error {
 	`, UserId).Scan(&tasks)
 	logInfof("   找到 %d 条记录:", len(tasks))
 	for _, t := range tasks {
-		logInfof("   - TaskID: %s, StartTime: %s, WorkDirId: %s", t.TaskID, t.StartTime, t.WorkDirId)
+		logInfof("   - TaskId: %s, StartTime: %s, WorkDirId: %s", t.TaskId, t.StartTime, t.WorkDirId)
 	}
 	logInfo("")
 
@@ -229,7 +229,7 @@ func runDiagnose(UserId, dateStr string) error {
 	`, UserId, dateStr).Scan(&tasksOnDate)
 	logInfof("   找到 %d 条记录:", len(tasksOnDate))
 	for _, t := range tasksOnDate {
-		logInfof("   - TaskID: %s, StartTime: %s, WorkDirId: %s", t.TaskID, t.StartTime, t.WorkDirId)
+		logInfof("   - TaskId: %s, StartTime: %s, WorkDirId: %s", t.TaskId, t.StartTime, t.WorkDirId)
 	}
 	logInfo("")
 
@@ -275,7 +275,7 @@ func runDiagnose(UserId, dateStr string) error {
 	logInfof("6. commits 表中用户 %s 的所有记录（不限日期）", UserId)
 	type commitInfo struct {
 		UserId        string
-		CommitID      string
+		CommitId      string
 		CommitTime    string
 		CommitDate    string
 		DateStrFormat string
@@ -295,7 +295,7 @@ func runDiagnose(UserId, dateStr string) error {
 	`, UserId).Scan(&commits)
 	logInfof("   找到 %d 条记录:", len(commits))
 	for _, c := range commits {
-		logInfof("   - CommitID: %s, CommitTime: %s", c.CommitID, c.CommitTime)
+		logInfof("   - CommitId: %s, CommitTime: %s", c.CommitId, c.CommitTime)
 	}
 	logInfo("")
 
@@ -315,7 +315,7 @@ func runDiagnose(UserId, dateStr string) error {
 	`, UserId, dateStr).Scan(&commitsOnDate)
 	logInfof("   找到 %d 条记录:", len(commitsOnDate))
 	for _, c := range commitsOnDate {
-		logInfof("   - CommitID: %s, CommitTime: %s", c.CommitID, c.CommitTime)
+		logInfof("   - CommitId: %s, CommitTime: %s", c.CommitId, c.CommitTime)
 	}
 	logInfo("")
 
@@ -355,7 +355,7 @@ func runDiagnose(UserId, dateStr string) error {
 	// 9. 检查 user_productivity 表中的记录
 	logInfof("9. user_productivity 表中的记录（用户: %s, 日期: %s）", UserId, dateStr)
 	type userProd struct {
-		UserProductivityID string
+		UserProductivityId string
 		UserId             string
 		CreateTime         string
 		TaskIds            string
@@ -384,7 +384,7 @@ func runDiagnose(UserId, dateStr string) error {
 	`, UserId, dateStr).Scan(&userProds)
 	logInfof("   找到 %d 条记录:", len(userProds))
 	for _, up := range userProds {
-		logInfof("   - ID: %s, CreateTime: %s", up.UserProductivityID, up.CreateTime)
+		logInfof("   - ID: %s, CreateTime: %s", up.UserProductivityId, up.CreateTime)
 		logInfof("     TaskIds: %s", up.TaskIds)
 		logInfof("     WorkDirIds: %s", up.WorkDirIds)
 		logInfof("     CommitIds: %s", up.CommitIds)

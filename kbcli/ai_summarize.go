@@ -207,7 +207,7 @@ func truncateSlice(items []string, maxLen int) string {
 
 // EstimateAncientResult AI 估时单条结果
 type EstimateAncientResult struct {
-	TaskID  string  `json:"task_id"`
+	TaskId  string  `json:"task_id"`
 	Minutes float64 `json:"minutes"`
 	Reason  string  `json:"reason"`
 	Error   string  `json:"error,omitempty"`
@@ -226,14 +226,14 @@ type EstimateAncientResponse struct {
 func RunAncientMinutesEstimation(db *gorm.DB, aiCfg AIEstimationConfig, specificTaskID string) *EstimateAncientResponse {
 	if !aiCfg.Enabled || aiCfg.APIKey == "" {
 		return &EstimateAncientResponse{Status: "error", Total: 0, Success: 0, Results: []EstimateAncientResult{
-			{TaskID: "", Error: "AI estimation not enabled or API key missing"},
+			{TaskId: "", Error: "AI estimation not enabled or API key missing"},
 		}}
 	}
 
 	taskIDs, err := GetTaskIDsForEstimation(db, specificTaskID)
 	if err != nil {
 		return &EstimateAncientResponse{Status: "error", Total: 0, Success: 0, Results: []EstimateAncientResult{
-			{TaskID: "", Error: err.Error()},
+			{TaskId: "", Error: err.Error()},
 		}}
 	}
 
@@ -246,27 +246,27 @@ func RunAncientMinutesEstimation(db *gorm.DB, aiCfg AIEstimationConfig, specific
 	for _, tid := range taskIDs {
 		userInputs, codeOutputs, totalChars, totalLines, err := GetConvInputForEstimation(db, tid)
 		if err != nil {
-			results = append(results, EstimateAncientResult{TaskID: tid, Error: err.Error()})
+			results = append(results, EstimateAncientResult{TaskId: tid, Error: err.Error()})
 			continue
 		}
 
 		if len(userInputs) == 0 {
-			results = append(results, EstimateAncientResult{TaskID: tid, Error: "no conversation data"})
+			results = append(results, EstimateAncientResult{TaskId: tid, Error: "no conversation data"})
 			continue
 		}
 
 		minutes, reason, err := callAIForAncientEstimation(userInputs, codeOutputs, totalChars, totalLines)
 		if err != nil {
-			results = append(results, EstimateAncientResult{TaskID: tid, Error: err.Error()})
+			results = append(results, EstimateAncientResult{TaskId: tid, Error: err.Error()})
 			continue
 		}
 
 		if err := UpdateTaskAncientEstimation(db, tid, minutes, reason); err != nil {
-			results = append(results, EstimateAncientResult{TaskID: tid, Minutes: minutes, Reason: reason, Error: "db update failed: " + err.Error()})
+			results = append(results, EstimateAncientResult{TaskId: tid, Minutes: minutes, Reason: reason, Error: "db update failed: " + err.Error()})
 			continue
 		}
 
-		results = append(results, EstimateAncientResult{TaskID: tid, Minutes: minutes, Reason: reason})
+		results = append(results, EstimateAncientResult{TaskId: tid, Minutes: minutes, Reason: reason})
 		logInfof("AI估时完成: task=%s, minutes=%.1f", tid, minutes)
 	}
 

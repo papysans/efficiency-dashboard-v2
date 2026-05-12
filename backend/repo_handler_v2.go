@@ -45,7 +45,7 @@ type RepoSummary struct {
 }
 
 type RepoCommitItem struct {
-	CommitID                         string          `json:"commit_id"`
+	CommitId                         string          `json:"commit_id"`
 	CommitTime                       time.Time       `json:"commit_time"`
 	RepoAddr                         string          `json:"repo_addr"`
 	RepoBranch                       string          `json:"repo_branch"`
@@ -53,16 +53,16 @@ type RepoCommitItem struct {
 	GitUserEmail                     string          `json:"git_user_email"`
 	UserId                           string          `json:"user_id"`
 	UserName                         string          `json:"user_name"`
-	ClientID                         string          `json:"client_id"`
+	ClientId                         string          `json:"client_id"`
 	WorkDir                          string          `json:"work_dir"`
-	WorkDirID                        string          `json:"work_dir_id"`
+	WorkDirId                        string          `json:"work_dir_id"`
 	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
 	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
 	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
-	TaskIDsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
+	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
 	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
@@ -219,9 +219,9 @@ func getRepoDetailV2(c *gin.Context) {
 		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
 		UserId:      strings.TrimSpace(c.Query("userId")),
 		UserName:    strings.TrimSpace(c.Query("userName")),
-		ClientID:    strings.TrimSpace(c.Query("clientId")),
+		ClientId:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
-		WorkDirID:   strings.TrimSpace(c.Query("workDirId")),
+		WorkDirId:   strings.TrimSpace(c.Query("workDirId")),
 		Org1:        strings.TrimSpace(c.Query("org1")),
 		Org2:        strings.TrimSpace(c.Query("org2")),
 		Org3:        strings.TrimSpace(c.Query("org3")),
@@ -305,7 +305,7 @@ func getRepoDetailV2(c *gin.Context) {
 			ancientReason = cm.CommitAncientMinutesReasonManual
 		}
 		if ancientReason != "" {
-			ancientReasons = append(ancientReasons, cm.CommitID[:8]+": "+ancientReason)
+			ancientReasons = append(ancientReasons, cm.CommitId[:8]+": "+ancientReason)
 		}
 
 		realReason := cm.CommitRealMinutesReason
@@ -313,7 +313,7 @@ func getRepoDetailV2(c *gin.Context) {
 			realReason = cm.CommitRealMinutesReasonManual
 		}
 		if realReason != "" {
-			realReasons = append(realReasons, cm.CommitID[:8]+": "+realReason)
+			realReasons = append(realReasons, cm.CommitId[:8]+": "+realReason)
 		}
 	}
 	efficiencyRatio := utils.CalcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
@@ -329,7 +329,7 @@ func getRepoDetailV2(c *gin.Context) {
 	commitItems := make([]RepoCommitItem, 0, len(commits))
 	for _, cm := range commits {
 		item := RepoCommitItem{
-			CommitID:                         cm.CommitID,
+			CommitId:                         cm.CommitId,
 			CommitTime:                       cm.CommitTime,
 			RepoAddr:                         cm.RepoAddr,
 			RepoBranch:                       cm.RepoBranch,
@@ -337,16 +337,16 @@ func getRepoDetailV2(c *gin.Context) {
 			GitUserEmail:                     cm.GitUserEmail,
 			UserId:                           cm.UserId,
 			UserName:                         cm.UserName,
-			ClientID:                         cm.ClientID,
+			ClientId:                         cm.ClientId,
 			WorkDir:                          cm.WorkDir,
-			WorkDirID:                        cm.WorkDirID,
+			WorkDirId:                        cm.WorkDirId,
 			DiffLines:                        cm.DiffLines,
 			CommitAncientMinutes:             cm.CommitAncientMinutes,
 			CommitAncientMinutesReason:       cm.CommitAncientMinutesReason,
 			CommitAncientMinutesManual:       cm.CommitAncientMinutesManual,
 			CommitAncientMinutesReasonManual: cm.CommitAncientMinutesReasonManual,
 			TaskIds:                          cm.TaskIds,
-			TaskIDsSilica:                    cm.TaskIDsSilica,
+			TaskIdsSilica:                    cm.TaskIdsSilica,
 			CommitRealMinutes:                cm.CommitRealMinutes,
 			CommitRealMinutesReason:          cm.CommitRealMinutesReason,
 			CommitRealMinutesManual:          cm.CommitRealMinutesManual,
