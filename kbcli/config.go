@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"kanban/core/config"
 
@@ -21,6 +23,7 @@ type AIEstimationConfig struct {
 	BaseURL   string `yaml:"base_url"`
 	Model     string `yaml:"model"`
 	TimeoutMS int    `yaml:"timeout_ms"`
+	HTTPProxy string `yaml:"http_proxy"`
 	Prompt    string `yaml:"prompt"`
 }
 
@@ -32,6 +35,11 @@ type EstimateConfig struct {
 	IncharsPerMinutes float64 `yaml:"inchars_per_minutes"` //人每分钟输入20个字
 	LinesPerMinutes   float64 `yaml:"lines_per_minutes"`   //人每分钟输入2行代码
 	MinMinutes        float64 `yaml:"min_minutes"`         //最小分钟数
+}
+
+type TaskTimeStatistics struct {
+	GapThresholdMinutes int `yaml:"gap_threshold_minutes"`
+	ExtensionMinutes    int `yaml:"extension_minutes"`
 }
 
 // CrontabConfig 定时任务配置
@@ -68,6 +76,25 @@ type Config struct {
 	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
 	SilicaMaxDays  int                   `yaml:"silica_max_days"` //计算task和commit相关性/硅含量时的最大关联天数
 	Serve          ServeConfig           `yaml:"serve"`
+	TaskStatistics TaskTimeStatistics    `yaml:"task_statistics"`
+}
+
+func LoadFirstConfig(files []string) (*Config, error) {
+	for _, fname := range files {
+		if fname == "" {
+			continue
+		}
+		if _, err := os.Stat(fname); os.IsNotExist(err) {
+			continue
+		}
+		loadedCfg, err := LoadConfig(fname)
+		if err == nil {
+			logDebugf("load config [%s] ok, cfg: %+v\n", fname, loadedCfg)
+			return loadedCfg, nil
+		}
+		logWarnf("load config [%s] failed: %v\n", fname, err)
+	}
+	return nil, fmt.Errorf("load config [%s] failed", strings.Join(files, ","))
 }
 
 // LoadConfig 从 YAML 文件加载配置
@@ -76,74 +103,82 @@ func LoadConfig(filename string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	var c Config
+	if err := yaml.Unmarshal(data, &c); err != nil {
 		return nil, err
 	}
-	// 默认值
-	if config.TaskDir == "" {
-		config.TaskDir = "task"
+	if c.Serve.Port == 0 {
+		c.Serve.Port = 8080
 	}
-	if config.RepoDir == "" {
-		config.RepoDir = "repo"
+	if c.TaskDir == "" {
+		c.TaskDir = "task"
 	}
-	if config.AnalysedDir == "" {
-		config.AnalysedDir = "analysed"
+	if c.RepoDir == "" {
+		c.RepoDir = "repo"
 	}
-	if config.OrgCSVFile == "" {
-		config.OrgCSVFile = "analysed/org_mapping.csv"
+	if c.AnalysedDir == "" {
+		c.AnalysedDir = "analysed"
 	}
-	if config.AIEstimation.TimeoutMS == 0 {
-		config.AIEstimation.TimeoutMS = 300000
+	if c.OrgCSVFile == "" {
+		c.OrgCSVFile = "analysed/org_mapping.csv"
 	}
-	if config.AIEstimation.Model == "" {
-		config.AIEstimation.Model = "claude-3-5-sonnet-20241022"
+	if c.AIEstimation.TimeoutMS == 0 {
+		c.AIEstimation.TimeoutMS = 300000
 	}
-	if config.BackendURL == "" {
-		config.BackendURL = "http://localhost:9990"
+	if c.AIEstimation.Model == "" {
+		c.AIEstimation.Model = "claude-3-5-sonnet-20241022"
 	}
-	if config.StatDatabase.Host == "" {
-		config.StatDatabase.Host = "localhost"
+	if c.BackendURL == "" {
+		c.BackendURL = "http://localhost:9990"
 	}
-	if config.StatDatabase.Port == 0 {
-		config.StatDatabase.Port = 5432
+	if c.StatDatabase.Host == "" {
+		c.StatDatabase.Host = "localhost"
 	}
-	if config.StatDatabase.User == "" {
-		config.StatDatabase.User = "postgres"
+	if c.StatDatabase.Port == 0 {
+		c.StatDatabase.Port = 5432
 	}
-	if config.StatDatabase.Password == "" {
-		config.StatDatabase.Password = os.Getenv("STAT_DB_PASSWORD")
+	if c.StatDatabase.User == "" {
+		c.StatDatabase.User = "postgres"
 	}
-	if config.StatDatabase.DBName == "" {
-		config.StatDatabase.DBName = "costrict_stat"
+	if c.StatDatabase.Password == "" {
+		c.StatDatabase.Password = os.Getenv("STAT_DB_PASSWORD")
 	}
-	if config.StatDatabase.SSLMode == "" {
-		config.StatDatabase.SSLMode = "disable"
+	if c.StatDatabase.DBName == "" {
+		c.StatDatabase.DBName = "costrict_stat"
 	}
-	if config.AlgoEstimation.MaxInputChars == 0 {
-		config.AlgoEstimation.MaxInputChars = 300000
+	if c.StatDatabase.SSLMode == "" {
+		c.StatDatabase.SSLMode = "disable"
 	}
-	if config.AlgoEstimation.MaxRatio == 0 {
-		config.AlgoEstimation.MaxRatio = 10
+	if c.AlgoEstimation.MaxInputChars == 0 {
+		c.AlgoEstimation.MaxInputChars = 300000
 	}
-	if config.AlgoEstimation.MaxFactor == 0 {
-		config.AlgoEstimation.MaxFactor = 1.0
+	if c.AlgoEstimation.MaxRatio == 0 {
+		c.AlgoEstimation.MaxRatio = 10
 	}
-	if config.AlgoEstimation.MinFactor == 0 {
-		config.AlgoEstimation.MinFactor = 0.2
+	if c.AlgoEstimation.MaxFactor == 0 {
+		c.AlgoEstimation.MaxFactor = 1.0
 	}
-	if config.AlgoEstimation.IncharsPerMinutes == 0 {
-		config.AlgoEstimation.IncharsPerMinutes = 20
+	if c.AlgoEstimation.MinFactor == 0 {
+		c.AlgoEstimation.MinFactor = 0.2
 	}
-	if config.AlgoEstimation.LinesPerMinutes == 0 {
-		config.AlgoEstimation.LinesPerMinutes = 2
+	if c.AlgoEstimation.IncharsPerMinutes == 0 {
+		c.AlgoEstimation.IncharsPerMinutes = 20
 	}
-	if config.AlgoEstimation.MinMinutes == 0 {
-		config.AlgoEstimation.MinMinutes = 5
+	if c.AlgoEstimation.LinesPerMinutes == 0 {
+		c.AlgoEstimation.LinesPerMinutes = 2
 	}
-	if config.SilicaMaxDays == 0 {
-		config.SilicaMaxDays = 7
+	if c.AlgoEstimation.MinMinutes == 0 {
+		c.AlgoEstimation.MinMinutes = 5
+	}
+	if c.TaskStatistics.ExtensionMinutes == 0 {
+		c.TaskStatistics.ExtensionMinutes = 5
+	}
+	if c.TaskStatistics.GapThresholdMinutes == 0 {
+		c.TaskStatistics.GapThresholdMinutes = 10
+	}
+	if c.SilicaMaxDays == 0 {
+		c.SilicaMaxDays = 7
 	}
 
-	return &config, nil
+	return &c, nil
 }

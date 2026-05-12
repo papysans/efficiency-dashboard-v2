@@ -57,7 +57,7 @@ type commitParser struct {
 	totalMatchLines  int       // 与AI对话指纹匹配的行数
 	totalSilica      float64   // 总含硅量（所有task贡献值之和）
 	aiMinutes        float64   // AI生成代码对应的实际耗时（分钟）
-	ancientMinutes   float64   // 非AI代码（远古代码）的估算耗时（分钟）
+	ancientMinutes   float64   // 非AI代码（传统编码）的估算耗时（分钟）
 	realMinutes      float64   // 总实际耗时 = aiMinutes + ancientMinutes
 	realReason       string    // 实际耗时的计算说明文本
 	upstreamTokens   int64     // 上游token消耗总数
@@ -424,10 +424,10 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 		p.cost += task.Cost
 	}
 
-	// 计算非AI代码行数（远古代码），基于总含硅量的反比
+	// 计算非AI代码行数（传统编码），基于总含硅量的反比
 	ancientLines := int((1 - p.totalSilica) * float64(p.totalLines))
 
-	// 估算远古代码的开发耗时
+	// 估算传统编码的开发耗时
 	var ancientReason string
 	p.ancientMinutes = 0
 	if ancientLines > 0 {

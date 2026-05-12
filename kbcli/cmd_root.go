@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -24,27 +23,17 @@ var rootCmd = &cobra.Command{
 		if err := InitLogger(consoleLevel, logFile, fileLevel); err != nil {
 			return err
 		}
-
-		loadedCfg, err := LoadConfig(configPath)
+		loadedCfg, err := LoadFirstConfig([]string{configPath, "config.yaml", "../kbcli-config.yaml"})
 		if err != nil {
-			logWarnf("load config [%s] failed: %v\n", configPath, err)
-			loadedCfg, err = LoadConfig("../config.yaml")
-			if err != nil {
-				logErrorf("加载配置文件失败: %v", err)
-				return fmt.Errorf("加载配置文件失败: %w", err)
-			}
-			logDebugf("load config [%s] ok, cfg: %+v\n", "../config.yaml", loadedCfg)
-		} else {
-			logDebugf("load config [%s] ok, cfg: %+v\n", configPath, loadedCfg)
+			return err
 		}
 		cfg = loadedCfg
-
 		return nil
 	},
 }
 
 func init() {
-	rootCmd.PersistentFlags().String("config", "config.yaml", "配置文件路径")
+	rootCmd.PersistentFlags().String("config", "", "配置文件路径")
 	rootCmd.PersistentFlags().String("console", "info", "控制台日志级别 (debug/info/warn/error)")
 	rootCmd.PersistentFlags().String("logfile", "", "日志文件路径")
 	rootCmd.PersistentFlags().String("loglevel", "debug", "日志文件级别 (debug/info/warn/error)")

@@ -42,18 +42,6 @@ type Config struct {
 	CORS         struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
-	AIEstimation struct {
-		Enabled   bool   `yaml:"enabled"`
-		APIKey    string `yaml:"api_key"`
-		BaseURL   string `yaml:"base_url"`
-		Model     string `yaml:"model"`
-		TimeoutMS int    `yaml:"timeout_ms"`
-		HTTPProxy string `yaml:"http_proxy"`
-	} `yaml:"ai_estimation"`
-	TaskRealMinutes struct {
-		GapThresholdMinutes int `yaml:"gap_threshold_minutes"`
-		ExtensionMinutes    int `yaml:"extension_minutes"`
-	} `yaml:"task_real_minutes"`
 	TraditionalDevLinesPerDay int `yaml:"traditional_dev_lines_per_day"`
 }
 
@@ -74,8 +62,6 @@ func loadConfig(path string) (Config, error) {
 	cfg.TaskDir = "../task"
 	cfg.AnalysedDir = "../task"
 	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}
-	cfg.TaskRealMinutes.GapThresholdMinutes = 30
-	cfg.TaskRealMinutes.ExtensionMinutes = 5
 	cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay
 
 	data, err := os.ReadFile(path)
@@ -84,12 +70,6 @@ func loadConfig(path string) (Config, error) {
 	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("解析 config.yaml 失败: %w", err)
-	}
-	if cfg.AIEstimation.TimeoutMS == 0 {
-		cfg.AIEstimation.TimeoutMS = 120000
-	}
-	if cfg.AIEstimation.Model == "" {
-		cfg.AIEstimation.Model = "claude-sonnet-4-20250514"
 	}
 	return cfg, nil
 }
