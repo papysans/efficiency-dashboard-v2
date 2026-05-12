@@ -599,7 +599,8 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 		taskEffRatio := utils.CalcEfficiencyRatio(pd.taskAncientMin, pd.taskRealMin)
 
 		commitsList = append(commitsList, CommitTimeSeriesItem{
-			PeriodKey: key, PeriodLabel: pd.label,
+			PeriodKey:             key,
+			PeriodLabel:           pd.label,
 			CommitCount:           pd.commitCount,
 			CommitDiffLines:       pd.commitDiffLines,
 			CommitRealMinutes:     pd.commitRealMin,
@@ -611,7 +612,8 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 		})
 
 		tasksList = append(tasksList, TaskTimeSeriesItem{
-			PeriodKey: key, PeriodLabel: pd.label,
+			PeriodKey:           key,
+			PeriodLabel:         pd.label,
 			TaskCount:           pd.taskCount,
 			TaskDiffLines:       pd.taskDiffLines,
 			TaskRealMinutes:     pd.taskRealMin,
@@ -713,8 +715,8 @@ func getUserDetailV2(c *gin.Context) {
 		UserId:                userID,
 		UserName:              userName,
 		DayCount:              dayCount,
-		TaskCount:             len(tasksList),
-		CommitCount:           len(commitsList),
+		TaskCount:             taskCount,
+		CommitCount:           commitCount,
 		TaskDiffLines:         taskDiffLines,
 		CommitDiffLines:       commitDiffLines,
 		UpstreamTokens:        upTokens,
