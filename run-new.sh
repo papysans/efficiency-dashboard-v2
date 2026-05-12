@@ -15,7 +15,7 @@ echo "=========================================="
 
 # 1. 编译 backend 的镜像
 echo ""
-echo "[1/7] 编译 backend 镜像..."
+echo "[1/8] 编译 backend 镜像..."
 docker build -f backend/Dockerfile.qianliu -t zgsm/efficiency-dashboard-backend:${VERSION} .
 if [ $? -ne 0 ]; then
     echo "错误：backend 镜像编译失败"
@@ -25,7 +25,7 @@ echo "✓ backend 镜像编译成功: zgsm/efficiency-dashboard-backend:${VERSIO
 
 # 2. 编译 kbcli 的镜像
 echo ""
-echo "[2/7] 编译 kbcli 镜像..."
+echo "[2/8] 编译 kbcli 镜像..."
 docker build -f kbcli/Dockerfile.qianliu -t zgsm/efficiency-dashboard-kbcli:${VERSION} .
 if [ $? -ne 0 ]; then
     echo "错误：kbcli 镜像编译失败"
@@ -35,7 +35,7 @@ echo "✓ kbcli 镜像编译成功: zgsm/efficiency-dashboard-kbcli:${VERSION}"
 
 # 3. 修改 compose/.env 文件中的镜像版本
 echo ""
-echo "[3/7] 更新 compose/.env 文件..."
+echo "[3/8] 更新 compose/.env 文件..."
 
 # 备份原始 .env 文件
 cp compose/.env compose/.env.backup
@@ -55,7 +55,7 @@ echo "  IMAGE_KBCLI=zgsm/efficiency-dashboard-kbcli:${VERSION}"
 
 # 4. 停止现有的 docker compose 服务
 echo ""
-echo "[4/7] 停止现有的 docker compose 服务..."
+echo "[4/8] 停止现有的 docker compose 服务..."
 cd compose
 docker compose down
 cd ..
@@ -63,15 +63,28 @@ echo "✓ docker compose 服务已停止"
 
 # 5. 启动 docker compose 服务
 echo ""
-echo "[5/7] 启动 docker compose 服务..."
+echo "[5/8] 启动 docker compose 服务..."
 cd compose
 docker compose up -d
 cd ..
 echo "✓ docker compose 服务已启动"
 
-# 6. 进入 kbcli 目录，运行 go build 构建
+# 6. 进入 backend 目录，构建 backend 可执行文件
 echo ""
-echo "[6/7] 构建 kbcli 可执行文件..."
+echo "[6/8] 构建 backend 可执行文件..."
+cd backend
+go build
+if [ $? -ne 0 ]; then
+    echo "错误：backend 构建失败"
+    cd ..
+    exit 1
+fi
+echo "✓ backend 可执行文件构建成功"
+cd ..
+
+# 7. 进入 kbcli 目录，运行 go build 构建
+echo ""
+echo "[7/8] 构建 kbcli 可执行文件..."
 cd kbcli
 go build
 if [ $? -ne 0 ]; then
@@ -82,9 +95,9 @@ fi
 echo "✓ kbcli 可执行文件构建成功"
 cd ..
 
-# 7. 通过 remote 方式连接第5步启动的 kbcli 服务，执行 import 命令
+# 8. 检查kbcli服务运行情况...
 echo ""
-echo "[7/7] 通过 remote 方式运行 kbcli import --force..."
+echo "[8/8] 检查kbcli服务运行情况..."
 KBCLI_REMOTE_URL="http://127.0.0.1:8080"
 MAX_RETRIES=5
 RETRY_INTERVAL=3
@@ -112,9 +125,11 @@ if [ "$CONNECTED" = false ]; then
     exit 1
 fi
 
-curl -sf --connect-timeout 3 "$KBCLI_REMOTE_URL/api/tasks" 
+curl -sf --connect-timeout 3 "$KBCLI_REMOTE_URL/api/tasks" | jq .
 
-echo "✓ kbcli 启动完成，正在导入数据"
+echo ""
+echo "✓ kbcli 服务启动完成，正在导入数据"
+
 cd ..
 
 echo ""

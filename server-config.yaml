@@ -1,0 +1,20 @@
+stat_database:
+  host: 127.0.0.1
+  port: 5432
+  user: postgres
+  password: "1"
+  dbname: costrict_stat
+  sslmode: disable
+
+server:
+  port: 9990
+
+cors:
+  allow_origins:
+    - "*"
+
+traditional_dev_lines_per_day: 100
+
+task_dir: "/mnt/prod_env/user-indicator/raw/task"
+repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
+analysed_dir: "./analysed"

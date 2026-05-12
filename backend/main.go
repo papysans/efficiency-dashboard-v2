@@ -4,18 +4,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	_ "kanban/backend/docs"
 
-	"kanban/core/config"
 	"kanban/core/models"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
 
@@ -31,48 +28,7 @@ import (
 // @license.name  Apache 2.0
 // @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
 
-// Config 应用配置
-type Config struct {
-	Server struct {
-		Port int `yaml:"port"`
-	} `yaml:"server"`
-	StatDatabase config.DatabaseConfig `yaml:"stat_database"`
-	TaskDir      string                `yaml:"task_dir"`
-	AnalysedDir  string                `yaml:"analysed_dir"`
-	CORS         struct {
-		AllowOrigins []string `yaml:"allow_origins"`
-	} `yaml:"cors"`
-	TraditionalDevLinesPerDay int `yaml:"traditional_dev_lines_per_day"`
-}
-
-var appConfig Config
 var statDB *gorm.DB
-
-func loadConfig(path string) (Config, error) {
-	var cfg Config
-	cfg.Server.Port = 9990
-	cfg.StatDatabase = config.DatabaseConfig{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "postgres",
-		Password: "1",
-		DBName:   "costrict_stat",
-		SSLMode:  "disable",
-	}
-	cfg.TaskDir = "../task"
-	cfg.AnalysedDir = "../task"
-	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}
-	cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return cfg, nil
-	}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return cfg, fmt.Errorf("解析 config.yaml 失败: %w", err)
-	}
-	return cfg, nil
-}
 
 func healthCheck(c *gin.Context) {
 	status := "ok"
@@ -94,10 +50,11 @@ func healthCheck(c *gin.Context) {
 
 func main() {
 	var err error
-	appConfig, err = loadConfig("config.yaml")
+	c, err := LoadFirstConfig([]string{"config.yaml", "server-config.yaml", "../server-config.yaml"})
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
+	appConfig = *c
 
 	statDB, err = models.OpenGormDB(appConfig.StatDatabase.DSN())
 	if err != nil {
