@@ -94,8 +94,12 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			logWarnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
 			continue
 		}
-		if tsd.TaskId == "" || tsd.RepoAddr == "" {
-			logWarnf("文件[%s]缺失字段[task_id/repo_addr]", silicaFile)
+		if tsd.TaskId == "" {
+			logWarnf("文件[%s]缺失字段[task_id]", silicaFile)
+			continue
+		}
+		if tsd.RepoAddr == "" {
+			logWarnf("文件[%s]缺失字段[repo_addr]", silicaFile)
 			continue
 		}
 
