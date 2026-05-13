@@ -660,13 +660,31 @@ type UserFilter struct {
 }
 
 func (f *UserFilter) resolveOrgUserIDs() {
-	f.UserIds = f.GetFilter()
 }
 
 func (f *UserFilter) applyToQuery(q *gorm.DB) *gorm.DB {
-	if f.UserIds != nil {
-		if len(f.UserIds) > 0 {
-			q = q.Where("user_id IN ?", f.UserIds)
+	userIds := f.UserIds
+	orgUserIds := f.GetFilter()
+	if orgUserIds != nil {
+		if userIds == nil || len(userIds) == 0 {
+			userIds = orgUserIds
+		} else {
+			orgSet := make(map[string]bool, len(orgUserIds))
+			for _, uid := range orgUserIds {
+				orgSet[uid] = true
+			}
+			intersection := make([]string, 0)
+			for _, uid := range userIds {
+				if orgSet[uid] {
+					intersection = append(intersection, uid)
+				}
+			}
+			userIds = intersection
+		}
+	}
+	if userIds != nil {
+		if len(userIds) > 0 {
+			q = q.Where("user_id IN ?", userIds)
 		} else {
 			q = q.Where("1 = 0")
 		}
