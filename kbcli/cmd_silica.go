@@ -36,8 +36,9 @@ type groupKey struct {
 // 保留 endTime 最晚的对话（见 buildConversationsIndexer 中的冲突处理逻辑），
 // 确保“最接近commit时间”的对话获得该指纹的归属权。
 type groupIndexer struct {
-	Lines map[string]int // 代码行指纹 -> Convs数组索引，映射到生成该行的对话
-	Convs []convMeta     // 同属于该组的对话
+	Lines          map[string]int // 代码行指纹 -> Convs数组索引，映射到生成该行的对话
+	Convs          []convMeta     // 同属于该组的对话
+	TaskTotalLines map[string]int // taskID -> 该task下所有对话的指纹总数，用于计算代码采纳率
 }
 
 // conversationsIndexer 全局conversation指纹索引，聚合所有分组的数据。
@@ -53,6 +54,7 @@ type commitParser struct {
 	fpHashs          []string  // commit指纹文件中的全部代码行指纹
 	taskIDs          []string  // 匹配的taskID列表（去重后）
 	taskSilicas      []float64 // 每个task对当前commit的含硅量贡献值
+	taskAcceptRatios []float64 // 每个task被当前commit采纳的代码行占该task代码行的比例
 	totalLines       int       // commit总行数（指纹总数）
 	totalMatchLines  int       // 与AI对话指纹匹配的行数
 	totalSilica      float64   // 总含硅量（所有task贡献值之和）
@@ -156,8 +158,9 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		gi, exists := idx.groups[gk]
 		if !exists {
 			gi = groupIndexer{
-				Lines: make(map[string]int),
-				Convs: make([]convMeta, 0),
+				Lines:          make(map[string]int),
+				Convs:          make([]convMeta, 0),
+				TaskTotalLines: make(map[string]int),
 			}
 		}
 
@@ -185,6 +188,9 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			convIdx := len(gi.Convs)
 			gi.Convs = append(gi.Convs, cm)
 
+			// 累加该task的指纹总数（用于计算代码采纳率）
+			gi.TaskTotalLines[tsd.TaskId] += len(conv.Fingerprints)
+
 			// 第四步：注册该对话产生的所有代码行指纹
 			for _, h := range conv.Fingerprints {
 				prevIdx, prevExists := gi.Lines[h]
@@ -197,10 +203,8 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 					}
 				}
 			}
-
 			idx.convCount++ // 累计对话总数
 		}
-
 		// 更新分组索引回全局索引
 		idx.groups[gk] = gi
 	}
@@ -336,22 +340,27 @@ func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 
 // computeCommitSilica 计算commit的含硅量（silica）。
 //
+// computeCommitSilica 计算commit的含硅量（silica）和代码采纳率（taskAcceptRatios）。
+//
 // 参数:
 //   - hashToConv: 候选指纹索引，键为指纹，值为生成该指纹的对话元数据。
+//   - taskTotalLines: taskID -> 该task下所有对话的指纹总数，用于计算代码采纳率。
 //
 // 关键技术原理:
 //
 //	含硅量定义为：commit中与AI对话指纹匹配的代码行所占的比例。
+//	代码采纳率定义为：commit中匹配的某task代码行占该task总代码行的比例。
 //	具体计算步骤：
 //	1. 遍历commit的所有指纹，统计在 hashToConv 中存在的匹配行数。
 //	2. 按 (taskID, requestID) 聚合匹配行数，实现对话级精确归因。
 //	3. 按 taskID 二次聚合，计算每个task的含硅量 = 该task下所有对话匹配行数 / commit总行数。
-//	4. 总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
+//	4. 计算每个task的代码采纳率 = 该task下所有对话匹配行数 / 该task总代码行数。
+//	5. 总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
 //
 // 注意：
 //
 //	同一task可能包含多个对话，这些对话的匹配行数会合并到该task的silica中。
-func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
+func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta, taskTotalLines map[string]int) {
 	// convMatchedLines 用于按对话维度聚合匹配行数，键格式为 "taskID|requestID"
 	convMatchedLines := make(map[string]float64)
 	p.totalLines = len(p.fpHashs)
@@ -370,6 +379,7 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
 	p.totalMatchLines = matchedLines
 	p.taskIDs = make([]string, 0)
 	p.taskSilicas = make([]float64, 0)
+	p.taskAcceptRatios = make([]float64, 0)
 	p.totalSilica = 0
 
 	// 无匹配或commit为空时直接返回零值
@@ -377,14 +387,16 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
 		return
 	}
 
-	// 第二步：按 taskID 聚合，计算每个task的含硅量
+	// 第二步：按 taskID 聚合，计算每个task的含硅量和匹配行数
 	taskSilicaMap := make(map[string]float64)
+	taskMatchedLinesMap := make(map[string]float64)
 	for convKey, matched := range convMatchedLines {
 		// 单个对话的含硅量 = 其匹配行数 / commit总行数
 		silica := matched / float64(p.totalLines)
 		parts := strings.SplitN(convKey, "|", 2)
 		taskID := parts[0]
 		taskSilicaMap[taskID] += silica // 同一task下多个对话的silica累加
+		taskMatchedLinesMap[taskID] += matched
 	}
 
 	// 第三步：将map结果转存为有序切片（按taskID遍历顺序）
@@ -392,11 +404,16 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta) {
 		p.taskIDs = append(p.taskIDs, taskID)
 		p.taskSilicas = append(p.taskSilicas, silica)
 		p.totalSilica += silica
+
+		// 计算代码采纳率 = 该task匹配行数 / 该task总代码行数
+		if total, ok := taskTotalLines[taskID]; ok && total > 0 {
+			p.taskAcceptRatios = append(p.taskAcceptRatios, taskMatchedLinesMap[taskID]/float64(total))
+		} else {
+			p.taskAcceptRatios = append(p.taskAcceptRatios, 0)
+		}
 	}
 }
 
-// calcCommitDerivedMinutes 根据已匹配的task列表，计算commit的衍生耗时与成本指标。
-//
 // 参数:
 //   - db: GORM数据库连接，用于查询task表中的原始数据。
 //
@@ -567,13 +584,18 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 
 		// 在时间窗口内筛选候选指纹，并计算含硅量
 		candidateHashes := idx.buildCandidateHashIndex(gk, commit.CommitTime, maxDays)
-		commitPs.computeCommitSilica(candidateHashes)
+		var taskTotalLines map[string]int
+		if gi, ok := idx.groups[gk]; ok {
+			taskTotalLines = gi.TaskTotalLines
+		}
+		commitPs.computeCommitSilica(candidateHashes, taskTotalLines)
 
 		// 未匹配到任何task时，将commit的含硅量置零并更新数据库
 		if len(commitPs.taskIDs) == 0 {
 			if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 				"task_ids":                    "[]",
 				"task_ids_silica":             "[]",
+				"task_accept_ratios":          "[]",
 				"silica":                      0,
 				"commit_real_ai_minutes":      0,
 				"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"), // 保留原有的ancient值
@@ -597,14 +619,16 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 			continue
 		}
 
-		// 将taskID列表和含硅量列表序列化为JSON字符串
+		// 将taskID列表、含硅量列表和代码采纳率列表序列化为JSON字符串
 		taskIDsJSON, _ := json.Marshal(commitPs.taskIDs)
 		silicaJSON, _ := json.Marshal(commitPs.taskSilicas)
+		acceptRatiosJSON, _ := json.Marshal(commitPs.taskAcceptRatios)
 
 		// 更新数据库：写入含硅量及所有衍生指标
 		if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
 			"task_ids":                    string(taskIDsJSON),
 			"task_ids_silica":             string(silicaJSON),
+			"task_accept_ratios":          string(acceptRatiosJSON),
 			"silica":                      commitPs.totalSilica,
 			"commit_real_ai_minutes":      commitPs.aiMinutes,
 			"commit_real_ancient_minutes": commitPs.ancientMinutes,

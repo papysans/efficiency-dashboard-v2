@@ -147,24 +147,20 @@ func listTasksV2(c *gin.Context) {
 		WorkDirId:  strings.TrimSpace(c.Query("workDirId")),
 		StartTime:  startT.Format(time.RFC3339),
 		EndTime:    endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339),
-		Org1:       strings.TrimSpace(c.Query("org1")),
-		Org2:       strings.TrimSpace(c.Query("org2")),
-		Org3:       strings.TrimSpace(c.Query("org3")),
-		Org4:       strings.TrimSpace(c.Query("org4")),
-		Org5:       strings.TrimSpace(c.Query("org5")),
-		Org6:       strings.TrimSpace(c.Query("org6")),
-		Org7:       strings.TrimSpace(c.Query("org7")),
-		Org8:       strings.TrimSpace(c.Query("org8")),
-		Org9:       strings.TrimSpace(c.Query("org9")),
+		OrgFilter: OrgFilter{
+			Org1: strings.TrimSpace(c.Query("org1")),
+			Org2: strings.TrimSpace(c.Query("org2")),
+			Org3: strings.TrimSpace(c.Query("org3")),
+			Org4: strings.TrimSpace(c.Query("org4")),
+			Org5: strings.TrimSpace(c.Query("org5")),
+			Org6: strings.TrimSpace(c.Query("org6")),
+			Org7: strings.TrimSpace(c.Query("org7")),
+			Org8: strings.TrimSpace(c.Query("org8")),
+			Org9: strings.TrimSpace(c.Query("org9")),
+		},
 	}
 
-	total, err := CountStatTasks(statDB, filter)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	list, err := ListStatTasks(statDB, filter, page, pageSize, orderClause)
+	list, total, err := ListStatTasks(statDB, filter, page, pageSize, orderClause)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return

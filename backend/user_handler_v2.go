@@ -131,15 +131,17 @@ type UserDetailResponse struct {
 func listUsersV2(c *gin.Context) {
 	filter := UserFilter{
 		Granularity: strings.TrimSpace(c.Query("granularity")),
-		Org1:        strings.TrimSpace(c.Query("org1")),
-		Org2:        strings.TrimSpace(c.Query("org2")),
-		Org3:        strings.TrimSpace(c.Query("org3")),
-		Org4:        strings.TrimSpace(c.Query("org4")),
-		Org5:        strings.TrimSpace(c.Query("org5")),
-		Org6:        strings.TrimSpace(c.Query("org6")),
-		Org7:        strings.TrimSpace(c.Query("org7")),
-		Org8:        strings.TrimSpace(c.Query("org8")),
-		Org9:        strings.TrimSpace(c.Query("org9")),
+		OrgFilter: OrgFilter{
+			Org1: strings.TrimSpace(c.Query("org1")),
+			Org2: strings.TrimSpace(c.Query("org2")),
+			Org3: strings.TrimSpace(c.Query("org3")),
+			Org4: strings.TrimSpace(c.Query("org4")),
+			Org5: strings.TrimSpace(c.Query("org5")),
+			Org6: strings.TrimSpace(c.Query("org6")),
+			Org7: strings.TrimSpace(c.Query("org7")),
+			Org8: strings.TrimSpace(c.Query("org8")),
+			Org9: strings.TrimSpace(c.Query("org9")),
+		},
 	}
 	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
 	if orderField != "" && !isAllowedField(orderField, userSortFields) {
@@ -229,7 +231,7 @@ func listUsersV2(c *gin.Context) {
 			var dayCount, taskCount, commitCount int
 
 			for _, uid := range userIDs {
-				daily, err := ListUserProductivity(statDB, uid, filter.StartTime, filter.EndTime, 1, 100000)
+				daily, _, err := ListUserProductivity(statDB, UserFilter{UserIds: []string{uid}, StartTime: filter.StartTime, EndTime: filter.EndTime}, 1, 100000, "")
 				if err != nil {
 					continue
 				}
@@ -673,7 +675,7 @@ func getUserDetailV2(c *gin.Context) {
 		endTime = endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339)
 	}
 
-	daily, err := ListUserProductivity(statDB, userID, startTime, endTime, 1, 10000)
+	daily, _, err := ListUserProductivity(statDB, UserFilter{UserIds: []string{userID}, StartTime: startTime, EndTime: endTime}, 1, 10000, "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 user_productivity 失败: " + err.Error()})
 		return

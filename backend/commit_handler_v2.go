@@ -36,6 +36,7 @@ type CommitListItem struct {
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
 	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
+	TaskAcceptRatios                 json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
 	Comment                          string          `json:"comment"`
 	CreatedAt                        time.Time       `json:"created_at"`
 	UpdatedAt                        time.Time       `json:"updated_at"`
@@ -128,15 +129,17 @@ func listCommitsV2(c *gin.Context) {
 		UserName:    strings.TrimSpace(c.Query("userName")),
 		ClientId:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
-		Org1:        strings.TrimSpace(c.Query("org1")),
-		Org2:        strings.TrimSpace(c.Query("org2")),
-		Org3:        strings.TrimSpace(c.Query("org3")),
-		Org4:        strings.TrimSpace(c.Query("org4")),
-		Org5:        strings.TrimSpace(c.Query("org5")),
-		Org6:        strings.TrimSpace(c.Query("org6")),
-		Org7:        strings.TrimSpace(c.Query("org7")),
-		Org8:        strings.TrimSpace(c.Query("org8")),
-		Org9:        strings.TrimSpace(c.Query("org9")),
+		OrgFilter: OrgFilter{
+			Org1: strings.TrimSpace(c.Query("org1")),
+			Org2: strings.TrimSpace(c.Query("org2")),
+			Org3: strings.TrimSpace(c.Query("org3")),
+			Org4: strings.TrimSpace(c.Query("org4")),
+			Org5: strings.TrimSpace(c.Query("org5")),
+			Org6: strings.TrimSpace(c.Query("org6")),
+			Org7: strings.TrimSpace(c.Query("org7")),
+			Org8: strings.TrimSpace(c.Query("org8")),
+			Org9: strings.TrimSpace(c.Query("org9")),
+		},
 	}
 
 	startDate := strings.TrimSpace(c.Query("startDate"))
@@ -174,13 +177,7 @@ func listCommitsV2(c *gin.Context) {
 		return
 	}
 
-	total, err := CountStatCommits(statDB, filter)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	list, err := ListStatCommits(statDB, filter, page, pageSize, orderClause)
+	list, total, err := ListStatCommits(statDB, filter, page, pageSize, orderClause)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -212,6 +209,7 @@ func listCommitsV2(c *gin.Context) {
 			CommitRealAncientMinutes:         commit.CommitRealAncientMinutes,
 			TaskIds:                          commit.TaskIds,
 			TaskIdsSilica:                    commit.TaskIdsSilica,
+			TaskAcceptRatios:                 commit.TaskAcceptRatios,
 			Comment:                          commit.Comment,
 			CreatedAt:                        commit.CreatedAt,
 			UpdatedAt:                        commit.UpdatedAt,

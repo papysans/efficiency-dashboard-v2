@@ -230,6 +230,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string, startD
 		DiffLines:                  commitData.DiffLines,
 		TaskIds:                    models.StringJSON("[]"), // 初始化为空 JSON 数组，后续由 task 关联逻辑填充
 		TaskIdsSilica:              models.StringJSON("[]"), // 同上，Silica 关联任务列表
+		TaskAcceptRatios:           models.StringJSON("[]"), // 代码采纳率数组，与 task_ids 一一对应
 		CommitAncientMinutes:       &ancientMinutes,         // 指针类型，允许数据库 NULL
 		CommitAncientMinutesReason: ancientReason,           // 估算原因描述
 	}

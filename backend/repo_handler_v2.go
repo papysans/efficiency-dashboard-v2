@@ -63,6 +63,7 @@ type RepoCommitItem struct {
 	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
 	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
+	TaskAcceptRatios                 json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
 	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
@@ -228,15 +229,17 @@ func getRepoDetailV2(c *gin.Context) {
 		ClientId:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
 		WorkDirId:   strings.TrimSpace(c.Query("workDirId")),
-		Org1:        strings.TrimSpace(c.Query("org1")),
-		Org2:        strings.TrimSpace(c.Query("org2")),
-		Org3:        strings.TrimSpace(c.Query("org3")),
-		Org4:        strings.TrimSpace(c.Query("org4")),
-		Org5:        strings.TrimSpace(c.Query("org5")),
-		Org6:        strings.TrimSpace(c.Query("org6")),
-		Org7:        strings.TrimSpace(c.Query("org7")),
-		Org8:        strings.TrimSpace(c.Query("org8")),
-		Org9:        strings.TrimSpace(c.Query("org9")),
+		OrgFilter: OrgFilter{
+			Org1: strings.TrimSpace(c.Query("org1")),
+			Org2: strings.TrimSpace(c.Query("org2")),
+			Org3: strings.TrimSpace(c.Query("org3")),
+			Org4: strings.TrimSpace(c.Query("org4")),
+			Org5: strings.TrimSpace(c.Query("org5")),
+			Org6: strings.TrimSpace(c.Query("org6")),
+			Org7: strings.TrimSpace(c.Query("org7")),
+			Org8: strings.TrimSpace(c.Query("org8")),
+			Org9: strings.TrimSpace(c.Query("org9")),
+		},
 	}
 
 	var startTime, endTime string
@@ -260,31 +263,38 @@ func getRepoDetailV2(c *gin.Context) {
 	filter.EndTime = endTime
 
 	// 步骤 1：获取 commits
-	commits, err := ListStatCommits(statDB, filter, 1, 10000, "commit_time DESC")
+	commits, _, err := ListStatCommits(statDB, filter, 1, 10000, "commit_time DESC")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 commits 失败: " + err.Error()})
 		return
 	}
 
 	// 步骤 2：从 commits 的 task_ids 解析去重所有 taskID，批量获取关联 tasks
-	taskIDSet := make(map[string]struct{})
-	for _, cm := range commits {
-		var ids []string
-		if len(cm.TaskIds) > 0 && string(cm.TaskIds) != "null" && string(cm.TaskIds) != "[]" {
-			json.Unmarshal(cm.TaskIds, &ids)
-		}
-		for _, id := range ids {
-			taskIDSet[id] = struct{}{}
-		}
-	}
-	var tasks []StatTask
-	for tid := range taskIDSet {
-		t, err := GetStatTask(statDB, tid)
-		if err != nil || t == nil {
-			continue
-		}
-		tasks = append(tasks, *t)
-	}
+	taskset := NewTaskIdSet()
+	taskset.MergeCommitsTasks(commits)
+
+	tasks, _, _ := ListStatTasks(statDB, TaskFilter{
+		TaskIds: taskset.GetTaskIds(),
+	}, 0, 0, "")
+
+	// taskIDSet := make(map[string]struct{})
+	// for _, cm := range commits {
+	// 	var ids []string
+	// 	if len(cm.TaskIds) > 0 && string(cm.TaskIds) != "null" && string(cm.TaskIds) != "[]" {
+	// 		json.Unmarshal(cm.TaskIds, &ids)
+	// 	}
+	// 	for _, id := range ids {
+	// 		taskIDSet[id] = struct{}{}
+	// 	}
+	// }
+	// var tasks []StatTask
+	// for tid := range taskIDSet {
+	// 	t, err := GetStatTask(statDB, tid)
+	// 	if err != nil || t == nil {
+	// 		continue
+	// 	}
+	// 	tasks = append(tasks, *t)
+	// }
 	// 步骤 3：实时计算 repo 级别效率评估
 	var ancientReasons, realReasons []string
 	var repoAncientMinutes, repoRealMinutes float64
@@ -353,6 +363,7 @@ func getRepoDetailV2(c *gin.Context) {
 			CommitAncientMinutesReasonManual: cm.CommitAncientMinutesReasonManual,
 			TaskIds:                          cm.TaskIds,
 			TaskIdsSilica:                    cm.TaskIdsSilica,
+			TaskAcceptRatios:                 cm.TaskAcceptRatios,
 			CommitRealMinutes:                cm.CommitRealMinutes,
 			CommitRealMinutesReason:          cm.CommitRealMinutesReason,
 			CommitRealMinutesManual:          cm.CommitRealMinutesManual,

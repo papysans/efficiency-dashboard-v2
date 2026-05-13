@@ -177,7 +177,7 @@ func getUserGroupDetailHandler(c *gin.Context) {
 
 	members := make([]UserGroupMember, 0, len(userIDs))
 	for _, uid := range userIDs {
-		daily, err := ListUserProductivity(statDB, uid, startTime, endTime, 1, 100000)
+		daily, _, err := ListUserProductivity(statDB, UserFilter{UserIds: []string{uid}, StartTime: startTime, EndTime: endTime}, 1, 100000, "")
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户产出失败: " + err.Error()})
 			return

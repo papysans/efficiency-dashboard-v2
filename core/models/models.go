@@ -46,6 +46,7 @@ type Commit struct {
 	CommitAncientMinutesReasonManual string     `gorm:"type:text" json:"commit_ancient_minutes_reason_manual"`
 	TaskIds                          StringJSON `gorm:"type:jsonb" json:"task_ids"`
 	TaskIdsSilica                    StringJSON `gorm:"type:jsonb" json:"task_ids_silica"`
+	TaskAcceptRatios                 StringJSON `gorm:"type:jsonb" json:"task_accept_ratios"`
 	UpstreamTokens                   *int64     `gorm:"type:bigint" json:"upstream_tokens"`
 	DownstreamTokens                 *int64     `gorm:"type:bigint" json:"downstream_tokens"`
 	Cost                             *float64   `gorm:"type:float8" json:"cost"`
@@ -62,6 +63,22 @@ type Commit struct {
 }
 
 func (Commit) TableName() string { return "commits" }
+
+type Session struct {
+	SessionId       string    `gorm:"primaryKey;type:varchar(500)" json:"session_id"`
+	CreateTime      time.Time `gorm:"type:timestamptz;index" json:"create_time"`
+	UserId          string    `gorm:"type:varchar(255);index" json:"user_id"`
+	UserName        string    `gorm:"type:varchar(255)" json:"user_name"`
+	ClientId        string    `gorm:"column:client_id;type:varchar(255)" json:"client_id"`
+	ClientIde       string    `gorm:"column:client_ide;type:varchar(100)" json:"client_ide"`
+	ClientVersion   string    `gorm:"type:varchar(100)" json:"client_version"`
+	ClientOs        string    `gorm:"column:client_os;type:varchar(100)" json:"client_os"`
+	ClientOsVersion string    `gorm:"column:client_os_version;type:varchar(100)" json:"client_os_version"`
+	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (Session) TableName() string { return "sessions" }
 
 type Task struct {
 	TaskId                         string     `gorm:"primaryKey;type:varchar(500)" json:"task_id"`

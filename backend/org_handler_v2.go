@@ -54,10 +54,10 @@ type OrgListResponse struct {
 type OrgSummary struct {
 	UserCount             int     `json:"user_count"`
 	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
 	TaskRealMinutes       float64 `json:"task_real_minutes"`
 	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
 	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
 	CommitRealMinutes     float64 `json:"commit_real_minutes"`
 	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
 	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
@@ -73,12 +73,17 @@ type OrgMemberItem struct {
 	Org2                  string  `json:"org2"`
 	Org3                  string  `json:"org3"`
 	Org4                  string  `json:"org4"`
+	Org5                  string  `json:"org5"`
+	Org6                  string  `json:"org6"`
+	Org7                  string  `json:"org7"`
+	Org8                  string  `json:"org8"`
+	Org9                  string  `json:"org9"`
 	OrgDisplay            string  `json:"org_display"`
 	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
 	TaskRealMinutes       float64 `json:"task_real_minutes"`
 	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
 	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
 	CommitRealMinutes     float64 `json:"commit_real_minutes"`
 	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
 	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
@@ -729,33 +734,11 @@ func getOrgDetailV2(c *gin.Context) {
 		taskIDs          map[string]bool
 		commitIDs        map[string]bool
 	}
-	type memberAgg struct {
-		userID                 string
-		userName               string
-		org1, org2, org3, org4 string
-		taskDiffLines          int
-		commitDiffLines        int
-		taskRealMin            float64
-		taskAncientMin         float64
-		commitRealMin          float64
-		commitAncientMin       float64
-		upTokens               int64
-		downTokens             int64
-		cost                   float64
-	}
-
 	dailyMap := make(map[string]*dailyAgg)
-	memberMap := make(map[string]*memberAgg)
-	for _, u := range matchedUsers {
-		memberMap[u.UserId] = &memberAgg{
-			userID: u.UserId, userName: u.UserName,
-			org1: u.Org1, org2: u.Org2, org3: u.Org3, org4: u.Org4,
-		}
-	}
 
 	// 从 user_productivity 逐用户聚合
 	for _, u := range matchedUsers {
-		daily, err := ListUserProductivity(statDB, u.UserId, startTime, endTime, 1, 100000)
+		daily, _, err := ListUserProductivity(statDB, UserFilter{UserIds: []string{u.UserId}, StartTime: startTime, EndTime: endTime}, 1, 100000, "")
 		if err != nil {
 			continue
 		}
@@ -771,7 +754,6 @@ func getOrgDetailV2(c *gin.Context) {
 				}
 			}
 			da := dailyMap[dateStr]
-			ma := memberMap[u.UserId]
 
 			if d.TaskIds != nil {
 				var ids []interface{}
@@ -795,23 +777,14 @@ func getOrgDetailV2(c *gin.Context) {
 			}
 
 			da.taskDiffLines += d.TaskDiffLines
-			ma.taskDiffLines += d.TaskDiffLines
 			da.commitDiffLines += d.CommitDiffLines
-			ma.commitDiffLines += d.CommitDiffLines
 			da.taskRealMin += d.TaskRealMinutes
-			ma.taskRealMin += d.TaskRealMinutes
 			da.taskAncientMin += d.TaskAncientMinutes
-			ma.taskAncientMin += d.TaskAncientMinutes
 			da.commitRealMin += d.CommitRealMinutes
-			ma.commitRealMin += d.CommitRealMinutes
 			da.commitAncientMin += d.CommitAncientMinutes
-			ma.commitAncientMin += d.CommitAncientMinutes
 			da.upTokens += d.UpstreamTokens
-			ma.upTokens += d.UpstreamTokens
 			da.downTokens += d.DownstreamTokens
-			ma.downTokens += d.DownstreamTokens
 			da.cost += d.Cost
-			ma.cost += d.Cost
 		}
 	}
 
@@ -888,32 +861,7 @@ func getOrgDetailV2(c *gin.Context) {
 	}
 
 	// 构建 members 列表
-	membersResult := make([]OrgMemberItem, 0, len(memberMap))
-	for _, ma := range memberMap {
-		taskEffRatio := utils.CalcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
-		commitEffRatio := utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
-
-		membersResult = append(membersResult, OrgMemberItem{
-			UserId:                ma.userID,
-			UserName:              ma.userName,
-			Org1:                  ma.org1,
-			Org2:                  ma.org2,
-			Org3:                  ma.org3,
-			Org4:                  ma.org4,
-			OrgDisplay:            getOrgDisplay(ma.org1, ma.org2, ma.org3, ma.org4, "", "", "", "", ""),
-			TaskDiffLines:         ma.taskDiffLines,
-			CommitDiffLines:       ma.commitDiffLines,
-			TaskRealMinutes:       ma.taskRealMin,
-			TaskAncientMinutes:    ma.taskAncientMin,
-			TaskEfficiencyRatio:   taskEffRatio,
-			CommitRealMinutes:     ma.commitRealMin,
-			CommitAncientMinutes:  ma.commitAncientMin,
-			CommitEfficiencyRatio: commitEffRatio,
-			UpstreamTokens:        ma.upTokens,
-			DownstreamTokens:      ma.downTokens,
-			Cost:                  ma.cost,
-		})
-	}
+	membersResult := GetUsersProductivity(statDB, matchedUsers, startTime, endTime)
 
 	c.JSON(http.StatusOK, OrgDetailResponse{
 		OrgPath:     orgPath,
@@ -1040,7 +988,7 @@ func getGroupDetailV2(c *gin.Context) {
 	}
 
 	for _, u := range matchedUsers {
-		daily, err := ListUserProductivity(statDB, u.UserId, startTime, endTime, 1, 100000)
+		daily, _, err := ListUserProductivity(statDB, UserFilter{UserIds: []string{u.UserId}, StartTime: startTime, EndTime: endTime}, 1, 100000, "")
 		if err != nil {
 			continue
 		}
@@ -1086,13 +1034,8 @@ func getGroupDetailV2(c *gin.Context) {
 	dailyResult := make([]DailyDataItem, 0, len(dates))
 	for _, date := range dates {
 		da := dailyMap[date]
-		var taskEffRatio, commitEffRatio float64
-		if da.taskRealMin > 0 {
-			taskEffRatio = utils.CalcEfficiencyRatio(da.taskAncientMin, da.taskRealMin)
-		}
-		if da.commitRealMin > 0 {
-			commitEffRatio = utils.CalcEfficiencyRatio(da.commitAncientMin, da.commitRealMin)
-		}
+		taskEffRatio := utils.CalcEfficiencyRatio(da.taskAncientMin, da.taskRealMin)
+		commitEffRatio := utils.CalcEfficiencyRatio(da.commitAncientMin, da.commitRealMin)
 		dailyResult = append(dailyResult, DailyDataItem{
 			Date:                  date,
 			TaskDiffLines:         da.taskDiffLines,
@@ -1144,13 +1087,8 @@ func getGroupDetailV2(c *gin.Context) {
 	// 构建 members 列表
 	membersResult := make([]GroupMemberItem, 0, len(memberMap))
 	for _, ma := range memberMap {
-		var taskEffRatio, commitEffRatio float64
-		if ma.taskRealMin > 0 {
-			taskEffRatio = utils.CalcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
-		}
-		if ma.commitRealMin > 0 {
-			commitEffRatio = utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
-		}
+		taskEffRatio := utils.CalcEfficiencyRatio(ma.taskAncientMin, ma.taskRealMin)
+		commitEffRatio := utils.CalcEfficiencyRatio(ma.commitAncientMin, ma.commitRealMin)
 		membersResult = append(membersResult, GroupMemberItem{
 			UserId:                ma.userID,
 			UserName:              ma.userName,

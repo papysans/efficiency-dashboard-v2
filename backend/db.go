@@ -93,6 +93,7 @@ type StatCommit struct {
 	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	TaskAcceptRatios                 json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	UpstreamTokens                   int64           `json:"upstream_tokens"`
 	DownstreamTokens                 int64           `json:"downstream_tokens"`
 	Cost                             float64         `json:"cost"`
@@ -346,6 +347,7 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		CommitAncientMinutesReasonManual: c.CommitAncientMinutesReasonManual,
 		TaskIds:                          strJSONToRaw(c.TaskIds),
 		TaskIdsSilica:                    strJSONToRaw(c.TaskIdsSilica),
+		TaskAcceptRatios:                 strJSONToRaw(c.TaskAcceptRatios),
 		UpstreamTokens:                   ptrToInt64(c.UpstreamTokens),
 		DownstreamTokens:                 ptrToInt64(c.DownstreamTokens),
 		Cost:                             ptrToFloat64(c.Cost),
@@ -506,9 +508,6 @@ func InitDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 // ============================================================
 // tasks CRUD (GORM)
 // ============================================================
-// func GetCommitStatTasks(db *gorm.DB, commit_id string) ([]StatTask, error) {
-
-// }
 
 func GetStatTask(db *gorm.DB, taskID string) (*StatTask, error) {
 	var t models.Task
@@ -538,6 +537,7 @@ func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, err
 }
 
 type TaskFilter struct {
+	OrgFilter
 	UserId     string
 	UserName   string
 	ClientId   string
@@ -549,57 +549,7 @@ type TaskFilter struct {
 	WorkDirId  string
 	StartTime  string
 	EndTime    string
-	Org1       string
-	Org2       string
-	Org3       string
-	Org4       string
-	Org5       string
-	Org6       string
-	Org7       string
-	Org8       string
-	Org9       string
-	OrgUserIDs []string
-}
-
-func (f *TaskFilter) resolveOrgUserIDs() {
-	hasOrgFilter := f.Org1 != "" || f.Org2 != "" || f.Org3 != "" || f.Org4 != "" ||
-		f.Org5 != "" || f.Org6 != "" || f.Org7 != "" || f.Org8 != "" || f.Org9 != ""
-	if !hasOrgFilter {
-		return
-	}
-	for uid, m := range orgMappings {
-		if uid == "" {
-			continue
-		}
-		if f.Org1 != "" && m.Org1 != f.Org1 {
-			continue
-		}
-		if f.Org2 != "" && m.Org2 != f.Org2 {
-			continue
-		}
-		if f.Org3 != "" && m.Org3 != f.Org3 {
-			continue
-		}
-		if f.Org4 != "" && m.Org4 != f.Org4 {
-			continue
-		}
-		if f.Org5 != "" && m.Org5 != f.Org5 {
-			continue
-		}
-		if f.Org6 != "" && m.Org6 != f.Org6 {
-			continue
-		}
-		if f.Org7 != "" && m.Org7 != f.Org7 {
-			continue
-		}
-		if f.Org8 != "" && m.Org8 != f.Org8 {
-			continue
-		}
-		if f.Org9 != "" && m.Org9 != f.Org9 {
-			continue
-		}
-		f.OrgUserIDs = append(f.OrgUserIDs, uid)
-	}
+	TaskIds    []string
 }
 
 func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
@@ -630,37 +580,41 @@ func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.WorkDirId != "" {
 		q = q.Where("work_dir_id = ?", f.WorkDirId)
 	}
-	if len(f.OrgUserIDs) > 0 {
-		q = q.Where("user_id IN ?", f.OrgUserIDs)
-	}
+	q = f.ApplyOrgsToQuery(q)
 	if f.StartTime != "" {
 		q = q.Where("start_time >= ?", f.StartTime)
 	}
 	if f.EndTime != "" {
 		q = q.Where("start_time <= ?", f.EndTime)
 	}
+	if f.TaskIds != nil {
+		if len(f.TaskIds) > 0 {
+			q = q.Where("task_id IN ?", f.TaskIds)
+		} else {
+			q = q.Where("1 = 0")
+		}
+	}
 	return q
 }
 
-func ListStatTasks(db *gorm.DB, filter TaskFilter, page, pageSize int, orderClause string) ([]StatTask, error) {
-	filter.resolveOrgUserIDs()
+func ListStatTasks(db *gorm.DB, filter TaskFilter, page, pageSize int, orderClause string) ([]StatTask, int, error) {
 	q := filter.applyToQuery(db.Model(&models.Task{}))
 	var tasks []models.Task
-	if err := q.Order(orderClause).Limit(pageSize).Offset((page - 1) * pageSize).Find(&tasks).Error; err != nil {
-		return nil, fmt.Errorf("查询 tasks 列表失败: %w", err)
-	}
-	result := toStatTaskSlice(tasks)
-	return result, nil
-}
-
-func CountStatTasks(db *gorm.DB, filter TaskFilter) (int, error) {
-	filter.resolveOrgUserIDs()
-	q := filter.applyToQuery(db.Model(&models.Task{}))
 	var count int64
 	if err := q.Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("统计 tasks 总数失败: %w", err)
+		return []StatTask{}, 0, fmt.Errorf("统计 tasks 总数失败: %w", err)
 	}
-	return int(count), nil
+	if orderClause != "" {
+		q = q.Order(orderClause)
+	}
+	if pageSize > 0 {
+		q = q.Limit(pageSize).Offset((page - 1) * pageSize)
+	}
+	if err := q.Find(&tasks).Error; err != nil {
+		return nil, int(count), fmt.Errorf("查询 tasks 列表失败: %w", err)
+	}
+	result := toStatTaskSlice(tasks)
+	return result, int(count), nil
 }
 
 func UpdateStatTaskManual(db *gorm.DB, taskID string, realManual *float64, realReasonManual *string, ancientManual *float64, ancientReasonManual *string) error {
@@ -698,62 +652,32 @@ func ListStatTaskConversations(db *gorm.DB, taskID string) ([]StatTaskConversati
 }
 
 type UserFilter struct {
+	OrgFilter
 	StartTime   string
 	EndTime     string
 	Granularity string
-	Org1        string
-	Org2        string
-	Org3        string
-	Org4        string
-	Org5        string
-	Org6        string
-	Org7        string
-	Org8        string
-	Org9        string
+	UserIds     []string
 }
 
-func (f *UserFilter) HasOrgFilter() bool {
-	return f.Org1 != "" || f.Org2 != "" || f.Org3 != "" || f.Org4 != "" ||
-		f.Org5 != "" || f.Org6 != "" || f.Org7 != "" || f.Org8 != "" || f.Org9 != ""
+func (f *UserFilter) resolveOrgUserIDs() {
+	f.UserIds = f.GetFilter()
 }
 
-func (f *UserFilter) MatchOrg(userID string) (*models.UserOrg, bool) {
-	om, ok := orgMappings[userID]
-	if !ok {
-		// 用户不在组织映射表中：无过滤条件时允许通过，但返回空结构体避免 nil panic
-		if !f.HasOrgFilter() {
-			return &models.UserOrg{}, true
+func (f *UserFilter) applyToQuery(q *gorm.DB) *gorm.DB {
+	if f.UserIds != nil {
+		if len(f.UserIds) > 0 {
+			q = q.Where("user_id IN ?", f.UserIds)
+		} else {
+			q = q.Where("1 = 0")
 		}
-		return nil, false
 	}
-	if f.Org1 != "" && om.Org1 != f.Org1 {
-		return nil, false
+	if f.StartTime != "" {
+		q = q.Where("create_time >= ?", f.StartTime)
 	}
-	if f.Org2 != "" && om.Org2 != f.Org2 {
-		return nil, false
+	if f.EndTime != "" {
+		q = q.Where("create_time <= ?", f.EndTime)
 	}
-	if f.Org3 != "" && om.Org3 != f.Org3 {
-		return nil, false
-	}
-	if f.Org4 != "" && om.Org4 != f.Org4 {
-		return nil, false
-	}
-	if f.Org5 != "" && om.Org5 != f.Org5 {
-		return nil, false
-	}
-	if f.Org6 != "" && om.Org6 != f.Org6 {
-		return nil, false
-	}
-	if f.Org7 != "" && om.Org7 != f.Org7 {
-		return nil, false
-	}
-	if f.Org8 != "" && om.Org8 != f.Org8 {
-		return nil, false
-	}
-	if f.Org9 != "" && om.Org9 != f.Org9 {
-		return nil, false
-	}
-	return om, true
+	return q
 }
 
 func (f *UserFilter) OrgDisplay(om *models.UserOrg) string {
@@ -774,6 +698,7 @@ func (f *UserFilter) OrgDisplay(om *models.UserOrg) string {
 // ============================================================
 
 type CommitFilter struct {
+	OrgFilter
 	RepoAddr    string
 	RepoBranch  string
 	GitUserName string
@@ -784,57 +709,11 @@ type CommitFilter struct {
 	WorkDirId   string
 	StartTime   string
 	EndTime     string
-	Org1        string
-	Org2        string
-	Org3        string
-	Org4        string
-	Org5        string
-	Org6        string
-	Org7        string
-	Org8        string
-	Org9        string
 	OrgUserIDs  []string
 }
 
 func (f *CommitFilter) resolveOrgUserIDs() {
-	hasOrgFilter := f.Org1 != "" || f.Org2 != "" || f.Org3 != "" || f.Org4 != "" ||
-		f.Org5 != "" || f.Org6 != "" || f.Org7 != "" || f.Org8 != "" || f.Org9 != ""
-	if !hasOrgFilter {
-		return
-	}
-	for uid, m := range orgMappings {
-		if uid == "" {
-			continue
-		}
-		if f.Org1 != "" && m.Org1 != f.Org1 {
-			continue
-		}
-		if f.Org2 != "" && m.Org2 != f.Org2 {
-			continue
-		}
-		if f.Org3 != "" && m.Org3 != f.Org3 {
-			continue
-		}
-		if f.Org4 != "" && m.Org4 != f.Org4 {
-			continue
-		}
-		if f.Org5 != "" && m.Org5 != f.Org5 {
-			continue
-		}
-		if f.Org6 != "" && m.Org6 != f.Org6 {
-			continue
-		}
-		if f.Org7 != "" && m.Org7 != f.Org7 {
-			continue
-		}
-		if f.Org8 != "" && m.Org8 != f.Org8 {
-			continue
-		}
-		if f.Org9 != "" && m.Org9 != f.Org9 {
-			continue
-		}
-		f.OrgUserIDs = append(f.OrgUserIDs, uid)
-	}
+	f.OrgUserIDs = f.GetFilter()
 }
 
 func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
@@ -853,8 +732,12 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.UserName != "" {
 		q = q.Where("user_name = ?", f.UserName)
 	}
-	if len(f.OrgUserIDs) > 0 {
-		q = q.Where("user_id IN ?", f.OrgUserIDs)
+	if f.OrgUserIDs != nil {
+		if len(f.OrgUserIDs) > 0 {
+			q = q.Where("user_id IN ?", f.OrgUserIDs)
+		} else {
+			q = q.Where("1 = 0")
+		}
 	}
 	if f.ClientId != "" {
 		q = q.Where("client_id = ?", f.ClientId)
@@ -886,25 +769,19 @@ func GetStatCommitByID(db *gorm.DB, commitID string) (*StatCommit, error) {
 	return toStatCommit(&c), nil
 }
 
-func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]StatCommit, error) {
+func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]StatCommit, int, error) {
 	filter.resolveOrgUserIDs()
 	q := filter.applyToQuery(db.Model(&models.Commit{}))
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("统计 commits 总数失败: %w", err)
+	}
 	var commits []models.Commit
 	if err := q.Order(orderClause).Limit(pageSize).Offset((page - 1) * pageSize).Find(&commits).Error; err != nil {
-		return nil, fmt.Errorf("查询 commits 列表失败: %w", err)
+		return nil, 0, fmt.Errorf("查询 commits 列表失败: %w", err)
 	}
 	result := toStatCommitSlice(commits)
-	return result, nil
-}
-
-func CountStatCommits(db *gorm.DB, filter CommitFilter) (int, error) {
-	filter.resolveOrgUserIDs()
-	q := filter.applyToQuery(db.Model(&models.Commit{}))
-	var count int64
-	if err := q.Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("统计 commits 总数失败: %w", err)
-	}
-	return int(count), nil
+	return result, int(total), nil
 }
 
 func UpdateStatCommitManual(db *gorm.DB, commitID string, ancientManual *float64, ancientReasonManual *string, realManual *float64, realReasonManual *string) error {
@@ -1123,82 +1000,24 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 // user_productivity CRUD (GORM)
 // ============================================================
 
-// func UpsertUserProductivity(db *gorm.DB, up *UserProductivity) error {
-// 	mup := models.UserProductivity{
-// 		UserProductivityId:       up.UserProductivityId,
-// 		CreateTime:               up.CreateTime,
-// 		UserId:                   up.UserId,
-// 		UserName:                 up.UserName,
-// 		TaskIds:                  rawToStrJSON(up.TaskIds),
-// 		WorkDirIds:               rawToStrJSON(up.WorkDirIds),
-// 		TaskDiffLines:            up.TaskDiffLines,
-// 		UpstreamTokens:           up.UpstreamTokens,
-// 		DownstreamTokens:         up.DownstreamTokens,
-// 		Cost:                     up.Cost,
-// 		TaskRealMinutes:          up.TaskRealMinutes,
-// 		TaskAncientMinutes:       up.TaskAncientMinutes,
-// 		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
-// 		CommitIds:                rawToStrJSON(up.CommitIds),
-// 		CommitDiffLines:          up.CommitDiffLines,
-// 		CommitAncientMinutes:     up.CommitAncientMinutes,
-// 		CommitRealAiMinutes:      up.CommitRealAiMinutes,
-// 		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
-// 		CommitRealMinutes:        up.CommitRealMinutes,
-// 		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
-// 	}
-// 	err := db.Clauses(clause.OnConflict{
-// 		Columns: []clause.Column{{Name: "user_productivity_id"}},
-// 		DoUpdates: clause.AssignmentColumns([]string{
-// 			"create_time", "user_id", "user_name",
-// 			"task_ids", "work_dir_ids", "task_diff_lines",
-// 			"upstream_tokens", "downstream_tokens", "cost",
-// 			"task_real_minutes", "task_ancient_minutes", "task_efficiency_ratio",
-// 			"commit_ids", "commit_diff_lines",
-// 			"commit_ancient_minutes", "commit_real_ai_minutes", "commit_real_ancient_minutes",
-// 			"commit_real_minutes", "commit_efficiency_ratio",
-// 			"updated_at",
-// 		}),
-// 	}).Create(&mup).Error
-// 	if err != nil {
-// 		return fmt.Errorf("upsert user_productivity 失败: %w", err)
-// 	}
-// 	return nil
-// }
-
-func ListUserProductivity(db *gorm.DB, userId, startTime, endTime string, page, pageSize int) ([]UserProductivity, error) {
-	q := db.Model(&models.UserProductivity{})
-	if userId != "" {
-		q = q.Where("user_id = ?", userId)
-	}
-	if startTime != "" {
-		q = q.Where("create_time >= ?", startTime)
-	}
-	if endTime != "" {
-		q = q.Where("create_time <= ?", endTime)
-	}
-	var ups []models.UserProductivity
-	if err := q.Order("create_time DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&ups).Error; err != nil {
-		return nil, fmt.Errorf("查询 user_productivity 列表失败: %w", err)
-	}
-	return toUserProductivitySlice(ups), nil
-}
-
-func CountUserProductivity(db *gorm.DB, userId, startTime, endTime string) (int, error) {
-	q := db.Model(&models.UserProductivity{})
-	if userId != "" {
-		q = q.Where("user_id = ?", userId)
-	}
-	if startTime != "" {
-		q = q.Where("create_time >= ?", startTime)
-	}
-	if endTime != "" {
-		q = q.Where("create_time <= ?", endTime)
-	}
+func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, orderClause string) ([]UserProductivity, int, error) {
+	filter.resolveOrgUserIDs()
+	q := filter.applyToQuery(db.Model(&models.UserProductivity{}))
 	var count int64
 	if err := q.Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("统计 user_productivity 总数失败: %w", err)
+		return nil, 0, fmt.Errorf("统计 user_productivity 总数失败: %w", err)
 	}
-	return int(count), nil
+	if orderClause != "" {
+		q = q.Order(orderClause)
+	}
+	if pageSize > 0 {
+		q = q.Limit(pageSize).Offset((page - 1) * pageSize)
+	}
+	var ups []models.UserProductivity
+	if err := q.Find(&ups).Error; err != nil {
+		return nil, int(count), fmt.Errorf("查询 user_productivity 列表失败: %w", err)
+	}
+	return toUserProductivitySlice(ups), int(count), nil
 }
 
 // ============================================================
