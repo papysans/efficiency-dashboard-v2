@@ -147,7 +147,7 @@ func listTasksV2(c *gin.Context) {
 		WorkDirId:  strings.TrimSpace(c.Query("workDirId")),
 		StartTime:  startT.Format(time.RFC3339),
 		EndTime:    endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339),
-		OrgFilter: OrgFilter{
+		OrgsFilter: OrgsFilter{
 			Org1: strings.TrimSpace(c.Query("org1")),
 			Org2: strings.TrimSpace(c.Query("org2")),
 			Org3: strings.TrimSpace(c.Query("org3")),

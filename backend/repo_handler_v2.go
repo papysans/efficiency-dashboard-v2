@@ -229,7 +229,7 @@ func getRepoDetailV2(c *gin.Context) {
 		ClientId:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
 		WorkDirId:   strings.TrimSpace(c.Query("workDirId")),
-		OrgFilter: OrgFilter{
+		OrgsFilter: OrgsFilter{
 			Org1: strings.TrimSpace(c.Query("org1")),
 			Org2: strings.TrimSpace(c.Query("org2")),
 			Org3: strings.TrimSpace(c.Query("org3")),

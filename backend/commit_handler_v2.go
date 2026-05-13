@@ -129,7 +129,7 @@ func listCommitsV2(c *gin.Context) {
 		UserName:    strings.TrimSpace(c.Query("userName")),
 		ClientId:    strings.TrimSpace(c.Query("clientId")),
 		WorkDir:     strings.TrimSpace(c.Query("workDir")),
-		OrgFilter: OrgFilter{
+		OrgsFilter: OrgsFilter{
 			Org1: strings.TrimSpace(c.Query("org1")),
 			Org2: strings.TrimSpace(c.Query("org2")),
 			Org3: strings.TrimSpace(c.Query("org3")),

@@ -537,7 +537,7 @@ func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, err
 }
 
 type TaskFilter struct {
-	OrgFilter
+	OrgsFilter
 	UserId     string
 	UserName   string
 	ClientId   string
@@ -652,7 +652,7 @@ func ListStatTaskConversations(db *gorm.DB, taskID string) ([]StatTaskConversati
 }
 
 type UserFilter struct {
-	OrgFilter
+	OrgsFilter
 	StartTime   string
 	EndTime     string
 	Granularity string
@@ -698,7 +698,7 @@ func (f *UserFilter) OrgDisplay(om *models.UserOrg) string {
 // ============================================================
 
 type CommitFilter struct {
-	OrgFilter
+	OrgsFilter
 	RepoAddr    string
 	RepoBranch  string
 	GitUserName string

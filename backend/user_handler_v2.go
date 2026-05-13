@@ -131,7 +131,7 @@ type UserDetailResponse struct {
 func listUsersV2(c *gin.Context) {
 	filter := UserFilter{
 		Granularity: strings.TrimSpace(c.Query("granularity")),
-		OrgFilter: OrgFilter{
+		OrgsFilter: OrgsFilter{
 			Org1: strings.TrimSpace(c.Query("org1")),
 			Org2: strings.TrimSpace(c.Query("org2")),
 			Org3: strings.TrimSpace(c.Query("org3")),
