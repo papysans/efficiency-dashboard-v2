@@ -109,6 +109,11 @@ type RepoBranchesResponse struct {
 func listReposV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, repoSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
 
 	var startTime, endTime string
 	if startDate != "" {
@@ -157,6 +162,7 @@ func listReposV2(c *gin.Context) {
 		}
 		items = append(items, ri)
 	}
+	sortRepoData(items, orderField, orderDir)
 
 	// 内存分页
 	page := getDefaultInt(c, "page", 1)
@@ -254,7 +260,7 @@ func getRepoDetailV2(c *gin.Context) {
 	filter.EndTime = endTime
 
 	// 步骤 1：获取 commits
-	commits, err := ListStatCommits(statDB, filter, 1, 10000)
+	commits, err := ListStatCommits(statDB, filter, 1, 10000, "commit_time DESC")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 commits 失败: " + err.Error()})
 		return
@@ -439,6 +445,16 @@ func strValue(s *string) string {
 	return *s
 }
 
+// filterPreferredBranchAggregates 从同一仓库的多分支聚合数据中筛选出最优分支的记录。
+//
+// 业务背景：一个仓库通常会在多个分支（如 main、master、dev）上产生代码统计聚合数据，
+// 但在仓库级看板中只需展示一条代表性记录，避免重复统计。
+//
+// 筛选规则（按优先级降序）：
+//  1. 分支优先级：main > master > dev > develop > 其他分支
+//  2. 若分支优先级相同，则取 EndTime 最新（最近结束）的记录
+//
+// 最终返回结果按 RepoAddr 字典序排列，每个仓库仅保留一条记录。
 func filterPreferredBranchAggregates(aggregates []RepoAggregate) []RepoAggregate {
 	repoMap := make(map[string][]RepoAggregate)
 	for _, agg := range aggregates {

@@ -128,6 +128,12 @@ func listTasksV2(c *gin.Context) {
 
 	page := getDefaultInt(c, "page", 1)
 	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, taskSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
+	orderClause := buildTaskOrder(orderField, orderDir)
 
 	filter := TaskFilter{
 		UserId:     strings.TrimSpace(c.Query("userId")),
@@ -158,7 +164,7 @@ func listTasksV2(c *gin.Context) {
 		return
 	}
 
-	list, err := ListStatTasks(statDB, filter, page, pageSize)
+	list, err := ListStatTasks(statDB, filter, page, pageSize, orderClause)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return

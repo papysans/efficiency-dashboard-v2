@@ -642,11 +642,11 @@ func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	return q
 }
 
-func ListStatTasks(db *gorm.DB, filter TaskFilter, page, pageSize int) ([]StatTask, error) {
+func ListStatTasks(db *gorm.DB, filter TaskFilter, page, pageSize int, orderClause string) ([]StatTask, error) {
 	filter.resolveOrgUserIDs()
 	q := filter.applyToQuery(db.Model(&models.Task{}))
 	var tasks []models.Task
-	if err := q.Order("start_time DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&tasks).Error; err != nil {
+	if err := q.Order(orderClause).Limit(pageSize).Offset((page - 1) * pageSize).Find(&tasks).Error; err != nil {
 		return nil, fmt.Errorf("查询 tasks 列表失败: %w", err)
 	}
 	result := toStatTaskSlice(tasks)
@@ -886,11 +886,11 @@ func GetStatCommitByID(db *gorm.DB, commitID string) (*StatCommit, error) {
 	return toStatCommit(&c), nil
 }
 
-func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int) ([]StatCommit, error) {
+func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]StatCommit, error) {
 	filter.resolveOrgUserIDs()
 	q := filter.applyToQuery(db.Model(&models.Commit{}))
 	var commits []models.Commit
-	if err := q.Order("commit_time DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&commits).Error; err != nil {
+	if err := q.Order(orderClause).Limit(pageSize).Offset((page - 1) * pageSize).Find(&commits).Error; err != nil {
 		return nil, fmt.Errorf("查询 commits 列表失败: %w", err)
 	}
 	result := toStatCommitSlice(commits)

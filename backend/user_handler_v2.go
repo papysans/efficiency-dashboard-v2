@@ -141,6 +141,11 @@ func listUsersV2(c *gin.Context) {
 		Org8:        strings.TrimSpace(c.Query("org8")),
 		Org9:        strings.TrimSpace(c.Query("org9")),
 	}
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, userSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
 
 	startDate := strings.TrimSpace(c.Query("startDate"))
 	endDate := strings.TrimSpace(c.Query("endDate"))
@@ -281,6 +286,7 @@ func listUsersV2(c *gin.Context) {
 			})
 		}
 	}
+	sortUserData(all, orderField, orderDir)
 
 	page := getDefaultInt(c, "page", 1)
 	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)

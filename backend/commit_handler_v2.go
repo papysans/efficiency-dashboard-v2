@@ -160,6 +160,12 @@ func listCommitsV2(c *gin.Context) {
 
 	page := getDefaultInt(c, "page", 1)
 	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, commitSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
+	orderClause := buildCommitOrder(orderField, orderDir)
 
 	filter.resolveOrgUserIDs()
 	if (filter.Org1 != "" || filter.Org2 != "" || filter.Org3 != "" || filter.Org4 != "" ||
@@ -174,7 +180,7 @@ func listCommitsV2(c *gin.Context) {
 		return
 	}
 
-	list, err := ListStatCommits(statDB, filter, page, pageSize)
+	list, err := ListStatCommits(statDB, filter, page, pageSize, orderClause)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return

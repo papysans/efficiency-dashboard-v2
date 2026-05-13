@@ -16,7 +16,7 @@ echo "=========================================="
 # 1. 编译 backend 的镜像
 echo ""
 echo "[1/8] 编译 backend 镜像..."
-docker build -f backend/Dockerfile.qianliu -t zgsm/efficiency-dashboard-backend:${VERSION} .
+docker build --build-arg VERSION=${VERSION} -f backend/Dockerfile.qianliu -t zgsm/efficiency-dashboard-backend:${VERSION} .
 if [ $? -ne 0 ]; then
     echo "错误：backend 镜像编译失败"
     exit 1
@@ -26,7 +26,7 @@ echo "✓ backend 镜像编译成功: zgsm/efficiency-dashboard-backend:${VERSIO
 # 2. 编译 kbcli 的镜像
 echo ""
 echo "[2/8] 编译 kbcli 镜像..."
-docker build -f kbcli/Dockerfile.qianliu -t zgsm/efficiency-dashboard-kbcli:${VERSION} .
+docker build --build-arg VERSION=${VERSION} -f kbcli/Dockerfile.qianliu -t zgsm/efficiency-dashboard-kbcli:${VERSION} .
 if [ $? -ne 0 ]; then
     echo "错误：kbcli 镜像编译失败"
     exit 1

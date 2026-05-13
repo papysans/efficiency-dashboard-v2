@@ -76,3 +76,23 @@ func getDefaultString(c *gin.Context, key, defaultVal string) string {
 	}
 	return val
 }
+
+func parseOrderParam(order string) (field, dir string) {
+	order = strings.TrimSpace(order)
+	if order == "" {
+		return "", "DESC"
+	}
+	if strings.HasPrefix(order, "-") {
+		return order[1:], "DESC"
+	}
+	return order, "ASC"
+}
+
+func isAllowedField(field string, allowed []string) bool {
+	for _, a := range allowed {
+		if a == field {
+			return true
+		}
+	}
+	return false
+}

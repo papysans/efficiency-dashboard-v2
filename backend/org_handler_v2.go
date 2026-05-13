@@ -263,6 +263,11 @@ func listOrgV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	granularity := c.Query("granularity")
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, orgSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
 
 	if level == "" {
 		level = "org1"
@@ -389,15 +394,19 @@ func listOrgV2(c *gin.Context) {
 	data := make([]OrgDataItem, 0, len(orgAggMap))
 	for orgName, oa := range orgAggMap {
 		data = append(data, OrgDataItem{
-			OrgName: orgName, UserCount: oa.userCount,
-			TaskCount: oa.taskCount, CommitCount: oa.commitCount,
-			TaskDiffLines: oa.taskDiffLines, CommitDiffLines: oa.commitDiffLines,
+			OrgName:               orgName,
+			UserCount:             oa.userCount,
+			TaskCount:             oa.taskCount,
+			CommitCount:           oa.commitCount,
+			TaskDiffLines:         oa.taskDiffLines,
+			CommitDiffLines:       oa.commitDiffLines,
 			TaskEfficiencyRatio:   oa.taskEffRatio,
 			CommitEfficiencyRatio: oa.commitEffRatio,
 			TotalTokens:           oa.upTokens + oa.downTokens,
 			TotalCost:             oa.cost,
 		})
 	}
+	sortOrgData(data, orderField, orderDir)
 
 	// 如果不需要时间序列，直接返回
 	if granularity == "" {

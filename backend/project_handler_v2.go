@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -181,7 +182,7 @@ func collectProjectCommits(project *Project) (map[string]*StatCommit, error) {
 			RepoBranch: rf.RepoBranch,
 			StartTime:  startTime,
 			EndTime:    endTime,
-		}, 1, 999999)
+		}, 1, 999999, "commit_time DESC")
 		if err != nil {
 			return nil, fmt.Errorf("查询 commits 失败: %w", err)
 		}
@@ -398,6 +399,12 @@ func createProjectV2(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v2/projects [get]
 func listProjectsV2(c *gin.Context) {
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, projectSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
+
 	list, err := ListProjects(statDB)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -525,6 +532,7 @@ func listProjectsV2(c *gin.Context) {
 			EfficiencyRatio:                       effRatio,
 		}
 	}
+	sortProjectData(results, orderField, orderDir)
 
 	c.JSON(http.StatusOK, ProjectListResponse{Data: results})
 }
