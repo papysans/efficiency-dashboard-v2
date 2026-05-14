@@ -58,16 +58,16 @@ type RepoCommitItem struct {
 	WorkDirId                        string          `json:"work_dir_id"`
 	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
-	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
+	CommitAncientReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
+	CommitAncientReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
 	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
 	TaskAcceptRatios                 json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
-	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
+	CommitRealReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
-	CommitRealMinutesReasonManual    string          `json:"commit_real_minutes_reason_manual"`
+	CommitRealReasonManual    string          `json:"commit_real_minutes_reason_manual"`
 	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	Comment                          string          `json:"comment"`
@@ -316,17 +316,17 @@ func getRepoDetailV2(c *gin.Context) {
 		}
 
 		// 收集 reason
-		ancientReason := cm.CommitAncientMinutesReason
-		if cm.CommitAncientMinutesReasonManual != "" {
-			ancientReason = cm.CommitAncientMinutesReasonManual
+		ancientReason := cm.CommitAncientReason
+		if cm.CommitAncientReasonManual != "" {
+			ancientReason = cm.CommitAncientReasonManual
 		}
 		if ancientReason != "" {
 			ancientReasons = append(ancientReasons, cm.CommitId[:8]+": "+ancientReason)
 		}
 
-		realReason := cm.CommitRealMinutesReason
-		if cm.CommitRealMinutesReasonManual != "" {
-			realReason = cm.CommitRealMinutesReasonManual
+		realReason := cm.CommitRealReason
+		if cm.CommitRealReasonManual != "" {
+			realReason = cm.CommitRealReasonManual
 		}
 		if realReason != "" {
 			realReasons = append(realReasons, cm.CommitId[:8]+": "+realReason)
@@ -358,16 +358,16 @@ func getRepoDetailV2(c *gin.Context) {
 			WorkDirId:                        cm.WorkDirId,
 			DiffLines:                        cm.DiffLines,
 			CommitAncientMinutes:             cm.CommitAncientMinutes,
-			CommitAncientMinutesReason:       cm.CommitAncientMinutesReason,
+			CommitAncientReason:       cm.CommitAncientReason,
 			CommitAncientMinutesManual:       cm.CommitAncientMinutesManual,
-			CommitAncientMinutesReasonManual: cm.CommitAncientMinutesReasonManual,
+			CommitAncientReasonManual: cm.CommitAncientReasonManual,
 			TaskIds:                          cm.TaskIds,
 			TaskIdsSilica:                    cm.TaskIdsSilica,
 			TaskAcceptRatios:                 cm.TaskAcceptRatios,
 			CommitRealMinutes:                cm.CommitRealMinutes,
-			CommitRealMinutesReason:          cm.CommitRealMinutesReason,
+			CommitRealReason:          cm.CommitRealReason,
 			CommitRealMinutesManual:          cm.CommitRealMinutesManual,
-			CommitRealMinutesReasonManual:    cm.CommitRealMinutesReasonManual,
+			CommitRealReasonManual:    cm.CommitRealReasonManual,
 			CommitRealAiMinutes:              cm.CommitRealAiMinutes,
 			CommitRealAncientMinutes:         cm.CommitRealAncientMinutes,
 			Comment:                          cm.Comment,

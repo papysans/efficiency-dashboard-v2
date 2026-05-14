@@ -6,9 +6,9 @@ import (
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "顺序执行完整的导入流程: import-task → import-repo → import-org → silica → efficiency",
+	Short: "顺序执行完整的导入流程: import-conv → import-repo → import-org → silica → efficiency",
 	Long: `顺序执行完整的导入流程:
-  1. import-task: 导入task数据
+  1. import-conv: 导入task数据
   2. import-repo: 导入repo/commit数据
   3. import-org: 导入用户组织信息
   4. silica: 计算commit含硅量
@@ -63,7 +63,7 @@ var importCmd = &cobra.Command{
 			name string
 			fn   func() error
 		}{
-			{"import-task", func() error { return runImportTask(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
+			{"import-conv", func() error { return runImportConv(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
 			{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
 			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
 			{"silica", func() error { return runSilica(analysedDir, force, maxDays, startDateStr, endDateStr, dateStr) }},

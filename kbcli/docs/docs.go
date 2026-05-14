@@ -92,7 +92,7 @@ const docTemplate = `{
         },
         "/api/tasks/import": {
             "post": {
-                "description": "将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-task → import-repo → import-org → silica → efficiency",
+                "description": "将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org → silica → efficiency",
                 "consumes": [
                     "application/json"
                 ],
@@ -228,9 +228,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/tasks/import-task": {
+        "/api/tasks/import-conv": {
             "post": {
-                "description": "将 import-task 逻辑以异步任务方式提交到队列执行",
+                "description": "将 import-conv 逻辑以异步任务方式提交到队列执行",
                 "consumes": [
                     "application/json"
                 ],
@@ -240,7 +240,7 @@ const docTemplate = `{
                 "tags": [
                     "tasks"
                 ],
-                "summary": "提交 import-task 异步任务",
+                "summary": "提交 import-conv 异步任务",
                 "parameters": [
                     {
                         "description": "请求参数",
@@ -248,7 +248,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/main.ImportTaskBody"
+                            "$ref": "#/definitions/main.importConvBody"
                         }
                     }
                 ],
@@ -497,7 +497,7 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string",
-                    "example": "import-task"
+                    "example": "import-conv"
                 }
             }
         },
@@ -595,16 +595,24 @@ const docTemplate = `{
                 }
             }
         },
-        "main.ImportTaskBody": {
+        "main.importConvBody": {
             "type": "object",
             "properties": {
                 "analysed_dir": {
                     "type": "string",
                     "example": "./analysed"
                 },
+                "end_date": {
+                    "type": "string",
+                    "example": "2024-01-31"
+                },
                 "force": {
                     "type": "boolean",
                     "example": false
+                },
+                "start_date": {
+                    "type": "string",
+                    "example": "2024-01-01"
                 },
                 "task_dir": {
                     "type": "string",

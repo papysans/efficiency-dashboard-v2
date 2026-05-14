@@ -101,7 +101,7 @@ serve:
       force: true
   crontab:
     - schedule: "0 0 * * * *"
-      command: import-task
+      command: import-conv
       params:
         force: false
     - schedule: "0 5 * * * *"

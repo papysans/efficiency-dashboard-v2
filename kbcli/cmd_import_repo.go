@@ -232,7 +232,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string, startD
 		TaskIdsSilica:              models.StringJSON("[]"), // 同上，Silica 关联任务列表
 		TaskAcceptRatios:           models.StringJSON("[]"), // 代码采纳率数组，与 task_ids 一一对应
 		CommitAncientMinutes:       &ancientMinutes,         // 指针类型，允许数据库 NULL
-		CommitAncientMinutesReason: ancientReason,           // 估算原因描述
+		CommitAncientReason: ancientReason,           // 估算原因描述
 	}
 
 	// UPSERT 写入数据库：以 commit_id 为唯一键，冲突时更新指定字段

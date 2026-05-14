@@ -43,15 +43,6 @@ type taskSilicaConversation struct {
 //  3. workload = (totalLines / LinesPerMinutes) * factor，反映“按代码量估算的时间”。
 //  4. 用 maxWorkload（真实时长的 MaxRatio 倍）和 minWorkload（不小于 MinMinutes 且不小于真实时长）进行上下界裁剪，防止极端偏差。
 func estimateTaskAncientMinutes(ec *EstimateConfig, totalInchars, totalLines, realMinutes float64) (float64, string) {
-	// var totalInchars int64
-	// var totalDiffLines int
-
-	// // 汇总所有对话的输入字符数和新增代码行数
-	// for _, conv := range convs {
-	// 	totalInchars += int64(conv.UserInputChars)
-	// 	totalDiffLines += len(conv.Fingerprints)
-	// }
-
 	// 输入字符数超过配置上限时截断，避免异常大输入导致 factor 越界
 	if totalInchars >= ec.MaxInputChars {
 		totalInchars = ec.MaxInputChars
@@ -97,15 +88,6 @@ func estimateTaskAncientMinutes(ec *EstimateConfig, totalInchars, totalLines, re
 //  3. 最后一个片段同样追加 extensionMin。
 //  4. 累加各片段 (end - start) 的分钟数得到总时长。
 func calcTaskRealMinutes(validTimes []time.Time, gapThreshold, extensionMin int) (float64, string) {
-	// 收集所有成功解析的开始时间
-	// var validTimes []time.Time
-	// for _, conv := range convs {
-	// 	if conv.StartTime != "" {
-	// 		if t, err := time.Parse(time.RFC3339, conv.StartTime); err == nil {
-	// 			validTimes = append(validTimes, t)
-	// 		}
-	// 	}
-	// }
 	// 边界情况：无有效对话或仅一条对话时返回固定默认值
 	if len(validTimes) == 0 {
 		return 0, "无有效对话"

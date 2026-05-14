@@ -33,6 +33,7 @@ type taskSession struct {
 	RepoAddr        string `json:"repo_addr"`
 	RepoBranch      string `json:"repo_branch"`
 	WorkDir         string `json:"work_dir"`
+	StartTime       string `json:"start_time"`
 }
 
 // taskConversation 表示一次任务中的单次对话记录，对应 conversation 目录下 JSONL 的每一行。
@@ -62,10 +63,12 @@ type taskConversation struct {
 	ErrorReason      flexString `json:"error_reason"`
 
 	// addedLines 为解析 Diff 后提取的新增代码行，用于后续生成 silica 指纹。
+	sessionId  string
+	clientId   string
+	workDirId  string
 	addedLines []addedLine
-	// startTime、endTime 为解析后的 time.Time 类型时间，用于数据库写入和时长计算。
-	startTime time.Time
-	endTime   time.Time
+	startTime  time.Time
+	endTime    time.Time
 }
 
 // flexString 是一个灵活的字符串类型，用于兼容 JSON 中字段可能为字符串或数字的场景。
@@ -99,7 +102,7 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("flexString: cannot unmarshal %s", string(data))
 }
 
-// calcTaskRecord 根据任务摘要和对话列表计算完整的 Task 模型记录。
+// correctConversations 根据任务摘要和对话列表计算完整的 Task 模型记录。
 // 功能：汇总对话的时间范围、Token 消耗、成本、代码行数，并调用估算算法得到实际工作时长和预估原始时长。
 // 参数：
 //   - summary: 任务摘要信息，包含任务基本元数据。
@@ -113,10 +116,18 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 //   - estimateTaskAncientMinutes 基于输入字符数和代码行数，用线性因子模型估算原始工作量。
 var errSkipTask = errors.New("task skipped by date filter")
 
-func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Session {
+func saveSession(db *gorm.DB, ss *taskSession) error {
+	var startTime time.Time = time.Now().UTC()
+	var err error
+	if ss.StartTime != "" {
+		if startTime, err = time.Parse(time.RFC3339, ss.StartTime); err != nil {
+			logWarnf("session [%s] 缺少start_time字段", ss.SessionId)
+		}
+	}
 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
 	rec := models.Session{
 		SessionId:       ss.SessionId,
+		CreateTime:      startTime,
 		UserId:          ss.UserId,
 		UserName:        ss.UserName,
 		ClientId:        ss.ClientId,
@@ -126,6 +137,24 @@ func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Se
 		ClientOsVersion: ss.ClientOsVersion,
 	}
 
+	// 使用 UPSERT 写入 tasks 表：task_id 冲突时更新除主键外的业务字段
+	result := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "session_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"user_id", "user_name", "create_time",
+			"client_id", "client_ide", "client_version",
+			"client_os", "client_os_version",
+			"updated_at",
+		}),
+	}).Create(&rec)
+	if result.Error != nil {
+		logErrorf("session [%s] 保存失败: %v", ss.SessionId, result.Error)
+		return fmt.Errorf("写入session表失败: %w", result.Error)
+	}
+	return nil
+}
+
+func correctConversations(ss *taskSession, conversations []taskConversation) {
 	// 遍历所有对话，解析时间并累加指标；时间解析失败则跳过该对话并记录警告
 	for i, conv := range conversations {
 		if conv.StartTime == "" {
@@ -158,12 +187,13 @@ func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Se
 		if conv.WorkDir == "" {
 			conversations[i].WorkDir = ss.WorkDir
 		}
+		conversations[i].sessionId = ss.SessionId
+		conversations[i].clientId = ss.ClientId
+		conversations[i].workDirId = utils.GenerateWorkDirID(ss.ClientId, conversations[i].WorkDir)
 	}
-
-	return rec
 }
 
-// func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Session {
+// func correctConversations(ss *taskSession, conversations []taskConversation) models.Session {
 // 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
 // 	rec := models.Session{
 // 		SessionId:       ss.SessionId,
@@ -239,12 +269,12 @@ func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Se
 // 	// 计算真实工作时长（基于时间片段合并算法）
 // 	minutes, reason := calcTaskRealMinutes(conversations, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
 // 	rec.TaskRealMinutes = minutes
-// 	rec.TaskRealMinutesReason = reason
+// 	rec.TaskRealReason = reason
 
 // 	// 估算原始工作量（基于输入字符数和代码行数的因子模型）
 // 	minutes, reason = estimateTaskAncientMinutes(&cfg.AlgoEstimation, conversations, rec.TaskRealMinutes)
 // 	rec.TaskAncientMinutes = minutes
-// 	rec.TaskAncientMinutesReason = reason
+// 	rec.TaskAncientReason = reason
 // 	return rec
 // }
 
@@ -258,7 +288,7 @@ func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Se
 //
 // 返回值：导入过程中发生的错误。
 // 关键技术原理：使用 GORM 的 clause.OnConflict 实现 UPSERT（冲突时更新指定列），保证多次导入幂等。
-func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath string, startDate, endDate *time.Time) error {
+func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath string) error {
 	// 读取并解析 ss JSON 文件
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
@@ -285,34 +315,24 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	}
 
 	// 根据 ss 和 conversations 计算完整的 Task 记录
-	session := calcTaskRecord(&ss, conversations)
+	if err := saveSession(db, &ss); err != nil {
+		return err
+	}
 
+	correctConversations(&ss, conversations)
+
+	// 若存在有效对话，将其保存到 task_conversations 表
+	if len(conversations) > 0 {
+		if err := saveConversations(db, conversations); err != nil {
+			return fmt.Errorf("保存conversations失败: %w", err)
+		}
+	}
 	// 生成 task silica 文件用于后续增量检测；失败仅记录警告，不阻断主流程
 	if err := generateTaskSilicaFile(&ss, conversations, conversationPath, silicaPath); err != nil {
 		logWarnf("生成task silica文件失败 [%s]: %v", ss.SessionId, err)
 	}
 
-	// 使用 UPSERT 写入 tasks 表：task_id 冲突时更新除主键外的业务字段
-	result := db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "session_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"user_id", "user_name",
-			"client_id", "client_ide", "client_version",
-			"client_os", "client_os_version",
-			"updated_at",
-		}),
-	}).Create(&session)
-	if result.Error != nil {
-		return fmt.Errorf("写入tasks表失败: %w", result.Error)
-	}
-	// 若存在有效对话，将其保存到 task_conversations 表
-	if len(conversations) > 0 {
-		if err := saveConversations(db, &ss, conversations); err != nil {
-			return fmt.Errorf("保存conversations失败: %w", err)
-		}
-	}
-
-	logDebugf("导入成功: %s", session.SessionId)
+	logDebugf("导入成功: %s", ss.SessionId)
 	return nil
 }
 
@@ -320,31 +340,18 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 // 功能：逐条将 taskConversation 转换为 models.TaskConversation 后插入，冲突时忽略（DoNothing）。
 // 参数：
 //   - db: GORM 数据库连接。
-//   - sessionId: 所属任务的唯一标识。
 //   - conversations: 需要保存的对话列表。
 //
 // 返回值：事务执行过程中发生的错误。
 // 关键技术原理：通过 db.Transaction 开启事务，确保一批对话要么全部写入成功，要么全部回滚；
 // 复合唯一键 (task_id, request_id) 冲突时忽略插入，避免重复数据报错。
-func saveConversations(db *gorm.DB, ss *taskSession, conversations []taskConversation) error {
+func saveConversations(db *gorm.DB, conversations []taskConversation) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
-			repoAddr := conv.RepoAddr
-			if repoAddr == "" {
-				repoAddr = ss.RepoAddr
-			}
-			repoBranch := conv.RepoBranch
-			if repoBranch == "" {
-				repoBranch = ss.RepoBranch
-			}
-			workDir := conv.WorkDir
-			if workDir == "" {
-				workDir = ss.WorkDir
-			}
-			workDirId := utils.GenerateWorkDirID(ss.ClientId, workDir)
 			// 转换字段并对文本内容进行清洗，防止非法字符入库
 			tc := models.TaskConversation{
-				TaskId:           ss.SessionId,
+				TaskId:           "",
+				SessionId:        conv.sessionId,
 				RequestId:        conv.RequestId,
 				Sender:           conv.Sender,
 				PromptMode:       conv.PromptMode,
@@ -363,15 +370,15 @@ func saveConversations(db *gorm.DB, ss *taskSession, conversations []taskConvers
 				DiffLines:        conv.DiffLines,
 				ErrorCode:        string(conv.ErrorCode),
 				ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
-				RepoAddr:         repoAddr,
-				RepoBranch:       repoBranch,
-				WorkDir:          workDir,
-				WorkDirId:        workDirId,
+				RepoAddr:         conv.RepoAddr,
+				RepoBranch:       conv.RepoBranch,
+				WorkDir:          conv.WorkDir,
+				WorkDirId:        conv.workDirId,
 			}
 
 			// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败
 			result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "task_id"}, {Name: "request_id"}},
+				Columns:   []clause.Column{{Name: "session_id"}, {Name: "request_id"}},
 				DoNothing: true,
 			}).Create(&tc)
 			if result.Error != nil {
@@ -827,7 +834,7 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 	return info.Size() != tsd.Size
 }
 
-// runImportTask 执行完整的 task 批量导入流程。
+// runImportConv 执行完整的 task 批量导入流程。
 // 功能：扫描 summary 和 conversation 目录，配对后逐任务导入；支持增量检测和强制重导。
 // 参数：
 //   - taskDir: 任务数据根目录，内部包含 summary/ 和 conversation/ 子目录。
@@ -840,28 +847,28 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 //  2. 对每个 conversation 文件，先检查是否存在对应 summary；再调用 needUpdateConversations 进行增量检测。
 //  3. 调用 importSingleTask 完成单任务导入，并统计成功/失败/跳过数量。
 //  4. 通过 recordCommandRun 记录命令执行结果，便于运维监控和审计。
-func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string) error {
+func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 	summaryDir := filepath.Join(taskDir, "summary")
 	conversationDir := filepath.Join(taskDir, "conversation")
 
 	// 校验 summary 目录必须存在
 	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
-		recordCommandRun("import-task", startTime, 0, 0, 0, err)
+		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return fmt.Errorf("summary目录不存在: %s", summaryDir)
 	}
 
 	// 解析日期范围
 	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
 	if err != nil {
-		recordCommandRun("import-task", startTime, 0, 0, 0, err)
+		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	// 连接数据库
 	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
-		recordCommandRun("import-task", startTime, 0, 0, 0, err)
+		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -870,20 +877,20 @@ func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDat
 	// 扫描 conversation 和 summary 文件
 	convMap, err := scanConversationFiles(conversationDir, startDate, endDate)
 	if err != nil {
-		recordCommandRun("import-task", startTime, 0, 0, 0, err)
+		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	sessionMap, err := scanSessionFiles(summaryDir)
 	if err != nil {
-		recordCommandRun("import-task", startTime, 0, 0, 0, err)
+		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	// 无 conversation 文件时直接结束
 	if len(convMap) == 0 {
 		logInfo("没有找到待导入的 conversation 文件")
-		recordCommandRun("import-task", startTime, 0, 0, 0, nil)
+		recordCommandRun("import-conv", startTime, 0, 0, 0, nil)
 		return nil
 	}
 
@@ -909,7 +916,7 @@ func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDat
 		}
 
 		// 执行单任务导入
-		if err := importSingleTask(db, summaryPath, conversationPath, silicaPath, startDate, endDate); err != nil {
+		if err := importSingleTask(db, summaryPath, conversationPath, silicaPath); err != nil {
 			if errors.Is(err, errSkipTask) {
 				logDebugf("跳过(日期范围过滤): %s", sessionId)
 				skipCount++
@@ -924,14 +931,14 @@ func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDat
 	}
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
-	recordCommandRun("import-task", startTime, successCount, failCount, skipCount, nil)
+	recordCommandRun("import-conv", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
 
-// importTasksCmd 定义了 "import-task" CLI 子命令，用于将本地 task 数据导入到统计数据库。
+// importConvCmd 定义了 "import-conv" CLI 子命令，用于将本地 task 数据导入到统计数据库。
 // 功能：支持本地导入和远程执行两种模式；本地模式下自动从配置或命令行参数获取目录路径。
-var importTasksCmd = &cobra.Command{
-	Use:   "import-task",
+var importConvCmd = &cobra.Command{
+	Use:   "import-conv",
 	Short: "导入 task 数据到 costrict_stat 数据库",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// 从命令行参数获取输入目录、输出目录、强制标志和远程地址
@@ -945,7 +952,7 @@ var importTasksCmd = &cobra.Command{
 
 		// 若指定了 remote 地址，则将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
-			return sendToRemote(remote, "import-task", map[string]interface{}{
+			return sendToRemote(remote, "import-conv", map[string]interface{}{
 				"task_dir":     taskDir,
 				"analysed_dir": analysedDir,
 				"force":        force,
@@ -962,20 +969,20 @@ var importTasksCmd = &cobra.Command{
 			analysedDir = cfg.AnalysedDir
 		}
 
-		return runImportTask(taskDir, analysedDir, force, startDate, endDate, date)
+		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date)
 	},
 }
 
-// init 注册 import-task 子命令及其命令行参数到 rootCmd。
+// init 注册 import-conv 子命令及其命令行参数到 rootCmd。
 // 功能：在程序初始化阶段完成 Cobra 命令和 Flag 的绑定。
 func init() {
-	importTasksCmd.Flags().SortFlags = false
-	importTasksCmd.Flags().String("task-dir", "", "task 目录路径")
-	importTasksCmd.Flags().String("analysed-dir", "", "输出目录路径")
-	importTasksCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
-	importTasksCmd.Flags().String("start-date", "", "限定起始日期，格式 YYYYMMDD，为空则不限")
-	importTasksCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
-	importTasksCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
-	importTasksCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
-	rootCmd.AddCommand(importTasksCmd)
+	importConvCmd.Flags().SortFlags = false
+	importConvCmd.Flags().String("task-dir", "", "task 目录路径")
+	importConvCmd.Flags().String("analysed-dir", "", "输出目录路径")
+	importConvCmd.Flags().BoolP("force", "f", false, "强制重新导入，覆盖已存在数据")
+	importConvCmd.Flags().String("start-date", "", "限定起始日期，格式 YYYYMMDD，为空则不限")
+	importConvCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
+	importConvCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
+	importConvCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
+	rootCmd.AddCommand(importConvCmd)
 }

@@ -61,6 +61,7 @@ type conversationsIndexer struct {
 
 // commitParser 用于解析单个commit的指纹文件并计算含硅量及相关衍生指标。
 type commitParser struct {
+	commitId         string    // commit的唯一ID
 	fpHashs          []string  // commit指纹文件中的全部代码行指纹
 	taskIDs          []string  // 匹配的taskID列表（去重后）
 	taskSilicas      []float64 // 每个task对当前commit的含硅量贡献值
@@ -85,14 +86,15 @@ type commitParser struct {
 // 返回值:
 //   - *commitParser: 解析器实例，包含已加载的指纹列表。
 //   - nil: 如果指纹文件读取失败。
-func buildCommitParser(fpPath string) *commitParser {
+func buildCommitParser(commitId, fpPath string) *commitParser {
 	// 加载commit指纹文件中的所有hash值
 	fpHashs, err := loadFPHashes(fpPath)
 	if err != nil {
 		return nil
 	}
 	return &commitParser{
-		fpHashs: fpHashs,
+		commitId: commitId,
+		fpHashs:  fpHashs,
 	}
 }
 
@@ -472,16 +474,17 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 
 		// 构建models.Task
 		task := models.Task{
-			TaskId:                   taskId,
-			SessionId:                sessionId,
-			StartTime:                firstConv.startTime,
-			EndTime:                  lastConv.endTime,
-			DiffLines:                int(taskTotalLines),
-			Silica:                   float64(sc.matchLines) / float64(p.totalLines),
-			TaskRealMinutes:          realMinutes,
-			TaskRealMinutesReason:    realReason,
-			TaskAncientMinutes:       ancientMinutes,
-			TaskAncientMinutesReason: ancientReason,
+			TaskId:             taskId,
+			CommitId:           p.commitId,
+			SessionId:          sessionId,
+			StartTime:          firstConv.startTime,
+			EndTime:            lastConv.endTime,
+			DiffLines:          int(taskTotalLines),
+			Silica:             float64(sc.matchLines) / float64(p.totalLines),
+			TaskRealMinutes:    realMinutes,
+			TaskRealReason:     realReason,
+			TaskAncientMinutes: ancientMinutes,
+			TaskAncientReason:  ancientReason,
 		}
 
 		if taskTotalLines > 0 {
@@ -617,13 +620,13 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 	for i, commitFpFile := range commitFPFiles {
 		logPromptProgress(i, 50) // 每50个文件打印进度
 
-		// 从文件名中提取commitID（去掉 .fp 后缀）
-		commitID := strings.TrimSuffix(filepath.Base(commitFpFile), ".fp")
+		// 从文件名中提取commitId（去掉 .fp 后缀）
+		commitId := strings.TrimSuffix(filepath.Base(commitFpFile), ".fp")
 
 		// 非强制模式下，跳过已计算过含硅量的commit
 		if !force {
 			var commit models.Commit
-			if err := db.Select("task_ids").Where("commit_id = ?", commitID).First(&commit).Error; err == nil {
+			if err := db.Select("task_ids").Where("commit_id = ?", commitId).First(&commit).Error; err == nil {
 				// 如果task_ids已存在且非空（非 "null" 或 "[]"），则视为已处理
 				if string(commit.TaskIds) != "" && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
 					skipCount++
@@ -633,7 +636,7 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 		}
 
 		// 加载commit指纹
-		commitPs := buildCommitParser(commitFpFile)
+		commitPs := buildCommitParser(commitId, commitFpFile)
 		if commitPs == nil {
 			logWarnf("读取commit指纹文件失败 [%s]", commitFpFile)
 			skipCount++
@@ -642,24 +645,24 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 
 		// 查询commit的元数据（仓库地址、用户ID、提交时间）
 		var commit models.Commit
-		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitID).First(&commit).Error; err != nil {
+		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitId).First(&commit).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
-				logWarnf("commit不存在于数据库 [%s]", commitID)
+				logWarnf("commit不存在于数据库 [%s]", commitId)
 				skipCount++
 				continue
 			}
-			logWarnf("查询commit元数据失败 [%s]: %v", commitID, err)
+			logWarnf("查询commit元数据失败 [%s]: %v", commitId, err)
 			failCount++
 			continue
 		}
 		if commit.CommitTime.IsZero() {
-			logErrorf("Commit [%s] 缺少提交时间", commitID)
+			logErrorf("Commit [%s] 缺少提交时间", commitId)
 			continue
 		}
 
 		// 日期范围过滤
 		if !isActiveTimeInRange(commit.CommitTime, startDate, endDate) {
-			logDebugf("跳过(日期范围过滤): %s", commitID)
+			logDebugf("跳过(日期范围过滤): %s", commitId)
 			skipCount++
 			continue
 		}
@@ -677,7 +680,7 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 
 		// 保存计算出的tasks到数据库
 		for _, task := range tasks {
-			task.CommitId = commitID
+			task.CommitId = commitId
 			if err := db.Create(&task).Error; err != nil {
 				logWarnf("创建task失败 [%s]: %v", task.TaskId, err)
 			}
@@ -685,7 +688,7 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 
 		// 未匹配到任何task时，将commit的含硅量置零并更新数据库
 		if len(commitPs.taskIDs) == 0 {
-			if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+			if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitId).Updates(map[string]interface{}{
 				"task_ids":                    "[]",
 				"task_ids_silica":             "[]",
 				"task_accept_ratios":          "[]",
@@ -697,7 +700,7 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 				"downstream_tokens":           0,
 				"cost":                        0,
 			}).Error; err != nil {
-				logWarnf("更新commits表失败 [%s]: %v", commitID, err)
+				logWarnf("更新commits表失败 [%s]: %v", commitId, err)
 				failCount++
 			} else {
 				successCount++
@@ -707,7 +710,7 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 
 		// 计算衍生指标：AI耗时、远古耗时、token、cost等
 		if err := commitPs.calcCommitDerivedMinutes(db); err != nil {
-			logWarnf("计算衍生数据失败 [%s]: %v", commitID, err)
+			logWarnf("计算衍生数据失败 [%s]: %v", commitId, err)
 			failCount++
 			continue
 		}
@@ -718,7 +721,7 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 		acceptRatiosJSON, _ := json.Marshal(commitPs.taskAcceptRatios)
 
 		// 更新数据库：写入含硅量及所有衍生指标
-		if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(map[string]interface{}{
+		if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitId).Updates(map[string]interface{}{
 			"task_ids":                    string(taskIDsJSON),
 			"task_ids_silica":             string(silicaJSON),
 			"task_accept_ratios":          string(acceptRatiosJSON),
@@ -731,12 +734,12 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 			"downstream_tokens":           commitPs.downstreamTokens,
 			"cost":                        commitPs.cost,
 		}).Error; err != nil {
-			logWarnf("更新commits表失败 [%s]: %v", commitID, err)
+			logWarnf("更新commits表失败 [%s]: %v", commitId, err)
 			failCount++
 		} else {
 			// 调试日志：输出该commit的核心计算结果
 			logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
-				commitID, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitPs.realMinutes)
+				commitId, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitPs.realMinutes)
 			successCount++
 		}
 	}

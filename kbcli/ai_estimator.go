@@ -24,7 +24,7 @@ type taskConvContent struct {
 
 type taskContent struct {
 	TaskAncientMinutes       float64           `json:"task_ancient_minutes"`
-	TaskAncientMinutesReason string            `json:"task_ancient_minutes_reason"`
+	TaskAncientReason string            `json:"task_ancient_minutes_reason"`
 	Conversations            []taskConvContent `json:"conversations"`
 	TotalUserInChars         int               `json:"total_user_inchars"`
 	TotalCodeLines           int               `json:"total_code_lines"`
@@ -182,7 +182,7 @@ func EstimateTaskMinutes(config AIEstimationConfig, taskContent *taskContent) (f
 	// 解析估时结果
 	var result struct {
 		TaskAncientMinutes       float64 `json:"task_ancient_minutes"`
-		TaskAncientMinutesReason string  `json:"task_ancient_minutes_reason"`
+		TaskAncientReason string  `json:"task_ancient_minutes_reason"`
 	}
 	if err := json.Unmarshal([]byte(jsonText), &result); err != nil {
 		return 0, "", fmt.Errorf("解析AI估时结果JSON失败: %w, 原始文本: %s", err, text)
@@ -192,5 +192,5 @@ func EstimateTaskMinutes(config AIEstimationConfig, taskContent *taskContent) (f
 		return 0, "", fmt.Errorf("AI估时结果异常: %.2f（应在0-100000之间）", result.TaskAncientMinutes)
 	}
 
-	return result.TaskAncientMinutes, result.TaskAncientMinutesReason, nil
+	return result.TaskAncientMinutes, result.TaskAncientReason, nil
 }

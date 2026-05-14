@@ -13,47 +13,47 @@ import (
 )
 
 type TaskListItem struct {
-	TaskId                         string     `json:"task_id"`
-	Title                          string     `json:"title"`
-	UserId                         string     `json:"user_id"`
-	UserName                       string     `json:"user_name"`
-	ClientId                       string     `json:"client_id"`
-	ClientIde                      string     `json:"client_ide"`
-	ClientVersion                  string     `json:"client_version"`
-	ClientOs                       string     `json:"client_os"`
-	ClientOsVersion                string     `json:"client_os_version"`
-	Caller                         string     `json:"caller"`
-	RepoAddr                       string     `json:"repo_addr"`
-	RepoBranch                     string     `json:"repo_branch"`
-	WorkDir                        string     `json:"work_dir"`
-	WorkDirId                      string     `json:"work_dir_id"`
-	StartTime                      *time.Time `json:"start_time"`
-	EndTime                        *time.Time `json:"end_time"`
-	UpstreamTokens                 int64      `json:"upstream_tokens"`
-	DownstreamTokens               int64      `json:"downstream_tokens"`
-	Cost                           float64    `json:"cost"`
-	DiffLines                      int        `json:"diff_lines"`
-	TaskAncientMinutes             *float64   `json:"task_ancient_minutes"`
-	TaskAncientMinutesReason       string     `json:"task_ancient_minutes_reason"`
-	TaskAncientMinutesManual       *float64   `json:"task_ancient_minutes_manual"`
-	TaskAncientMinutesReasonManual string     `json:"task_ancient_minutes_reason_manual"`
-	TaskRealMinutes                *float64   `json:"task_real_minutes"`
-	TaskRealMinutesReason          string     `json:"task_real_minutes_reason"`
-	TaskRealMinutesManual          *float64   `json:"task_real_minutes_manual"`
-	TaskRealMinutesReasonManual    string     `json:"task_real_minutes_reason_manual"`
-	CreatedAt                      time.Time  `json:"created_at"`
-	UpdatedAt                      time.Time  `json:"updated_at"`
-	EfficiencyRatio                *float64   `json:"efficiency_ratio"`
-	Org1                           string     `json:"org1"`
-	Org2                           string     `json:"org2"`
-	Org3                           string     `json:"org3"`
-	Org4                           string     `json:"org4"`
-	Org5                           string     `json:"org5"`
-	Org6                           string     `json:"org6"`
-	Org7                           string     `json:"org7"`
-	Org8                           string     `json:"org8"`
-	Org9                           string     `json:"org9"`
-	OrgDisplay                     string     `json:"org_display"`
+	TaskId                   string     `json:"task_id"`
+	Title                    string     `json:"title"`
+	UserId                   string     `json:"user_id"`
+	UserName                 string     `json:"user_name"`
+	ClientId                 string     `json:"client_id"`
+	ClientIde                string     `json:"client_ide"`
+	ClientVersion            string     `json:"client_version"`
+	ClientOs                 string     `json:"client_os"`
+	ClientOsVersion          string     `json:"client_os_version"`
+	Caller                   string     `json:"caller"`
+	RepoAddr                 string     `json:"repo_addr"`
+	RepoBranch               string     `json:"repo_branch"`
+	WorkDir                  string     `json:"work_dir"`
+	WorkDirId                string     `json:"work_dir_id"`
+	StartTime                *time.Time `json:"start_time"`
+	EndTime                  *time.Time `json:"end_time"`
+	UpstreamTokens           int64      `json:"upstream_tokens"`
+	DownstreamTokens         int64      `json:"downstream_tokens"`
+	Cost                     float64    `json:"cost"`
+	DiffLines                int        `json:"diff_lines"`
+	TaskAncientMinutes       *float64   `json:"task_ancient_minutes"`
+	TaskAncientReason        string     `json:"task_ancient_minutes_reason"`
+	TaskAncientMinutesManual *float64   `json:"task_ancient_minutes_manual"`
+	TaskAncientReasonManual  string     `json:"task_ancient_minutes_reason_manual"`
+	TaskRealMinutes          *float64   `json:"task_real_minutes"`
+	TaskRealReason           string     `json:"task_real_minutes_reason"`
+	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
+	TaskRealReasonManual     string     `json:"task_real_minutes_reason_manual"`
+	CreatedAt                time.Time  `json:"created_at"`
+	UpdatedAt                time.Time  `json:"updated_at"`
+	EfficiencyRatio          *float64   `json:"efficiency_ratio"`
+	Org1                     string     `json:"org1"`
+	Org2                     string     `json:"org2"`
+	Org3                     string     `json:"org3"`
+	Org4                     string     `json:"org4"`
+	Org5                     string     `json:"org5"`
+	Org6                     string     `json:"org6"`
+	Org7                     string     `json:"org7"`
+	Org8                     string     `json:"org8"`
+	Org9                     string     `json:"org9"`
+	OrgDisplay               string     `json:"org_display"`
 }
 
 type TaskListResponse struct {
@@ -70,10 +70,10 @@ type TaskDetailResponse struct {
 }
 
 type UpdateTaskManualRequest struct {
-	TaskRealMinutesManual          *float64 `json:"task_real_minutes_manual"`
-	TaskRealMinutesReasonManual    *string  `json:"task_real_minutes_reason_manual"`
-	TaskAncientMinutesManual       *float64 `json:"task_ancient_minutes_manual"`
-	TaskAncientMinutesReasonManual *string  `json:"task_ancient_minutes_reason_manual"`
+	TaskRealMinutesManual    *float64 `json:"task_real_minutes_manual"`
+	TaskRealReasonManual     *string  `json:"task_real_minutes_reason_manual"`
+	TaskAncientMinutesManual *float64 `json:"task_ancient_minutes_manual"`
+	TaskAncientReasonManual  *string  `json:"task_ancient_minutes_reason_manual"`
 }
 
 // listTasksV2 GET /api/v2/tasks
@@ -169,36 +169,36 @@ func listTasksV2(c *gin.Context) {
 	results := make([]TaskListItem, len(list))
 	for i, t := range list {
 		item := TaskListItem{
-			TaskId:                         t.TaskId,
-			Title:                          t.Title,
-			UserId:                         t.UserId,
-			UserName:                       t.UserName,
-			ClientId:                       t.ClientId,
-			ClientIde:                      t.ClientIde,
-			ClientVersion:                  t.ClientVersion,
-			ClientOs:                       t.ClientOs,
-			ClientOsVersion:                t.ClientOsVersion,
-			Caller:                         t.Caller,
-			RepoAddr:                       t.RepoAddr,
-			RepoBranch:                     t.RepoBranch,
-			WorkDir:                        t.WorkDir,
-			WorkDirId:                      t.WorkDirId,
-			StartTime:                      t.StartTime,
-			EndTime:                        t.EndTime,
-			UpstreamTokens:                 t.UpstreamTokens,
-			DownstreamTokens:               t.DownstreamTokens,
-			Cost:                           t.Cost,
-			DiffLines:                      t.DiffLines,
-			TaskAncientMinutes:             t.TaskAncientMinutes,
-			TaskAncientMinutesReason:       t.TaskAncientMinutesReason,
-			TaskAncientMinutesManual:       t.TaskAncientMinutesManual,
-			TaskAncientMinutesReasonManual: t.TaskAncientMinutesReasonManual,
-			TaskRealMinutes:                t.TaskRealMinutes,
-			TaskRealMinutesReason:          t.TaskRealMinutesReason,
-			TaskRealMinutesManual:          t.TaskRealMinutesManual,
-			TaskRealMinutesReasonManual:    t.TaskRealMinutesReasonManual,
-			CreatedAt:                      t.CreatedAt,
-			UpdatedAt:                      t.UpdatedAt,
+			TaskId:                   t.TaskId,
+			Title:                    t.Title,
+			UserId:                   t.UserId,
+			UserName:                 t.UserName,
+			ClientId:                 t.ClientId,
+			ClientIde:                t.ClientIde,
+			ClientVersion:            t.ClientVersion,
+			ClientOs:                 t.ClientOs,
+			ClientOsVersion:          t.ClientOsVersion,
+			Caller:                   t.Caller,
+			RepoAddr:                 t.RepoAddr,
+			RepoBranch:               t.RepoBranch,
+			WorkDir:                  t.WorkDir,
+			WorkDirId:                t.WorkDirId,
+			StartTime:                t.StartTime,
+			EndTime:                  t.EndTime,
+			UpstreamTokens:           t.UpstreamTokens,
+			DownstreamTokens:         t.DownstreamTokens,
+			Cost:                     t.Cost,
+			DiffLines:                t.DiffLines,
+			TaskAncientMinutes:       t.TaskAncientMinutes,
+			TaskAncientReason:        t.TaskAncientReason,
+			TaskAncientMinutesManual: t.TaskAncientMinutesManual,
+			TaskAncientReasonManual:  t.TaskAncientReasonManual,
+			TaskRealMinutes:          t.TaskRealMinutes,
+			TaskRealReason:           t.TaskRealReason,
+			TaskRealMinutesManual:    t.TaskRealMinutesManual,
+			TaskRealReasonManual:     t.TaskRealReasonManual,
+			CreatedAt:                t.CreatedAt,
+			UpdatedAt:                t.UpdatedAt,
 		}
 
 		effectiveAncient := t.TaskAncientMinutes
@@ -296,7 +296,7 @@ func updateTaskManualV2(c *gin.Context) {
 		return
 	}
 
-	if err := UpdateStatTaskManual(statDB, taskId, req.TaskRealMinutesManual, req.TaskRealMinutesReasonManual, req.TaskAncientMinutesManual, req.TaskAncientMinutesReasonManual); err != nil {
+	if err := UpdateStatTaskManual(statDB, taskId, req.TaskRealMinutesManual, req.TaskRealReasonManual, req.TaskAncientMinutesManual, req.TaskAncientReasonManual); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}

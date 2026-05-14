@@ -31,17 +31,17 @@ type ProjectListItem struct {
 	DownstreamTokens                      *int64          `json:"downstream_tokens"`
 	Cost                                  *float64        `json:"cost"`
 	ProjectAncientMinutes                 *float64        `json:"project_ancient_minutes"`
-	ProjectAncientMinutesReason           string          `json:"project_ancient_minutes_reason"`
+	ProjectAncientReason           string          `json:"project_ancient_minutes_reason"`
 	ProjectAncientMinutesManual           *float64        `json:"project_ancient_minutes_manual"`
-	ProjectAncientMinutesReasonManual     string          `json:"project_ancient_minutes_reason_manual"`
+	ProjectAncientReasonManual     string          `json:"project_ancient_minutes_reason_manual"`
 	ProjectRealProcessMinutes             *float64        `json:"project_real_process_minutes"`
-	ProjectRealProcessMinutesReason       string          `json:"project_real_process_minutes_reason"`
+	ProjectRealProcessReason       string          `json:"project_real_process_minutes_reason"`
 	ProjectRealProcessMinutesManual       *float64        `json:"project_real_process_minutes_manual"`
-	ProjectRealProcessMinutesReasonManual string          `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealProcessReasonManual string          `json:"project_real_process_minutes_reason_manual"`
 	ProjectRealLeadMinutes                *float64        `json:"project_real_lead_minutes"`
-	ProjectRealLeadMinutesReason          string          `json:"project_real_lead_minutes_reason"`
+	ProjectRealLeadReason          string          `json:"project_real_lead_minutes_reason"`
 	ProjectRealLeadMinutesManual          *float64        `json:"project_real_lead_minutes_manual"`
-	ProjectRealLeadMinutesReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
+	ProjectRealLeadReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
 	CreatedAt                             time.Time       `json:"created_at"`
 	UpdatedAt                             time.Time       `json:"updated_at"`
 	RepoCount                             int             `json:"repo_count"`
@@ -145,11 +145,11 @@ type CheckProjectConflictsRequest struct {
 
 type UpdateProjectManualRequest struct {
 	ProjectAncientMinutesManual           *float64   `json:"project_ancient_minutes_manual"`
-	ProjectAncientMinutesReasonManual     *string    `json:"project_ancient_minutes_reason_manual"`
+	ProjectAncientReasonManual     *string    `json:"project_ancient_minutes_reason_manual"`
 	ProjectRealProcessMinutesManual       *float64   `json:"project_real_process_minutes_manual"`
-	ProjectRealProcessMinutesReasonManual *string    `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealProcessReasonManual *string    `json:"project_real_process_minutes_reason_manual"`
 	ProjectRealLeadMinutesManual          *float64   `json:"project_real_lead_minutes_manual"`
-	ProjectRealLeadMinutesReasonManual    *string    `json:"project_real_lead_minutes_reason_manual"`
+	ProjectRealLeadReasonManual    *string    `json:"project_real_lead_minutes_reason_manual"`
 	StartTimeManual                       *time.Time `json:"start_time_manual"`
 	EndTimeManual                         *time.Time `json:"end_time_manual"`
 }
@@ -448,11 +448,11 @@ func recalculateProjectAggregates(projectID string) error {
 		DownstreamTokens:                downstreamTokens,
 		Cost:                            cost,
 		ProjectAncientMinutes:           &ancientMinutes,
-		ProjectAncientMinutesReason:     ancientReason,
+		ProjectAncientReason:     ancientReason,
 		ProjectRealProcessMinutes:       &realProcessMinutes,
-		ProjectRealProcessMinutesReason: realReason,
+		ProjectRealProcessReason: realReason,
 		ProjectRealLeadMinutes:          leadMinutes,
-		ProjectRealLeadMinutesReason:    leadReason,
+		ProjectRealLeadReason:    leadReason,
 	}
 	return UpdateProjectAggregates(statDB, projectID, agg)
 }
@@ -622,17 +622,17 @@ func listProjectsV2(c *gin.Context) {
 			DownstreamTokens:                      &p.DownstreamTokens,
 			Cost:                                  &p.Cost,
 			ProjectAncientMinutes:                 p.ProjectAncientMinutes,
-			ProjectAncientMinutesReason:           p.ProjectAncientMinutesReason,
+			ProjectAncientReason:           p.ProjectAncientReason,
 			ProjectAncientMinutesManual:           p.ProjectAncientMinutesManual,
-			ProjectAncientMinutesReasonManual:     p.ProjectAncientMinutesReasonManual,
+			ProjectAncientReasonManual:     p.ProjectAncientReasonManual,
 			ProjectRealProcessMinutes:             p.ProjectRealProcessMinutes,
-			ProjectRealProcessMinutesReason:       p.ProjectRealProcessMinutesReason,
+			ProjectRealProcessReason:       p.ProjectRealProcessReason,
 			ProjectRealProcessMinutesManual:       p.ProjectRealProcessMinutesManual,
-			ProjectRealProcessMinutesReasonManual: p.ProjectRealProcessMinutesReasonManual,
+			ProjectRealProcessReasonManual: p.ProjectRealProcessReasonManual,
 			ProjectRealLeadMinutes:                p.ProjectRealLeadMinutes,
-			ProjectRealLeadMinutesReason:          p.ProjectRealLeadMinutesReason,
+			ProjectRealLeadReason:          p.ProjectRealLeadReason,
 			ProjectRealLeadMinutesManual:          p.ProjectRealLeadMinutesManual,
-			ProjectRealLeadMinutesReasonManual:    p.ProjectRealLeadMinutesReasonManual,
+			ProjectRealLeadReasonManual:    p.ProjectRealLeadReasonManual,
 			CreatedAt:                             p.CreatedAt,
 			UpdatedAt:                             p.UpdatedAt,
 			RepoCount:                             repoCount,

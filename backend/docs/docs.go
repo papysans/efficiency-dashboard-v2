@@ -900,7 +900,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/main.RepoFilter"
+                            "$ref": "#/definitions/main.ProjectRepo"
                         }
                     }
                 ],
@@ -1255,6 +1255,42 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "git用户名",
+                        "name": "gitUserName",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "userId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户名",
+                        "name": "userName",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "客户端ID",
+                        "name": "clientId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "工作目录",
+                        "name": "workDir",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "工作目录ID",
+                        "name": "workDirId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "开始日期(YYYYMMDD)",
                         "name": "startDate",
                         "in": "query"
@@ -1263,6 +1299,60 @@ const docTemplate = `{
                         "type": "string",
                         "description": "结束日期(YYYYMMDD)",
                         "name": "endDate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "一级组织",
+                        "name": "org1",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "二级组织",
+                        "name": "org2",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "三级组织",
+                        "name": "org3",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "四级组织",
+                        "name": "org4",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "五级组织",
+                        "name": "org5",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "六级组织",
+                        "name": "org6",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "七级组织",
+                        "name": "org7",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "八级组织",
+                        "name": "org8",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "九级组织",
+                        "name": "org9",
                         "in": "query"
                     }
                 ],
@@ -2114,6 +2204,10 @@ const docTemplate = `{
                 "silica": {
                     "type": "number"
                 },
+                "task_accept_ratios": {
+                    "type": "string",
+                    "example": "[\"0.5\"]"
+                },
                 "task_ids": {
                     "type": "string",
                     "example": "[\"task1\"]"
@@ -2188,9 +2282,6 @@ const docTemplate = `{
                 },
                 "period_label": {
                     "type": "string"
-                },
-                "task_count": {
-                    "type": "integer"
                 },
                 "upstream_tokens": {
                     "type": "integer"
@@ -2283,6 +2374,24 @@ const docTemplate = `{
                 "avg_efficiency_ratio": {
                     "type": "number"
                 },
+                "commit_efficiency_ratio": {
+                    "type": "number"
+                },
+                "task_efficiency_ratio": {
+                    "type": "number"
+                },
+                "total_branchs": {
+                    "type": "integer"
+                },
+                "total_commit_ancient_minutes": {
+                    "type": "number"
+                },
+                "total_commit_lines": {
+                    "type": "integer"
+                },
+                "total_commit_real_minutes": {
+                    "type": "number"
+                },
                 "total_commits": {
                     "type": "integer"
                 },
@@ -2299,6 +2408,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "total_task_ancient_minutes": {
+                    "type": "number"
+                },
+                "total_task_lines": {
+                    "type": "integer"
+                },
+                "total_task_real_minutes": {
                     "type": "number"
                 },
                 "total_tasks": {
@@ -2369,6 +2484,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "org4": {
+                    "type": "string"
+                },
+                "org_display": {
                     "type": "string"
                 },
                 "task_diff_lines": {
@@ -2510,62 +2628,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/main.OrgSeriesItem"
                     }
-                }
-            }
-        },
-        "main.UserDetail": {
-            "type": "object",
-            "properties": {
-                "commit_ancient_minutes": {
-                    "type": "number"
-                },
-                "commit_diff_lines": {
-                    "type": "integer"
-                },
-                "commit_efficiency_ratio": {
-                    "type": "number"
-                },
-                "commit_real_minutes": {
-                    "type": "number"
-                },
-                "cost": {
-                    "type": "number"
-                },
-                "downstream_tokens": {
-                    "type": "integer"
-                },
-                "org1": {
-                    "type": "string"
-                },
-                "org2": {
-                    "type": "string"
-                },
-                "org3": {
-                    "type": "string"
-                },
-                "org4": {
-                    "type": "string"
-                },
-                "task_ancient_minutes": {
-                    "type": "number"
-                },
-                "task_diff_lines": {
-                    "type": "integer"
-                },
-                "task_efficiency_ratio": {
-                    "type": "number"
-                },
-                "task_real_minutes": {
-                    "type": "number"
-                },
-                "upstream_tokens": {
-                    "type": "integer"
-                },
-                "user_id": {
-                    "type": "string"
-                },
-                "user_name": {
-                    "type": "string"
                 }
             }
         },
@@ -2790,6 +2852,9 @@ const docTemplate = `{
                 "silica": {
                     "type": "number"
                 },
+                "user_id": {
+                    "type": "string"
+                },
                 "user_name": {
                     "type": "string"
                 }
@@ -2831,6 +2896,12 @@ const docTemplate = `{
                 },
                 "efficiency_ratio": {
                     "type": "number"
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.UserDetail"
+                    }
                 },
                 "project": {
                     "$ref": "#/definitions/main.Project"
@@ -2961,11 +3032,46 @@ const docTemplate = `{
                 }
             }
         },
+        "main.ProjectRepo": {
+            "type": "object",
+            "properties": {
+                "end_time": {
+                    "type": "string"
+                },
+                "exclude_commits": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "include_only_commits": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "repo_addr": {
+                    "type": "string"
+                },
+                "repo_branch": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                }
+            }
+        },
         "main.ProjectTaskItem": {
             "type": "object",
             "properties": {
+                "accept_ratio": {
+                    "type": "number"
+                },
                 "cost": {
                     "type": "number"
+                },
+                "diff_lines": {
+                    "type": "integer"
                 },
                 "downstream_tokens": {
                     "type": "integer"
@@ -2999,6 +3105,9 @@ const docTemplate = `{
                 },
                 "upstream_tokens": {
                     "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
                 },
                 "user_name": {
                     "type": "string"
@@ -3142,6 +3251,10 @@ const docTemplate = `{
                 "silica": {
                     "type": "number"
                 },
+                "task_accept_ratios": {
+                    "type": "string",
+                    "example": "[\"0.5\"]"
+                },
                 "task_ids": {
                     "type": "string",
                     "example": "[\"task1\"]"
@@ -3163,6 +3276,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "work_dir": {
+                    "type": "string"
+                },
+                "work_dir_id": {
                     "type": "string"
                 }
             }
@@ -3218,35 +3334,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "repo_real_minutes_reason": {
-                    "type": "string"
-                }
-            }
-        },
-        "main.RepoFilter": {
-            "type": "object",
-            "properties": {
-                "end_time": {
-                    "type": "string"
-                },
-                "exclude_commits": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "include_only_commits": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "repo_addr": {
-                    "type": "string"
-                },
-                "repo_branch": {
-                    "type": "string"
-                },
-                "start_time": {
                     "type": "string"
                 }
             }
@@ -3386,6 +3473,10 @@ const docTemplate = `{
                 "silica": {
                     "type": "number"
                 },
+                "task_accept_ratios": {
+                    "type": "string",
+                    "example": "[\"task1\", \"task2\"]"
+                },
                 "task_ids": {
                     "type": "string",
                     "example": "[\"task1\", \"task2\"]"
@@ -3407,6 +3498,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "work_dir": {
+                    "type": "string"
+                },
+                "work_dir_id": {
                     "type": "string"
                 }
             }
@@ -3551,6 +3645,12 @@ const docTemplate = `{
                 "prompt_mode": {
                     "type": "string"
                 },
+                "repo_addr": {
+                    "type": "string"
+                },
+                "repo_branch": {
+                    "type": "string"
+                },
                 "request_content": {
                     "type": "string"
                 },
@@ -3573,6 +3673,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "user_input": {
+                    "type": "string"
+                },
+                "work_dir": {
+                    "type": "string"
+                },
+                "work_dir_id": {
                     "type": "string"
                 }
             }
@@ -3669,6 +3775,9 @@ const docTemplate = `{
                 "org9": {
                     "type": "string"
                 },
+                "org_display": {
+                    "type": "string"
+                },
                 "repo_addr": {
                     "type": "string"
                 },
@@ -3751,9 +3860,6 @@ const docTemplate = `{
         "main.TaskTimeSeriesItem": {
             "type": "object",
             "properties": {
-                "commit_count": {
-                    "type": "integer"
-                },
                 "cost": {
                     "type": "number"
                 },
@@ -3876,6 +3982,80 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.UserDetail": {
+            "type": "object",
+            "properties": {
+                "commit_ancient_minutes": {
+                    "type": "number"
+                },
+                "commit_diff_lines": {
+                    "type": "integer"
+                },
+                "commit_efficiency_ratio": {
+                    "type": "number"
+                },
+                "commit_real_minutes": {
+                    "type": "number"
+                },
+                "cost": {
+                    "type": "number"
+                },
+                "downstream_tokens": {
+                    "type": "integer"
+                },
+                "org1": {
+                    "type": "string"
+                },
+                "org2": {
+                    "type": "string"
+                },
+                "org3": {
+                    "type": "string"
+                },
+                "org4": {
+                    "type": "string"
+                },
+                "org5": {
+                    "type": "string"
+                },
+                "org6": {
+                    "type": "string"
+                },
+                "org7": {
+                    "type": "string"
+                },
+                "org8": {
+                    "type": "string"
+                },
+                "org9": {
+                    "type": "string"
+                },
+                "org_display": {
+                    "type": "string"
+                },
+                "task_ancient_minutes": {
+                    "type": "number"
+                },
+                "task_diff_lines": {
+                    "type": "integer"
+                },
+                "task_efficiency_ratio": {
+                    "type": "number"
+                },
+                "task_real_minutes": {
+                    "type": "number"
+                },
+                "upstream_tokens": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_name": {
                     "type": "string"
                 }
             }

@@ -5,7 +5,7 @@
 
 echo "=== kbcli hourly cron started at $(date) ==="
 
-/app/bin/kbcli import-task
+/app/bin/kbcli import-conv
 /app/bin/kbcli import-repo
 /app/bin/kbcli silica
 /app/bin/kbcli efficiency

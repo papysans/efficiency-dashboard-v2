@@ -30,7 +30,6 @@ func GetTaskIDsForEstimation(db *gorm.DB, specificTaskID string) ([]string, erro
 func GetConvInputForEstimation(db *gorm.DB, taskID string) ([]string, []string, int64, int64, error) {
 	type row struct {
 		UserInput        *string
-		Diff             *string
 		DiffLines        *int64
 		UpstreamTokens   *int64
 		DownstreamTokens *int64
@@ -53,9 +52,9 @@ func GetConvInputForEstimation(db *gorm.DB, taskID string) ([]string, []string, 
 			userInputs = append(userInputs, *r.UserInput)
 			totalChars += int64(len(*r.UserInput))
 		}
-		if r.Diff != nil && *r.Diff != "" {
-			codeOutputs = append(codeOutputs, *r.Diff)
-		}
+		// if r.Diff != nil && *r.Diff != "" {
+		// 	codeOutputs = append(codeOutputs, *r.Diff)
+		// }
 		if r.DiffLines != nil {
 			totalLines += *r.DiffLines
 		}

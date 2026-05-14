@@ -36,13 +36,13 @@ type StatTask struct {
 	DownstreamTokens               int64      `json:"downstream_tokens"`
 	Cost                           float64    `json:"cost"`
 	TaskRealMinutes                *float64   `json:"task_real_minutes"`
-	TaskRealMinutesReason          string     `json:"task_real_minutes_reason"`
+	TaskRealReason          string     `json:"task_real_minutes_reason"`
 	TaskRealMinutesManual          *float64   `json:"task_real_minutes_manual"`
-	TaskRealMinutesReasonManual    string     `json:"task_real_minutes_reason_manual"`
+	TaskRealReasonManual    string     `json:"task_real_minutes_reason_manual"`
 	TaskAncientMinutes             *float64   `json:"task_ancient_minutes"`
-	TaskAncientMinutesReason       string     `json:"task_ancient_minutes_reason"`
+	TaskAncientReason       string     `json:"task_ancient_minutes_reason"`
 	TaskAncientMinutesManual       *float64   `json:"task_ancient_minutes_manual"`
-	TaskAncientMinutesReasonManual string     `json:"task_ancient_minutes_reason_manual"`
+	TaskAncientReasonManual string     `json:"task_ancient_minutes_reason_manual"`
 	Title                          string     `json:"title"`
 	CreatedAt                      time.Time  `json:"created_at"`
 	UpdatedAt                      time.Time  `json:"updated_at"`
@@ -91,9 +91,9 @@ type StatCommit struct {
 	WorkDirId                        string          `json:"work_dir_id"`
 	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
-	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
+	CommitAncientReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
+	CommitAncientReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
 	TaskAcceptRatios                 json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
@@ -104,9 +104,9 @@ type StatCommit struct {
 	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
-	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
+	CommitRealReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
-	CommitRealMinutesReasonManual    string          `json:"commit_real_minutes_reason_manual"`
+	CommitRealReasonManual    string          `json:"commit_real_minutes_reason_manual"`
 	Comment                          string          `json:"comment"`
 	CreatedAt                        time.Time       `json:"created_at"`
 	UpdatedAt                        time.Time       `json:"updated_at"`
@@ -127,17 +127,17 @@ type Project struct {
 	DownstreamTokens                      int64           `json:"downstream_tokens"`
 	Cost                                  float64         `json:"cost"`
 	ProjectAncientMinutes                 *float64        `json:"project_ancient_minutes"`
-	ProjectAncientMinutesReason           string          `json:"project_ancient_minutes_reason"`
+	ProjectAncientReason           string          `json:"project_ancient_minutes_reason"`
 	ProjectAncientMinutesManual           *float64        `json:"project_ancient_minutes_manual"`
-	ProjectAncientMinutesReasonManual     string          `json:"project_ancient_minutes_reason_manual"`
+	ProjectAncientReasonManual     string          `json:"project_ancient_minutes_reason_manual"`
 	ProjectRealProcessMinutes             *float64        `json:"project_real_process_minutes"`
-	ProjectRealProcessMinutesReason       string          `json:"project_real_process_minutes_reason"`
+	ProjectRealProcessReason       string          `json:"project_real_process_minutes_reason"`
 	ProjectRealProcessMinutesManual       *float64        `json:"project_real_process_minutes_manual"`
-	ProjectRealProcessMinutesReasonManual string          `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealProcessReasonManual string          `json:"project_real_process_minutes_reason_manual"`
 	ProjectRealLeadMinutes                *float64        `json:"project_real_lead_minutes"`
-	ProjectRealLeadMinutesReason          string          `json:"project_real_lead_minutes_reason"`
+	ProjectRealLeadReason          string          `json:"project_real_lead_minutes_reason"`
 	ProjectRealLeadMinutesManual          *float64        `json:"project_real_lead_minutes_manual"`
-	ProjectRealLeadMinutesReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
+	ProjectRealLeadReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
 	CreatedAt                             time.Time       `json:"created_at"`
 	UpdatedAt                             time.Time       `json:"updated_at"`
 }
@@ -199,11 +199,11 @@ type ProjectAggregates struct {
 	DownstreamTokens                int64
 	Cost                            float64
 	ProjectAncientMinutes           *float64
-	ProjectAncientMinutesReason     string
+	ProjectAncientReason     string
 	ProjectRealProcessMinutes       *float64
-	ProjectRealProcessMinutesReason string
+	ProjectRealProcessReason string
 	ProjectRealLeadMinutes          *float64
-	ProjectRealLeadMinutesReason    string
+	ProjectRealLeadReason    string
 }
 
 type CommitLightStats struct {
@@ -306,13 +306,13 @@ func toStatTask(t *models.Task) *StatTask {
 		DownstreamTokens:               t.DownstreamTokens,
 		Cost:                           t.Cost,
 		TaskRealMinutes:                toFloat64Ptr(t.TaskRealMinutes),
-		TaskRealMinutesReason:          t.TaskRealMinutesReason,
+		TaskRealReason:          t.TaskRealReason,
 		TaskRealMinutesManual:          t.TaskRealMinutesManual,
-		TaskRealMinutesReasonManual:    t.TaskRealMinutesReasonManual,
+		TaskRealReasonManual:    t.TaskRealReasonManual,
 		TaskAncientMinutes:             toFloat64Ptr(t.TaskAncientMinutes),
-		TaskAncientMinutesReason:       t.TaskAncientMinutesReason,
+		TaskAncientReason:       t.TaskAncientReason,
 		TaskAncientMinutesManual:       t.TaskAncientMinutesManual,
-		TaskAncientMinutesReasonManual: t.TaskAncientMinutesReasonManual,
+		TaskAncientReasonManual: t.TaskAncientReasonManual,
 		Title:                          t.Title,
 		CreatedAt:                      t.CreatedAt,
 		UpdatedAt:                      t.UpdatedAt,
@@ -345,9 +345,9 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		WorkDirId:                        c.WorkDirId,
 		DiffLines:                        c.DiffLines,
 		CommitAncientMinutes:             c.CommitAncientMinutes,
-		CommitAncientMinutesReason:       c.CommitAncientMinutesReason,
+		CommitAncientReason:       c.CommitAncientReason,
 		CommitAncientMinutesManual:       c.CommitAncientMinutesManual,
-		CommitAncientMinutesReasonManual: c.CommitAncientMinutesReasonManual,
+		CommitAncientReasonManual: c.CommitAncientReasonManual,
 		TaskIds:                          strJSONToRaw(c.TaskIds),
 		TaskIdsSilica:                    strJSONToRaw(c.TaskIdsSilica),
 		TaskAcceptRatios:                 strJSONToRaw(c.TaskAcceptRatios),
@@ -358,9 +358,9 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		CommitRealAiMinutes:              c.CommitRealAiMinutes,
 		CommitRealAncientMinutes:         c.CommitRealAncientMinutes,
 		CommitRealMinutes:                c.CommitRealMinutes,
-		CommitRealMinutesReason:          c.CommitRealMinutesReason,
+		CommitRealReason:          c.CommitRealReason,
 		CommitRealMinutesManual:          c.CommitRealMinutesManual,
-		CommitRealMinutesReasonManual:    c.CommitRealMinutesReasonManual,
+		CommitRealReasonManual:    c.CommitRealReasonManual,
 		Comment:                          c.Comment,
 		CreatedAt:                        c.CreatedAt,
 		UpdatedAt:                        c.UpdatedAt,
@@ -428,17 +428,17 @@ func toProject(p *models.Project) *Project {
 		DownstreamTokens:                      p.DownstreamTokens,
 		Cost:                                  p.Cost,
 		ProjectAncientMinutes:                 p.ProjectAncientMinutes,
-		ProjectAncientMinutesReason:           p.ProjectAncientMinutesReason,
+		ProjectAncientReason:           p.ProjectAncientReason,
 		ProjectAncientMinutesManual:           p.ProjectAncientMinutesManual,
-		ProjectAncientMinutesReasonManual:     p.ProjectAncientMinutesReasonManual,
+		ProjectAncientReasonManual:     p.ProjectAncientReasonManual,
 		ProjectRealProcessMinutes:             p.ProjectRealProcessMinutes,
-		ProjectRealProcessMinutesReason:       p.ProjectRealProcessMinutesReason,
+		ProjectRealProcessReason:       p.ProjectRealProcessReason,
 		ProjectRealProcessMinutesManual:       p.ProjectRealProcessMinutesManual,
-		ProjectRealProcessMinutesReasonManual: p.ProjectRealProcessMinutesReasonManual,
+		ProjectRealProcessReasonManual: p.ProjectRealProcessReasonManual,
 		ProjectRealLeadMinutes:                p.ProjectRealLeadMinutes,
-		ProjectRealLeadMinutesReason:          p.ProjectRealLeadMinutesReason,
+		ProjectRealLeadReason:          p.ProjectRealLeadReason,
 		ProjectRealLeadMinutesManual:          p.ProjectRealLeadMinutesManual,
-		ProjectRealLeadMinutesReasonManual:    p.ProjectRealLeadMinutesReasonManual,
+		ProjectRealLeadReasonManual:    p.ProjectRealLeadReasonManual,
 		CreatedAt:                             p.CreatedAt,
 		UpdatedAt:                             p.UpdatedAt,
 	}
@@ -1006,20 +1006,20 @@ func UpdateProjectManual(db *gorm.DB, projectID string, req UpdateProjectManualR
 	if req.ProjectAncientMinutesManual != nil {
 		updates["project_ancient_minutes_manual"] = *req.ProjectAncientMinutesManual
 	}
-	if req.ProjectAncientMinutesReasonManual != nil {
-		updates["project_ancient_minutes_reason_manual"] = *req.ProjectAncientMinutesReasonManual
+	if req.ProjectAncientReasonManual != nil {
+		updates["project_ancient_minutes_reason_manual"] = *req.ProjectAncientReasonManual
 	}
 	if req.ProjectRealProcessMinutesManual != nil {
 		updates["project_real_process_minutes_manual"] = *req.ProjectRealProcessMinutesManual
 	}
-	if req.ProjectRealProcessMinutesReasonManual != nil {
-		updates["project_real_process_minutes_reason_manual"] = *req.ProjectRealProcessMinutesReasonManual
+	if req.ProjectRealProcessReasonManual != nil {
+		updates["project_real_process_minutes_reason_manual"] = *req.ProjectRealProcessReasonManual
 	}
 	if req.ProjectRealLeadMinutesManual != nil {
 		updates["project_real_lead_minutes_manual"] = *req.ProjectRealLeadMinutesManual
 	}
-	if req.ProjectRealLeadMinutesReasonManual != nil {
-		updates["project_real_lead_minutes_reason_manual"] = *req.ProjectRealLeadMinutesReasonManual
+	if req.ProjectRealLeadReasonManual != nil {
+		updates["project_real_lead_minutes_reason_manual"] = *req.ProjectRealLeadReasonManual
 	}
 	if req.StartTimeManual != nil {
 		updates["start_time_manual"] = *req.StartTimeManual
@@ -1051,11 +1051,11 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 		"downstream_tokens":                   agg.DownstreamTokens,
 		"cost":                                agg.Cost,
 		"project_ancient_minutes":             agg.ProjectAncientMinutes,
-		"project_ancient_minutes_reason":      agg.ProjectAncientMinutesReason,
+		"project_ancient_minutes_reason":      agg.ProjectAncientReason,
 		"project_real_process_minutes":        agg.ProjectRealProcessMinutes,
-		"project_real_process_minutes_reason": agg.ProjectRealProcessMinutesReason,
+		"project_real_process_minutes_reason": agg.ProjectRealProcessReason,
 		"project_real_lead_minutes":           agg.ProjectRealLeadMinutes,
-		"project_real_lead_minutes_reason":    agg.ProjectRealLeadMinutesReason,
+		"project_real_lead_minutes_reason":    agg.ProjectRealLeadReason,
 		"updated_at":                          time.Now(),
 	}
 	result := db.Model(&models.Project{}).Where("project_id = ?", projectID).Updates(updates)

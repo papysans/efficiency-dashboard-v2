@@ -60,7 +60,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `kbcli import-task` | 导入 AI 任务原始数据 |
+| `kbcli import-conv` | 导入 AI 任务原始数据 |
 | `kbcli import-repo` | 导入仓库与 Commit 数据 |
 | `kbcli import-org`  | 导入用户组织架构映射 |
 | `kbcli silica`      | 计算 Commit 含硅量（AI 生成代码占比） |

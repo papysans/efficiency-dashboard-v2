@@ -25,7 +25,7 @@ var taskQueue *TaskQueue
 // validTaskTypes 定义支持的任务类型
 var validTaskTypes = map[string]bool{
 	"import":      true,
-	"import-task": true,
+	"import-conv": true,
 	"import-repo": true,
 	"import-org":  true,
 	"silica":      true,
@@ -49,7 +49,7 @@ type ErrorResponse struct {
 type CreateTaskResponse struct {
 	TaskId string `json:"task_id" example:"abc123"`
 	Status string `json:"status" example:"pending"`
-	Type   string `json:"type" example:"import-task"`
+	Type   string `json:"type" example:"import-conv"`
 }
 
 // CancelTaskResponse 取消任务响应
@@ -67,8 +67,8 @@ type TaskListResponse struct {
 	Total int          `json:"total" example:"1"`
 }
 
-// ImportTaskBody import-task 请求体
-type ImportTaskBody struct {
+// importConvBody import-conv 请求体
+type importConvBody struct {
 	TaskDir     string `json:"task_dir" example:"/path/to/task"`
 	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
 	Force       bool   `json:"force" example:"false"`
@@ -129,18 +129,18 @@ func healthHandler(c *gin.Context) {
 }
 
 // createTaskHandler 创建异步任务
-// @Summary 提交 import-task 异步任务
-// @Description 将 import-task 逻辑以异步任务方式提交到队列执行
+// @Summary 提交 import-conv 异步任务
+// @Description 将 import-conv 逻辑以异步任务方式提交到队列执行
 // @Tags tasks
 // @Accept json
 // @Produce json
-// @Param body body ImportTaskBody true "请求参数"
+// @Param body body importConvBody true "请求参数"
 // @Success 202 {object} CreateTaskResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 405 {object} ErrorResponse
-// @Router /api/tasks/import-task [post]
-func createImportTaskHandler(c *gin.Context) {
-	createTaskHandlerFunc("import-task", c)
+// @Router /api/tasks/import-conv [post]
+func createimportConvHandler(c *gin.Context) {
+	createTaskHandlerFunc("import-conv", c)
 }
 
 // createImportRepoHandler 创建 import-repo 异步任务
@@ -205,7 +205,7 @@ func createEfficiencyHandler(c *gin.Context) {
 
 // createImportHandler 创建 import 异步任务
 // @Summary 提交 import 异步任务
-// @Description 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-task → import-repo → import-org → silica → efficiency
+// @Description 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org → silica → efficiency
 // @Tags tasks
 // @Accept json
 // @Produce json
@@ -344,7 +344,7 @@ func setupRouter() *gin.Engine {
 
 	// 任务创建接口
 	r.POST("/api/tasks/import", createImportHandler)
-	r.POST("/api/tasks/import-task", createImportTaskHandler)
+	r.POST("/api/tasks/import-conv", createimportConvHandler)
 	r.POST("/api/tasks/import-repo", createImportRepoHandler)
 	r.POST("/api/tasks/import-org", createImportOrgHandler)
 	r.POST("/api/tasks/silica", createSilicaHandler)

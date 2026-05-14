@@ -104,7 +104,7 @@ export PGPASSWORD='1' && psql -U postgres -d report -c "SQL"
 - 结果：12列+11列成功合并（列数差1，在允许范围内）
 
 #### kbcli import 报错 "invalid character '{' after top-level value"
-**错误现象**：`kbcli import-task` 导入 conversation 文件时，报错第N行JSON解析失败，错误信息为 `invalid character '{' after top-level value`
+**错误现象**：`kbcli import-conv` 导入 conversation 文件时，报错第N行JSON解析失败，错误信息为 `invalid character '{' after top-level value`
 **原因**：上游写入 conversation 的 .jsonl 文件时，两个 JSON 对象写到了同一行，没有用换行符分隔，如 `{"a":1}{"a":2}`
 **排查步骤**：
 1. 打开报错的 conversation .jsonl 文件，定位到报错行号

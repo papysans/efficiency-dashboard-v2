@@ -22,7 +22,7 @@ kbcli/
 ```
 
 该脚本会以 **force 模式** 执行以下命令：
-- `kbcli import-task -f`
+- `kbcli import-conv -f`
 - `kbcli import-repo -f`
 - `kbcli import-org`
 - `kbcli silica -f`
@@ -37,7 +37,7 @@ kbcli/
 ```
 
 执行内容：
-- `kbcli import-task`
+- `kbcli import-conv`
 - `kbcli import-repo`
 - `kbcli silica`
 - `kbcli efficiency`
@@ -121,7 +121,7 @@ serve:
   port: 8080
   crontab:
     - schedule: "0 0 * * * *"
-      command: import-task
+      command: import-conv
       params:
         force: false
     - schedule: "0 5 * * * *"

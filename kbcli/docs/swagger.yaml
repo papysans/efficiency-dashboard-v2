@@ -43,7 +43,7 @@ definitions:
         example: abc123
         type: string
       type:
-        example: import-task
+        example: import-conv
         type: string
     type: object
   main.EfficiencyBody:
@@ -112,14 +112,20 @@ definitions:
         example: /path/to/repo
         type: string
     type: object
-  main.ImportTaskBody:
+  main.importConvBody:
     properties:
       analysed_dir:
         example: ./analysed
         type: string
+      end_date:
+        example: "2024-01-31"
+        type: string
       force:
         example: false
         type: boolean
+      start_date:
+        example: "2024-01-01"
+        type: string
       task_dir:
         example: /path/to/task
         type: string
@@ -282,7 +288,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-task → import-repo → import-org
+      description: 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org
         → silica → efficiency
       parameters:
       - description: 请求参数
@@ -369,18 +375,18 @@ paths:
       summary: 提交 import-repo 异步任务
       tags:
       - tasks
-  /api/tasks/import-task:
+  /api/tasks/import-conv:
     post:
       consumes:
       - application/json
-      description: 将 import-task 逻辑以异步任务方式提交到队列执行
+      description: 将 import-conv 逻辑以异步任务方式提交到队列执行
       parameters:
       - description: 请求参数
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.ImportTaskBody'
+          $ref: '#/definitions/main.importConvBody'
       produces:
       - application/json
       responses:
@@ -396,7 +402,7 @@ paths:
           description: Method Not Allowed
           schema:
             $ref: '#/definitions/main.ErrorResponse'
-      summary: 提交 import-task 异步任务
+      summary: 提交 import-conv 异步任务
       tags:
       - tasks
   /api/tasks/silica:

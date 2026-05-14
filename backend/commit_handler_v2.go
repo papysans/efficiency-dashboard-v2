@@ -25,13 +25,13 @@ type CommitListItem struct {
 	WorkDir                          string          `json:"work_dir"`
 	DiffLines                        int             `json:"diff_lines"`
 	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
-	CommitAncientMinutesReason       string          `json:"commit_ancient_minutes_reason"`
+	CommitAncientReason       string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientMinutesReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
+	CommitAncientReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
 	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
-	CommitRealMinutesReason          string          `json:"commit_real_minutes_reason"`
+	CommitRealReason          string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
-	CommitRealMinutesReasonManual    string          `json:"commit_real_minutes_reason_manual"`
+	CommitRealReasonManual    string          `json:"commit_real_minutes_reason_manual"`
 	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
 	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
 	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
@@ -76,9 +76,9 @@ type RelatedTask struct {
 
 type UpdateCommitManualRequest struct {
 	CommitAncientMinutesManual       *float64 `json:"commit_ancient_minutes_manual"`
-	CommitAncientMinutesReasonManual *string  `json:"commit_ancient_minutes_reason_manual"`
+	CommitAncientReasonManual *string  `json:"commit_ancient_minutes_reason_manual"`
 	CommitRealMinutesManual          *float64 `json:"commit_real_minutes_manual"`
-	CommitRealMinutesReasonManual    *string  `json:"commit_real_minutes_reason_manual"`
+	CommitRealReasonManual    *string  `json:"commit_real_minutes_reason_manual"`
 }
 
 type CommitDetailResponse struct {
@@ -190,13 +190,13 @@ func listCommitsV2(c *gin.Context) {
 			WorkDir:                          commit.WorkDir,
 			DiffLines:                        commit.DiffLines,
 			CommitAncientMinutes:             commit.CommitAncientMinutes,
-			CommitAncientMinutesReason:       commit.CommitAncientMinutesReason,
+			CommitAncientReason:       commit.CommitAncientReason,
 			CommitAncientMinutesManual:       commit.CommitAncientMinutesManual,
-			CommitAncientMinutesReasonManual: commit.CommitAncientMinutesReasonManual,
+			CommitAncientReasonManual: commit.CommitAncientReasonManual,
 			CommitRealMinutes:                commit.CommitRealMinutes,
-			CommitRealMinutesReason:          commit.CommitRealMinutesReason,
+			CommitRealReason:          commit.CommitRealReason,
 			CommitRealMinutesManual:          commit.CommitRealMinutesManual,
-			CommitRealMinutesReasonManual:    commit.CommitRealMinutesReasonManual,
+			CommitRealReasonManual:    commit.CommitRealReasonManual,
 			CommitRealAiMinutes:              commit.CommitRealAiMinutes,
 			CommitRealAncientMinutes:         commit.CommitRealAncientMinutes,
 			TaskIds:                          commit.TaskIds,
@@ -340,7 +340,7 @@ func updateCommitManualV2(c *gin.Context) {
 		return
 	}
 
-	if err := UpdateStatCommitManual(statDB, commitId, req.CommitAncientMinutesManual, req.CommitAncientMinutesReasonManual, req.CommitRealMinutesManual, req.CommitRealMinutesReasonManual); err != nil {
+	if err := UpdateStatCommitManual(statDB, commitId, req.CommitAncientMinutesManual, req.CommitAncientReasonManual, req.CommitRealMinutesManual, req.CommitRealReasonManual); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}

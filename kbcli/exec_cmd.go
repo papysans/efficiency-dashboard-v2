@@ -7,8 +7,8 @@ func createTaskExecutor(taskType string, params map[string]interface{}) (func() 
 	switch taskType {
 	case "import":
 		return func() error { return executeImport(params) }, nil
-	case "import-task":
-		return func() error { return executeImportTask(params) }, nil
+	case "import-conv":
+		return func() error { return executeImportConv(params) }, nil
 	case "import-repo":
 		return func() error { return executeImportRepo(params) }, nil
 	case "import-org":
@@ -72,14 +72,14 @@ func getIntParam(params map[string]interface{}, key string, defaultVal int) int 
 	return defaultVal
 }
 
-func executeImportTask(params map[string]interface{}) error {
+func executeImportConv(params map[string]interface{}) error {
 	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
 	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	return runImportTask(taskDir, analysedDir, force, startDate, endDate, date)
+	return runImportConv(taskDir, analysedDir, force, startDate, endDate, date)
 }
 
 func executeImportRepo(params map[string]interface{}) error {
@@ -132,7 +132,7 @@ func executeImport(params map[string]interface{}) error {
 		name string
 		fn   func() error
 	}{
-		{"import-task", func() error { return runImportTask(taskDir, analysedDir, force, startDate, endDate, date) }},
+		{"import-conv", func() error { return runImportConv(taskDir, analysedDir, force, startDate, endDate, date) }},
 		{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force, startDate, endDate, date) }},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
 		{"silica", func() error { return runSilica(analysedDir, force, maxDays, startDate, endDate, date) }},

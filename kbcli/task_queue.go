@@ -104,15 +104,27 @@ func (q *TaskQueue) Submit(taskType string, params map[string]interface{}, fn fu
 	q.tasks[taskID] = task
 	q.mu.Unlock()
 
-	select {
-	case q.taskCh <- taskID:
-	case <-taskCtx.Done():
-		q.mu.Lock()
-		task.Status = TaskStatusCancelled
-		now := time.Now()
-		task.CompletedAt = &now
-		q.mu.Unlock()
-	}
+	func() {
+		defer func() {
+			if recover() != nil {
+				// Channel was closed (queue stopped), mark as cancelled
+				q.mu.Lock()
+				task.Status = TaskStatusCancelled
+				now := time.Now()
+				task.CompletedAt = &now
+				q.mu.Unlock()
+			}
+		}()
+		select {
+		case q.taskCh <- taskID:
+		case <-taskCtx.Done():
+			q.mu.Lock()
+			task.Status = TaskStatusCancelled
+			now := time.Now()
+			task.CompletedAt = &now
+			q.mu.Unlock()
+		}
+	}()
 
 	return task
 }
