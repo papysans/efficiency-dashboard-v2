@@ -7,9 +7,11 @@ import (
 	"kanban/core/models"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/spf13/cobra"
@@ -17,10 +19,12 @@ import (
 
 // convMeta 存储单个对话（conversation）的元数据，用于在组内标识一次AI交互。
 type convMeta struct {
-	sessionId string    // 所属的session
-	requestId string    // 对话请求ID，在一个session中，是唯一的，标识一次AI请求
-	DiffLines int64     // 对话生成的代码行数
-	endTime   time.Time // 对话结束时间，用于与commit时间进行先后比较
+	sessionId      string    // 所属的session
+	requestId      string    // 对话请求ID，在一个session中，是唯一的，标识一次AI请求
+	DiffLines      int       // 对话生成的代码行数
+	UserInputChars int       // 对话的用户输入字符数
+	startTime      time.Time // 对话开始时间
+	endTime        time.Time // 对话结束时间，用于与commit时间进行先后比较
 }
 
 type sessionMeta struct {
@@ -185,12 +189,20 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			if conv.EndTime != "" {
 				endTime, _ = time.Parse(time.RFC3339, conv.EndTime)
 			}
+			// 解析对话开始时间
+			var startTime time.Time
+			if conv.StartTime != "" {
+				startTime, _ = time.Parse(time.RFC3339, conv.StartTime)
+			}
 
 			// 创建对话元数据对象
 			cm := &convMeta{
-				sessionId: ss.SessionId,
-				requestId: conv.RequestId,
-				endTime:   endTime,
+				sessionId:      ss.SessionId,
+				requestId:      conv.RequestId,
+				DiffLines:      len(conv.Fingerprints),
+				UserInputChars: conv.UserInputChars,
+				startTime:      startTime,
+				endTime:        endTime,
 			}
 			session.conversations = append(session.conversations, cm)
 
@@ -330,13 +342,15 @@ type sessionConvs struct {
 	matchLines int
 }
 
-// computeCommitSilica 计算commit的含硅量（silica）。
-//
-// computeCommitSilica 计算commit的含硅量（silica）和代码采纳率（taskAcceptRatios）。
+// computeCommitSilica 构建对该Commit产生贡献的Task，并计算每个Task的代码贡献率(即含硅量silica),以及Commit的总含硅量。
 //
 // 参数:
+//   - gi: 和该Commit相关的分组索引
 //   - hashs: 候选指纹索引，键为指纹，值为生成该指纹的对话元数据。
-//   - taskTotalLines: taskID -> 该task下所有对话的指纹总数，用于计算代码采纳率。
+//
+// 定义:
+//
+//	Task: 同一个会话(Session)下的一组为该提交(Commit)贡献了代码的对话(Conversation)
 //
 // 关键技术原理:
 //
@@ -345,32 +359,44 @@ type sessionConvs struct {
 // 具体计算步骤：
 //  1. 遍历commit的所有指纹，统计在 hashs 中存在的匹配行数，并对匹配到的convMeta按sessionId分组，同一个会话为一组,保存在map[string]sessionConvs中，sessionConvs记录一个会话的所有对话convMeta
 //  2. 按convMeta聚合匹配行数，实现对话级精确归因。该匹配行数也累加到convMeta所在的sessionConvs中。
-//  4. 将一个会话匹配到的所有convMeta按EndTime排序，得到最早一个convMeta(firstConv)和最晚一个convMeta(lastConv).
-//  5. 从session中获取从firstConv到lastConv之间的所有对话，构建一个models.Task（newTask），设这些对话的TaskId为newTask的TaskId(即这些对话从属于newTask)
-//  6. 计算每个models.Task的各项数据：
+//  3. 将一个会话匹配到的所有convMeta按EndTime排序，得到最早一个convMeta(firstConv)和最晚一个convMeta(lastConv).
+//  4. 从session中获取从firstConv到lastConv之间的所有对话，构建一个models.Task（newTask），
+//     newTask的task_id是随机生成的uuid，设这些对话的TaskId为newTask的TaskId(即这些对话从属于newTask)
+//  5. 计算每个models.Task的各项数据：
 //     含硅量(Silica) = 该session下所有对话匹配行数 / commit总行数。
 //     代码接受率(AcceptRatio)=该task下所有对话匹配行数 / 该task总代码行数
 //     TaskRealMinutes(调用calcTaskRealMinutes)
 //     TaskAncientMinutes(调用estimateTaskAncientMinutes)，
 //     开始时间，结束时间等
-//  7. Commit的总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
+//  6. Commit的总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
 //
 // 注意：
 //
 //	同一task可能包含多个对话，这些对话的匹配行数会合并到该task的silica中。
 func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*convMeta) []models.Task {
-	// convMatchedLines 用于按对话维度聚合匹配行数，键格式为 "taskID|requestID"
-	convMatchedLines := make(map[string]float64)
 	p.totalLines = len(p.fpHashs)
 	matchedLines := 0
 
-	// 第一步：逐行匹配commit指纹与候选AI指纹
+	// 第一步：遍历commit的所有指纹，统计在hashs中存在的匹配行数
+	// convMatchedLines 用于按对话维度聚合匹配行数，键格式为 "sessionId|requestId"
+	convMatchedLines := make(map[string]int)
+	// sessionConvsMap 记录每个session的匹配情况
+	sessionConvsMap := make(map[string]*sessionConvs)
+
 	for _, hash := range p.fpHashs {
 		if cm, ok := hashs[hash]; ok {
-			// 使用 taskID|requestID 组合键区分不同对话的匹配贡献
 			key := cm.sessionId + "|" + cm.requestId
-			convMatchedLines[key] += 1.0
+			convMatchedLines[key]++
 			matchedLines++
+
+			sc, exists := sessionConvsMap[cm.sessionId]
+			if !exists {
+				sc = &sessionConvs{
+					SessionId: cm.sessionId,
+				}
+				sessionConvsMap[cm.sessionId] = sc
+			}
+			sc.matchLines++
 		}
 	}
 
@@ -381,35 +407,96 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 	p.totalSilica = 0
 
 	// 无匹配或commit为空时直接返回零值
-	if p.totalLines == 0 || len(convMatchedLines) == 0 {
-		return
+	if p.totalLines == 0 || len(sessionConvsMap) == 0 {
+		return nil
 	}
 
-	// 第二步：按 taskID 聚合，计算每个task的含硅量和匹配行数
-	taskSilicaMap := make(map[string]float64)
-	taskMatchedLinesMap := make(map[string]float64)
-	for convKey, matched := range convMatchedLines {
-		// 单个对话的含硅量 = 其匹配行数 / commit总行数
-		silica := matched / float64(p.totalLines)
-		parts := strings.SplitN(convKey, "|", 2)
-		taskID := parts[0]
-		taskSilicaMap[taskID] += silica // 同一task下多个对话的silica累加
-		taskMatchedLinesMap[taskID] += matched
-	}
+	var tasks []models.Task
 
-	// 第三步：将map结果转存为有序切片（按taskID遍历顺序）
-	for taskID, silica := range taskSilicaMap {
-		p.taskIDs = append(p.taskIDs, taskID)
-		p.taskSilicas = append(p.taskSilicas, silica)
-		p.totalSilica += silica
-
-		// 计算代码采纳率 = 该task匹配行数 / 该task总代码行数
-		if total, ok := taskTotalLines[taskID]; ok && total > 0 {
-			p.taskAcceptRatios = append(p.taskAcceptRatios, taskMatchedLinesMap[taskID]/float64(total))
-		} else {
-			p.taskAcceptRatios = append(p.taskAcceptRatios, 0)
+	// 遍历每个session，构建Task
+	for sessionId, sc := range sessionConvsMap {
+		session, ok := gi.Sessions[sessionId]
+		if !ok {
+			continue
 		}
+
+		// 收集该session下所有匹配到的convMeta
+		var matchedConvs []*convMeta
+		for _, cm := range session.conversations {
+			key := cm.sessionId + "|" + cm.requestId
+			if _, ok := convMatchedLines[key]; ok {
+				matchedConvs = append(matchedConvs, cm)
+			}
+		}
+
+		if len(matchedConvs) == 0 {
+			continue
+		}
+
+		// 第三步：将匹配到的convMeta按EndTime排序
+		sort.Slice(matchedConvs, func(i, j int) bool {
+			return matchedConvs[i].endTime.Before(matchedConvs[j].endTime)
+		})
+
+		firstConv := matchedConvs[0]
+		lastConv := matchedConvs[len(matchedConvs)-1]
+
+		// 第四步：从session中获取从firstConv到lastConv之间的所有对话
+		var validTimes []time.Time
+		var taskTotalLines int64
+		var taskTotalInchars int
+		var taskMatchLines int
+
+		for _, cm := range session.conversations {
+			if (!cm.endTime.Before(firstConv.endTime) && !cm.endTime.After(lastConv.endTime)) ||
+				cm.endTime.Equal(firstConv.endTime) || cm.endTime.Equal(lastConv.endTime) {
+				if !cm.startTime.IsZero() {
+					validTimes = append(validTimes, cm.startTime)
+				}
+				taskTotalLines += int64(cm.DiffLines)
+				taskTotalInchars += cm.UserInputChars
+
+				key := cm.sessionId + "|" + cm.requestId
+				if lines, ok := convMatchedLines[key]; ok {
+					taskMatchLines += lines
+				}
+			}
+		}
+
+		// 生成uuid作为task_id
+		taskId := uuid.Must(uuid.NewRandom()).String()
+
+		// 第五步：计算TaskRealMinutes和TaskAncientMinutes
+		realMinutes, realReason := calcTaskRealMinutes(validTimes, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
+		ancientMinutes, ancientReason := estimateTaskAncientMinutes(&cfg.AlgoEstimation, float64(taskTotalInchars), float64(taskTotalLines), realMinutes)
+
+		// 构建models.Task
+		task := models.Task{
+			TaskId:                   taskId,
+			SessionId:                sessionId,
+			StartTime:                firstConv.startTime,
+			EndTime:                  lastConv.endTime,
+			DiffLines:                int(taskTotalLines),
+			Silica:                   float64(sc.matchLines) / float64(p.totalLines),
+			TaskRealMinutes:          realMinutes,
+			TaskRealMinutesReason:    realReason,
+			TaskAncientMinutes:       ancientMinutes,
+			TaskAncientMinutesReason: ancientReason,
+		}
+
+		if taskTotalLines > 0 {
+			task.AcceptRatio = float64(taskMatchLines) / float64(taskTotalLines)
+		}
+
+		tasks = append(tasks, task)
+
+		p.taskIDs = append(p.taskIDs, taskId)
+		p.taskSilicas = append(p.taskSilicas, task.Silica)
+		p.taskAcceptRatios = append(p.taskAcceptRatios, task.AcceptRatio)
+		p.totalSilica += task.Silica
 	}
+
+	return tasks
 }
 
 // 参数:
@@ -586,7 +673,15 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 
 		// 在时间窗口内筛选候选指纹，并计算含硅量
 		candidateHashes := gi.buildCandidateHashs(commit.CommitTime, maxDays)
-		commitPs.computeCommitSilica(candidateHashes)
+		tasks := commitPs.computeCommitSilica(&gi, candidateHashes)
+
+		// 保存计算出的tasks到数据库
+		for _, task := range tasks {
+			task.CommitId = commitID
+			if err := db.Create(&task).Error; err != nil {
+				logWarnf("创建task失败 [%s]: %v", task.TaskId, err)
+			}
+		}
 
 		// 未匹配到任何task时，将commit的含硅量置零并更新数据库
 		if len(commitPs.taskIDs) == 0 {
