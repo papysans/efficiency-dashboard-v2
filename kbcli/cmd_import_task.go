@@ -307,7 +307,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	}
 	// 若存在有效对话，将其保存到 task_conversations 表
 	if len(conversations) > 0 {
-		if err := saveConversations(db, session.SessionId, conversations); err != nil {
+		if err := saveConversations(db, &ss, conversations); err != nil {
 			return fmt.Errorf("保存conversations失败: %w", err)
 		}
 	}
@@ -326,12 +326,25 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 // 返回值：事务执行过程中发生的错误。
 // 关键技术原理：通过 db.Transaction 开启事务，确保一批对话要么全部写入成功，要么全部回滚；
 // 复合唯一键 (task_id, request_id) 冲突时忽略插入，避免重复数据报错。
-func saveConversations(db *gorm.DB, sessionId string, conversations []taskConversation) error {
+func saveConversations(db *gorm.DB, ss *taskSession, conversations []taskConversation) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
+			repoAddr := conv.RepoAddr
+			if repoAddr == "" {
+				repoAddr = ss.RepoAddr
+			}
+			repoBranch := conv.RepoBranch
+			if repoBranch == "" {
+				repoBranch = ss.RepoBranch
+			}
+			workDir := conv.WorkDir
+			if workDir == "" {
+				workDir = ss.WorkDir
+			}
+			workDirId := utils.GenerateWorkDirID(ss.ClientId, workDir)
 			// 转换字段并对文本内容进行清洗，防止非法字符入库
 			tc := models.TaskConversation{
-				TaskId:           sessionId,
+				TaskId:           ss.SessionId,
 				RequestId:        conv.RequestId,
 				Sender:           conv.Sender,
 				PromptMode:       conv.PromptMode,
@@ -350,6 +363,10 @@ func saveConversations(db *gorm.DB, sessionId string, conversations []taskConver
 				DiffLines:        conv.DiffLines,
 				ErrorCode:        string(conv.ErrorCode),
 				ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
+				RepoAddr:         repoAddr,
+				RepoBranch:       repoBranch,
+				WorkDir:          workDir,
+				WorkDirId:        workDirId,
 			}
 
 			// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败

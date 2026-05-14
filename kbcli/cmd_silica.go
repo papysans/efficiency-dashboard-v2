@@ -167,7 +167,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 				continue
 			}
 			if conv.RepoAddr == "" {
-				logDebugf("文件[%s]对话[%d]缺失字段[repo_addr]", silicaFile)
+				logDebugf("文件[%s]对话[%d]缺失字段[repo_addr]", silicaFile, i)
 				skipCount++
 				continue
 			}

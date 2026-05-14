@@ -70,6 +70,10 @@ type StatTaskConversation struct {
 	DiffLines        int64     `json:"diff_lines"`
 	ErrorCode        string    `json:"error_code"`
 	ErrorReason      string    `json:"error_reason"`
+	RepoAddr         string    `json:"repo_addr"`
+	RepoBranch       string    `json:"repo_branch"`
+	WorkDir          string    `json:"work_dir"`
+	WorkDirId        string    `json:"work_dir_id"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -296,8 +300,8 @@ func toStatTask(t *models.Task) *StatTask {
 		WorkDir:                        t.WorkDir,
 		WorkDirId:                      t.WorkDirId,
 		DiffLines:                      t.DiffLines,
-		StartTime:                      t.StartTime,
-		EndTime:                        t.EndTime,
+		StartTime:                      &t.StartTime,
+		EndTime:                        &t.EndTime,
 		UpstreamTokens:                 t.UpstreamTokens,
 		DownstreamTokens:               t.DownstreamTokens,
 		Cost:                           t.Cost,
@@ -397,6 +401,10 @@ func toStatTaskConversation(c *models.TaskConversation) *StatTaskConversation {
 		DiffLines:        c.DiffLines,
 		ErrorCode:        c.ErrorCode,
 		ErrorReason:      c.ErrorReason,
+		RepoAddr:         c.RepoAddr,
+		RepoBranch:       c.RepoBranch,
+		WorkDir:          c.WorkDir,
+		WorkDirId:        c.WorkDirId,
 		CreatedAt:        c.CreatedAt,
 	}
 }

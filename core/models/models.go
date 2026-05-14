@@ -141,6 +141,10 @@ type TaskConversation struct {
 	DiffLines        int64     `gorm:"type:bigint" json:"diff_lines"`
 	ErrorCode        string    `gorm:"type:varchar(100)" json:"error_code"`
 	ErrorReason      string    `gorm:"type:text" json:"error_reason"`
+	RepoAddr         string    `gorm:"type:text" json:"repo_addr"`
+	RepoBranch       string    `gorm:"type:varchar(500)" json:"repo_branch"`
+	WorkDir          string    `gorm:"type:text" json:"work_dir"`
+	WorkDirId        string    `gorm:"type:varchar(500);index" json:"work_dir_id"`
 	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 

@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS task_conversations (
     diff_lines BIGINT,
     error_code VARCHAR(100),
     error_reason TEXT,
+    repo_addr TEXT,
+    repo_branch VARCHAR(500),
+    work_dir TEXT,
+    work_dir_id VARCHAR(500),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(task_id, request_id)
 );
@@ -71,6 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_work_dir_id ON tasks(work_dir_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_start_time ON tasks(start_time);
 CREATE INDEX IF NOT EXISTS idx_task_conversations_task_id ON task_conversations(task_id);
 CREATE INDEX IF NOT EXISTS idx_task_conversations_start_time ON task_conversations(start_time);
+CREATE INDEX IF NOT EXISTS idx_task_conversations_work_dir_id ON task_conversations(work_dir_id);
 
 -- commits 表
 CREATE TABLE IF NOT EXISTS commits (

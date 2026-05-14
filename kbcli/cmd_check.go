@@ -296,11 +296,11 @@ func (ctx *checkContext) checkSummaries() error {
 			continue
 		}
 
-		if summary.TaskId == "" {
-			ctx.addIssue("error", path, taskID, "", "missing-task-id", "task_id", "task_id为空，该数据无法被索引和关联")
-		} else if summary.TaskId != taskID {
-			ctx.addIssue("warn", path, taskID, "", "task-id-mismatch", "task_id",
-				fmt.Sprintf("文件内task_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", summary.TaskId, taskID))
+		if summary.SessionId == "" {
+			ctx.addIssue("error", path, taskID, "", "missing-session-id", "session_id", "session_id为空，该数据无法被索引和关联")
+		} else if summary.SessionId != taskID {
+			ctx.addIssue("warn", path, taskID, "", "session-id-mismatch", "session_id",
+				fmt.Sprintf("文件内session_id(%s)与文件名(%s)不一致，可能导致数据关联混乱", summary.SessionId, taskID))
 		}
 		if summary.UserId == "" {
 			ctx.addIssue("warn", path, taskID, "", "missing-user-id", "user_id", "user_id为空，将导致该任务无法按用户聚合统计")
@@ -309,36 +309,13 @@ func (ctx *checkContext) checkSummaries() error {
 			ctx.addIssue("info", path, taskID, "", "missing-user-name", "user_name", "user_name为空，用户显示名可能缺失")
 		}
 		if summary.RepoAddr == "" {
-			ctx.addIssue("info", path, taskID, "", "missing-repo-addr", "repo_addr", "repo_addr为空，该任务无法参与silica含硅量计算")
+			ctx.addIssue("info", path, taskID, "", "missing-repo-addr", "repo_addr", "repo_addr为空，conversation将无法继承该值参与silica含硅量计算")
 		}
 		if summary.ClientId == "" {
 			ctx.addIssue("info", path, taskID, "", "missing-client-id", "client_id", "client_id为空，work_dir_id生成将受影响")
 		}
 		if summary.WorkDir == "" {
 			ctx.addIssue("info", path, taskID, "", "missing-work-dir", "work_dir", "work_dir为空，work_dir_id生成将受影响")
-		}
-		if summary.DiffLines < 0 {
-			ctx.addIssue("error", path, taskID, "", "diff-lines-negative", "diff_lines",
-				fmt.Sprintf("diff_lines为负值(%d)，将导致估时计算异常", summary.DiffLines))
-		}
-
-		// diff_lines 与 diff 内容一致性检查
-		actualLines := countDiffLines(summary.Diff)
-		if summary.DiffLines > 0 && actualLines == 0 {
-			ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
-				fmt.Sprintf("diff_lines=%d 但diff内容实际可解析出%d行，diff可能为空或格式异常", summary.DiffLines, actualLines))
-		} else if summary.DiffLines == 0 && actualLines > 0 {
-			ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
-				fmt.Sprintf("diff_lines=0 但diff内容实际可解析出%d行", actualLines))
-		} else if summary.DiffLines > 0 && actualLines > 0 {
-			if isDiffLinesMismatch(summary.DiffLines, actualLines) {
-				diff := summary.DiffLines - actualLines
-				if diff < 0 {
-					diff = -diff
-				}
-				ctx.addIssue("warn", path, taskID, "", "diff-lines-mismatch", "diff_lines",
-					fmt.Sprintf("diff_lines=%d 与diff内容解析出的%d行差异过大(差值=%d)", summary.DiffLines, actualLines, diff))
-			}
 		}
 	}
 	return nil
@@ -446,6 +423,22 @@ func (ctx *checkContext) checkConversations() error {
 				ctx.addIssue("info", path, taskID, "", "empty-response-content", "response_content",
 					fmt.Sprintf("第%d行response_content为空", lineNum))
 			}
+			if conv.Caller == "" {
+				ctx.addIssue("info", path, taskID, "", "missing-caller", "caller",
+					fmt.Sprintf("第%d行caller为空，将尝试从session继承", lineNum))
+			}
+			if conv.RepoAddr == "" {
+				ctx.addIssue("info", path, taskID, "", "missing-repo-addr", "repo_addr",
+					fmt.Sprintf("第%d行repo_addr为空，将尝试从session继承，若session也为空则无法参与silica含硅量计算", lineNum))
+			}
+			if conv.RepoBranch == "" {
+				ctx.addIssue("info", path, taskID, "", "missing-repo-branch", "repo_branch",
+					fmt.Sprintf("第%d行repo_branch为空，将尝试从session继承", lineNum))
+			}
+			if conv.WorkDir == "" {
+				ctx.addIssue("info", path, taskID, "", "missing-work-dir", "work_dir",
+					fmt.Sprintf("第%d行work_dir为空，将尝试从session继承，work_dir_id生成将受影响", lineNum))
+			}
 
 			// diff_lines 检查
 			actualLines := countDiffLines(conv.Diff)
@@ -474,29 +467,6 @@ func (ctx *checkContext) checkConversations() error {
 			totalDownstream += conv.DownstreamTokens
 		}
 
-		// 与summary的diff_lines对比
-		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
-			summaryData, err := os.ReadFile(summaryPath)
-			if err == nil {
-				var summary taskSession
-				if err := json.Unmarshal(summaryData, &summary); err == nil {
-					if summary.DiffLines > 0 && totalDiffLines > 0 {
-						diff := summary.DiffLines - int(totalDiffLines)
-						if diff < 0 {
-							diff = -diff
-						}
-						if diff > 100 || (float64(diff)/float64(summary.DiffLines)) > 0.5 {
-							ctx.addIssue("warn", path, taskID, "", "conversation-diff-sum-mismatch", "diff_lines",
-								fmt.Sprintf("conversation中diff_lines累加=%d，但summary中diff_lines=%d，差异过大(差值=%d)", totalDiffLines, summary.DiffLines, diff))
-						}
-					} else if summary.DiffLines > 0 && totalDiffLines == 0 {
-						ctx.addIssue("warn", path, taskID, "", "conversation-diff-sum-mismatch", "diff_lines",
-							fmt.Sprintf("summary中diff_lines=%d，但所有conversation的diff_lines均为0", summary.DiffLines))
-					}
-				}
-			}
-		}
-
 		if totalUpstream == 0 && len(convs) > 0 {
 			ctx.addIssue("info", path, taskID, "", "zero-upstream-tokens", "upstream_tokens",
 				"所有conversation的upstream_tokens累加为0，token消耗统计将为空")
@@ -514,46 +484,6 @@ func (ctx *checkContext) checkConversations() error {
 				"所有conversation的diff内容均为空，无法生成代码指纹，该task将无法参与silica含硅量计算")
 		}
 
-		// 与summary的diff_lines交叉对比：summary=0但conv>0
-		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
-			summaryData, err := os.ReadFile(summaryPath)
-			if err == nil {
-				var summary taskSession
-				if err := json.Unmarshal(summaryData, &summary); err == nil {
-					if summary.DiffLines == 0 && totalDiffLines > 0 {
-						ctx.addIssue("warn", path, taskID, "", "summary-diff-zero-conv-has-diff", "diff_lines",
-							fmt.Sprintf("summary中diff_lines=0，但conversation中diff_lines累加=%d，数据不一致", totalDiffLines))
-					}
-				}
-			}
-		}
-
-		// 与summary的diff_lines交叉对比：基于conversation diff内容实际统计的diff_lines汇总
-		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
-			summaryData, err := os.ReadFile(summaryPath)
-			if err == nil {
-				var summary taskSession
-				if err := json.Unmarshal(summaryData, &summary); err == nil {
-					if summary.DiffLines > 0 && totalActualDiffLines > 0 {
-						diff := summary.DiffLines - int(totalActualDiffLines)
-						if diff < 0 {
-							diff = -diff
-						}
-						// 允许小误差：绝对差值>10 且 相对差值>10%
-						if diff > 10 && (float64(diff)/float64(summary.DiffLines)) > 0.1 {
-							ctx.addIssue("warn", path, taskID, "", "conv-actual-diff-sum-mismatch", "diff_lines",
-								fmt.Sprintf("conversation中diff内容实际统计行数=%d，但summary中diff_lines=%d，差异超出小误差范围(差值=%d)", totalActualDiffLines, summary.DiffLines, diff))
-						}
-					} else if summary.DiffLines > 0 && totalActualDiffLines == 0 {
-						ctx.addIssue("warn", path, taskID, "", "conv-actual-diff-sum-mismatch", "diff_lines",
-							fmt.Sprintf("summary中diff_lines=%d，但所有conversation的diff内容均为空或不可解析", summary.DiffLines))
-					} else if summary.DiffLines == 0 && totalActualDiffLines > 0 {
-						ctx.addIssue("warn", path, taskID, "", "conv-actual-diff-sum-mismatch", "diff_lines",
-							fmt.Sprintf("summary中diff_lines=0，但conversation的diff内容实际统计行数=%d，数据不一致", totalActualDiffLines))
-					}
-				}
-			}
-		}
 	}
 	return nil
 }
@@ -837,17 +767,18 @@ var checkCmd = &cobra.Command{
 
 支持的 --ignore issue 类型：
   all-start-times-invalid, commit-diff-lines-negative, commit-empty-diff-content,
-  commit-id-mismatch, conv-actual-diff-sum-mismatch, conversation-diff-sum-mismatch, conversation-misplaced,
-  diff-lines-mismatch, diff-lines-negative, empty-diff-content, empty-request-content,
-  empty-response-content, empty-user-input, invalid-commit-time, invalid-end-time,
-  invalid-start-time, json-parse-failed, missing-client-id, missing-commit-id,
-  missing-commit-time, missing-conversation, missing-error-reason, missing-git-user,
-  missing-model, missing-repo-addr, missing-repo-branch, missing-request-id,
-  missing-start-time, missing-task-id, missing-user-id, missing-user-name,
-  missing-work-dir, negative-cost, negative-process-time, negative-tokens,
-  no-fingerprints, orphan-conversation, parse-failed, read-failed, start-after-end,
-  summary-diff-zero-conv-has-diff, task-id-mismatch, tokens-correlation-mismatch,
-  zero-downstream-tokens, zero-upstream-tokens`,
+  commit-id-mismatch, conversation-misplaced, diff-lines-mismatch,
+  empty-diff-content, empty-request-content, empty-response-content,
+  empty-user-input, invalid-commit-time, invalid-end-time,
+  invalid-start-time, json-parse-failed, missing-caller, missing-client-id,
+  missing-commit-id, missing-commit-time, missing-conversation,
+  missing-error-reason, missing-git-user, missing-model, missing-repo-addr,
+  missing-repo-branch, missing-request-id, missing-session-id,
+  missing-start-time, missing-user-id, missing-user-name, missing-work-dir,
+  negative-cost, negative-process-time, negative-tokens, no-fingerprints,
+  orphan-conversation, parse-failed, read-failed, session-id-mismatch,
+  start-after-end, tokens-correlation-mismatch, zero-downstream-tokens,
+  zero-upstream-tokens`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskDir, _ := cmd.Flags().GetString("task-dir")
 		repoDir, _ := cmd.Flags().GetString("repo-dir")

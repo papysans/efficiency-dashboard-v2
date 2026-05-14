@@ -14,16 +14,16 @@ func mkRFC3339(s string) string {
 	return t.Format(time.RFC3339)
 }
 
-func convWithStart(startTimes ...*string) []taskConversation {
-	var out []taskConversation
+func convWithStart(startTimes ...*string) []time.Time {
+	var out []time.Time
 	for _, st := range startTimes {
-		c := taskConversation{
-			RequestId: "req-test",
-		}
 		if st != nil {
-			c.StartTime = *st
+			t, err := time.Parse(time.RFC3339, *st)
+			if err != nil {
+				panic(err)
+			}
+			out = append(out, t)
 		}
-		out = append(out, c)
 	}
 	return out
 }
@@ -148,18 +148,4 @@ func TestCalcTaskRealMinutes_CustomParams(t *testing.T) {
 	convs := convWithStart(ptrStr(t1), ptrStr(t2), ptrStr(t3))
 	mins, _ := calcTaskRealMinutes(convs, 10, 3)
 	assertFloat(t, "minutes", mins, 14, 0.01)
-}
-
-// 1.12 start_time 格式异常 → 跳过无效解析
-func TestCalcTaskRealMinutes_InvalidTimeFormat(t *testing.T) {
-	t1 := mkRFC3339("2026-04-01 10:00:00")
-	convs := []taskConversation{
-		{StartTime: "not-a-valid-time", RequestId: "r1"},
-		{StartTime: t1, RequestId: "r2"},
-	}
-	mins, reason := calcTaskRealMinutes(convs, 30, 5)
-	assertFloat(t, "minutes", mins, 5, 0.01)
-	if reason != "仅1条对话，默认5分钟" {
-		t.Errorf("reason = %q", reason)
-	}
 }
