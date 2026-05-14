@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -302,11 +303,9 @@ func collectProjectUsers(project *Project, commitMap map[string]*StatCommit, tas
 		}
 	}
 
-	var matchedUsers []*models.UserOrg
+	userIDs := make([]string, 0, len(userSet))
 	for uid := range userSet {
-		if om, ok := orgMappings[uid]; ok {
-			matchedUsers = append(matchedUsers, om)
-		}
+		userIDs = append(userIDs, uid)
 	}
 
 	var startTime, endTime string
@@ -317,7 +316,7 @@ func collectProjectUsers(project *Project, commitMap map[string]*StatCommit, tas
 		endTime = project.EndTime.Format(time.RFC3339)
 	}
 
-	return GetUsersProductivity(statDB, matchedUsers, startTime, endTime)
+	return GetProductivityByIds(statDB, userIDs, startTime, endTime)
 }
 
 // recalculateProjectAggregates 重算虚拟项目的聚合数据
@@ -686,6 +685,18 @@ func getProjectDetailV2(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].EndTime == nil && tasks[j].EndTime == nil {
+			return false
+		}
+		if tasks[i].EndTime == nil {
+			return false
+		}
+		if tasks[j].EndTime == nil {
+			return true
+		}
+		return tasks[i].EndTime.After(*tasks[j].EndTime)
+	})
 
 	// 构建 commits 列表
 	commitItems := make([]ProjectCommitItem, 0, len(commitMap))
@@ -707,6 +718,9 @@ func getProjectDetailV2(c *gin.Context) {
 			Silica:                     cm.Silica,
 		})
 	}
+	sort.Slice(commitItems, func(i, j int) bool {
+		return commitItems[i].CommitTime.After(commitItems[j].CommitTime)
+	})
 
 	effRatio := utils.CalcEfficiencyRatioManual(project.ProjectAncientMinutes,
 		project.ProjectAncientMinutesManual, project.ProjectRealProcessMinutes, project.ProjectRealProcessMinutesManual)
