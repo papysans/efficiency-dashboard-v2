@@ -221,6 +221,18 @@ func collectProjectCommits(project *Project) (map[string]*StatCommit, error) {
 
 func collectProjectTasks(project *Project, commitMap map[string]*StatCommit) ([]ProjectTaskItem, error) {
 	taskSilicaMap := map[string]float64{}
+
+	for _, commit := range commitMap {
+		if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
+			var ids []string
+			if err := json.Unmarshal(commit.TaskIds, &ids); err == nil {
+				for _, id := range ids {
+					taskSilicaMap[id] = 1.0
+				}
+			}
+		}
+	}
+
 	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
 		var ids []string
 		var silicas []float64
@@ -234,19 +246,6 @@ func collectProjectTasks(project *Project, commitMap map[string]*StatCommit) ([]
 					s = silicas[i]
 				}
 				taskSilicaMap[id] = s
-			}
-		}
-	}
-
-	for _, commit := range commitMap {
-		if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
-			var ids []string
-			if err := json.Unmarshal(commit.TaskIds, &ids); err == nil {
-				for _, id := range ids {
-					if _, exists := taskSilicaMap[id]; !exists {
-						taskSilicaMap[id] = 1.0
-					}
-				}
 			}
 		}
 	}

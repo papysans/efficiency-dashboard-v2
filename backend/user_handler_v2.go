@@ -632,6 +632,12 @@ func aggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 			Cost:                pd.cost,
 		})
 	}
+	sort.Slice(commitsList, func(i, j int) bool {
+		return commitsList[i].PeriodKey > commitsList[j].PeriodKey
+	})
+	sort.Slice(tasksList, func(i, j int) bool {
+		return tasksList[i].PeriodKey > tasksList[j].PeriodKey
+	})
 	return commitsList, tasksList
 }
 
