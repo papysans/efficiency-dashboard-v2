@@ -181,7 +181,7 @@ func listUsersV2(c *gin.Context) {
 			continue
 		}
 
-		orgDisplay := filter.OrgDisplay(om)
+		orgDisplay := GetUserOrgPath(om)
 		item := UserListItem{
 			UserId:                row.UserId,
 			UserName:              row.UserName,
@@ -512,135 +512,6 @@ func listUsersV2(c *gin.Context) {
 	})
 }
 
-func periodKeyForTime(t time.Time, granularity string) (key string, label string) {
-	switch granularity {
-	case "week":
-		weekday := int(t.Weekday())
-		if weekday == 0 {
-			weekday = 7
-		}
-		monday := t.AddDate(0, 0, -(weekday - 1))
-		firstDay := time.Date(monday.Year(), monday.Month(), 1, 0, 0, 0, 0, t.Location())
-		firstWeekday := int(firstDay.Weekday())
-		if firstWeekday == 0 {
-			firstWeekday = 7
-		}
-		weekNum := (monday.Day()+firstWeekday-2)/7 + 1
-		if weekNum <= 0 {
-			weekNum = 1
-		}
-		key = fmt.Sprintf("%d%02d第%d周", monday.Year(), int(monday.Month()), weekNum)
-		label = key
-	case "month":
-		key = t.Format("2006-01")
-		label = fmt.Sprintf("%d年%02d月", t.Year(), int(t.Month()))
-	case "year":
-		key = t.Format("2006")
-		label = fmt.Sprintf("%d年", t.Year())
-	default:
-		key = t.Format("2006-01-02")
-		label = t.Format("2006-01-02")
-	}
-	return
-}
-
-func aggregateDailyByGranularity(daily []UserProductivity, granularity string) ([]CommitTimeSeriesItem, []TaskTimeSeriesItem) {
-	type periodData struct {
-		label            string
-		key              string
-		commitCount      int
-		taskCount        int
-		taskDiffLines    int
-		commitDiffLines  int
-		upTokens         int64
-		downTokens       int64
-		cost             float64
-		taskRealMin      float64
-		taskAncientMin   float64
-		commitRealMin    float64
-		commitAncientMin float64
-	}
-
-	orderKeys := make([]string, 0)
-	periodMap := make(map[string]*periodData)
-
-	for _, d := range daily {
-		if d.CreateTime.IsZero() {
-			continue
-		}
-		key, label := periodKeyForTime(d.CreateTime, granularity)
-		pd, exists := periodMap[key]
-		if !exists {
-			pd = &periodData{key: key, label: label}
-			periodMap[key] = pd
-			orderKeys = append(orderKeys, key)
-		}
-		if d.TaskIds != nil {
-			var ids []interface{}
-			if json.Unmarshal(d.TaskIds, &ids) == nil {
-				pd.taskCount += len(ids)
-			}
-		}
-		if d.CommitIds != nil {
-			var ids []interface{}
-			if json.Unmarshal(d.CommitIds, &ids) == nil {
-				pd.commitCount += len(ids)
-			}
-		}
-		pd.taskDiffLines += d.TaskDiffLines
-		pd.commitDiffLines += d.CommitDiffLines
-		pd.upTokens += d.UpstreamTokens
-		pd.downTokens += d.DownstreamTokens
-		pd.cost += d.Cost
-		pd.taskRealMin += d.TaskRealMinutes
-		pd.taskAncientMin += d.TaskAncientMinutes
-		pd.commitRealMin += d.CommitRealMinutes
-		pd.commitAncientMin += d.CommitAncientMinutes
-	}
-
-	commitsList := make([]CommitTimeSeriesItem, 0, len(orderKeys))
-	tasksList := make([]TaskTimeSeriesItem, 0, len(orderKeys))
-
-	for _, key := range orderKeys {
-		pd := periodMap[key]
-		commitEffRatio := utils.CalcEfficiencyRatio(pd.commitAncientMin, pd.commitRealMin)
-		taskEffRatio := utils.CalcEfficiencyRatio(pd.taskAncientMin, pd.taskRealMin)
-
-		commitsList = append(commitsList, CommitTimeSeriesItem{
-			PeriodKey:             key,
-			PeriodLabel:           pd.label,
-			CommitCount:           pd.commitCount,
-			CommitDiffLines:       pd.commitDiffLines,
-			CommitRealMinutes:     pd.commitRealMin,
-			CommitAncientMinutes:  pd.commitAncientMin,
-			CommitEfficiencyRatio: commitEffRatio,
-			UpstreamTokens:        pd.upTokens,
-			DownstreamTokens:      pd.downTokens,
-			Cost:                  pd.cost,
-		})
-
-		tasksList = append(tasksList, TaskTimeSeriesItem{
-			PeriodKey:           key,
-			PeriodLabel:         pd.label,
-			TaskCount:           pd.taskCount,
-			TaskDiffLines:       pd.taskDiffLines,
-			TaskRealMinutes:     pd.taskRealMin,
-			TaskAncientMinutes:  pd.taskAncientMin,
-			TaskEfficiencyRatio: taskEffRatio,
-			UpstreamTokens:      pd.upTokens,
-			DownstreamTokens:    pd.downTokens,
-			Cost:                pd.cost,
-		})
-	}
-	sort.Slice(commitsList, func(i, j int) bool {
-		return commitsList[i].PeriodKey > commitsList[j].PeriodKey
-	})
-	sort.Slice(tasksList, func(i, j int) bool {
-		return tasksList[i].PeriodKey > tasksList[j].PeriodKey
-	})
-	return commitsList, tasksList
-}
-
 // getUserDetailV2 GET /api/v2/users/:userId
 // @Summary 获取用户详情
 // @Description 根据用户ID获取用户效率详情，包含每日数据、提交和任务时间序列
@@ -723,7 +594,7 @@ func getUserDetailV2(c *gin.Context) {
 
 	taskEffRatio := utils.CalcEfficiencyRatio(taskAncientMin, taskRealMin)
 	commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMin, commitRealMin)
-	commitsList, tasksList := aggregateDailyByGranularity(daily, granularity)
+	commitsList, tasksList := AggregateDailyByGranularity(daily, granularity)
 
 	summary := UserDetailSummary{
 		UserId:                userID,

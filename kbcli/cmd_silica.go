@@ -17,9 +17,15 @@ import (
 
 // convMeta 存储单个对话（conversation）的元数据，用于在组内标识一次AI交互。
 type convMeta struct {
-	taskID    string    // 所属的任务ID
-	requestID string    // 对话请求ID，唯一标识一次AI请求
+	sessionId string    // 所属的session
+	requestId string    // 对话请求ID，在一个session中，是唯一的，标识一次AI请求
+	DiffLines int64     // 对话生成的代码行数
 	endTime   time.Time // 对话结束时间，用于与commit时间进行先后比较
+}
+
+type sessionMeta struct {
+	sessionId     string
+	conversations []*convMeta
 }
 
 // groupKey 定义分组的复合键，将同一仓库下同一用户的对话归为一组。
@@ -36,17 +42,17 @@ type groupKey struct {
 // 保留 endTime 最晚的对话（见 buildConversationsIndexer 中的冲突处理逻辑），
 // 确保“最接近commit时间”的对话获得该指纹的归属权。
 type groupIndexer struct {
-	Lines          map[string]int // 代码行指纹 -> Convs数组索引，映射到生成该行的对话
-	Convs          []convMeta     // 同属于该组的对话
-	TaskTotalLines map[string]int // taskID -> 该task下所有对话的指纹总数，用于计算代码采纳率
+	Lines    map[string]*convMeta    // 代码行指纹 -> Convs数组索引，映射到生成该行的对话
+	Sessions map[string]*sessionMeta //sessionId -> sessionMeta对象
 }
 
 // conversationsIndexer 全局conversation指纹索引，聚合所有分组的数据。
 // 用于快速判断某行代码是否由某次AI对话生成。
 type conversationsIndexer struct {
-	groups    map[groupKey]groupIndexer // 分组索引
-	convCount int                       // 已加载的对话总数（仅用于统计）
-	hashCount int                       // 已加载的唯一指纹总数（仅用于统计）
+	groups       map[groupKey]groupIndexer // 分组索引
+	sessionCount int                       // 已加载的会话总数
+	convCount    int                       // 已加载的对话总数（仅用于统计）
+	hashCount    int                       // 已加载的唯一指纹总数（仅用于统计）
 }
 
 // commitParser 用于解析单个commit的指纹文件并计算含硅量及相关衍生指标。
@@ -101,7 +107,7 @@ func buildCommitParser(fpPath string) *commitParser {
 //  3. 在 groupIndexer.Lines 中维护“指纹 -> 对话索引”的映射。当同一指纹出现在多个对话中时，
 //     采用 endTime 最晚的对话作为归属（时间最近优先原则），这基于一个假设：
 //     越接近commit时间的对话，其生成代码被直接采纳的概率越高。
-//  4. 索引构建完成后，可通过 buildCandidateHashIndex 按时间窗口快速筛选候选指纹。
+//  4. 索引构建完成后，可通过 buildCandidateHashs 按时间窗口快速筛选候选指纹。
 func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) {
 	idx := &conversationsIndexer{
 		groups: make(map[groupKey]groupIndexer),
@@ -133,44 +139,47 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		logPromptProgress(i, 50) // 每处理50个文件打印一次进度
 
 		// 加载单个task的silica数据文件
-		tsd, err := loadTaskSilicaFile(silicaFile)
+		ss, err := loadTaskSilicaFile(silicaFile)
 		if err != nil {
 			logWarnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
 			skipCount++
 			continue
 		}
 		// 跳过缺少关键字段的文件，避免索引中出现无效分组
-		if tsd.TaskId == "" {
+		if ss.SessionId == "" {
 			logWarnf("文件[%s]缺失字段[task_id]", silicaFile)
 			skipCount++
 			continue
 		}
-		if tsd.RepoAddr == "" {
-			logDebugf("文件[%s]缺失字段[repo_addr]", silicaFile)
-			skipCount++
-			continue
-		}
 
-		// 按 repoAddr + userID 确定分组键
-		gk := groupKey{repoAddr: tsd.RepoAddr, userID: tsd.UserId}
-
-		// 获取或初始化该分组索引器
-		gi, exists := idx.groups[gk]
-		if !exists {
-			gi = groupIndexer{
-				Lines:          make(map[string]int),
-				Convs:          make([]convMeta, 0),
-				TaskTotalLines: make(map[string]int),
-			}
+		session := &sessionMeta{
+			sessionId: ss.SessionId,
 		}
 
 		// 第三步：遍历该task下的所有对话，将指纹注册到分组索引中
-		for i, conv := range tsd.Conversations {
+		for i, conv := range ss.Conversations {
 			if conv.RequestId == "" {
 				logWarnf("文件[%s]对话[%d]缺失字段[request_id]", silicaFile, i)
 				continue
 			}
+			if conv.RepoAddr == "" {
+				logDebugf("文件[%s]对话[%d]缺失字段[repo_addr]", silicaFile)
+				skipCount++
+				continue
+			}
 
+			// 按 repoAddr + userID 确定分组键
+			gk := groupKey{repoAddr: conv.RepoAddr, userID: ss.UserId}
+
+			// 获取或初始化该分组索引器
+			gi, exists := idx.groups[gk]
+			if !exists {
+				gi = groupIndexer{
+					Lines:    make(map[string]*convMeta),
+					Sessions: make(map[string]*sessionMeta),
+				}
+			}
+			gi.Sessions[ss.SessionId] = session
 			// 解析对话结束时间，用于后续的时间窗口筛选和冲突仲裁
 			var endTime time.Time
 			if conv.EndTime != "" {
@@ -178,26 +187,22 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			}
 
 			// 创建对话元数据对象
-			cm := convMeta{
-				taskID:    tsd.TaskId,
-				requestID: conv.RequestId,
+			cm := &convMeta{
+				sessionId: ss.SessionId,
+				requestId: conv.RequestId,
 				endTime:   endTime,
 			}
+			session.conversations = append(session.conversations, cm)
 
-			// 将该对话追加到分组的 Convs 切片中，记录其索引位置
-			convIdx := len(gi.Convs)
-			gi.Convs = append(gi.Convs, cm)
-
-			// 累加该task的指纹总数（用于计算代码采纳率）
-			gi.TaskTotalLines[tsd.TaskId] += len(conv.Fingerprints)
+			gi.Sessions[ss.SessionId] = session
 
 			// 第四步：注册该对话产生的所有代码行指纹
 			for _, h := range conv.Fingerprints {
-				prevIdx, prevExists := gi.Lines[h]
+				prevConv, prevExists := gi.Lines[h]
 				// 冲突仲裁：如果该指纹已存在，仅当当前对话的 endTime 更晚时才替换归属
 				// 这确保“最接近commit”的对话优先获得指纹归属权
-				if !prevExists || endTime.After(gi.Convs[prevIdx].endTime) {
-					gi.Lines[h] = convIdx
+				if !prevExists || endTime.After(prevConv.endTime) {
+					gi.Lines[h] = cm
 					if !prevExists {
 						idx.hashCount++ // 仅当新增唯一指纹时计数
 					}
@@ -205,8 +210,6 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 			}
 			idx.convCount++ // 累计对话总数
 		}
-		// 更新分组索引回全局索引
-		idx.groups[gk] = gi
 	}
 	logInfof("加载[%d]个对话文件，忽略[%d]个文件，共[%d]组对话", len(silicaFiles), skipCount, idx.convCount)
 	return idx, nil
@@ -225,14 +228,14 @@ func loadTaskSilicaFile(path string) (*taskSilicaData, error) {
 	if err != nil {
 		return nil, err
 	}
-	var tsd taskSilicaData
-	if err := json.Unmarshal(data, &tsd); err != nil {
+	var ss taskSilicaData
+	if err := json.Unmarshal(data, &ss); err != nil {
 		return nil, err
 	}
-	return &tsd, nil
+	return &ss, nil
 }
 
-// buildCandidateHashIndex 根据分组键和commit时间，构建候选指纹索引。
+// buildCandidateHashs 根据分组键和commit时间，构建候选指纹索引。
 //
 // 参数:
 //   - gk: 分组键（repoAddr + userID），用于定位对应的分组数据。
@@ -240,7 +243,7 @@ func loadTaskSilicaFile(path string) (*taskSilicaData, error) {
 //   - maxDays: 最大时间窗口（天数），仅选取在commit提交前 maxDays 天内结束的对话。
 //
 // 返回值:
-//   - map[string]convMeta: 符合条件的指纹到对话元数据的映射。
+//   - map[string]*convMeta: 符合条件的指纹到对话元数据的映射。
 //   - nil: 如果分组不存在或无符合条件的对话。
 //
 // 关键技术原理:
@@ -248,39 +251,20 @@ func loadTaskSilicaFile(path string) (*taskSilicaData, error) {
 //	采用“时间窗口过滤”策略。一个对话结束后，其生成的代码可能在短期内被开发者采纳并提交。
 //	超过 maxDays 的对话被认为与当前commit的关联性过低，予以排除。
 //	先筛选出符合条件的对话索引集合，再遍历 Lines 映射过滤出属于这些对话的指纹。
-func (idx *conversationsIndexer) buildCandidateHashIndex(gk groupKey, commitTime time.Time, maxDays int) map[string]convMeta {
-	gi, exists := idx.groups[gk]
-	if !exists || len(gi.Lines) == 0 {
-		return nil
-	}
-
+func (gi *groupIndexer) buildCandidateHashs(commitTime time.Time, maxDays int) map[string]*convMeta {
 	// 计算允许的最大时间差：maxDays 转换为 Duration
 	maxDuration := time.Duration(maxDays) * 24 * time.Hour
-
-	// 第一步：筛选出结束时间在 [commitTime-maxDuration, commitTime) 区间内的对话
-	candidateIndices := make(map[int]bool)
-	for i, m := range gi.Convs {
+	hashs := make(map[string]*convMeta)
+	for i, m := range gi.Lines {
 		if m.endTime.IsZero() {
 			continue // 跳过无结束时间的对话（无法判断时间关联性）
 		}
 		// 对话必须在commit之前结束，且与commit的时间差不超过maxDuration
 		if m.endTime.Before(commitTime) && commitTime.Sub(m.endTime) <= maxDuration {
-			candidateIndices[i] = true
+			hashs[i] = m
 		}
 	}
-
-	if len(candidateIndices) == 0 {
-		return nil
-	}
-
-	// 第二步：从 Lines 映射中提取仅属于候选对话的指纹
-	result := make(map[string]convMeta)
-	for hash, convIdx := range gi.Lines {
-		if candidateIndices[convIdx] {
-			result[hash] = gi.Convs[convIdx]
-		}
-	}
-	return result
+	return hashs
 }
 
 // loadFPHashes 从指纹文件中逐行读取所有非空指纹。
@@ -338,29 +322,43 @@ func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 	return files, err
 }
 
+type sessionConvs struct {
+	SessionId  string
+	convs      []*convMeta
+	startTime  time.Time
+	endTime    time.Time
+	matchLines int
+}
+
 // computeCommitSilica 计算commit的含硅量（silica）。
 //
 // computeCommitSilica 计算commit的含硅量（silica）和代码采纳率（taskAcceptRatios）。
 //
 // 参数:
-//   - hashToConv: 候选指纹索引，键为指纹，值为生成该指纹的对话元数据。
+//   - hashs: 候选指纹索引，键为指纹，值为生成该指纹的对话元数据。
 //   - taskTotalLines: taskID -> 该task下所有对话的指纹总数，用于计算代码采纳率。
 //
 // 关键技术原理:
 //
-//	含硅量定义为：commit中与AI对话指纹匹配的代码行所占的比例。
-//	代码采纳率定义为：commit中匹配的某task代码行占该task总代码行的比例。
-//	具体计算步骤：
-//	1. 遍历commit的所有指纹，统计在 hashToConv 中存在的匹配行数。
-//	2. 按 (taskID, requestID) 聚合匹配行数，实现对话级精确归因。
-//	3. 按 taskID 二次聚合，计算每个task的含硅量 = 该task下所有对话匹配行数 / commit总行数。
-//	4. 计算每个task的代码采纳率 = 该task下所有对话匹配行数 / 该task总代码行数。
-//	5. 总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
+// 含硅量定义为：commit中与AI对话指纹匹配的代码行所占的比例。
+// 代码采纳率定义为：commit中匹配的某task代码行占该task总代码行的比例。
+// 具体计算步骤：
+//  1. 遍历commit的所有指纹，统计在 hashs 中存在的匹配行数，并对匹配到的convMeta按sessionId分组，同一个会话为一组,保存在map[string]sessionConvs中，sessionConvs记录一个会话的所有对话convMeta
+//  2. 按convMeta聚合匹配行数，实现对话级精确归因。该匹配行数也累加到convMeta所在的sessionConvs中。
+//  4. 将一个会话匹配到的所有convMeta按EndTime排序，得到最早一个convMeta(firstConv)和最晚一个convMeta(lastConv).
+//  5. 从session中获取从firstConv到lastConv之间的所有对话，构建一个models.Task（newTask），设这些对话的TaskId为newTask的TaskId(即这些对话从属于newTask)
+//  6. 计算每个models.Task的各项数据：
+//     含硅量(Silica) = 该session下所有对话匹配行数 / commit总行数。
+//     代码接受率(AcceptRatio)=该task下所有对话匹配行数 / 该task总代码行数
+//     TaskRealMinutes(调用calcTaskRealMinutes)
+//     TaskAncientMinutes(调用estimateTaskAncientMinutes)，
+//     开始时间，结束时间等
+//  7. Commit的总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
 //
 // 注意：
 //
 //	同一task可能包含多个对话，这些对话的匹配行数会合并到该task的silica中。
-func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta, taskTotalLines map[string]int) {
+func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*convMeta) []models.Task {
 	// convMatchedLines 用于按对话维度聚合匹配行数，键格式为 "taskID|requestID"
 	convMatchedLines := make(map[string]float64)
 	p.totalLines = len(p.fpHashs)
@@ -368,9 +366,9 @@ func (p *commitParser) computeCommitSilica(hashToConv map[string]convMeta, taskT
 
 	// 第一步：逐行匹配commit指纹与候选AI指纹
 	for _, hash := range p.fpHashs {
-		if cm, ok := hashToConv[hash]; ok {
+		if cm, ok := hashs[hash]; ok {
 			// 使用 taskID|requestID 组合键区分不同对话的匹配贡献
-			key := cm.taskID + "|" + cm.requestID
+			key := cm.sessionId + "|" + cm.requestId
 			convMatchedLines[key] += 1.0
 			matchedLines++
 		}
@@ -581,14 +579,14 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 
 		// 使用commit的仓库地址和用户ID构建分组键
 		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserId}
+		gi, exists := idx.groups[gk]
+		if !exists {
+			continue
+		}
 
 		// 在时间窗口内筛选候选指纹，并计算含硅量
-		candidateHashes := idx.buildCandidateHashIndex(gk, commit.CommitTime, maxDays)
-		var taskTotalLines map[string]int
-		if gi, ok := idx.groups[gk]; ok {
-			taskTotalLines = gi.TaskTotalLines
-		}
-		commitPs.computeCommitSilica(candidateHashes, taskTotalLines)
+		candidateHashes := gi.buildCandidateHashs(commit.CommitTime, maxDays)
+		commitPs.computeCommitSilica(candidateHashes)
 
 		// 未匹配到任何task时，将commit的含硅量置零并更新数据库
 		if len(commitPs.taskIDs) == 0 {

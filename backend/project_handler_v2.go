@@ -97,7 +97,7 @@ type ProjectDetailResponse struct {
 	Project         *Project            `json:"project"`
 	Commits         []ProjectCommitItem `json:"commits"`
 	Tasks           []ProjectTaskItem   `json:"tasks"`
-	Members         []OrgMemberItem     `json:"members"`
+	Members         []UserDetail     `json:"members"`
 	EfficiencyRatio *float64            `json:"efficiency_ratio"`
 	UserCount       int                 `json:"user_count"`
 }
@@ -289,7 +289,7 @@ func collectProjectTasks(project *Project, commitMap map[string]*StatCommit) ([]
 	return tasks, nil
 }
 
-func collectProjectUsers(project *Project, commitMap map[string]*StatCommit, tasks []ProjectTaskItem) []OrgMemberItem {
+func collectProjectUsers(project *Project, commitMap map[string]*StatCommit, tasks []ProjectTaskItem) []UserDetail {
 	userSet := map[string]bool{}
 	for _, cm := range commitMap {
 		if cm.UserId != "" {

@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// taskSummary 表示单个任务的基本摘要信息，对应 summary 目录下的 JSON 文件。
-type taskSummary struct {
-	TaskId          string `json:"task_id"`
+// taskSession 表示一个session，是对话记录的上下文。
+type taskSession struct {
+	SessionId       string `json:"task_id"`
 	UserId          string `json:"user_id"`
 	UserName        string `json:"user_name"`
 	ClientId        string `json:"client_id"`
@@ -34,14 +34,16 @@ type taskSummary struct {
 	RepoAddr        string `json:"repo_addr"`
 	RepoBranch      string `json:"repo_branch"`
 	WorkDir         string `json:"work_dir"`
-	Diff            string `json:"diff"`
-	DiffLines       int    `json:"diff_lines"`
 }
 
 // taskConversation 表示一次任务中的单次对话记录，对应 conversation 目录下 JSONL 的每一行。
 type taskConversation struct {
 	Sender           string     `json:"sender"`
 	RequestId        string     `json:"request_id"`
+	Caller           string     `json:"caller"`
+	RepoAddr         string     `json:"repo_addr"`
+	RepoBranch       string     `json:"repo_branch"`
+	WorkDir          string     `json:"work_dir"`
 	PromptMode       string     `json:"prompt_mode"`
 	Mode             string     `json:"mode"`
 	Model            string     `json:"model"`
@@ -69,8 +71,7 @@ type taskConversation struct {
 
 // taskSilicaData 用于生成任务级别的 silica 摘要文件，保存到 analysedDir 中。
 type taskSilicaData struct {
-	TaskId          string                   `json:"task_id"`
-	RepoAddr        string                   `json:"repo_addr"`
+	SessionId       string                   `json:"session_id"`
 	UserId          string                   `json:"user_id"`
 	Size            int64                    `json:"size"`
 	ConversationNum int                      `json:"conversation_num"`
@@ -80,7 +81,9 @@ type taskSilicaData struct {
 // taskSilicaConversation 为 taskSilicaData 中的单条对话摘要，记录指纹信息。
 type taskSilicaConversation struct {
 	RequestId    string   `json:"request_id"`
+	StartTime    string   `json:"start_time"`
 	EndTime      string   `json:"end_time"`
+	RepoAddr     string   `json:"repo_addr"`
 	Fingerprints []string `json:"fingerprints"`
 }
 
@@ -129,110 +132,168 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 //   - estimateTaskAncientMinutes 基于输入字符数和代码行数，用线性因子模型估算原始工作量。
 var errSkipTask = errors.New("task skipped by date filter")
 
-func calcTaskRecord(summary *taskSummary, conversations []taskConversation) models.Task {
+func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Session {
 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
-	rec := models.Task{
-		TaskId:          summary.TaskId,
-		UserId:          summary.UserId,
-		UserName:        summary.UserName,
-		ClientId:        summary.ClientId,
-		ClientIde:       summary.ClientIde,
-		ClientVersion:   summary.ClientVersion,
-		ClientOs:        summary.ClientOs,
-		ClientOsVersion: summary.ClientOsVersion,
-		Caller:          summary.Caller,
-		RepoAddr:        summary.RepoAddr,
-		RepoBranch:      summary.RepoBranch,
-		WorkDir:         summary.WorkDir,
-		WorkDirId:       utils.GenerateWorkDirID(summary.ClientId, summary.WorkDir),
+	rec := models.Session{
+		SessionId:       ss.SessionId,
+		UserId:          ss.UserId,
+		UserName:        ss.UserName,
+		ClientId:        ss.ClientId,
+		ClientIde:       ss.ClientIde,
+		ClientVersion:   ss.ClientVersion,
+		ClientOs:        ss.ClientOs,
+		ClientOsVersion: ss.ClientOsVersion,
 	}
 
-	// 聚合变量：时间范围、Token、成本、代码行数
-	var startTime, endTime *time.Time
-	var totalUpstream, totalDownstream int64
-	var totalCost float64
-	var totalLines int64
-
 	// 遍历所有对话，解析时间并累加指标；时间解析失败则跳过该对话并记录警告
-	for _, conv := range conversations {
+	for i, conv := range conversations {
 		if conv.StartTime == "" {
-			logWarnf("conversation [%s-%s] 缺少start_time字段", summary.TaskId, conv.RequestId)
+			logWarnf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
 			continue
 		}
 		if conv.EndTime == "" {
-			logWarnf("conversation [%s-%s] 缺少end_time字段", summary.TaskId, conv.RequestId)
+			logWarnf("conversation [%s-%s] 缺少end_time字段", ss.SessionId, conv.RequestId)
 			continue
 		}
-		t1, err := time.Parse(time.RFC3339, conv.StartTime)
+		_, err := time.Parse(time.RFC3339, conv.StartTime)
 		if err != nil {
-			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", summary.TaskId, conv.RequestId, err)
+			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
 			continue
 		}
-		t2, err := time.Parse(time.RFC3339, conv.EndTime)
+		_, err = time.Parse(time.RFC3339, conv.EndTime)
 		if err != nil {
-			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", summary.TaskId, conv.RequestId, err)
+			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
 			continue
 		}
-		// 维护任务级别最早开始时间和最晚结束时间
-		if startTime == nil || t1.Before(*startTime) {
-			startTime = &t1
+		if conv.Caller == "" {
+			conversations[i].Caller = ss.Caller
 		}
-		if endTime == nil || t2.After(*endTime) {
-			endTime = &t2
+		if conv.RepoAddr == "" {
+			conversations[i].RepoAddr = ss.RepoAddr
 		}
-		totalUpstream += conv.UpstreamTokens
-		totalDownstream += conv.DownstreamTokens
-		totalCost += conv.Cost
-		totalLines += conv.DiffLines
+		if conv.RepoBranch == "" {
+			conversations[i].RepoBranch = ss.RepoBranch
+		}
+		if conv.WorkDir == "" {
+			conversations[i].WorkDir = ss.WorkDir
+		}
 	}
 
-	// 将聚合结果写入 Task 记录
-	rec.StartTime = startTime
-	rec.EndTime = endTime
-	rec.UpstreamTokens = totalUpstream
-	rec.DownstreamTokens = totalDownstream
-	rec.Cost = totalCost
-	rec.DiffLines = int(totalLines)
-
-	// 计算真实工作时长（基于时间片段合并算法）
-	minutes, reason := calcTaskRealMinutes(conversations, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
-	rec.TaskRealMinutes = minutes
-	rec.TaskRealMinutesReason = reason
-
-	// 估算原始工作量（基于输入字符数和代码行数的因子模型）
-	minutes, reason = estimateTaskAncientMinutes(&cfg.AlgoEstimation, conversations, rec.TaskRealMinutes)
-	rec.TaskAncientMinutes = minutes
-	rec.TaskAncientMinutesReason = reason
 	return rec
 }
 
+// func calcTaskRecord(ss *taskSession, conversations []taskConversation) models.Session {
+// 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
+// 	rec := models.Session{
+// 		SessionId:       ss.SessionId,
+// 		UserId:          ss.UserId,
+// 		UserName:        ss.UserName,
+// 		ClientId:        ss.ClientId,
+// 		ClientIde:       ss.ClientIde,
+// 		ClientVersion:   ss.ClientVersion,
+// 		ClientOs:        ss.ClientOs,
+// 		ClientOsVersion: ss.ClientOsVersion,
+// 	}
+// 	// workDirId := utils.GenerateWorkDirID(ss.ClientId, ss.WorkDir)
+
+// 	// 聚合变量：时间范围、Token、成本、代码行数
+// 	var startTime, endTime *time.Time
+// 	var totalUpstream, totalDownstream int64
+// 	var totalCost float64
+// 	var totalLines int64
+
+// 	// 遍历所有对话，解析时间并累加指标；时间解析失败则跳过该对话并记录警告
+// 	for i, conv := range conversations {
+// 		if conv.StartTime == "" {
+// 			logWarnf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
+// 			continue
+// 		}
+// 		if conv.EndTime == "" {
+// 			logWarnf("conversation [%s-%s] 缺少end_time字段", ss.SessionId, conv.RequestId)
+// 			continue
+// 		}
+// 		t1, err := time.Parse(time.RFC3339, conv.StartTime)
+// 		if err != nil {
+// 			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
+// 			continue
+// 		}
+// 		t2, err := time.Parse(time.RFC3339, conv.EndTime)
+// 		if err != nil {
+// 			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
+// 			continue
+// 		}
+// 		if conv.Caller == "" {
+// 			conversations[i].Caller = ss.Caller
+// 		}
+// 		if conv.RepoAddr == "" {
+// 			conversations[i].RepoAddr = ss.RepoAddr
+// 		}
+// 		if conv.RepoBranch == "" {
+// 			conversations[i].RepoBranch = ss.RepoBranch
+// 		}
+// 		if conv.WorkDir == "" {
+// 			conversations[i].WorkDir = ss.WorkDir
+// 		}
+// 		// 维护任务级别最早开始时间和最晚结束时间
+// 		if startTime == nil || t1.Before(*startTime) {
+// 			startTime = &t1
+// 		}
+// 		if endTime == nil || t2.After(*endTime) {
+// 			endTime = &t2
+// 		}
+// 		totalUpstream += conv.UpstreamTokens
+// 		totalDownstream += conv.DownstreamTokens
+// 		totalCost += conv.Cost
+// 		totalLines += conv.DiffLines
+// 	}
+
+// 	// 将聚合结果写入 Task 记录
+// 	rec.StartTime = startTime
+// 	rec.EndTime = endTime
+// 	rec.UpstreamTokens = totalUpstream
+// 	rec.DownstreamTokens = totalDownstream
+// 	rec.Cost = totalCost
+// 	rec.DiffLines = int(totalLines)
+
+// 	// 计算真实工作时长（基于时间片段合并算法）
+// 	minutes, reason := calcTaskRealMinutes(conversations, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
+// 	rec.TaskRealMinutes = minutes
+// 	rec.TaskRealMinutesReason = reason
+
+// 	// 估算原始工作量（基于输入字符数和代码行数的因子模型）
+// 	minutes, reason = estimateTaskAncientMinutes(&cfg.AlgoEstimation, conversations, rec.TaskRealMinutes)
+// 	rec.TaskAncientMinutes = minutes
+// 	rec.TaskAncientMinutesReason = reason
+// 	return rec
+// }
+
 // importSingleTask 导入单个任务到数据库。
-// 功能：读取 summary 和 conversation 文件，解析并计算任务记录，生成 silica 文件后写入数据库。
+// 功能：读取 ss 和 conversation 文件，解析并计算任务记录，生成 silica 文件后写入数据库。
 // 参数：
 //   - db: GORM 数据库连接，用于写入 tasks 和 task_conversations 表。
-//   - summaryPath: summary JSON 文件路径。
+//   - summaryPath: ss JSON 文件路径。
 //   - conversationPath: conversation JSONL 文件路径。
 //   - silicaPath: 输出 silica 文件的路径。
 //
 // 返回值：导入过程中发生的错误。
 // 关键技术原理：使用 GORM 的 clause.OnConflict 实现 UPSERT（冲突时更新指定列），保证多次导入幂等。
 func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath string, startDate, endDate *time.Time) error {
-	// 读取并解析 summary JSON 文件
+	// 读取并解析 ss JSON 文件
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
 		return fmt.Errorf("读取summary文件失败: %w", err)
 	}
 
-	var summary taskSummary
-	if err := json.Unmarshal(data, &summary); err != nil {
+	var ss taskSession
+	if err := json.Unmarshal(data, &ss); err != nil {
 		return fmt.Errorf("解析summary JSON失败: %w", err)
 	}
 
 	// 校验关键字段，防止写入无效数据
-	if summary.TaskId == "" {
-		return fmt.Errorf("task_id为空")
+	if ss.SessionId == "" {
+		return fmt.Errorf("session_id为空")
 	}
-	if summary.UserId == "" {
+	if ss.UserId == "" {
 		return fmt.Errorf("user_id为空")
 	}
 
@@ -242,64 +303,35 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 		return fmt.Errorf("解析conversation文件失败: %w", err)
 	}
 
-	// 根据 summary 和 conversations 计算完整的 Task 记录
-	task := calcTaskRecord(&summary, conversations)
-
-	// 日期范围过滤：EndTime 不在 [startDate, endDate] 范围内时跳过
-	if task.EndTime == nil {
-		logWarnf("任务[%s]的结束时间EndTime为空", task.TaskId)
-		return fmt.Errorf("end_time为空")
-	}
-	if startDate != nil && task.EndTime.Before(*startDate) {
-		logDebugf("跳过(EndTime在startDate之前): %s", summary.TaskId)
-		return errSkipTask
-	}
-	if endDate != nil && !task.EndTime.Before(*endDate) {
-		logDebugf("跳过(EndTime在endDate之后): %s", summary.TaskId)
-		return errSkipTask
-	}
+	// 根据 ss 和 conversations 计算完整的 Task 记录
+	session := calcTaskRecord(&ss, conversations)
 
 	// 生成 task silica 文件用于后续增量检测；失败仅记录警告，不阻断主流程
-	if err := generateTaskSilicaFile(&summary, conversations, conversationPath, silicaPath); err != nil {
-		logWarnf("生成task silica文件失败 [%s]: %v", summary.TaskId, err)
+	if err := generateTaskSilicaFile(&ss, conversations, conversationPath, silicaPath); err != nil {
+		logWarnf("生成task silica文件失败 [%s]: %v", ss.SessionId, err)
 	}
 
 	// 使用 UPSERT 写入 tasks 表：task_id 冲突时更新除主键外的业务字段
 	result := db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "task_id"}},
+		Columns: []clause.Column{{Name: "session_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"user_id", "user_name",
 			"client_id", "client_ide", "client_version",
-			"client_os", "client_os_version", "caller",
-			"repo_addr", "repo_branch", "work_dir", "work_dir_id",
-			"diff_lines",
-			"start_time", "end_time",
-			"upstream_tokens", "downstream_tokens", "cost",
-			"task_real_minutes", "task_real_minutes_reason",
-			"task_ancient_minutes", "task_ancient_minutes_reason",
+			"client_os", "client_os_version",
 			"updated_at",
 		}),
-	}).Create(&task)
+	}).Create(&session)
 	if result.Error != nil {
 		return fmt.Errorf("写入tasks表失败: %w", result.Error)
 	}
-
-	// 调试日志：输出估算时长信息
-	if task.TaskRealMinutes > 0 {
-		logDebugf("  task_real_minutes=%.1f (%s)", task.TaskRealMinutes, task.TaskRealMinutesReason)
-	}
-	if task.TaskAncientMinutes > 0 {
-		logDebugf("  task_ancient_minutes=%.1f (%s)", task.TaskAncientMinutes, task.TaskAncientMinutesReason)
-	}
-
 	// 若存在有效对话，将其保存到 task_conversations 表
 	if len(conversations) > 0 {
-		if err := saveConversations(db, task.TaskId, conversations); err != nil {
+		if err := saveConversations(db, session.SessionId, conversations); err != nil {
 			return fmt.Errorf("保存conversations失败: %w", err)
 		}
 	}
 
-	logDebugf("导入成功: %s", task.TaskId)
+	logDebugf("导入成功: %s", session.SessionId)
 	return nil
 }
 
@@ -307,18 +339,18 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 // 功能：逐条将 taskConversation 转换为 models.TaskConversation 后插入，冲突时忽略（DoNothing）。
 // 参数：
 //   - db: GORM 数据库连接。
-//   - taskID: 所属任务的唯一标识。
+//   - sessionId: 所属任务的唯一标识。
 //   - conversations: 需要保存的对话列表。
 //
 // 返回值：事务执行过程中发生的错误。
 // 关键技术原理：通过 db.Transaction 开启事务，确保一批对话要么全部写入成功，要么全部回滚；
 // 复合唯一键 (task_id, request_id) 冲突时忽略插入，避免重复数据报错。
-func saveConversations(db *gorm.DB, taskID string, conversations []taskConversation) error {
+func saveConversations(db *gorm.DB, sessionId string, conversations []taskConversation) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
 			// 转换字段并对文本内容进行清洗，防止非法字符入库
 			tc := models.TaskConversation{
-				TaskId:           taskID,
+				TaskId:           sessionId,
 				RequestId:        conv.RequestId,
 				Sender:           conv.Sender,
 				PromptMode:       conv.PromptMode,
@@ -785,14 +817,14 @@ func splitConversations(line string) ([]string, error) {
 // generateTaskSilicaFile 为指定任务生成 silica 摘要文件。
 // 功能：汇总任务的 conversation 信息，提取每条对话新增代码行的指纹，序列化为 JSON 后写入磁盘。
 // 参数：
-//   - summary: 任务摘要，用于填充 silica 中的基础信息。
+//   - ss: 任务摘要，用于填充 silica 中的基础信息。
 //   - conversations: 该任务的所有对话列表。
 //   - conversationPath: 原始 conversation 文件路径，用于获取文件大小作为增量检测依据。
 //   - silicaPath: 输出 silica 文件的目标路径。
 //
 // 返回值：文件写入过程中发生的错误。
 // 关键技术原理：calcLineFingerprint 为每行新增代码生成稳定指纹，用于后续任务间的代码相似度分析。
-func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversation, conversationPath, silicaPath string) error {
+func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, conversationPath, silicaPath string) error {
 	// 获取 conversation 文件大小，用于后续增量导入时判断是否需要更新
 	var fileSize int64
 	if info, err := os.Stat(conversationPath); err == nil {
@@ -801,14 +833,13 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 
 	// 组装 taskSilicaData 基础信息
 	tsd := taskSilicaData{
-		TaskId:          summary.TaskId,
-		RepoAddr:        summary.RepoAddr,
-		UserId:          summary.UserId,
+		SessionId:       ss.SessionId,
+		UserId:          ss.UserId,
 		Size:            fileSize,
 		ConversationNum: len(conversations),
 	}
-	if summary.RepoAddr == "" {
-		logDebugf("任务[%s]无法关联Commit,忽略代码指纹信息生成", summary.TaskId)
+	if ss.RepoAddr == "" {
+		logDebugf("任务[%s]无法关联Commit,忽略代码指纹信息生成", ss.SessionId)
 	}
 
 	// 逐条对话提取新增代码行的指纹
@@ -819,14 +850,16 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 		}
 
 		var fingerprints []string
-		if summary.RepoAddr != "" {
+		if ss.RepoAddr != "" {
 			for _, al := range conv.addedLines {
 				fingerprints = append(fingerprints, calcLineFingerprint(al))
 			}
 		}
 		tsc := taskSilicaConversation{
 			RequestId:    conv.RequestId,
+			StartTime:    conv.StartTime,
 			EndTime:      conv.EndTime,
+			RepoAddr:     conv.RepoAddr,
 			Fingerprints: fingerprints,
 		}
 		tsd.Conversations = append(tsd.Conversations, tsc)
@@ -853,28 +886,47 @@ func generateTaskSilicaFile(summary *taskSummary, conversations []taskConversati
 	return nil
 }
 
-// scanConversationFiles 扫描 conversation 目录下所有 .jsonl 文件，建立 taskID -> 文件路径 映射。
-// 功能：递归遍历目录，收集以 .jsonl 结尾的文件；若同一 taskID 对应多个路径，保留字典序更大的路径。
+// scanConversationFiles 扫描 conversation 目录下所有 .jsonl 文件，建立 sessionId -> 文件路径 映射。
+// 功能：递归遍历目录，收集以 .jsonl 结尾的文件；若同一 sessionId 对应多个路径，保留字典序更大的路径。
 // 参数：
 //   - conversationDir: conversation 文件所在根目录。
+//   - startDate: 开始日期（含），nil 表示不限。
+//   - endDate: 结束日期（不含），nil 表示不限。
 //
 // 返回值：taskID 到文件路径的映射；扫描失败时返回错误。
-func scanConversationFiles(conversationDir string) (map[string]string, error) {
+func scanConversationFiles(conversationDir string, startDate, endDate *time.Time) (map[string]string, error) {
 	convMap := make(map[string]string)
 	// 目录不存在时返回空映射，不做报错处理
 	if _, err := os.Stat(conversationDir); os.IsNotExist(err) {
 		return convMap, nil
 	}
+
 	err := filepath.Walk(conversationDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		// 仅处理 .jsonl 文件
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".jsonl") {
-			taskID := strings.TrimSuffix(info.Name(), ".jsonl")
-			// 若存在同名 taskID 的多个文件，保留字典序更大的路径（通常表示更晚生成或更优先的版本）
-			if existing, ok := convMap[taskID]; !ok || path > existing {
-				convMap[taskID] = path
+			// 从相对路径中提取日期信息 YYYY/MM/DD
+			relPath, err := filepath.Rel(conversationDir, path)
+			if err != nil {
+				return err
+			}
+			dateStr := filepath.ToSlash(filepath.Dir(relPath))
+			fileDate, err := time.Parse("2006/01/02", dateStr)
+			if err != nil {
+				// 路径格式不符合预期，跳过该文件
+				return nil
+			}
+			// 日期范围过滤：不在 [startDate, endDate) 范围内时跳过
+			if !isActiveTimeInRange(fileDate, startDate, endDate) {
+				return nil
+			}
+
+			sessionId := strings.TrimSuffix(info.Name(), ".jsonl")
+			// 若存在同名 sessionId 的多个文件，保留字典序更大的路径（通常表示更晚生成或更优先的版本）
+			if existing, ok := convMap[sessionId]; !ok || path > existing {
+				convMap[sessionId] = path
 			}
 		}
 		return nil
@@ -885,17 +937,17 @@ func scanConversationFiles(conversationDir string) (map[string]string, error) {
 	return convMap, nil
 }
 
-// scanSummaryFiles 扫描 summary 目录下所有 .json 文件，建立 taskID -> 文件路径 映射。
-// 功能：递归遍历目录，收集以 .json 结尾的文件；若同一 taskID 对应多个路径，保留字典序更大的路径。
+// scanSessionFiles 扫描 ss 目录下所有 .json 文件，建立 sessionId -> 文件路径 映射。
+// 功能：递归遍历目录，收集以 .json 结尾的文件；若同一 sessionId 对应多个路径，保留字典序更大的路径。
 // 参数：
-//   - summaryDir: summary 文件所在根目录。
+//   - summaryDir: ss 文件所在根目录。
 //
 // 返回值：taskID 到文件路径的映射；扫描失败时返回错误。
-func scanSummaryFiles(summaryDir string) (map[string]string, error) {
-	summaryMap := make(map[string]string)
+func scanSessionFiles(summaryDir string) (map[string]string, error) {
+	sessionMap := make(map[string]string)
 	// 目录不存在时返回空映射
 	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
-		return summaryMap, nil
+		return sessionMap, nil
 	}
 	err := filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -903,10 +955,10 @@ func scanSummaryFiles(summaryDir string) (map[string]string, error) {
 		}
 		// 仅处理 .json 文件
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
-			taskID := strings.TrimSuffix(info.Name(), ".json")
+			sessionId := strings.TrimSuffix(info.Name(), ".json")
 			// 同名冲突时保留字典序更大的路径
-			if existing, ok := summaryMap[taskID]; !ok || path > existing {
-				summaryMap[taskID] = path
+			if existing, ok := sessionMap[sessionId]; !ok || path > existing {
+				sessionMap[sessionId] = path
 			}
 		}
 		return nil
@@ -914,7 +966,7 @@ func scanSummaryFiles(summaryDir string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("扫描summary目录失败: %w", err)
 	}
-	return summaryMap, nil
+	return sessionMap, nil
 }
 
 // needUpdateConversations 判断是否需要重新导入某任务的 conversation 数据。
@@ -956,7 +1008,7 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 //
 // 返回值：导入流程中发生的不可恢复错误。
 // 关键技术原理：
-//  1. 分别扫描 summary 和 conversation 目录，按 taskID 建立映射。
+//  1. 分别扫描 summary 和 conversation 目录，按 sessionId 建立映射。
 //  2. 对每个 conversation 文件，先检查是否存在对应 summary；再调用 needUpdateConversations 进行增量检测。
 //  3. 调用 importSingleTask 完成单任务导入，并统计成功/失败/跳过数量。
 //  4. 通过 recordCommandRun 记录命令执行结果，便于运维监控和审计。
@@ -988,13 +1040,13 @@ func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDat
 	defer sqlDB.Close()
 
 	// 扫描 conversation 和 summary 文件
-	convMap, err := scanConversationFiles(conversationDir)
+	convMap, err := scanConversationFiles(conversationDir, startDate, endDate)
 	if err != nil {
 		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return err
 	}
 
-	summaryMap, err := scanSummaryFiles(summaryDir)
+	sessionMap, err := scanSessionFiles(summaryDir)
 	if err != nil {
 		recordCommandRun("import-task", startTime, 0, 0, 0, err)
 		return err
@@ -1012,18 +1064,18 @@ func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDat
 	skipCount := 0
 
 	// 遍历所有 conversation 文件，匹配 summary 并执行导入
-	for taskID, conversationPath := range convMap {
-		summaryPath, ok := summaryMap[taskID]
+	for sessionId, conversationPath := range convMap {
+		summaryPath, ok := sessionMap[sessionId]
 		if !ok {
-			logDebugf("跳过(无对应summary): %s", taskID)
+			logDebugf("跳过(无对应summary): %s", sessionId)
 			skipCount++
 			continue
 		}
 
 		// 构造 silica 文件路径并判断是否需要增量更新
-		silicaPath := filepath.Join(analysedDir, "task", "conversation", taskID+".silica.json")
+		silicaPath := filepath.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
 		if !needUpdateConversations(conversationPath, silicaPath, force) {
-			logDebugf("跳过(conversation未更新): %s", taskID)
+			logDebugf("跳过(conversation未更新): %s", sessionId)
 			skipCount++
 			continue
 		}
@@ -1031,11 +1083,11 @@ func runImportTask(taskDir, analysedDir string, force bool, startDateStr, endDat
 		// 执行单任务导入
 		if err := importSingleTask(db, summaryPath, conversationPath, silicaPath, startDate, endDate); err != nil {
 			if errors.Is(err, errSkipTask) {
-				logDebugf("跳过(日期范围过滤): %s", taskID)
+				logDebugf("跳过(日期范围过滤): %s", sessionId)
 				skipCount++
 				continue
 			}
-			logWarnf("导入失败 [%s]: %v", taskID, err)
+			logWarnf("导入失败 [%s]: %v", sessionId, err)
 			failCount++
 		} else {
 			successCount++

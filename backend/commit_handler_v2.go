@@ -169,14 +169,6 @@ func listCommitsV2(c *gin.Context) {
 		return
 	}
 	orderClause := buildCommitOrder(orderField, orderDir)
-
-	filter.resolveOrgUserIDs()
-	if (filter.Org1 != "" || filter.Org2 != "" || filter.Org3 != "" || filter.Org4 != "" ||
-		filter.Org5 != "" || filter.Org6 != "" || filter.Org7 != "" || filter.Org8 != "" || filter.Org9 != "") && len(filter.OrgUserIDs) == 0 {
-		c.JSON(http.StatusOK, CommitListResponse{Total: 0, Page: 1, PageSize: pageSize, Data: []CommitListItem{}})
-		return
-	}
-
 	list, total, err := ListStatCommits(statDB, filter, page, pageSize, orderClause)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})

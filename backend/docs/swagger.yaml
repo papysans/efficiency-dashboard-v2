@@ -343,7 +343,7 @@ definitions:
         type: string
       members:
         items:
-          $ref: '#/definitions/main.OrgMemberItem'
+          $ref: '#/definitions/main.UserDetail'
         type: array
       org_path:
         type: string
@@ -369,7 +369,7 @@ definitions:
           $ref: '#/definitions/main.OrgSeriesItem'
         type: array
     type: object
-  main.OrgMemberItem:
+  main.UserDetail:
     properties:
       commit_ancient_minutes:
         type: number

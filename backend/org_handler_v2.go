@@ -66,64 +66,12 @@ type OrgSummary struct {
 	Cost                  float64 `json:"cost"`
 }
 
-type OrgMemberItem struct {
-	UserId                string  `json:"user_id"`
-	UserName              string  `json:"user_name"`
-	Org1                  string  `json:"org1"`
-	Org2                  string  `json:"org2"`
-	Org3                  string  `json:"org3"`
-	Org4                  string  `json:"org4"`
-	Org5                  string  `json:"org5"`
-	Org6                  string  `json:"org6"`
-	Org7                  string  `json:"org7"`
-	Org8                  string  `json:"org8"`
-	Org9                  string  `json:"org9"`
-	OrgDisplay            string  `json:"org_display"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	TaskRealMinutes       float64 `json:"task_real_minutes"`
-	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
-	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
-	CommitRealMinutes     float64 `json:"commit_real_minutes"`
-	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
-	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
-	UpstreamTokens        int64   `json:"upstream_tokens"`
-	DownstreamTokens      int64   `json:"downstream_tokens"`
-	Cost                  float64 `json:"cost"`
-}
-
-type CommitTimeSeriesItem struct {
-	PeriodKey             string  `json:"period_key"`
-	PeriodLabel           string  `json:"period_label"`
-	CommitCount           int     `json:"commit_count"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
-	CommitRealMinutes     float64 `json:"commit_real_minutes"`
-	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
-	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
-	UpstreamTokens        int64   `json:"upstream_tokens"`
-	DownstreamTokens      int64   `json:"downstream_tokens"`
-	Cost                  float64 `json:"cost"`
-}
-
-type TaskTimeSeriesItem struct {
-	PeriodKey           string  `json:"period_key"`
-	PeriodLabel         string  `json:"period_label"`
-	TaskCount           int     `json:"task_count"`
-	TaskDiffLines       int     `json:"task_diff_lines"`
-	TaskRealMinutes     float64 `json:"task_real_minutes"`
-	TaskAncientMinutes  float64 `json:"task_ancient_minutes"`
-	TaskEfficiencyRatio float64 `json:"task_efficiency_ratio"`
-	UpstreamTokens      int64   `json:"upstream_tokens"`
-	DownstreamTokens    int64   `json:"downstream_tokens"`
-	Cost                float64 `json:"cost"`
-}
-
 type OrgDetailResponse struct {
 	OrgPath     string                 `json:"org_path"`
 	Summary     OrgSummary             `json:"summary"`
 	Commits     []CommitTimeSeriesItem `json:"commits"`
 	Tasks       []TaskTimeSeriesItem   `json:"tasks"`
-	Members     []OrgMemberItem        `json:"members"`
+	Members     []UserDetail           `json:"members"`
 	Granularity string                 `json:"granularity"`
 }
 
@@ -144,10 +92,10 @@ type GroupSummary struct {
 type DailyDataItem struct {
 	Date                  string  `json:"date"`
 	TaskDiffLines         int     `json:"task_diff_lines"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
 	TaskRealMinutes       float64 `json:"task_real_minutes"`
 	TaskAncientMinutes    float64 `json:"task_ancient_minutes"`
 	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
+	CommitDiffLines       int     `json:"commit_diff_lines"`
 	CommitRealMinutes     float64 `json:"commit_real_minutes"`
 	CommitAncientMinutes  float64 `json:"commit_ancient_minutes"`
 	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
@@ -180,6 +128,19 @@ type GroupDetailResponse struct {
 
 // orgMappings 全局组织映射表，key=user_id
 var orgMappings map[string]*models.UserOrg
+
+func GetUserOrgPath(om *models.UserOrg) string {
+	if om == nil {
+		return ""
+	}
+	parts := []string{}
+	for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9} {
+		if v != "" {
+			parts = append(parts, v)
+		}
+	}
+	return strings.Join(parts, "/")
+}
 
 func getOrgDisplay(org1, org2, org3, org4, org5, org6, org7, org8, org9 string) string {
 	parts := []string{}
@@ -712,7 +673,7 @@ func getOrgDetailV2(c *gin.Context) {
 		Summary:     OrgSummary{},
 		Commits:     []CommitTimeSeriesItem{},
 		Tasks:       []TaskTimeSeriesItem{},
-		Members:     []OrgMemberItem{},
+		Members:     []UserDetail{},
 		Granularity: granularity,
 	}
 	if len(matchedUsers) == 0 {
@@ -788,7 +749,7 @@ func getOrgDetailV2(c *gin.Context) {
 		}
 	}
 
-	// 将 dailyMap 转为 UserProductivity 切片，复用 aggregateDailyByGranularity
+	// 将 dailyMap 转为 UserProductivity 切片，复用 AggregateDailyByGranularity
 	var dates []string
 	for date := range dailyMap {
 		dates = append(dates, date)
@@ -825,7 +786,7 @@ func getOrgDetailV2(c *gin.Context) {
 			Cost:                 da.cost,
 		})
 	}
-	commitsList, tasksList := aggregateDailyByGranularity(dailySlice, granularity)
+	commitsList, tasksList := AggregateDailyByGranularity(dailySlice, granularity)
 
 	// 汇总 summary
 	var sumTaskDiffLines, sumCommitDiffLines int

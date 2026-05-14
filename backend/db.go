@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"kanban/core/config"
@@ -659,16 +658,13 @@ type UserFilter struct {
 	UserIds     []string
 }
 
-func (f *UserFilter) resolveOrgUserIDs() {
-}
-
 func (f *UserFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	userIds := f.UserIds
 	orgUserIds := f.GetFilter()
 	if orgUserIds != nil {
-		if userIds == nil || len(userIds) == 0 {
+		if userIds == nil {
 			userIds = orgUserIds
-		} else {
+		} else if len(userIds) > 0 {
 			orgSet := make(map[string]bool, len(orgUserIds))
 			for _, uid := range orgUserIds {
 				orgSet[uid] = true
@@ -698,19 +694,6 @@ func (f *UserFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	return q
 }
 
-func (f *UserFilter) OrgDisplay(om *models.UserOrg) string {
-	if om == nil {
-		return ""
-	}
-	parts := []string{}
-	for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9} {
-		if v != "" {
-			parts = append(parts, v)
-		}
-	}
-	return strings.Join(parts, "/")
-}
-
 // ============================================================
 // commits CRUD (GORM)
 // ============================================================
@@ -721,17 +704,88 @@ type CommitFilter struct {
 	RepoBranch  string
 	GitUserName string
 	UserId      string
+	UserIds     []string
 	UserName    string
 	ClientId    string
 	WorkDir     string
 	WorkDirId   string
 	StartTime   string
 	EndTime     string
-	OrgUserIDs  []string
 }
 
-func (f *CommitFilter) resolveOrgUserIDs() {
-	f.OrgUserIDs = f.GetFilter()
+func intersectUserIdFilter(orgUserIds []string, userId string, userIds []string) []string {
+	hasOrgFilter := orgUserIds != nil
+	hasUserId := userId != ""
+	hasUserIds := userIds != nil
+
+	if !hasOrgFilter && !hasUserId && !hasUserIds {
+		return nil
+	}
+
+	var set map[string]bool
+
+	if hasOrgFilter {
+		if len(orgUserIds) == 0 {
+			return []string{}
+		}
+		set = make(map[string]bool, len(orgUserIds))
+		for _, uid := range orgUserIds {
+			set[uid] = true
+		}
+	}
+
+	if hasUserId {
+		if set == nil {
+			set = map[string]bool{userId: true}
+		} else if !set[userId] {
+			return []string{}
+		} else {
+			set = map[string]bool{userId: true}
+		}
+	}
+
+	if hasUserIds {
+		if len(userIds) == 0 {
+			return []string{}
+		}
+		if set == nil {
+			set = make(map[string]bool, len(userIds))
+			for _, uid := range userIds {
+				set[uid] = true
+			}
+		} else {
+			newSet := make(map[string]bool)
+			for _, uid := range userIds {
+				if set[uid] {
+					newSet[uid] = true
+				}
+			}
+			set = newSet
+			if len(set) == 0 {
+				return []string{}
+			}
+		}
+	}
+
+	ids := make([]string, 0, len(set))
+	for uid := range set {
+		ids = append(ids, uid)
+	}
+	return ids
+}
+
+func (f *CommitFilter) applyUserIdFilter(q *gorm.DB) *gorm.DB {
+	ids := intersectUserIdFilter(f.GetFilter(), f.UserId, f.UserIds)
+	if ids == nil {
+		return q
+	}
+	if len(ids) == 0 {
+		return q.Where("1 = 0")
+	}
+	if len(ids) == 1 {
+		return q.Where("user_id = ?", ids[0])
+	}
+	return q.Where("user_id IN ?", ids)
 }
 
 func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
@@ -744,18 +798,11 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.GitUserName != "" {
 		q = q.Where("git_user_name = ?", f.GitUserName)
 	}
-	if f.UserId != "" {
-		q = q.Where("user_id = ?", f.UserId)
-	}
+
+	q = f.applyUserIdFilter(q)
+
 	if f.UserName != "" {
 		q = q.Where("user_name = ?", f.UserName)
-	}
-	if f.OrgUserIDs != nil {
-		if len(f.OrgUserIDs) > 0 {
-			q = q.Where("user_id IN ?", f.OrgUserIDs)
-		} else {
-			q = q.Where("1 = 0")
-		}
 	}
 	if f.ClientId != "" {
 		q = q.Where("client_id = ?", f.ClientId)
@@ -788,7 +835,6 @@ func GetStatCommitByID(db *gorm.DB, commitID string) (*StatCommit, error) {
 }
 
 func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]StatCommit, int, error) {
-	filter.resolveOrgUserIDs()
 	q := filter.applyToQuery(db.Model(&models.Commit{}))
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -1019,7 +1065,6 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 // ============================================================
 
 func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, orderClause string) ([]UserProductivity, int, error) {
-	filter.resolveOrgUserIDs()
 	q := filter.applyToQuery(db.Model(&models.UserProductivity{}))
 	var count int64
 	if err := q.Count(&count).Error; err != nil {

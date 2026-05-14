@@ -290,7 +290,7 @@ func (ctx *checkContext) checkSummaries() error {
 			continue
 		}
 
-		var summary taskSummary
+		var summary taskSession
 		if err := json.Unmarshal(data, &summary); err != nil {
 			ctx.addIssue("error", path, taskID, "", "json-parse-failed", "", fmt.Sprintf("JSON解析失败: %v", err))
 			continue
@@ -478,7 +478,7 @@ func (ctx *checkContext) checkConversations() error {
 		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
 			summaryData, err := os.ReadFile(summaryPath)
 			if err == nil {
-				var summary taskSummary
+				var summary taskSession
 				if err := json.Unmarshal(summaryData, &summary); err == nil {
 					if summary.DiffLines > 0 && totalDiffLines > 0 {
 						diff := summary.DiffLines - int(totalDiffLines)
@@ -518,7 +518,7 @@ func (ctx *checkContext) checkConversations() error {
 		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
 			summaryData, err := os.ReadFile(summaryPath)
 			if err == nil {
-				var summary taskSummary
+				var summary taskSession
 				if err := json.Unmarshal(summaryData, &summary); err == nil {
 					if summary.DiffLines == 0 && totalDiffLines > 0 {
 						ctx.addIssue("warn", path, taskID, "", "summary-diff-zero-conv-has-diff", "diff_lines",
@@ -532,7 +532,7 @@ func (ctx *checkContext) checkConversations() error {
 		if summaryPath, ok := ctx.summaryMap[taskID]; ok {
 			summaryData, err := os.ReadFile(summaryPath)
 			if err == nil {
-				var summary taskSummary
+				var summary taskSession
 				if err := json.Unmarshal(summaryData, &summary); err == nil {
 					if summary.DiffLines > 0 && totalActualDiffLines > 0 {
 						diff := summary.DiffLines - int(totalActualDiffLines)

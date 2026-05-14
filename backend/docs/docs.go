@@ -2473,7 +2473,7 @@ const docTemplate = `{
                 "members": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.OrgMemberItem"
+                        "$ref": "#/definitions/main.UserDetail"
                     }
                 },
                 "org_path": {
@@ -2513,7 +2513,7 @@ const docTemplate = `{
                 }
             }
         },
-        "main.OrgMemberItem": {
+        "main.UserDetail": {
             "type": "object",
             "properties": {
                 "commit_ancient_minutes": {
