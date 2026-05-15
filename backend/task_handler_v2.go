@@ -7,54 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"kanban/core/models"
 	"kanban/core/utils"
 
 	"github.com/gin-gonic/gin"
 )
-
-type TaskListItem struct {
-	TaskId                   string     `json:"task_id"`
-	Title                    string     `json:"title"`
-	UserId                   string     `json:"user_id"`
-	UserName                 string     `json:"user_name"`
-	ClientId                 string     `json:"client_id"`
-	ClientIde                string     `json:"client_ide"`
-	ClientVersion            string     `json:"client_version"`
-	ClientOs                 string     `json:"client_os"`
-	ClientOsVersion          string     `json:"client_os_version"`
-	Caller                   string     `json:"caller"`
-	RepoAddr                 string     `json:"repo_addr"`
-	RepoBranch               string     `json:"repo_branch"`
-	WorkDir                  string     `json:"work_dir"`
-	WorkDirId                string     `json:"work_dir_id"`
-	StartTime                *time.Time `json:"start_time"`
-	EndTime                  *time.Time `json:"end_time"`
-	UpstreamTokens           int64      `json:"upstream_tokens"`
-	DownstreamTokens         int64      `json:"downstream_tokens"`
-	Cost                     float64    `json:"cost"`
-	DiffLines                int        `json:"diff_lines"`
-	TaskAncientMinutes       *float64   `json:"task_ancient_minutes"`
-	TaskAncientReason        string     `json:"task_ancient_minutes_reason"`
-	TaskAncientMinutesManual *float64   `json:"task_ancient_minutes_manual"`
-	TaskAncientReasonManual  string     `json:"task_ancient_minutes_reason_manual"`
-	TaskRealMinutes          *float64   `json:"task_real_minutes"`
-	TaskRealReason           string     `json:"task_real_minutes_reason"`
-	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
-	TaskRealReasonManual     string     `json:"task_real_minutes_reason_manual"`
-	CreatedAt                time.Time  `json:"created_at"`
-	UpdatedAt                time.Time  `json:"updated_at"`
-	EfficiencyRatio          *float64   `json:"efficiency_ratio"`
-	Org1                     string     `json:"org1"`
-	Org2                     string     `json:"org2"`
-	Org3                     string     `json:"org3"`
-	Org4                     string     `json:"org4"`
-	Org5                     string     `json:"org5"`
-	Org6                     string     `json:"org6"`
-	Org7                     string     `json:"org7"`
-	Org8                     string     `json:"org8"`
-	Org9                     string     `json:"org9"`
-	OrgDisplay               string     `json:"org_display"`
-}
 
 type TaskListResponse struct {
 	Total    int            `json:"total"`
@@ -64,9 +21,9 @@ type TaskListResponse struct {
 }
 
 type TaskDetailResponse struct {
-	Task            *StatTask              `json:"task"`
-	Conversations   []StatConversation `json:"conversations"`
-	EfficiencyRatio *float64               `json:"efficiency_ratio"`
+	Task            *TaskListItem         `json:"task"`
+	Conversations   []models.Conversation `json:"conversations"`
+	EfficiencyRatio float64               `json:"efficiency_ratio"`
 }
 
 type UpdateTaskManualRequest struct {
@@ -160,79 +117,16 @@ func listTasksV2(c *gin.Context) {
 		},
 	}
 
-	list, total, err := ListStatTasks(statDB, filter, page, pageSize, orderClause)
+	tasks, total, err := ListTasks(statDB, filter, page, pageSize, orderClause)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	results := make([]TaskListItem, len(list))
-	for i, t := range list {
-		item := TaskListItem{
-			TaskId:                   t.TaskId,
-			Title:                    t.Title,
-			UserId:                   t.UserId,
-			UserName:                 t.UserName,
-			ClientId:                 t.ClientId,
-			ClientIde:                t.ClientIde,
-			ClientVersion:            t.ClientVersion,
-			ClientOs:                 t.ClientOs,
-			ClientOsVersion:          t.ClientOsVersion,
-			Caller:                   t.Caller,
-			RepoAddr:                 t.RepoAddr,
-			RepoBranch:               t.RepoBranch,
-			WorkDir:                  t.WorkDir,
-			WorkDirId:                t.WorkDirId,
-			StartTime:                t.StartTime,
-			EndTime:                  t.EndTime,
-			UpstreamTokens:           t.UpstreamTokens,
-			DownstreamTokens:         t.DownstreamTokens,
-			Cost:                     t.Cost,
-			DiffLines:                t.DiffLines,
-			TaskAncientMinutes:       t.TaskAncientMinutes,
-			TaskAncientReason:        t.TaskAncientReason,
-			TaskAncientMinutesManual: t.TaskAncientMinutesManual,
-			TaskAncientReasonManual:  t.TaskAncientReasonManual,
-			TaskRealMinutes:          t.TaskRealMinutes,
-			TaskRealReason:           t.TaskRealReason,
-			TaskRealMinutesManual:    t.TaskRealMinutesManual,
-			TaskRealReasonManual:     t.TaskRealReasonManual,
-			CreatedAt:                t.CreatedAt,
-			UpdatedAt:                t.UpdatedAt,
-		}
-
-		effectiveAncient := t.TaskAncientMinutes
-		if t.TaskAncientMinutesManual != nil {
-			effectiveAncient = t.TaskAncientMinutesManual
-		}
-		effectiveReal := t.TaskRealMinutes
-		if t.TaskRealMinutesManual != nil {
-			effectiveReal = t.TaskRealMinutesManual
-		}
-		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
-			item.EfficiencyRatio = &ratio
-		}
-
-		if t.UserId != "" {
-			if om, ok := orgMappings[t.UserId]; ok {
-				item.Org1 = om.Org1
-				item.Org2 = om.Org2
-				item.Org3 = om.Org3
-				item.Org4 = om.Org4
-				item.Org5 = om.Org5
-				item.Org6 = om.Org6
-				item.Org7 = om.Org7
-				item.Org8 = om.Org8
-				item.Org9 = om.Org9
-				item.OrgDisplay = getOrgDisplay(om.Org1, om.Org2, om.Org3, om.Org4,
-					om.Org5, om.Org6, om.Org7, om.Org8, om.Org9)
-			}
-		}
-		results[i] = item
-	}
-
-	c.JSON(http.StatusOK, TaskListResponse{Total: total, Page: page, PageSize: pageSize, Data: results})
+	c.JSON(http.StatusOK, TaskListResponse{
+		Total: total, Page: page, PageSize: pageSize,
+		Data: toTaskListItemSlice(tasks),
+	})
 }
 
 // getTaskDetailV2 GET /api/v2/tasks/:taskId
@@ -249,7 +143,7 @@ func listTasksV2(c *gin.Context) {
 func getTaskDetailV2(c *gin.Context) {
 	taskId := c.Param("taskId")
 
-	task, err := GetStatTask(statDB, taskId)
+	task, err := GetTask(statDB, taskId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -259,16 +153,22 @@ func getTaskDetailV2(c *gin.Context) {
 		return
 	}
 
-	convs, err := ListStatConversations(statDB, taskId)
+	convs, err := ListConversations(statDB, taskId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	efficiencyRatio := utils.CalcEfficiencyRatioManual(task.TaskAncientMinutes,
-		task.TaskAncientMinutesManual, task.TaskRealMinutes, task.TaskRealMinutesManual)
+		task.TaskRealMinutes,
+		task.TaskAncientMinutesManual,
+		task.TaskRealMinutesManual)
 
-	c.JSON(http.StatusOK, TaskDetailResponse{Task: task, Conversations: convs, EfficiencyRatio: efficiencyRatio})
+	c.JSON(http.StatusOK, TaskDetailResponse{
+		Task:            toTaskListItem(task),
+		Conversations:   convs,
+		EfficiencyRatio: efficiencyRatio,
+	})
 }
 
 // updateTaskManualV2 PUT /api/v2/tasks/:taskId/manual

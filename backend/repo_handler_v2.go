@@ -77,7 +77,7 @@ type RepoCommitItem struct {
 	UpstreamTokens             int64           `json:"upstream_tokens"`
 	DownstreamTokens           int64           `json:"downstream_tokens"`
 	Silica                     float64         `json:"silica"`
-	EfficiencyRatio            *float64        `json:"efficiency_ratio"`
+	EfficiencyRatio            float64         `json:"efficiency_ratio"`
 }
 
 type RepoDetailResponse struct {
@@ -85,7 +85,7 @@ type RepoDetailResponse struct {
 	RepoBranch string           `json:"repo_branch"`
 	Branches   []string         `json:"branches"`
 	Commits    []RepoCommitItem `json:"commits"`
-	Tasks      []StatTask       `json:"tasks"`
+	Tasks      []TaskListItem   `json:"tasks"`
 	Efficiency RepoEfficiency   `json:"efficiency"`
 	Summary    RepoSummary      `json:"summary"`
 }
@@ -273,9 +273,10 @@ func getRepoDetailV2(c *gin.Context) {
 	taskset := NewTaskIdSet()
 	taskset.MergeCommitsTasks(commits)
 
-	tasks, _, _ := ListStatTasks(statDB, TaskFilter{
+	rawTasks, _, _ := ListTasks(statDB, TaskFilter{
 		TaskIds: taskset.GetTaskIds(),
 	}, 0, 0, "")
+	tasks := toTaskListItemSlice(rawTasks)
 
 	// taskIDSet := make(map[string]struct{})
 	// for _, cm := range commits {
@@ -287,9 +288,9 @@ func getRepoDetailV2(c *gin.Context) {
 	// 		taskIDSet[id] = struct{}{}
 	// 	}
 	// }
-	// var tasks []StatTask
+	// var tasks []TaskListItem
 	// for tid := range taskIDSet {
-	// 	t, err := GetStatTask(statDB, tid)
+	// 	t, err := GetTask(statDB, tid)
 	// 	if err != nil || t == nil {
 	// 		continue
 	// 	}
@@ -357,15 +358,15 @@ func getRepoDetailV2(c *gin.Context) {
 			CommitAncientReason:        cm.CommitAncientReason,
 			CommitAncientMinutesManual: cm.CommitAncientMinutesManual,
 			CommitAncientReasonManual:  cm.CommitAncientReasonManual,
-			TaskIds:                    cm.TaskIds,
-			TaskIdsSilica:              cm.TaskIdsSilica,
-			TaskAcceptRatios:           cm.TaskAcceptRatios,
+			TaskIds:                    json.RawMessage(cm.TaskIds),
+			TaskIdsSilica:              json.RawMessage(cm.TaskIdsSilica),
+			TaskAcceptRatios:           json.RawMessage(cm.TaskAcceptRatios),
 			CommitRealMinutes:          cm.CommitRealMinutes,
 			CommitRealReason:           cm.CommitRealReason,
 			CommitRealMinutesManual:    cm.CommitRealMinutesManual,
 			CommitRealReasonManual:     cm.CommitRealReasonManual,
 			CommitRealAiMinutes:        cm.CommitRealAiMinutes,
-			CommitRealAncientMinutes:   cm.CommitRealAncientMinutes,
+			CommitRealAncientMinutes:   cm.CommitRealNonAiMinutes,
 			Comment:                    cm.Comment,
 			CreatedAt:                  cm.CreatedAt,
 			UpdatedAt:                  cm.UpdatedAt,
@@ -379,8 +380,10 @@ func getRepoDetailV2(c *gin.Context) {
 		// 计算单条 commit 的效率比率
 		ancient := cm.CommitAncientMinutes
 		real := cm.CommitRealMinutes
-		item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(&ancient,
-			cm.CommitAncientMinutesManual, &real, cm.CommitRealMinutesManual)
+		item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(ancient,
+			real,
+			cm.CommitAncientMinutesManual,
+			cm.CommitRealMinutesManual)
 		commitItems = append(commitItems, item)
 	}
 

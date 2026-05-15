@@ -61,7 +61,7 @@ func TestUpdateStatTaskManual_Normal(t *testing.T) {
 	}
 
 	// 验证更新结果
-	task, err := GetStatTask(tdb, testTaskID)
+	task, err := GetTask(tdb, testTaskID)
 	if err != nil {
 		t.Fatalf("查询 task 失败: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestUpdateStatTaskManual_PartialNil(t *testing.T) {
 		t.Fatalf("UpdateStatTaskManual 失败: %v", err)
 	}
 
-	task, err := GetStatTask(tdb, testTaskID)
+	task, err := GetTask(tdb, testTaskID)
 	if err != nil {
 		t.Fatalf("查询 task 失败: %v", err)
 	}

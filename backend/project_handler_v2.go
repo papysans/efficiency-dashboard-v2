@@ -74,31 +74,31 @@ type ProjectCommitItem struct {
 }
 
 type ProjectTaskItem struct {
-	TaskId                   string     `json:"task_id"`
-	UserId                   string     `json:"user_id"`
-	UserName                 string     `json:"user_name"`
-	StartTime                *time.Time `json:"start_time"`
-	EndTime                  *time.Time `json:"end_time"`
-	UpstreamTokens           int64      `json:"upstream_tokens"`
-	DownstreamTokens         int64      `json:"downstream_tokens"`
-	Cost                     float64    `json:"cost"`
-	TaskAncientMinutes       *float64   `json:"task_ancient_minutes"`
-	TaskAncientMinutesManual *float64   `json:"task_ancient_minutes_manual"`
-	TaskRealMinutes          *float64   `json:"task_real_minutes"`
-	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
-	Title                    string     `json:"title"`
-	WorkDir                  string     `json:"work_dir"`
-	DiffLines                int        `json:"diff_lines"`
-	Silica                   float64    `json:"silica"`
-	AcceptRatio              float64    `json:"accept_ratio"`
+	TaskId                   string    `json:"task_id"`
+	UserId                   string    `json:"user_id"`
+	UserName                 string    `json:"user_name"`
+	StartTime                time.Time `json:"start_time"`
+	EndTime                  time.Time `json:"end_time"`
+	UpstreamTokens           int64     `json:"upstream_tokens"`
+	DownstreamTokens         int64     `json:"downstream_tokens"`
+	Cost                     float64   `json:"cost"`
+	TaskAncientMinutes       float64   `json:"task_ancient_minutes"`
+	TaskAncientMinutesManual *float64  `json:"task_ancient_minutes_manual"`
+	TaskRealMinutes          float64   `json:"task_real_minutes"`
+	TaskRealMinutesManual    *float64  `json:"task_real_minutes_manual"`
+	Title                    string    `json:"title"`
+	WorkDir                  string    `json:"work_dir"`
+	DiffLines                int       `json:"diff_lines"`
+	Silica                   float64   `json:"silica"`
+	AcceptRatio              float64   `json:"accept_ratio"`
 }
 
 type ProjectDetailResponse struct {
-	Project         *Project            `json:"project"`
+	Project         *models.Project     `json:"project"`
 	Commits         []ProjectCommitItem `json:"commits"`
 	Tasks           []ProjectTaskItem   `json:"tasks"`
 	Members         []UserDetail        `json:"members"`
-	EfficiencyRatio *float64            `json:"efficiency_ratio"`
+	EfficiencyRatio float64             `json:"efficiency_ratio"`
 	UserCount       int                 `json:"user_count"`
 }
 
@@ -165,15 +165,15 @@ type ProjectRepo struct {
 }
 
 // collectProjectCommits 根据 project 的 repos 配置收集去重后的 commits
-func collectProjectCommits(project *Project) (map[string]*StatCommit, error) {
+func collectProjectCommits(project *models.Project) (map[string]*models.Commit, error) {
 	var repos []ProjectRepo
 	if len(project.Repos) > 0 && string(project.Repos) != "null" && string(project.Repos) != "[]" {
-		if err := json.Unmarshal(project.Repos, &repos); err != nil {
+		if err := json.Unmarshal([]byte(project.Repos), &repos); err != nil {
 			return nil, fmt.Errorf("解析 repos 失败: %w", err)
 		}
 	}
 
-	commitMap := map[string]*StatCommit{}
+	commitMap := map[string]*models.Commit{}
 	for _, rf := range repos {
 		startTime := ""
 		endTime := ""
@@ -219,13 +219,13 @@ func collectProjectCommits(project *Project) (map[string]*StatCommit, error) {
 	return commitMap, nil
 }
 
-func collectProjectTasks(project *Project, commitMap map[string]*StatCommit) ([]ProjectTaskItem, error) {
+func collectProjectTasks(project *models.Project, commitMap map[string]*models.Commit) ([]ProjectTaskItem, error) {
 	taskSilicaMap := map[string]float64{}
 
 	for _, commit := range commitMap {
 		if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
 			var ids []string
-			if err := json.Unmarshal(commit.TaskIds, &ids); err == nil {
+			if err := json.Unmarshal([]byte(commit.TaskIds), &ids); err == nil {
 				for _, id := range ids {
 					taskSilicaMap[id] = 1.0
 				}
@@ -236,9 +236,9 @@ func collectProjectTasks(project *Project, commitMap map[string]*StatCommit) ([]
 	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
 		var ids []string
 		var silicas []float64
-		if err := json.Unmarshal(project.TaskIds, &ids); err == nil {
+		if err := json.Unmarshal([]byte(project.TaskIds), &ids); err == nil {
 			if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" {
-				_ = json.Unmarshal(project.TaskIdsSilica, &silicas)
+				_ = json.Unmarshal([]byte(project.TaskIdsSilica), &silicas)
 			}
 			for i, id := range ids {
 				s := 1.0
@@ -255,10 +255,10 @@ func collectProjectTasks(project *Project, commitMap map[string]*StatCommit) ([]
 		allTaskIDs = append(allTaskIDs, id)
 	}
 
-	taskDetailMap, err := BatchGetStatTasks(statDB, allTaskIDs)
+	taskDetailMap, err := BatchGetTasks(statDB, allTaskIDs)
 	if err != nil {
 		log.Printf("批量查询 tasks 失败: %v", err)
-		taskDetailMap = make(map[string]*StatTask)
+		taskDetailMap = make(map[string]*models.Task)
 	}
 
 	var tasks []ProjectTaskItem
@@ -289,7 +289,7 @@ func collectProjectTasks(project *Project, commitMap map[string]*StatCommit) ([]
 	return tasks, nil
 }
 
-func collectProjectUsers(project *Project, commitMap map[string]*StatCommit, tasks []ProjectTaskItem) []UserDetail {
+func collectProjectUsers(project *models.Project, commitMap map[string]*models.Commit, tasks []ProjectTaskItem) []UserDetail {
 	userSet := map[string]bool{}
 	for _, cm := range commitMap {
 		if cm.UserId != "" {
@@ -308,10 +308,10 @@ func collectProjectUsers(project *Project, commitMap map[string]*StatCommit, tas
 	}
 
 	var startTime, endTime string
-	if project.StartTime != nil {
+	if !project.StartTime.IsZero() {
 		startTime = project.StartTime.Format(time.RFC3339)
 	}
-	if project.EndTime != nil {
+	if !project.EndTime.IsZero() {
 		endTime = project.EndTime.Format(time.RFC3339)
 	}
 
@@ -336,7 +336,7 @@ func recalculateProjectAggregates(projectID string) error {
 	// 从 commits 提取 task_ids
 	tasksets := NewTaskIdSet()
 	tasksets.MergeCommitMapTasks(commitMap)
-	tasksets.MergeTaskIds(project.TaskIds)
+	tasksets.MergeTaskIds([]byte(project.TaskIds))
 	// taskIDSet := map[string]bool{}
 	// for _, commit := range commitMap {
 	// 	if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
@@ -352,7 +352,7 @@ func recalculateProjectAggregates(projectID string) error {
 	// // 从 project.TaskIds 追加
 	// if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
 	// 	var ids []string
-	// 	if err := json.Unmarshal(project.TaskIds, &ids); err == nil {
+	// 	if err := json.Unmarshal([]byte(project.TaskIds), &ids); err == nil {
 	// 		for _, id := range ids {
 	// 			taskIDSet[id] = true
 	// 		}
@@ -483,7 +483,7 @@ func createProjectV2(c *gin.Context) {
 	if req.Description != nil {
 		desc = *req.Description
 	}
-	p := &Project{
+	p := &models.Project{
 		Name:        req.Name,
 		Description: desc,
 	}
@@ -528,7 +528,7 @@ func listProjectsV2(c *gin.Context) {
 		repoCount := 0
 		if len(p.Repos) > 0 && string(p.Repos) != "null" && string(p.Repos) != "[]" {
 			var repos []json.RawMessage
-			if err := json.Unmarshal(p.Repos, &repos); err == nil {
+			if err := json.Unmarshal([]byte(p.Repos), &repos); err == nil {
 				repoCount = len(repos)
 			}
 		}
@@ -536,7 +536,7 @@ func listProjectsV2(c *gin.Context) {
 		taskCount := 0
 		var taskIDs []string
 		if len(p.TaskIds) > 0 && string(p.TaskIds) != "null" && string(p.TaskIds) != "[]" {
-			if err := json.Unmarshal(p.TaskIds, &taskIDs); err == nil {
+			if err := json.Unmarshal([]byte(p.TaskIds), &taskIDs); err == nil {
 				taskCount = len(taskIDs)
 			}
 		}
@@ -546,7 +546,7 @@ func listProjectsV2(c *gin.Context) {
 		var totalCodeLines int64
 		var repos []ProjectRepo
 		if len(p.Repos) > 0 && string(p.Repos) != "null" && string(p.Repos) != "[]" {
-			_ = json.Unmarshal(p.Repos, &repos)
+			_ = json.Unmarshal([]byte(p.Repos), &repos)
 		}
 		for _, rf := range repos {
 			startT := ""
@@ -573,7 +573,7 @@ func listProjectsV2(c *gin.Context) {
 		}
 		// 也从 tasks 中收集用户
 		if len(taskIDs) > 0 {
-			taskDetailMap, err := BatchGetStatTasks(statDB, taskIDs)
+			taskDetailMap, err := BatchGetTasks(statDB, taskIDs)
 			if err == nil {
 				for _, task := range taskDetailMap {
 					if task.UserName != "" {
@@ -587,11 +587,11 @@ func listProjectsV2(c *gin.Context) {
 		// actual_lines_per_day
 		effectiveReal := p.ProjectRealProcessMinutes
 		if p.ProjectRealProcessMinutesManual != nil {
-			effectiveReal = p.ProjectRealProcessMinutesManual
+			effectiveReal = *p.ProjectRealProcessMinutesManual
 		}
 		var actualLinesPerDay *float64
-		if effectiveReal != nil && *effectiveReal > 0 && totalCodeLines > 0 {
-			days := *effectiveReal / 480.0
+		if effectiveReal > 0 && totalCodeLines > 0 {
+			days := effectiveReal / 480.0
 			v := math.Round(float64(totalCodeLines) / days)
 			actualLinesPerDay = &v
 		}
@@ -599,11 +599,11 @@ func listProjectsV2(c *gin.Context) {
 		// efficiency_ratio
 		effectiveAncient := p.ProjectAncientMinutes
 		if p.ProjectAncientMinutesManual != nil {
-			effectiveAncient = p.ProjectAncientMinutesManual
+			effectiveAncient = *p.ProjectAncientMinutesManual
 		}
 		var effRatio *float64
-		if effectiveAncient != nil && effectiveReal != nil && *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio := utils.CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
+		if effectiveAncient > 0 && effectiveReal > 0 {
+			ratio := utils.CalcEfficiencyRatio(effectiveAncient, effectiveReal)
 			effRatio = &ratio
 		}
 
@@ -611,25 +611,25 @@ func listProjectsV2(c *gin.Context) {
 			ProjectId:                       p.ProjectId,
 			Name:                            p.Name,
 			Description:                     p.Description,
-			Repos:                           p.Repos,
-			TaskIds:                         p.TaskIds,
-			TaskIdsSilica:                   p.TaskIdsSilica,
-			StartTime:                       p.StartTime,
-			EndTime:                         p.EndTime,
+			Repos:                           json.RawMessage(p.Repos),
+			TaskIds:                         json.RawMessage(p.TaskIds),
+			TaskIdsSilica:                   json.RawMessage(p.TaskIdsSilica),
+			StartTime:                       &p.StartTime,
+			EndTime:                         &p.EndTime,
 			StartTimeManual:                 p.StartTimeManual,
 			EndTimeManual:                   p.EndTimeManual,
 			UpstreamTokens:                  &p.UpstreamTokens,
 			DownstreamTokens:                &p.DownstreamTokens,
 			Cost:                            &p.Cost,
-			ProjectAncientMinutes:           p.ProjectAncientMinutes,
+			ProjectAncientMinutes:           &p.ProjectAncientMinutes,
 			ProjectAncientReason:            p.ProjectAncientReason,
 			ProjectAncientMinutesManual:     p.ProjectAncientMinutesManual,
 			ProjectAncientReasonManual:      p.ProjectAncientReasonManual,
-			ProjectRealProcessMinutes:       p.ProjectRealProcessMinutes,
+			ProjectRealProcessMinutes:       &p.ProjectRealProcessMinutes,
 			ProjectRealProcessReason:        p.ProjectRealProcessReason,
 			ProjectRealProcessMinutesManual: p.ProjectRealProcessMinutesManual,
 			ProjectRealProcessReasonManual:  p.ProjectRealProcessReasonManual,
-			ProjectRealLeadMinutes:          p.ProjectRealLeadMinutes,
+			ProjectRealLeadMinutes:          &p.ProjectRealLeadMinutes,
 			ProjectRealLeadReason:           p.ProjectRealLeadReason,
 			ProjectRealLeadMinutesManual:    p.ProjectRealLeadMinutesManual,
 			ProjectRealLeadReasonManual:     p.ProjectRealLeadReasonManual,
@@ -685,16 +685,16 @@ func getProjectDetailV2(c *gin.Context) {
 		return
 	}
 	sort.Slice(tasks, func(i, j int) bool {
-		if tasks[i].EndTime == nil && tasks[j].EndTime == nil {
+		if tasks[i].EndTime.IsZero() && tasks[j].EndTime.IsZero() {
 			return false
 		}
-		if tasks[i].EndTime == nil {
+		if tasks[i].EndTime.IsZero() {
 			return false
 		}
-		if tasks[j].EndTime == nil {
+		if tasks[j].EndTime.IsZero() {
 			return true
 		}
-		return tasks[i].EndTime.After(*tasks[j].EndTime)
+		return tasks[i].EndTime.After(tasks[j].EndTime)
 	})
 
 	// 构建 commits 列表
@@ -722,7 +722,9 @@ func getProjectDetailV2(c *gin.Context) {
 	})
 
 	effRatio := utils.CalcEfficiencyRatioManual(project.ProjectAncientMinutes,
-		project.ProjectAncientMinutesManual, project.ProjectRealProcessMinutes, project.ProjectRealProcessMinutesManual)
+		project.ProjectRealProcessMinutes,
+		project.ProjectAncientMinutesManual,
+		project.ProjectRealProcessMinutesManual)
 
 	members := collectProjectUsers(project, commitMap, tasks)
 
@@ -771,9 +773,9 @@ func updateProjectV2(c *gin.Context) {
 	if req.Description != nil {
 		project.Description = *req.Description
 	}
-	project.Repos = req.Repos
-	project.TaskIds = req.TaskIds
-	project.TaskIdsSilica = req.TaskIdsSilica
+	project.Repos = models.StringJSON(req.Repos)
+	project.TaskIds = models.StringJSON(req.TaskIds)
+	project.TaskIdsSilica = models.StringJSON(req.TaskIdsSilica)
 
 	if err := UpdateProject(statDB, project); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -869,12 +871,12 @@ func addTasksToProjectV2(c *gin.Context) {
 	// 解析现有 task_ids
 	var existingIDs []string
 	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-		json.Unmarshal(project.TaskIds, &existingIDs)
+		json.Unmarshal([]byte(project.TaskIds), &existingIDs)
 	}
 	// 解析现有 task_ids_silica
 	var existingSilica []float64
 	if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" && string(project.TaskIdsSilica) != "[]" {
-		json.Unmarshal(project.TaskIdsSilica, &existingSilica)
+		json.Unmarshal([]byte(project.TaskIdsSilica), &existingSilica)
 	}
 
 	// 去重追加
@@ -896,8 +898,8 @@ func addTasksToProjectV2(c *gin.Context) {
 
 	idsJSON, _ := json.Marshal(existingIDs)
 	silicaJSON, _ := json.Marshal(existingSilica)
-	project.TaskIds = idsJSON
-	project.TaskIdsSilica = silicaJSON
+	project.TaskIds = models.StringJSON(idsJSON)
+	project.TaskIdsSilica = models.StringJSON(silicaJSON)
 
 	if err := UpdateProject(statDB, project); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -944,12 +946,12 @@ func addRepoToProjectV2(c *gin.Context) {
 
 	var repos []ProjectRepo
 	if len(project.Repos) > 0 && string(project.Repos) != "null" && string(project.Repos) != "[]" {
-		json.Unmarshal(project.Repos, &repos)
+		json.Unmarshal([]byte(project.Repos), &repos)
 	}
 	repos = append(repos, req)
 
 	reposJSON, _ := json.Marshal(repos)
-	project.Repos = reposJSON
+	project.Repos = models.StringJSON(reposJSON)
 
 	if err := UpdateProject(statDB, project); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -995,7 +997,7 @@ func removeRepoFromProjectV2(c *gin.Context) {
 
 	var repos []ProjectRepo
 	if len(project.Repos) > 0 && string(project.Repos) != "null" && string(project.Repos) != "[]" {
-		json.Unmarshal(project.Repos, &repos)
+		json.Unmarshal([]byte(project.Repos), &repos)
 	}
 
 	if index < 0 || index >= len(repos) {
@@ -1005,7 +1007,7 @@ func removeRepoFromProjectV2(c *gin.Context) {
 
 	repos = append(repos[:index], repos[index+1:]...)
 	reposJSON, _ := json.Marshal(repos)
-	project.Repos = reposJSON
+	project.Repos = models.StringJSON(reposJSON)
 
 	if err := UpdateProject(statDB, project); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -1106,12 +1108,12 @@ func removeTasksFromProjectV2(c *gin.Context) {
 	// 解析现有 task_ids
 	var existingIDs []string
 	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-		json.Unmarshal(project.TaskIds, &existingIDs)
+		json.Unmarshal([]byte(project.TaskIds), &existingIDs)
 	}
 	// 解析现有 task_ids_silica
 	var existingSilica []float64
 	if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" && string(project.TaskIdsSilica) != "[]" {
-		json.Unmarshal(project.TaskIdsSilica, &existingSilica)
+		json.Unmarshal([]byte(project.TaskIdsSilica), &existingSilica)
 	}
 
 	// 构建 remove set
@@ -1136,8 +1138,8 @@ func removeTasksFromProjectV2(c *gin.Context) {
 
 	idsJSON, _ := json.Marshal(newIDs)
 	silicaJSON, _ := json.Marshal(newSilica)
-	project.TaskIds = idsJSON
-	project.TaskIdsSilica = silicaJSON
+	project.TaskIds = models.StringJSON(idsJSON)
+	project.TaskIdsSilica = models.StringJSON(silicaJSON)
 
 	if err := UpdateProject(statDB, project); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -1189,12 +1191,12 @@ func updateTaskSilicaInProjectV2(c *gin.Context) {
 	// 解析现有 task_ids
 	var existingIDs []string
 	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-		json.Unmarshal(project.TaskIds, &existingIDs)
+		json.Unmarshal([]byte(project.TaskIds), &existingIDs)
 	}
 	// 解析现有 task_ids_silica
 	var existingSilica []float64
 	if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" && string(project.TaskIdsSilica) != "[]" {
-		json.Unmarshal(project.TaskIdsSilica, &existingSilica)
+		json.Unmarshal([]byte(project.TaskIdsSilica), &existingSilica)
 	}
 
 	// 找到 task_id 的索引并更新 silica
@@ -1220,7 +1222,7 @@ func updateTaskSilicaInProjectV2(c *gin.Context) {
 	}
 
 	silicaJSON, _ := json.Marshal(existingSilica)
-	project.TaskIdsSilica = silicaJSON
+	project.TaskIdsSilica = models.StringJSON(silicaJSON)
 
 	if err := UpdateProject(statDB, project); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})

@@ -14,23 +14,16 @@ func CalcEfficiencyRatio(ancientMinutes, realMinutes float64) float64 {
 	return math.Round(percent*10) / 10
 }
 
-func CalcEfficiencyRatioManual(ancientMinutes, ancientMinutesManual,
-	realMinutes, realMinutesManual *float64) *float64 {
+func CalcEfficiencyRatioManual(ancientMinutes, realMinutes float64,
+	ancientMinutesManual, realMinutesManual *float64) float64 {
 
 	effectiveAncient := ancientMinutes
 	if ancientMinutesManual != nil {
-		effectiveAncient = ancientMinutesManual
+		effectiveAncient = *ancientMinutesManual
 	}
 	effectiveReal := realMinutes
 	if realMinutesManual != nil {
-		effectiveReal = realMinutesManual
+		effectiveReal = *realMinutesManual
 	}
-	if effectiveAncient != nil && effectiveReal != nil {
-		ratio := 0.0
-		if *effectiveReal > 0 && *effectiveAncient > 0 {
-			ratio = CalcEfficiencyRatio(*effectiveAncient, *effectiveReal)
-		}
-		return &ratio
-	}
-	return nil
+	return CalcEfficiencyRatio(effectiveAncient, effectiveReal)
 }

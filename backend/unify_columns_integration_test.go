@@ -15,24 +15,24 @@ import (
 )
 
 // ============================================================
-// TP-01: BatchGetStatTasks 空输入返回空 map
+// TP-01: BatchGetTasks 空输入返回空 map
 // ============================================================
 
 func TestUnify_BatchGetStatTasks_EmptyInput(t *testing.T) {
 	tdb := testDB(t)
 	defer tdb.Close()
 
-	result, err := BatchGetStatTasks(tdb, []string{})
+	result, err := BatchGetTasks(tdb, []string{})
 	if err != nil {
-		t.Fatalf("BatchGetStatTasks 空输入返回错误: %v", err)
+		t.Fatalf("BatchGetTasks 空输入返回错误: %v", err)
 	}
 	if len(result) != 0 {
-		t.Errorf("BatchGetStatTasks 空输入返回非空 map, len=%d", len(result))
+		t.Errorf("BatchGetTasks 空输入返回非空 map, len=%d", len(result))
 	}
 }
 
 // ============================================================
-// TP-02: BatchGetStatTasks 有效 taskIDs 返回正确 map
+// TP-02: BatchGetTasks 有效 taskIDs 返回正确 map
 // ============================================================
 
 func TestUnify_BatchGetStatTasks_ValidIDs(t *testing.T) {
@@ -58,12 +58,12 @@ func TestUnify_BatchGetStatTasks_ValidIDs(t *testing.T) {
 	}
 	defer tdb.Exec(`DELETE FROM tasks WHERE task_id = $1`, taskID2)
 
-	result, err := BatchGetStatTasks(tdb, []string{taskID1, taskID2})
+	result, err := BatchGetTasks(tdb, []string{taskID1, taskID2})
 	if err != nil {
-		t.Fatalf("BatchGetStatTasks 失败: %v", err)
+		t.Fatalf("BatchGetTasks 失败: %v", err)
 	}
 	if len(result) != 2 {
-		t.Fatalf("BatchGetStatTasks len=%d, want 2", len(result))
+		t.Fatalf("BatchGetTasks len=%d, want 2", len(result))
 	}
 
 	// 验证 task 1
@@ -71,16 +71,16 @@ func TestUnify_BatchGetStatTasks_ValidIDs(t *testing.T) {
 	if t1 == nil {
 		t.Fatal("result 缺少 taskID1")
 	}
-	if t1.Cost == nil || *t1.Cost != 0.05 {
+	if t1.Cost != 0.05 {
 		t.Errorf("task1.Cost = %v, want 0.05", t1.Cost)
 	}
-	if t1.UpstreamTokens == nil || *t1.UpstreamTokens != 1000 {
+	if t1.UpstreamTokens != 1000 {
 		t.Errorf("task1.UpstreamTokens = %v, want 1000", t1.UpstreamTokens)
 	}
-	if t1.DownstreamTokens == nil || *t1.DownstreamTokens != 500 {
+	if t1.DownstreamTokens != 500 {
 		t.Errorf("task1.DownstreamTokens = %v, want 500", t1.DownstreamTokens)
 	}
-	if t1.Title == nil || *t1.Title != "测试任务A" {
+	if t1.Title != "测试任务A" {
 		t.Errorf("task1.Title = %v, want '测试任务A'", t1.Title)
 	}
 
@@ -89,25 +89,25 @@ func TestUnify_BatchGetStatTasks_ValidIDs(t *testing.T) {
 	if t2 == nil {
 		t.Fatal("result 缺少 taskID2")
 	}
-	if t2.Cost == nil || *t2.Cost != 0.10 {
+	if t2.Cost != 0.10 {
 		t.Errorf("task2.Cost = %v, want 0.10", t2.Cost)
 	}
 }
 
 // ============================================================
-// TP-03: BatchGetStatTasks 不存在的 taskIDs 返回空 map
+// TP-03: BatchGetTasks 不存在的 taskIDs 返回空 map
 // ============================================================
 
 func TestUnify_BatchGetStatTasks_NonExistentIDs(t *testing.T) {
 	tdb := testDB(t)
 	defer tdb.Close()
 
-	result, err := BatchGetStatTasks(tdb, []string{"nonexistent-xyz-001", "nonexistent-xyz-002"})
+	result, err := BatchGetTasks(tdb, []string{"nonexistent-xyz-001", "nonexistent-xyz-002"})
 	if err != nil {
-		t.Fatalf("BatchGetStatTasks 不存在 IDs 返回错误: %v", err)
+		t.Fatalf("BatchGetTasks 不存在 IDs 返回错误: %v", err)
 	}
 	if len(result) != 0 {
-		t.Errorf("BatchGetStatTasks 不存在 IDs 返回非空 map, len=%d", len(result))
+		t.Errorf("BatchGetTasks 不存在 IDs 返回非空 map, len=%d", len(result))
 	}
 }
 

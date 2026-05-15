@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"kanban/core/models"
 	"kanban/core/utils"
 
 	"github.com/gin-gonic/gin"
@@ -97,12 +98,12 @@ type UserDetailSummary struct {
 }
 
 type UserDetailResponse struct {
-	Summary     UserDetailSummary      `json:"summary"`
-	Daily       []UserProductivity     `json:"daily"`
-	Commits     []CommitTimeSeriesItem `json:"commits"`
-	Tasks       []TaskTimeSeriesItem   `json:"tasks"`
-	Total       int                    `json:"total"`
-	Granularity string                 `json:"granularity"`
+	Summary     UserDetailSummary         `json:"summary"`
+	Daily       []models.UserProductivity `json:"daily"`
+	Commits     []CommitTimeSeriesItem    `json:"commits"`
+	Tasks       []TaskTimeSeriesItem      `json:"tasks"`
+	Total       int                       `json:"total"`
+	Granularity string                    `json:"granularity"`
 }
 
 // listUsersV2 GET /api/v2/users
@@ -237,15 +238,15 @@ func listUsersV2(c *gin.Context) {
 				}
 				dayCount += len(daily)
 				for _, d := range daily {
-					if d.TaskIds != nil {
+					if d.TaskIds != "" {
 						var ids []interface{}
-						if json.Unmarshal(d.TaskIds, &ids) == nil {
+						if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
 							taskCount += len(ids)
 						}
 					}
-					if d.CommitIds != nil {
+					if d.CommitIds != "" {
 						var ids []interface{}
-						if json.Unmarshal(d.CommitIds, &ids) == nil {
+						if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
 							commitCount += len(ids)
 						}
 					}
@@ -569,15 +570,15 @@ func getUserDetailV2(c *gin.Context) {
 		if i == 0 {
 			userName = d.UserName
 		}
-		if d.TaskIds != nil {
+		if d.TaskIds != "" {
 			var ids []interface{}
-			if json.Unmarshal(d.TaskIds, &ids) == nil {
+			if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
 				taskCount += len(ids)
 			}
 		}
-		if d.CommitIds != nil {
+		if d.CommitIds != "" {
 			var ids []interface{}
-			if json.Unmarshal(d.CommitIds, &ids) == nil {
+			if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
 				commitCount += len(ids)
 			}
 		}

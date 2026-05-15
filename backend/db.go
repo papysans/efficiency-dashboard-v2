@@ -7,6 +7,7 @@ import (
 
 	"kanban/core/config"
 	"kanban/core/models"
+	"kanban/core/utils"
 
 	"gorm.io/gorm"
 )
@@ -15,74 +16,64 @@ import (
 // 响应类型（保持与原有JSON结构一致）
 // ============================================================
 
-type StatTask struct {
-	TaskId                   string     `json:"task_id"`
-	CommitId                 string     `json:"commit_id"`
-	SessionId                string     `json:"session_id"`
-	UserId                   string     `json:"user_id"`
-	UserName                 string     `json:"user_name"`
-	ClientId                 string     `json:"client_id"`
-	ClientIde                string     `json:"client_ide"`
-	ClientVersion            string     `json:"client_version"`
-	ClientOs                 string     `json:"client_os"`
-	ClientOsVersion          string     `json:"client_os_version"`
-	Caller                   string     `json:"caller"`
-	RepoAddr                 string     `json:"repo_addr"`
-	RepoBranch               string     `json:"repo_branch"`
-	WorkDir                  string     `json:"work_dir"`
-	WorkDirId                string     `json:"work_dir_id"`
-	DiffLines                int        `json:"diff_lines"`
-	StartTime                *time.Time `json:"start_time"`
-	EndTime                  *time.Time `json:"end_time"`
-	UpstreamTokens           int64      `json:"upstream_tokens"`
-	DownstreamTokens         int64      `json:"downstream_tokens"`
-	Cost                     float64    `json:"cost"`
-	Silica                   float64    `json:"silica"`
-	AcceptRatio              float64    `json:"accept_ratio"`
-	TaskRealMinutes          *float64   `json:"task_real_minutes"`
-	TaskRealReason           string     `json:"task_real_minutes_reason"`
-	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
-	TaskRealReasonManual     string     `json:"task_real_minutes_reason_manual"`
-	TaskAncientMinutes       *float64   `json:"task_ancient_minutes"`
-	TaskAncientReason        string     `json:"task_ancient_minutes_reason"`
-	TaskAncientMinutesManual *float64   `json:"task_ancient_minutes_manual"`
-	TaskAncientReasonManual  string     `json:"task_ancient_minutes_reason_manual"`
-	Title                    string     `json:"title"`
-	CreatedAt                time.Time  `json:"created_at"`
-	UpdatedAt                time.Time  `json:"updated_at"`
+type UserGroup struct {
+	GroupID   string          `json:"group_id"`
+	Name      string          `json:"name"`
+	OrgName   string          `json:"org_name"`
+	UserIDs   json.RawMessage `json:"user_ids" swaggertype:"string" example:"[\"user1\", \"user2\"]"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
-type StatConversation struct {
-	ID               int       `json:"id"`
-	SessionId        string    `json:"session_id"`
-	TaskId           string    `json:"task_id"`
-	RequestId        string    `json:"request_id"`
-	Sender           string    `json:"sender"`
-	PromptMode       string    `json:"prompt_mode"`
-	Mode             string    `json:"mode"`
-	Model            string    `json:"model"`
-	StartTime        time.Time `json:"start_time"`
-	EndTime          time.Time `json:"end_time"`
-	ProcessTime      int64     `json:"process_time"`
-	ProcessTtft      int64     `json:"process_ttft"`
-	UpstreamTokens   int64     `json:"upstream_tokens"`
-	DownstreamTokens int64     `json:"downstream_tokens"`
-	Cost             float64   `json:"cost"`
-	RequestContent   string    `json:"request_content"`
-	ResponseContent  string    `json:"response_content"`
-	UserInput        string    `json:"user_input"`
-	Diff             string    `json:"diff"`
-	DiffLines        int64     `json:"diff_lines"`
-	ErrorCode        string    `json:"error_code"`
-	ErrorReason      string    `json:"error_reason"`
-	RepoAddr         string    `json:"repo_addr"`
-	RepoBranch       string    `json:"repo_branch"`
-	WorkDir          string    `json:"work_dir"`
-	WorkDirId        string    `json:"work_dir_id"`
-	CreatedAt        time.Time `json:"created_at"`
+type TaskListItem struct {
+	TaskId                   string    `json:"task_id"`
+	SessionId                string    `json:"session_id"`
+	CommitId                 string    `json:"commit_id"`
+	Title                    string    `json:"title"`
+	UserId                   string    `json:"user_id"`
+	UserName                 string    `json:"user_name"`
+	ClientId                 string    `json:"client_id"`
+	ClientIde                string    `json:"client_ide"`
+	ClientVersion            string    `json:"client_version"`
+	ClientOs                 string    `json:"client_os"`
+	ClientOsVersion          string    `json:"client_os_version"`
+	Caller                   string    `json:"caller"`
+	RepoAddr                 string    `json:"repo_addr"`
+	RepoBranch               string    `json:"repo_branch"`
+	WorkDir                  string    `json:"work_dir"`
+	WorkDirId                string    `json:"work_dir_id"`
+	StartTime                time.Time `json:"start_time"`
+	EndTime                  time.Time `json:"end_time"`
+	UpstreamTokens           int64     `json:"upstream_tokens"`
+	DownstreamTokens         int64     `json:"downstream_tokens"`
+	Cost                     float64   `json:"cost"`
+	Silica                   float64   `json:"silica"`
+	AcceptRatio              float64   `json:"accept_ratio"`
+	DiffLines                int       `json:"diff_lines"`
+	TaskAncientMinutes       float64   `json:"task_ancient_minutes"`
+	TaskAncientReason        string    `json:"task_ancient_minutes_reason"`
+	TaskAncientMinutesManual *float64  `json:"task_ancient_minutes_manual"`
+	TaskAncientReasonManual  string    `json:"task_ancient_minutes_reason_manual"`
+	TaskRealMinutes          float64   `json:"task_real_minutes"`
+	TaskRealReason           string    `json:"task_real_minutes_reason"`
+	TaskRealMinutesManual    *float64  `json:"task_real_minutes_manual"`
+	TaskRealReasonManual     string    `json:"task_real_minutes_reason_manual"`
+	CreatedAt                time.Time `json:"created_at"`
+	UpdatedAt                time.Time `json:"updated_at"`
+	EfficiencyRatio          float64   `json:"efficiency_ratio"`
+	Org1                     string    `json:"org1"`
+	Org2                     string    `json:"org2"`
+	Org3                     string    `json:"org3"`
+	Org4                     string    `json:"org4"`
+	Org5                     string    `json:"org5"`
+	Org6                     string    `json:"org6"`
+	Org7                     string    `json:"org7"`
+	Org8                     string    `json:"org8"`
+	Org9                     string    `json:"org9"`
+	OrgDisplay               string    `json:"org_display"`
 }
 
-type StatCommit struct {
+type CommitListItem struct {
 	CommitId                   string          `json:"commit_id"`
 	CommitTime                 time.Time       `json:"commit_time"`
 	RepoAddr                   string          `json:"repo_addr"`
@@ -93,92 +84,38 @@ type StatCommit struct {
 	UserName                   string          `json:"user_name"`
 	ClientId                   string          `json:"client_id"`
 	WorkDir                    string          `json:"work_dir"`
-	WorkDirId                  string          `json:"work_dir_id"`
 	DiffLines                  int             `json:"diff_lines"`
 	CommitAncientMinutes       float64         `json:"commit_ancient_minutes"`
 	CommitAncientReason        string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual *float64        `json:"commit_ancient_minutes_manual"`
 	CommitAncientReasonManual  string          `json:"commit_ancient_minutes_reason_manual"`
-	TaskIds                    json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
-	TaskIdsSilica              json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
-	TaskAcceptRatios           json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
-	UpstreamTokens             int64           `json:"upstream_tokens"`
-	DownstreamTokens           int64           `json:"downstream_tokens"`
-	Cost                       float64         `json:"cost"`
-	Silica                     float64         `json:"silica"`
-	CommitRealAiMinutes        float64         `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes   float64         `json:"commit_real_ancient_minutes"`
 	CommitRealMinutes          float64         `json:"commit_real_minutes"`
 	CommitRealReason           string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual    *float64        `json:"commit_real_minutes_manual"`
 	CommitRealReasonManual     string          `json:"commit_real_minutes_reason_manual"`
+	CommitRealAiMinutes        float64         `json:"commit_real_ai_minutes"`
+	CommitRealAncientMinutes   float64         `json:"commit_real_ancient_minutes"`
+	TaskIds                    json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
+	TaskIdsSilica              json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
+	TaskAcceptRatios           json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
 	Comment                    string          `json:"comment"`
 	CreatedAt                  time.Time       `json:"created_at"`
 	UpdatedAt                  time.Time       `json:"updated_at"`
-}
-
-type Project struct {
-	ProjectId                       string          `json:"project_id"`
-	Name                            string          `json:"name"`
-	Description                     string          `json:"description"`
-	Repos                           json.RawMessage `json:"repos" swaggertype:"string"`
-	TaskIds                         json.RawMessage `json:"task_ids" swaggertype:"string"`
-	TaskIdsSilica                   json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
-	StartTime                       *time.Time      `json:"start_time"`
-	EndTime                         *time.Time      `json:"end_time"`
-	StartTimeManual                 *time.Time      `json:"start_time_manual"`
-	EndTimeManual                   *time.Time      `json:"end_time_manual"`
-	UpstreamTokens                  int64           `json:"upstream_tokens"`
-	DownstreamTokens                int64           `json:"downstream_tokens"`
-	Cost                            float64         `json:"cost"`
-	ProjectAncientMinutes           *float64        `json:"project_ancient_minutes"`
-	ProjectAncientReason            string          `json:"project_ancient_minutes_reason"`
-	ProjectAncientMinutesManual     *float64        `json:"project_ancient_minutes_manual"`
-	ProjectAncientReasonManual      string          `json:"project_ancient_minutes_reason_manual"`
-	ProjectRealProcessMinutes       *float64        `json:"project_real_process_minutes"`
-	ProjectRealProcessReason        string          `json:"project_real_process_minutes_reason"`
-	ProjectRealProcessMinutesManual *float64        `json:"project_real_process_minutes_manual"`
-	ProjectRealProcessReasonManual  string          `json:"project_real_process_minutes_reason_manual"`
-	ProjectRealLeadMinutes          *float64        `json:"project_real_lead_minutes"`
-	ProjectRealLeadReason           string          `json:"project_real_lead_minutes_reason"`
-	ProjectRealLeadMinutesManual    *float64        `json:"project_real_lead_minutes_manual"`
-	ProjectRealLeadReasonManual     string          `json:"project_real_lead_minutes_reason_manual"`
-	CreatedAt                       time.Time       `json:"created_at"`
-	UpdatedAt                       time.Time       `json:"updated_at"`
-}
-
-type UserProductivity struct {
-	UserProductivityId       string          `json:"user_productivity_id"`
-	CreateTime               time.Time       `json:"create_time"`
-	UserId                   string          `json:"user_id"`
-	UserName                 string          `json:"user_name"`
-	TaskIds                  json.RawMessage `json:"task_ids" swaggertype:"string"`
-	WorkDirIds               json.RawMessage `json:"work_dir_ids" swaggertype:"string"`
-	TaskDiffLines            int             `json:"task_diff_lines"`
-	UpstreamTokens           int64           `json:"upstream_tokens"`
-	DownstreamTokens         int64           `json:"downstream_tokens"`
-	Cost                     float64         `json:"cost"`
-	TaskRealMinutes          float64         `json:"task_real_minutes"`
-	TaskAncientMinutes       float64         `json:"task_ancient_minutes"`
-	TaskEfficiencyRatio      float64         `json:"task_efficiency_ratio"`
-	CommitIds                json.RawMessage `json:"commit_ids" swaggertype:"string"`
-	CommitDiffLines          int             `json:"commit_diff_lines"`
-	CommitAncientMinutes     float64         `json:"commit_ancient_minutes"`
-	CommitRealAiMinutes      float64         `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes float64         `json:"commit_real_ancient_minutes"`
-	CommitRealMinutes        float64         `json:"commit_real_minutes"`
-	CommitEfficiencyRatio    float64         `json:"commit_efficiency_ratio"`
-	CreatedAt                time.Time       `json:"created_at"`
-	UpdatedAt                time.Time       `json:"updated_at"`
-}
-
-type UserGroup struct {
-	GroupID   string          `json:"group_id"`
-	Name      string          `json:"name"`
-	OrgName   string          `json:"org_name"`
-	UserIDs   json.RawMessage `json:"user_ids" swaggertype:"string" example:"[\"user1\", \"user2\"]"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	Cost                       float64         `json:"cost"`
+	UpstreamTokens             int64           `json:"upstream_tokens"`
+	DownstreamTokens           int64           `json:"downstream_tokens"`
+	Silica                     float64         `json:"silica"`
+	EfficiencyRatio            float64         `json:"efficiency_ratio"`
+	Org1                       string          `json:"org1"`
+	Org2                       string          `json:"org2"`
+	Org3                       string          `json:"org3"`
+	Org4                       string          `json:"org4"`
+	Org5                       string          `json:"org5"`
+	Org6                       string          `json:"org6"`
+	Org7                       string          `json:"org7"`
+	Org8                       string          `json:"org8"`
+	Org9                       string          `json:"org9"`
+	OrgDisplay                 string          `json:"org_display"`
 }
 
 // ============================================================
@@ -268,237 +205,9 @@ func ptrToStr(p *string) string {
 	return *p
 }
 
-func strJSONToRaw(j models.StringJSON) json.RawMessage {
-	if j == "" || j == "null" {
-		return json.RawMessage("[]")
-	}
-	return json.RawMessage(j)
-}
-
-func rawToStrJSON(r json.RawMessage) models.StringJSON {
-	if len(r) == 0 || string(r) == "null" {
-		return "[]"
-	}
-	return models.StringJSON(r)
-}
-
 // ============================================================
 // models → response 类型转换
 // ============================================================
-
-func toStatTask(t *models.Task) *StatTask {
-	if t == nil {
-		return nil
-	}
-	return &StatTask{
-		TaskId:                   t.TaskId,
-		CommitId:                 t.CommitId,
-		SessionId:                t.SessionId,
-		UserId:                   t.UserId,
-		UserName:                 t.UserName,
-		ClientId:                 t.ClientId,
-		ClientIde:                t.ClientIde,
-		ClientVersion:            t.ClientVersion,
-		ClientOs:                 t.ClientOs,
-		ClientOsVersion:          t.ClientOsVersion,
-		Caller:                   t.Caller,
-		RepoAddr:                 t.RepoAddr,
-		RepoBranch:               t.RepoBranch,
-		WorkDir:                  t.WorkDir,
-		WorkDirId:                t.WorkDirId,
-		DiffLines:                t.DiffLines,
-		StartTime:                &t.StartTime,
-		EndTime:                  &t.EndTime,
-		UpstreamTokens:           t.UpstreamTokens,
-		DownstreamTokens:         t.DownstreamTokens,
-		Cost:                     t.Cost,
-		Silica:                   t.Silica,
-		AcceptRatio:              t.AcceptRatio,
-		TaskRealMinutes:          toFloat64Ptr(t.TaskRealMinutes),
-		TaskRealReason:           t.TaskRealReason,
-		TaskRealMinutesManual:    t.TaskRealMinutesManual,
-		TaskRealReasonManual:     t.TaskRealReasonManual,
-		TaskAncientMinutes:       toFloat64Ptr(t.TaskAncientMinutes),
-		TaskAncientReason:        t.TaskAncientReason,
-		TaskAncientMinutesManual: t.TaskAncientMinutesManual,
-		TaskAncientReasonManual:  t.TaskAncientReasonManual,
-		Title:                    t.Title,
-		CreatedAt:                t.CreatedAt,
-		UpdatedAt:                t.UpdatedAt,
-	}
-}
-
-func toStatTaskSlice(tasks []models.Task) []StatTask {
-	result := make([]StatTask, len(tasks))
-	for i, t := range tasks {
-		result[i] = *toStatTask(&t)
-	}
-	return result
-}
-
-func toStatCommit(c *models.Commit) *StatCommit {
-	if c == nil {
-		return nil
-	}
-	return &StatCommit{
-		CommitId:                   c.CommitId,
-		CommitTime:                 c.CommitTime,
-		RepoAddr:                   c.RepoAddr,
-		RepoBranch:                 c.RepoBranch,
-		GitUserName:                c.GitUserName,
-		GitUserEmail:               c.GitUserEmail,
-		UserId:                     c.UserId,
-		UserName:                   c.UserName,
-		ClientId:                   c.ClientId,
-		WorkDir:                    c.WorkDir,
-		WorkDirId:                  c.WorkDirId,
-		DiffLines:                  c.DiffLines,
-		CommitAncientMinutes:       c.CommitAncientMinutes,
-		CommitAncientReason:        c.CommitAncientReason,
-		CommitAncientMinutesManual: c.CommitAncientMinutesManual,
-		CommitAncientReasonManual:  c.CommitAncientReasonManual,
-		TaskIds:                    strJSONToRaw(c.TaskIds),
-		TaskIdsSilica:              strJSONToRaw(c.TaskIdsSilica),
-		TaskAcceptRatios:           strJSONToRaw(c.TaskAcceptRatios),
-		UpstreamTokens:             c.UpstreamTokens,
-		DownstreamTokens:           c.DownstreamTokens,
-		Cost:                       c.Cost,
-		Silica:                     c.Silica,
-		CommitRealAiMinutes:        c.CommitRealAiMinutes,
-		CommitRealAncientMinutes:   c.CommitRealNonAiMinutes,
-		CommitRealMinutes:          c.CommitRealMinutes,
-		CommitRealReason:           c.CommitRealReason,
-		CommitRealMinutesManual:    c.CommitRealMinutesManual,
-		CommitRealReasonManual:     c.CommitRealReasonManual,
-		Comment:                    c.Comment,
-		CreatedAt:                  c.CreatedAt,
-		UpdatedAt:                  c.UpdatedAt,
-	}
-}
-
-func toStatCommitSlice(commits []models.Commit) []StatCommit {
-	result := make([]StatCommit, len(commits))
-	for i, c := range commits {
-		result[i] = *toStatCommit(&c)
-	}
-	return result
-}
-
-func toStatConversation(c *models.Conversation) *StatConversation {
-	if c == nil {
-		return nil
-	}
-	return &StatConversation{
-		ID:               c.ID,
-		SessionId:        c.SessionId,
-		TaskId:           c.TaskId,
-		RequestId:        c.RequestId,
-		Sender:           c.Sender,
-		PromptMode:       c.PromptMode,
-		Mode:             c.Mode,
-		Model:            c.Model,
-		StartTime:        c.StartTime,
-		EndTime:          c.EndTime,
-		ProcessTime:      c.ProcessTime,
-		ProcessTtft:      c.ProcessTtft,
-		UpstreamTokens:   c.UpstreamTokens,
-		DownstreamTokens: c.DownstreamTokens,
-		Cost:             c.Cost,
-		RequestContent:   c.RequestContent,
-		ResponseContent:  c.ResponseContent,
-		UserInput:        c.UserInput,
-		Diff:             "",
-		DiffLines:        c.DiffLines,
-		ErrorCode:        c.ErrorCode,
-		ErrorReason:      c.ErrorReason,
-		RepoAddr:         c.RepoAddr,
-		RepoBranch:       c.RepoBranch,
-		WorkDir:          c.WorkDir,
-		WorkDirId:        c.WorkDirId,
-		CreatedAt:        c.CreatedAt,
-	}
-}
-
-func toProject(p *models.Project) *Project {
-	if p == nil {
-		return nil
-	}
-	return &Project{
-		ProjectId:                       p.ProjectId,
-		Name:                            p.Name,
-		Description:                     p.Description,
-		Repos:                           strJSONToRaw(p.Repos),
-		TaskIds:                         strJSONToRaw(p.TaskIds),
-		TaskIdsSilica:                   strJSONToRaw(p.TaskIdsSilica),
-		StartTime:                       p.StartTime,
-		EndTime:                         p.EndTime,
-		StartTimeManual:                 p.StartTimeManual,
-		EndTimeManual:                   p.EndTimeManual,
-		UpstreamTokens:                  p.UpstreamTokens,
-		DownstreamTokens:                p.DownstreamTokens,
-		Cost:                            p.Cost,
-		ProjectAncientMinutes:           p.ProjectAncientMinutes,
-		ProjectAncientReason:            p.ProjectAncientReason,
-		ProjectAncientMinutesManual:     p.ProjectAncientMinutesManual,
-		ProjectAncientReasonManual:      p.ProjectAncientReasonManual,
-		ProjectRealProcessMinutes:       p.ProjectRealProcessMinutes,
-		ProjectRealProcessReason:        p.ProjectRealProcessReason,
-		ProjectRealProcessMinutesManual: p.ProjectRealProcessMinutesManual,
-		ProjectRealProcessReasonManual:  p.ProjectRealProcessReasonManual,
-		ProjectRealLeadMinutes:          p.ProjectRealLeadMinutes,
-		ProjectRealLeadReason:           p.ProjectRealLeadReason,
-		ProjectRealLeadMinutesManual:    p.ProjectRealLeadMinutesManual,
-		ProjectRealLeadReasonManual:     p.ProjectRealLeadReasonManual,
-		CreatedAt:                       p.CreatedAt,
-		UpdatedAt:                       p.UpdatedAt,
-	}
-}
-
-func toProjectSlice(projects []models.Project) []Project {
-	result := make([]Project, len(projects))
-	for i, p := range projects {
-		result[i] = *toProject(&p)
-	}
-	return result
-}
-
-func toUserProductivity(up *models.UserProductivity) *UserProductivity {
-	if up == nil {
-		return nil
-	}
-	return &UserProductivity{
-		UserProductivityId:       up.UserProductivityId,
-		CreateTime:               up.CreateTime,
-		UserId:                   up.UserId,
-		UserName:                 up.UserName,
-		TaskIds:                  strJSONToRaw(up.TaskIds),
-		WorkDirIds:               strJSONToRaw(up.WorkDirIds),
-		TaskDiffLines:            up.TaskDiffLines,
-		UpstreamTokens:           up.UpstreamTokens,
-		DownstreamTokens:         up.DownstreamTokens,
-		Cost:                     up.Cost,
-		TaskRealMinutes:          up.TaskRealMinutes,
-		TaskAncientMinutes:       up.TaskAncientMinutes,
-		TaskEfficiencyRatio:      up.TaskEfficiencyRatio,
-		CommitIds:                strJSONToRaw(up.CommitIds),
-		CommitDiffLines:          up.CommitDiffLines,
-		CommitAncientMinutes:     up.CommitAncientMinutes,
-		CommitRealAiMinutes:      up.CommitRealAiMinutes,
-		CommitRealAncientMinutes: up.CommitRealNonAiMinutes,
-		CommitRealMinutes:        up.CommitRealMinutes,
-		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
-		CreatedAt:                up.CreatedAt,
-		UpdatedAt:                up.UpdatedAt,
-	}
-}
-
-func toUserProductivitySlice(ups []models.UserProductivity) []UserProductivity {
-	result := make([]UserProductivity, len(ups))
-	for i, up := range ups {
-		result[i] = *toUserProductivity(&up)
-	}
-	return result
-}
 
 func toUserGroup(g *models.UserGroup) *UserGroup {
 	if g == nil {
@@ -508,7 +217,7 @@ func toUserGroup(g *models.UserGroup) *UserGroup {
 		GroupID:   g.GroupID,
 		Name:      g.Name,
 		OrgName:   g.OrgName,
-		UserIDs:   strJSONToRaw(g.UserIDs),
+		UserIDs:   json.RawMessage(g.UserIDs),
 		CreatedAt: g.CreatedAt,
 		UpdatedAt: g.UpdatedAt,
 	}
@@ -526,7 +235,78 @@ func InitDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 // tasks CRUD (GORM)
 // ============================================================
 
-func GetStatTask(db *gorm.DB, taskID string) (*StatTask, error) {
+func toTaskListItem(t *models.Task) *TaskListItem {
+	if t == nil {
+		return nil
+	}
+	efficiencyRatio := utils.CalcEfficiencyRatioManual(t.TaskAncientMinutes,
+		t.TaskRealMinutes, t.TaskAncientMinutesManual, t.TaskRealMinutesManual)
+
+	it := &TaskListItem{
+		TaskId:                   t.TaskId,
+		SessionId:                t.SessionId,
+		CommitId:                 t.CommitId,
+		Title:                    t.Title,
+		UserId:                   t.UserId,
+		UserName:                 t.UserName,
+		ClientId:                 t.ClientId,
+		ClientIde:                t.ClientIde,
+		ClientVersion:            t.ClientVersion,
+		ClientOs:                 t.ClientOs,
+		ClientOsVersion:          t.ClientOsVersion,
+		Caller:                   t.Caller,
+		RepoAddr:                 t.RepoAddr,
+		RepoBranch:               t.RepoBranch,
+		WorkDir:                  t.WorkDir,
+		WorkDirId:                t.WorkDirId,
+		StartTime:                t.StartTime,
+		EndTime:                  t.EndTime,
+		UpstreamTokens:           t.UpstreamTokens,
+		DownstreamTokens:         t.DownstreamTokens,
+		Cost:                     t.Cost,
+		Silica:                   t.Silica,
+		AcceptRatio:              t.AcceptRatio,
+		DiffLines:                t.DiffLines,
+		TaskRealMinutes:          t.TaskRealMinutes,
+		TaskRealReason:           t.TaskRealReason,
+		TaskRealMinutesManual:    t.TaskRealMinutesManual,
+		TaskRealReasonManual:     t.TaskRealReasonManual,
+		TaskAncientMinutes:       t.TaskAncientMinutes,
+		TaskAncientReason:        t.TaskAncientReason,
+		TaskAncientMinutesManual: t.TaskAncientMinutesManual,
+		TaskAncientReasonManual:  t.TaskAncientReasonManual,
+		EfficiencyRatio:          efficiencyRatio,
+		CreatedAt:                t.CreatedAt,
+		UpdatedAt:                t.UpdatedAt,
+	}
+
+	if t.UserId != "" {
+		if om, ok := orgMappings[t.UserId]; ok {
+			it.Org1 = om.Org1
+			it.Org2 = om.Org2
+			it.Org3 = om.Org3
+			it.Org4 = om.Org4
+			it.Org5 = om.Org5
+			it.Org6 = om.Org6
+			it.Org7 = om.Org7
+			it.Org8 = om.Org8
+			it.Org9 = om.Org9
+			it.OrgDisplay = getOrgDisplay(om.Org1, om.Org2, om.Org3, om.Org4,
+				om.Org5, om.Org6, om.Org7, om.Org8, om.Org9)
+		}
+	}
+	return it
+}
+
+func toTaskListItemSlice(tasks []models.Task) []TaskListItem {
+	result := make([]TaskListItem, len(tasks))
+	for i, t := range tasks {
+		result[i] = *toTaskListItem(&t)
+	}
+	return result
+}
+
+func GetTask(db *gorm.DB, taskID string) (*models.Task, error) {
 	var t models.Task
 	err := db.Where("task_id = ?", taskID).First(&t).Error
 	if err == gorm.ErrRecordNotFound {
@@ -535,11 +315,11 @@ func GetStatTask(db *gorm.DB, taskID string) (*StatTask, error) {
 	if err != nil {
 		return nil, fmt.Errorf("查询 tasks 失败: %w", err)
 	}
-	return toStatTask(&t), nil
+	return &t, nil
 }
 
-func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, error) {
-	result := make(map[string]*StatTask)
+func BatchGetTasks(db *gorm.DB, taskIDs []string) (map[string]*models.Task, error) {
+	result := make(map[string]*models.Task)
 	if len(taskIDs) == 0 {
 		return result, nil
 	}
@@ -548,7 +328,7 @@ func BatchGetStatTasks(db *gorm.DB, taskIDs []string) (map[string]*StatTask, err
 		return nil, fmt.Errorf("批量查询 tasks 失败: %w", err)
 	}
 	for i := range tasks {
-		result[tasks[i].TaskId] = toStatTask(&tasks[i])
+		result[tasks[i].TaskId] = &tasks[i]
 	}
 	return result, nil
 }
@@ -614,12 +394,12 @@ func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	return q
 }
 
-func ListStatTasks(db *gorm.DB, filter TaskFilter, page, pageSize int, orderClause string) ([]StatTask, int, error) {
+func ListTasks(db *gorm.DB, filter TaskFilter, page, pageSize int, orderClause string) ([]models.Task, int, error) {
 	q := filter.applyToQuery(db.Model(&models.Task{}))
 	var tasks []models.Task
 	var count int64
 	if err := q.Count(&count).Error; err != nil {
-		return []StatTask{}, 0, fmt.Errorf("统计 tasks 总数失败: %w", err)
+		return []models.Task{}, 0, fmt.Errorf("统计 tasks 总数失败: %w", err)
 	}
 	if orderClause != "" {
 		q = q.Order(orderClause)
@@ -630,8 +410,7 @@ func ListStatTasks(db *gorm.DB, filter TaskFilter, page, pageSize int, orderClau
 	if err := q.Find(&tasks).Error; err != nil {
 		return nil, int(count), fmt.Errorf("查询 tasks 列表失败: %w", err)
 	}
-	result := toStatTaskSlice(tasks)
-	return result, int(count), nil
+	return tasks, int(count), nil
 }
 
 func UpdateStatTaskManual(db *gorm.DB, taskID string, realManual *float64, realReasonManual *string, ancientManual *float64, ancientReasonManual *string) error {
@@ -653,19 +432,15 @@ func UpdateStatTaskManual(db *gorm.DB, taskID string, realManual *float64, realR
 }
 
 // ============================================================
-// task_conversations CRUD (GORM)
+// conversations CRUD (GORM)
 // ============================================================
 
-func ListStatConversations(db *gorm.DB, taskID string) ([]StatConversation, error) {
+func ListConversations(db *gorm.DB, taskID string) ([]models.Conversation, error) {
 	var convs []models.Conversation
 	if err := db.Where("task_id = ?", taskID).Order("start_time ASC").Find(&convs).Error; err != nil {
-		return nil, fmt.Errorf("查询 task_conversations 列表失败: %w", err)
+		return nil, fmt.Errorf("查询 conversations 列表失败: %w", err)
 	}
-	result := make([]StatConversation, len(convs))
-	for i := range convs {
-		result[i] = *toStatConversation(&convs[i])
-	}
-	return result, nil
+	return convs, nil
 }
 
 type UserFilter struct {
@@ -840,7 +615,73 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	return q
 }
 
-func GetStatCommitByID(db *gorm.DB, commitID string) (*StatCommit, error) {
+func toCommitListItem(commit *models.Commit) CommitListItem {
+	item := CommitListItem{
+		CommitId:                   commit.CommitId,
+		CommitTime:                 commit.CommitTime,
+		RepoAddr:                   commit.RepoAddr,
+		RepoBranch:                 commit.RepoBranch,
+		GitUserName:                commit.GitUserName,
+		GitUserEmail:               commit.GitUserEmail,
+		UserId:                     commit.UserId,
+		UserName:                   commit.UserName,
+		ClientId:                   commit.ClientId,
+		WorkDir:                    commit.WorkDir,
+		DiffLines:                  commit.DiffLines,
+		CommitAncientMinutes:       commit.CommitAncientMinutes,
+		CommitAncientReason:        commit.CommitAncientReason,
+		CommitAncientMinutesManual: commit.CommitAncientMinutesManual,
+		CommitAncientReasonManual:  commit.CommitAncientReasonManual,
+		CommitRealMinutes:          commit.CommitRealMinutes,
+		CommitRealReason:           commit.CommitRealReason,
+		CommitRealMinutesManual:    commit.CommitRealMinutesManual,
+		CommitRealReasonManual:     commit.CommitRealReasonManual,
+		CommitRealAiMinutes:        commit.CommitRealAiMinutes,
+		CommitRealAncientMinutes:   commit.CommitRealNonAiMinutes,
+		TaskIds:                    json.RawMessage(commit.TaskIds),
+		TaskIdsSilica:              json.RawMessage(commit.TaskIdsSilica),
+		TaskAcceptRatios:           json.RawMessage(commit.TaskAcceptRatios),
+		Comment:                    commit.Comment,
+		CreatedAt:                  commit.CreatedAt,
+		UpdatedAt:                  commit.UpdatedAt,
+		Cost:                       commit.Cost,
+		UpstreamTokens:             commit.UpstreamTokens,
+		DownstreamTokens:           commit.DownstreamTokens,
+		Silica:                     commit.Silica,
+	}
+	ancient := commit.CommitAncientMinutes
+	real := commit.CommitRealMinutes
+	item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(ancient,
+		real,
+		commit.CommitAncientMinutesManual,
+		commit.CommitRealMinutesManual)
+
+	if commit.UserId != "" {
+		if om, ok := orgMappings[commit.UserId]; ok {
+			item.Org1 = om.Org1
+			item.Org2 = om.Org2
+			item.Org3 = om.Org3
+			item.Org4 = om.Org4
+			item.Org5 = om.Org5
+			item.Org6 = om.Org6
+			item.Org7 = om.Org7
+			item.Org8 = om.Org8
+			item.Org9 = om.Org9
+			item.OrgDisplay = getOrgDisplay(om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9)
+		}
+	}
+	return item
+}
+
+func toCommitListItemSlice(commits []models.Commit) []CommitListItem {
+	result := make([]CommitListItem, len(commits))
+	for i := range commits {
+		result[i] = toCommitListItem(&commits[i])
+	}
+	return result
+}
+
+func GetStatCommitByID(db *gorm.DB, commitID string) (*models.Commit, error) {
 	var c models.Commit
 	err := db.Where("commit_id = ?", commitID).First(&c).Error
 	if err == gorm.ErrRecordNotFound {
@@ -849,10 +690,10 @@ func GetStatCommitByID(db *gorm.DB, commitID string) (*StatCommit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("查询 commits 失败: %w", err)
 	}
-	return toStatCommit(&c), nil
+	return &c, nil
 }
 
-func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]StatCommit, int, error) {
+func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]models.Commit, int, error) {
 	q := filter.applyToQuery(db.Model(&models.Commit{}))
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -862,8 +703,7 @@ func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, order
 	if err := q.Order(orderClause).Limit(pageSize).Offset((page - 1) * pageSize).Find(&commits).Error; err != nil {
 		return nil, 0, fmt.Errorf("查询 commits 列表失败: %w", err)
 	}
-	result := toStatCommitSlice(commits)
-	return result, int(total), nil
+	return commits, int(total), nil
 }
 
 func UpdateStatCommitManual(db *gorm.DB, commitID string, ancientManual *float64, ancientReasonManual *string, realManual *float64, realReasonManual *string) error {
@@ -885,9 +725,17 @@ func UpdateStatCommitManual(db *gorm.DB, commitID string, ancientManual *float64
 }
 
 func UpdateStatCommitTaskAssoc(db *gorm.DB, commitID string, taskIDs, taskIDsSilica json.RawMessage, realMinutes *float64, realAIMinutes *float64, realAncientMinutes *float64, realReason *string) error {
+	tids := models.StringJSON(taskIDs)
+	if tids == "" || tids == "null" {
+		tids = "[]"
+	}
+	ts := models.StringJSON(taskIDsSilica)
+	if ts == "" || ts == "null" {
+		ts = "[]"
+	}
 	updates := map[string]interface{}{
-		"task_ids":                    rawToStrJSON(taskIDs),
-		"task_ids_silica":             rawToStrJSON(taskIDsSilica),
+		"task_ids":                    tids,
+		"task_ids_silica":             ts,
 		"commit_real_minutes":         realMinutes,
 		"commit_real_ai_minutes":      realAIMinutes,
 		"commit_real_ancient_minutes": realAncientMinutes,
@@ -947,21 +795,14 @@ func ListBranchesByRepoAddr(db *gorm.DB, repoAddr string) ([]string, error) {
 // projects CRUD (GORM)
 // ============================================================
 
-func CreateProject(db *gorm.DB, p *Project) (string, error) {
-	mp := models.Project{
-		Name:          p.Name,
-		Description:   p.Description,
-		Repos:         rawToStrJSON(p.Repos),
-		TaskIds:       rawToStrJSON(p.TaskIds),
-		TaskIdsSilica: rawToStrJSON(p.TaskIdsSilica),
-	}
-	if err := db.Create(&mp).Error; err != nil {
+func CreateProject(db *gorm.DB, p *models.Project) (string, error) {
+	if err := db.Create(p).Error; err != nil {
 		return "", fmt.Errorf("创建 project 失败: %w", err)
 	}
-	return mp.ProjectId, nil
+	return p.ProjectId, nil
 }
 
-func GetProject(db *gorm.DB, projectID string) (*Project, error) {
+func GetProject(db *gorm.DB, projectID string) (*models.Project, error) {
 	var mp models.Project
 	err := db.Where("project_id = ?", projectID).First(&mp).Error
 	if err == gorm.ErrRecordNotFound {
@@ -970,27 +811,19 @@ func GetProject(db *gorm.DB, projectID string) (*Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("查询 project 失败: %w", err)
 	}
-	return toProject(&mp), nil
+	return &mp, nil
 }
 
-func ListProjects(db *gorm.DB) ([]Project, error) {
+func ListProjects(db *gorm.DB) ([]models.Project, error) {
 	var mps []models.Project
 	if err := db.Order("updated_at DESC").Find(&mps).Error; err != nil {
 		return nil, fmt.Errorf("查询 projects 列表失败: %w", err)
 	}
-	return toProjectSlice(mps), nil
+	return mps, nil
 }
 
-func UpdateProject(db *gorm.DB, p *Project) error {
-	updates := map[string]interface{}{
-		"name":            p.Name,
-		"description":     p.Description,
-		"repos":           rawToStrJSON(p.Repos),
-		"task_ids":        rawToStrJSON(p.TaskIds),
-		"task_ids_silica": rawToStrJSON(p.TaskIdsSilica),
-		"updated_at":      time.Now(),
-	}
-	result := db.Model(&models.Project{}).Where("project_id = ?", p.ProjectId).Updates(updates)
+func UpdateProject(db *gorm.DB, p *models.Project) error {
+	result := db.Model(&models.Project{}).Where("project_id = ?", p.ProjectId).Updates(p)
 	if result.Error != nil {
 		return fmt.Errorf("更新 project 失败: %w", result.Error)
 	}
@@ -1082,7 +915,7 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 // user_productivity CRUD (GORM)
 // ============================================================
 
-func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, orderClause string) ([]UserProductivity, int, error) {
+func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, orderClause string) ([]models.UserProductivity, int, error) {
 	q := filter.applyToQuery(db.Model(&models.UserProductivity{}))
 	var count int64
 	if err := q.Count(&count).Error; err != nil {
@@ -1098,7 +931,7 @@ func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, or
 	if err := q.Find(&ups).Error; err != nil {
 		return nil, int(count), fmt.Errorf("查询 user_productivity 列表失败: %w", err)
 	}
-	return toUserProductivitySlice(ups), int(count), nil
+	return ups, int(count), nil
 }
 
 // ============================================================

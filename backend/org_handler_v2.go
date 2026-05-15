@@ -716,9 +716,9 @@ func getOrgDetailV2(c *gin.Context) {
 			}
 			da := dailyMap[dateStr]
 
-			if d.TaskIds != nil {
+			if d.TaskIds != "" {
 				var ids []interface{}
-				if err := json.Unmarshal(d.TaskIds, &ids); err == nil {
+				if err := json.Unmarshal([]byte(d.TaskIds), &ids); err == nil {
 					for _, id := range ids {
 						if s, ok := id.(string); ok {
 							da.taskIDs[s] = true
@@ -726,9 +726,9 @@ func getOrgDetailV2(c *gin.Context) {
 					}
 				}
 			}
-			if d.CommitIds != nil {
+			if d.CommitIds != "" {
 				var ids []interface{}
-				if err := json.Unmarshal(d.CommitIds, &ids); err == nil {
+				if err := json.Unmarshal([]byte(d.CommitIds), &ids); err == nil {
 					for _, id := range ids {
 						if s, ok := id.(string); ok {
 							da.commitIDs[s] = true
@@ -756,7 +756,7 @@ func getOrgDetailV2(c *gin.Context) {
 	}
 	sort.Strings(dates)
 
-	dailySlice := make([]UserProductivity, 0, len(dates))
+	dailySlice := make([]models.UserProductivity, 0, len(dates))
 	for _, date := range dates {
 		da := dailyMap[date]
 		t, _ := time.Parse("2006-01-02", date)
@@ -771,10 +771,10 @@ func getOrgDetailV2(c *gin.Context) {
 		taskIDsJSON, _ := json.Marshal(taskIDList)
 		commitIDsJSON, _ := json.Marshal(commitIDList)
 
-		dailySlice = append(dailySlice, UserProductivity{
+		dailySlice = append(dailySlice, models.UserProductivity{
 			CreateTime:           t,
-			TaskIds:              taskIDsJSON,
-			CommitIds:            commitIDsJSON,
+			TaskIds:              models.StringJSON(taskIDsJSON),
+			CommitIds:            models.StringJSON(commitIDsJSON),
 			TaskDiffLines:        da.taskDiffLines,
 			CommitDiffLines:      da.commitDiffLines,
 			TaskRealMinutes:      da.taskRealMin,

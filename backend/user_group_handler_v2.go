@@ -195,15 +195,15 @@ func getUserGroupDetailHandler(c *gin.Context) {
 			if userName == "" {
 				userName = d.UserName
 			}
-			if d.TaskIds != nil {
+			if d.TaskIds != "" {
 				var ids []interface{}
-				if json.Unmarshal(d.TaskIds, &ids) == nil {
+				if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
 					taskCount += len(ids)
 				}
 			}
-			if d.CommitIds != nil {
+			if d.CommitIds != "" {
 				var ids []interface{}
-				if json.Unmarshal(d.CommitIds, &ids) == nil {
+				if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
 					commitCount += len(ids)
 				}
 			}

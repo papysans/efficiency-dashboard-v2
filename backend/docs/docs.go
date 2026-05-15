@@ -3313,7 +3313,7 @@ const docTemplate = `{
                 "tasks": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.StatTask"
+                        "$ref": "#/definitions/main.TaskListItem"
                     }
                 }
             }
@@ -3484,101 +3484,6 @@ const docTemplate = `{
                 "task_ids_silica": {
                     "type": "string",
                     "example": "[\"task1\", \"task2\"]"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "upstream_tokens": {
-                    "type": "integer"
-                },
-                "user_id": {
-                    "type": "string"
-                },
-                "user_name": {
-                    "type": "string"
-                },
-                "work_dir": {
-                    "type": "string"
-                },
-                "work_dir_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "main.StatTask": {
-            "type": "object",
-            "properties": {
-                "caller": {
-                    "type": "string"
-                },
-                "client_id": {
-                    "type": "string"
-                },
-                "client_ide": {
-                    "type": "string"
-                },
-                "client_os": {
-                    "type": "string"
-                },
-                "client_os_version": {
-                    "type": "string"
-                },
-                "client_version": {
-                    "type": "string"
-                },
-                "cost": {
-                    "type": "number"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "diff_lines": {
-                    "type": "integer"
-                },
-                "downstream_tokens": {
-                    "type": "integer"
-                },
-                "end_time": {
-                    "type": "string"
-                },
-                "repo_addr": {
-                    "type": "string"
-                },
-                "repo_branch": {
-                    "type": "string"
-                },
-                "start_time": {
-                    "type": "string"
-                },
-                "task_ancient_minutes": {
-                    "type": "number"
-                },
-                "task_ancient_minutes_manual": {
-                    "type": "number"
-                },
-                "task_ancient_minutes_reason": {
-                    "type": "string"
-                },
-                "task_ancient_minutes_reason_manual": {
-                    "type": "string"
-                },
-                "task_id": {
-                    "type": "string"
-                },
-                "task_real_minutes": {
-                    "type": "number"
-                },
-                "task_real_minutes_manual": {
-                    "type": "number"
-                },
-                "task_real_minutes_reason": {
-                    "type": "string"
-                },
-                "task_real_minutes_reason_manual": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"

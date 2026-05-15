@@ -7,55 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"kanban/core/models"
 	"kanban/core/utils"
 
 	"github.com/gin-gonic/gin"
 )
-
-type CommitListItem struct {
-	CommitId                   string          `json:"commit_id"`
-	CommitTime                 time.Time       `json:"commit_time"`
-	RepoAddr                   string          `json:"repo_addr"`
-	RepoBranch                 string          `json:"repo_branch"`
-	GitUserName                string          `json:"git_user_name"`
-	GitUserEmail               string          `json:"git_user_email"`
-	UserId                     string          `json:"user_id"`
-	UserName                   string          `json:"user_name"`
-	ClientId                   string          `json:"client_id"`
-	WorkDir                    string          `json:"work_dir"`
-	DiffLines                  int             `json:"diff_lines"`
-	CommitAncientMinutes       float64         `json:"commit_ancient_minutes"`
-	CommitAncientReason        string          `json:"commit_ancient_minutes_reason"`
-	CommitAncientMinutesManual *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientReasonManual  string          `json:"commit_ancient_minutes_reason_manual"`
-	CommitRealMinutes          float64         `json:"commit_real_minutes"`
-	CommitRealReason           string          `json:"commit_real_minutes_reason"`
-	CommitRealMinutesManual    *float64        `json:"commit_real_minutes_manual"`
-	CommitRealReasonManual     string          `json:"commit_real_minutes_reason_manual"`
-	CommitRealAiMinutes        float64         `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes   float64         `json:"commit_real_ancient_minutes"`
-	TaskIds                    json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
-	TaskIdsSilica              json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
-	TaskAcceptRatios           json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
-	Comment                    string          `json:"comment"`
-	CreatedAt                  time.Time       `json:"created_at"`
-	UpdatedAt                  time.Time       `json:"updated_at"`
-	Cost                       float64         `json:"cost"`
-	UpstreamTokens             int64           `json:"upstream_tokens"`
-	DownstreamTokens           int64           `json:"downstream_tokens"`
-	Silica                     float64         `json:"silica"`
-	EfficiencyRatio            *float64        `json:"efficiency_ratio"`
-	Org1                       string          `json:"org1"`
-	Org2                       string          `json:"org2"`
-	Org3                       string          `json:"org3"`
-	Org4                       string          `json:"org4"`
-	Org5                       string          `json:"org5"`
-	Org6                       string          `json:"org6"`
-	Org7                       string          `json:"org7"`
-	Org8                       string          `json:"org8"`
-	Org9                       string          `json:"org9"`
-	OrgDisplay                 string          `json:"org_display"`
-}
 
 type CommitListResponse struct {
 	Total    int              `json:"total"`
@@ -82,13 +38,13 @@ type UpdateCommitManualRequest struct {
 }
 
 type CommitDetailResponse struct {
-	Commit           *StatCommit   `json:"commit"`
-	RelatedTasks     []RelatedTask `json:"related_tasks"`
-	EfficiencyRatio  *float64      `json:"efficiency_ratio"`
-	TotalCost        float64       `json:"total_cost"`
-	Silica           float64       `json:"silica"`
-	UpstreamTokens   int64         `json:"upstream_tokens"`
-	DownstreamTokens int64         `json:"downstream_tokens"`
+	Commit           *models.Commit `json:"commit"`
+	RelatedTasks     []RelatedTask  `json:"related_tasks"`
+	EfficiencyRatio  float64        `json:"efficiency_ratio"`
+	TotalCost        float64        `json:"total_cost"`
+	Silica           float64        `json:"silica"`
+	UpstreamTokens   int64          `json:"upstream_tokens"`
+	DownstreamTokens int64          `json:"downstream_tokens"`
 }
 
 // listCommitsV2 GET /api/v2/commits
@@ -175,65 +131,7 @@ func listCommitsV2(c *gin.Context) {
 		return
 	}
 
-	results := make([]CommitListItem, len(list))
-	for i, commit := range list {
-		item := CommitListItem{
-			CommitId:                   commit.CommitId,
-			CommitTime:                 commit.CommitTime,
-			RepoAddr:                   commit.RepoAddr,
-			RepoBranch:                 commit.RepoBranch,
-			GitUserName:                commit.GitUserName,
-			GitUserEmail:               commit.GitUserEmail,
-			UserId:                     commit.UserId,
-			UserName:                   commit.UserName,
-			ClientId:                   commit.ClientId,
-			WorkDir:                    commit.WorkDir,
-			DiffLines:                  commit.DiffLines,
-			CommitAncientMinutes:       commit.CommitAncientMinutes,
-			CommitAncientReason:        commit.CommitAncientReason,
-			CommitAncientMinutesManual: commit.CommitAncientMinutesManual,
-			CommitAncientReasonManual:  commit.CommitAncientReasonManual,
-			CommitRealMinutes:          commit.CommitRealMinutes,
-			CommitRealReason:           commit.CommitRealReason,
-			CommitRealMinutesManual:    commit.CommitRealMinutesManual,
-			CommitRealReasonManual:     commit.CommitRealReasonManual,
-			CommitRealAiMinutes:        commit.CommitRealAiMinutes,
-			CommitRealAncientMinutes:   commit.CommitRealAncientMinutes,
-			TaskIds:                    commit.TaskIds,
-			TaskIdsSilica:              commit.TaskIdsSilica,
-			TaskAcceptRatios:           commit.TaskAcceptRatios,
-			Comment:                    commit.Comment,
-			CreatedAt:                  commit.CreatedAt,
-			UpdatedAt:                  commit.UpdatedAt,
-			Cost:                       commit.Cost,
-			UpstreamTokens:             commit.UpstreamTokens,
-			DownstreamTokens:           commit.DownstreamTokens,
-			Silica:                     commit.Silica,
-		}
-		ancient := commit.CommitAncientMinutes
-		real := commit.CommitRealMinutes
-		item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(&ancient,
-			commit.CommitAncientMinutesManual,
-			&real,
-			commit.CommitRealMinutesManual)
-
-		if commit.UserId != "" {
-			if om, ok := orgMappings[commit.UserId]; ok {
-				item.Org1 = om.Org1
-				item.Org2 = om.Org2
-				item.Org3 = om.Org3
-				item.Org4 = om.Org4
-				item.Org5 = om.Org5
-				item.Org6 = om.Org6
-				item.Org7 = om.Org7
-				item.Org8 = om.Org8
-				item.Org9 = om.Org9
-				item.OrgDisplay = getOrgDisplay(om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9)
-			}
-		}
-
-		results[i] = item
-	}
+	results := toCommitListItemSlice(list)
 
 	c.JSON(http.StatusOK, CommitListResponse{
 		Total:    total,
@@ -270,32 +168,28 @@ func getCommitDetailV2(c *gin.Context) {
 	var relatedTasks []RelatedTask
 	var taskIDs []string
 	if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
-		if err := json.Unmarshal(commit.TaskIds, &taskIDs); err != nil {
+		if err := json.Unmarshal([]byte(commit.TaskIds), &taskIDs); err != nil {
 			log.Printf("解析 commit task_ids 失败: %v", err)
 		}
 	}
 
 	var silicaList []float64
 	if len(commit.TaskIdsSilica) > 0 && string(commit.TaskIdsSilica) != "null" && string(commit.TaskIdsSilica) != "[]" {
-		if err := json.Unmarshal(commit.TaskIdsSilica, &silicaList); err != nil {
+		if err := json.Unmarshal([]byte(commit.TaskIdsSilica), &silicaList); err != nil {
 			log.Printf("解析 commit task_ids_silica 失败: %v", err)
 		}
 	}
 
 	for i, taskID := range taskIDs {
 		rt := RelatedTask{TaskId: taskID}
-		task, err := GetStatTask(statDB, taskID)
+		task, err := GetTask(statDB, taskID)
 		if err != nil {
 			log.Printf("查询关联 task %s 失败: %v", taskID, err)
 		}
 		if task != nil {
 			rt.UserName = task.UserName
-			if task.StartTime != nil {
-				rt.StartTime = *task.StartTime
-			}
-			if task.TaskRealMinutes != nil {
-				rt.TaskRealMinutes = *task.TaskRealMinutes
-			}
+			rt.StartTime = task.StartTime
+			rt.TaskRealMinutes = task.TaskRealMinutes
 			rt.Cost = task.Cost
 			rt.DiffLines = task.DiffLines
 		}
@@ -307,9 +201,9 @@ func getCommitDetailV2(c *gin.Context) {
 
 	ancient := commit.CommitAncientMinutes
 	real := commit.CommitRealMinutes
-	efficiencyRatio := utils.CalcEfficiencyRatioManual(&ancient,
+	efficiencyRatio := utils.CalcEfficiencyRatioManual(ancient,
+		real,
 		commit.CommitAncientMinutesManual,
-		&real,
 		commit.CommitRealMinutesManual)
 
 	c.JSON(http.StatusOK, CommitDetailResponse{

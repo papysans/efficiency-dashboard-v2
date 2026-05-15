@@ -184,22 +184,22 @@ type Project struct {
 	Repos                           StringJSON `gorm:"type:jsonb;default:'[]'" json:"repos"`
 	TaskIds                         StringJSON `gorm:"type:jsonb;default:'[]'" json:"task_ids"`
 	TaskIdsSilica                   StringJSON `gorm:"type:jsonb;default:'[]'" json:"task_ids_silica"`
-	StartTime                       *time.Time `gorm:"type:timestamptz" json:"start_time"`
-	EndTime                         *time.Time `gorm:"type:timestamptz" json:"end_time"`
+	StartTime                       time.Time  `gorm:"type:timestamptz" json:"start_time"`
+	EndTime                         time.Time  `gorm:"type:timestamptz" json:"end_time"`
 	StartTimeManual                 *time.Time `gorm:"type:timestamptz" json:"start_time_manual"`
 	EndTimeManual                   *time.Time `gorm:"type:timestamptz" json:"end_time_manual"`
 	UpstreamTokens                  int64      `gorm:"type:bigint;default:0" json:"upstream_tokens"`
 	DownstreamTokens                int64      `gorm:"type:bigint;default:0" json:"downstream_tokens"`
 	Cost                            float64    `gorm:"type:float8;default:0" json:"cost"`
-	ProjectAncientMinutes           *float64   `gorm:"type:float8" json:"project_ancient_minutes"`
+	ProjectAncientMinutes           float64    `gorm:"type:float8" json:"project_ancient_minutes"`
 	ProjectAncientReason            string     `gorm:"type:text" json:"project_ancient_minutes_reason"`
 	ProjectAncientMinutesManual     *float64   `gorm:"type:float8" json:"project_ancient_minutes_manual"`
 	ProjectAncientReasonManual      string     `gorm:"type:text" json:"project_ancient_minutes_reason_manual"`
-	ProjectRealProcessMinutes       *float64   `gorm:"type:float8" json:"project_real_process_minutes"`
+	ProjectRealProcessMinutes       float64    `gorm:"type:float8" json:"project_real_process_minutes"`
 	ProjectRealProcessReason        string     `gorm:"type:text" json:"project_real_process_minutes_reason"`
 	ProjectRealProcessMinutesManual *float64   `gorm:"type:float8" json:"project_real_process_minutes_manual"`
 	ProjectRealProcessReasonManual  string     `gorm:"type:text" json:"project_real_process_minutes_reason_manual"`
-	ProjectRealLeadMinutes          *float64   `gorm:"type:float8" json:"project_real_lead_minutes"`
+	ProjectRealLeadMinutes          float64    `gorm:"type:float8" json:"project_real_lead_minutes"`
 	ProjectRealLeadReason           string     `gorm:"type:text" json:"project_real_lead_minutes_reason"`
 	ProjectRealLeadMinutesManual    *float64   `gorm:"type:float8" json:"project_real_lead_minutes_manual"`
 	ProjectRealLeadReasonManual     string     `gorm:"type:text" json:"project_real_lead_minutes_reason_manual"`

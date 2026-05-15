@@ -1,6 +1,10 @@
 package main
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"kanban/core/models"
+)
 
 type TaskIdSet struct {
 	tasks map[string]bool //任务ID的集合
@@ -21,12 +25,12 @@ func (ts *TaskIdSet) GetTaskIds() []string {
 	return tasks
 }
 
-// 把一组StatCommit中的TaskIds解析出来，合并到tasks中
-func (ts *TaskIdSet) MergeCommitsTasks(commits []StatCommit) {
+// 把一组Commit中的TaskIds解析出来，合并到tasks中
+func (ts *TaskIdSet) MergeCommitsTasks(commits []models.Commit) {
 	for _, cm := range commits {
 		var ids []string
 		if len(cm.TaskIds) > 0 && string(cm.TaskIds) != "null" && string(cm.TaskIds) != "[]" {
-			json.Unmarshal(cm.TaskIds, &ids)
+			json.Unmarshal([]byte(cm.TaskIds), &ids)
 		}
 		for _, id := range ids {
 			ts.tasks[id] = true
@@ -34,11 +38,11 @@ func (ts *TaskIdSet) MergeCommitsTasks(commits []StatCommit) {
 	}
 }
 
-func (ts *TaskIdSet) MergeCommitMapTasks(commits map[string]*StatCommit) {
+func (ts *TaskIdSet) MergeCommitMapTasks(commits map[string]*models.Commit) {
 	for _, cm := range commits {
 		var ids []string
 		if len(cm.TaskIds) > 0 && string(cm.TaskIds) != "null" && string(cm.TaskIds) != "[]" {
-			json.Unmarshal(cm.TaskIds, &ids)
+			json.Unmarshal([]byte(cm.TaskIds), &ids)
 		}
 		for _, id := range ids {
 			ts.tasks[id] = true

@@ -172,7 +172,7 @@ func periodKeyForTime(t time.Time, granularity string) (key string, label string
 	return
 }
 
-func AggregateDailyByGranularity(daily []UserProductivity, granularity string) ([]CommitTimeSeriesItem, []TaskTimeSeriesItem) {
+func AggregateDailyByGranularity(daily []models.UserProductivity, granularity string) ([]CommitTimeSeriesItem, []TaskTimeSeriesItem) {
 	orderKeys := make([]string, 0)
 	periodMap := make(map[string]*PeriodStatistics)
 
@@ -187,15 +187,15 @@ func AggregateDailyByGranularity(daily []UserProductivity, granularity string) (
 			periodMap[key] = pd
 			orderKeys = append(orderKeys, key)
 		}
-		if d.TaskIds != nil {
+		if d.TaskIds != "" {
 			var ids []interface{}
-			if json.Unmarshal(d.TaskIds, &ids) == nil {
+			if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
 				pd.TaskCount += len(ids)
 			}
 		}
-		if d.CommitIds != nil {
+		if d.CommitIds != "" {
 			var ids []interface{}
-			if json.Unmarshal(d.CommitIds, &ids) == nil {
+			if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
 				pd.CommitCount += len(ids)
 			}
 		}
