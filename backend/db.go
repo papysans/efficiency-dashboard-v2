@@ -17,6 +17,8 @@ import (
 
 type StatTask struct {
 	TaskId                   string     `json:"task_id"`
+	CommitId                 string     `json:"commit_id"`
+	SessionId                string     `json:"session_id"`
 	UserId                   string     `json:"user_id"`
 	UserName                 string     `json:"user_name"`
 	ClientId                 string     `json:"client_id"`
@@ -35,6 +37,8 @@ type StatTask struct {
 	UpstreamTokens           int64      `json:"upstream_tokens"`
 	DownstreamTokens         int64      `json:"downstream_tokens"`
 	Cost                     float64    `json:"cost"`
+	Silica                   float64    `json:"silica"`
+	AcceptRatio              float64    `json:"accept_ratio"`
 	TaskRealMinutes          *float64   `json:"task_real_minutes"`
 	TaskRealReason           string     `json:"task_real_minutes_reason"`
 	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
@@ -48,8 +52,9 @@ type StatTask struct {
 	UpdatedAt                time.Time  `json:"updated_at"`
 }
 
-type StatTaskConversation struct {
+type StatConversation struct {
 	ID               int       `json:"id"`
+	SessionId        string    `json:"session_id"`
 	TaskId           string    `json:"task_id"`
 	RequestId        string    `json:"request_id"`
 	Sender           string    `json:"sender"`
@@ -90,7 +95,7 @@ type StatCommit struct {
 	WorkDir                    string          `json:"work_dir"`
 	WorkDirId                  string          `json:"work_dir_id"`
 	DiffLines                  int             `json:"diff_lines"`
-	CommitAncientMinutes       *float64        `json:"commit_ancient_minutes"`
+	CommitAncientMinutes       float64         `json:"commit_ancient_minutes"`
 	CommitAncientReason        string          `json:"commit_ancient_minutes_reason"`
 	CommitAncientMinutesManual *float64        `json:"commit_ancient_minutes_manual"`
 	CommitAncientReasonManual  string          `json:"commit_ancient_minutes_reason_manual"`
@@ -100,10 +105,10 @@ type StatCommit struct {
 	UpstreamTokens             int64           `json:"upstream_tokens"`
 	DownstreamTokens           int64           `json:"downstream_tokens"`
 	Cost                       float64         `json:"cost"`
-	Silica                     *float64        `json:"silica"`
-	CommitRealAiMinutes        *float64        `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes   *float64        `json:"commit_real_ancient_minutes"`
-	CommitRealMinutes          *float64        `json:"commit_real_minutes"`
+	Silica                     float64         `json:"silica"`
+	CommitRealAiMinutes        float64         `json:"commit_real_ai_minutes"`
+	CommitRealAncientMinutes   float64         `json:"commit_real_ancient_minutes"`
+	CommitRealMinutes          float64         `json:"commit_real_minutes"`
 	CommitRealReason           string          `json:"commit_real_minutes_reason"`
 	CommitRealMinutesManual    *float64        `json:"commit_real_minutes_manual"`
 	CommitRealReasonManual     string          `json:"commit_real_minutes_reason_manual"`
@@ -287,6 +292,8 @@ func toStatTask(t *models.Task) *StatTask {
 	}
 	return &StatTask{
 		TaskId:                   t.TaskId,
+		CommitId:                 t.CommitId,
+		SessionId:                t.SessionId,
 		UserId:                   t.UserId,
 		UserName:                 t.UserName,
 		ClientId:                 t.ClientId,
@@ -305,6 +312,8 @@ func toStatTask(t *models.Task) *StatTask {
 		UpstreamTokens:           t.UpstreamTokens,
 		DownstreamTokens:         t.DownstreamTokens,
 		Cost:                     t.Cost,
+		Silica:                   t.Silica,
+		AcceptRatio:              t.AcceptRatio,
 		TaskRealMinutes:          toFloat64Ptr(t.TaskRealMinutes),
 		TaskRealReason:           t.TaskRealReason,
 		TaskRealMinutesManual:    t.TaskRealMinutesManual,
@@ -351,12 +360,12 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		TaskIds:                    strJSONToRaw(c.TaskIds),
 		TaskIdsSilica:              strJSONToRaw(c.TaskIdsSilica),
 		TaskAcceptRatios:           strJSONToRaw(c.TaskAcceptRatios),
-		UpstreamTokens:             ptrToInt64(c.UpstreamTokens),
-		DownstreamTokens:           ptrToInt64(c.DownstreamTokens),
-		Cost:                       ptrToFloat64(c.Cost),
+		UpstreamTokens:             c.UpstreamTokens,
+		DownstreamTokens:           c.DownstreamTokens,
+		Cost:                       c.Cost,
 		Silica:                     c.Silica,
 		CommitRealAiMinutes:        c.CommitRealAiMinutes,
-		CommitRealAncientMinutes:   c.CommitRealAncientMinutes,
+		CommitRealAncientMinutes:   c.CommitRealNonAiMinutes,
 		CommitRealMinutes:          c.CommitRealMinutes,
 		CommitRealReason:           c.CommitRealReason,
 		CommitRealMinutesManual:    c.CommitRealMinutesManual,
@@ -375,12 +384,13 @@ func toStatCommitSlice(commits []models.Commit) []StatCommit {
 	return result
 }
 
-func toStatTaskConversation(c *models.TaskConversation) *StatTaskConversation {
+func toStatConversation(c *models.Conversation) *StatConversation {
 	if c == nil {
 		return nil
 	}
-	return &StatTaskConversation{
+	return &StatConversation{
 		ID:               c.ID,
+		SessionId:        c.SessionId,
 		TaskId:           c.TaskId,
 		RequestId:        c.RequestId,
 		Sender:           c.Sender,
@@ -474,7 +484,7 @@ func toUserProductivity(up *models.UserProductivity) *UserProductivity {
 		CommitDiffLines:          up.CommitDiffLines,
 		CommitAncientMinutes:     up.CommitAncientMinutes,
 		CommitRealAiMinutes:      up.CommitRealAiMinutes,
-		CommitRealAncientMinutes: up.CommitRealAncientMinutes,
+		CommitRealAncientMinutes: up.CommitRealNonAiMinutes,
 		CommitRealMinutes:        up.CommitRealMinutes,
 		CommitEfficiencyRatio:    up.CommitEfficiencyRatio,
 		CreatedAt:                up.CreatedAt,
@@ -646,14 +656,14 @@ func UpdateStatTaskManual(db *gorm.DB, taskID string, realManual *float64, realR
 // task_conversations CRUD (GORM)
 // ============================================================
 
-func ListStatTaskConversations(db *gorm.DB, taskID string) ([]StatTaskConversation, error) {
-	var convs []models.TaskConversation
+func ListStatConversations(db *gorm.DB, taskID string) ([]StatConversation, error) {
+	var convs []models.Conversation
 	if err := db.Where("task_id = ?", taskID).Order("start_time ASC").Find(&convs).Error; err != nil {
 		return nil, fmt.Errorf("查询 task_conversations 列表失败: %w", err)
 	}
-	result := make([]StatTaskConversation, len(convs))
+	result := make([]StatConversation, len(convs))
 	for i := range convs {
-		result[i] = *toStatTaskConversation(&convs[i])
+		result[i] = *toStatConversation(&convs[i])
 	}
 	return result, nil
 }

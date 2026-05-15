@@ -3592,7 +3592,7 @@
                 }
             }
         },
-        "main.StatTaskConversation": {
+        "main.StatConversation": {
             "type": "object",
             "properties": {
                 "cost": {
@@ -3690,7 +3690,7 @@
                 "conversations": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.StatTaskConversation"
+                        "$ref": "#/definitions/main.StatConversation"
                     }
                 },
                 "efficiency_ratio": {

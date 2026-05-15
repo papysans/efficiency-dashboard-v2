@@ -1028,7 +1028,7 @@ definitions:
       work_dir_id:
         type: string
     type: object
-  main.StatTaskConversation:
+  main.StatConversation:
     properties:
       cost:
         type: number
@@ -1093,7 +1093,7 @@ definitions:
     properties:
       conversations:
         items:
-          $ref: '#/definitions/main.StatTaskConversation'
+          $ref: '#/definitions/main.StatConversation'
         type: array
       efficiency_ratio:
         type: number

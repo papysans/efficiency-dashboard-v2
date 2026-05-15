@@ -40,16 +40,16 @@ type userTaskAgg struct {
 //   - CommitDiffLines: 新增代码行数总和
 //   - CommitAncientMinutes: 原始人分钟估算值（优先取人工修正值 commit_ancient_minutes_manual）
 //   - commitRealAiMinutes: AI 实际耗时分钟数
-//   - CommitRealAncientMinutes: 原始人实际耗时分钟数
+//   - CommitRealNonAiMinutes: 原始人实际耗时分钟数
 //   - CommitRealMinutes: 用户实际耗时分钟数（优先取人工修正值 commit_real_minutes_manual）
 type userCommitAgg struct {
-	UserId                   string
-	CommitIds                models.StringJSON
-	CommitDiffLines          int64
-	CommitAncientMinutes     float64
-	commitRealAiMinutes      float64
-	CommitRealAncientMinutes float64
-	CommitRealMinutes        float64
+	UserId                 string
+	CommitIds              models.StringJSON
+	CommitDiffLines        int64
+	CommitAncientMinutes   float64
+	commitRealAiMinutes    float64
+	CommitRealNonAiMinutes float64
+	CommitRealMinutes      float64
 }
 
 // getAllDates 从 tasks 和 commits 两张表中提取所有不重复的日期，按升序返回。
@@ -172,7 +172,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				commitDiffLines = ca.CommitDiffLines
 				commitAncientMinutes = ca.CommitAncientMinutes
 				commitRealAiMinutes = ca.commitRealAiMinutes
-				commitRealAncientMinutes = ca.CommitRealAncientMinutes
+				commitRealAncientMinutes = ca.CommitRealNonAiMinutes
 				commitRealMinutes = ca.CommitRealMinutes
 			}
 
@@ -200,26 +200,26 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 
 			// 构造 user_productivity 模型对象
 			up := models.UserProductivity{
-				UserProductivityId:       uid + "_" + dateStr, // 复合主键：user_id + "_" + dateStr
-				CreateTime:               createTime,
-				UserId:                   uid,
-				UserName:                 userName,
-				TaskIds:                  models.StringJSON(TaskIdsJSON),
-				WorkDirIds:               models.StringJSON(WorkDirIdsJson),
-				TaskDiffLines:            int(taskDiffLines),
-				UpstreamTokens:           upstreamTokens,
-				DownstreamTokens:         downstreamTokens,
-				Cost:                     cost,
-				TaskRealMinutes:          taskRealMinutes,
-				TaskAncientMinutes:       taskAncientMinutes,
-				TaskEfficiencyRatio:      taskEffRatio,
-				CommitIds:                models.StringJSON(commitIDsJSON),
-				CommitDiffLines:          int(commitDiffLines),
-				CommitAncientMinutes:     commitAncientMinutes,
-				CommitRealAiMinutes:      commitRealAiMinutes,
-				CommitRealAncientMinutes: commitRealAncientMinutes,
-				CommitRealMinutes:        commitRealMinutes,
-				CommitEfficiencyRatio:    commitEffRatio,
+				UserProductivityId:     uid + "_" + dateStr, // 复合主键：user_id + "_" + dateStr
+				CreateTime:             createTime,
+				UserId:                 uid,
+				UserName:               userName,
+				TaskIds:                models.StringJSON(TaskIdsJSON),
+				WorkDirIds:             models.StringJSON(WorkDirIdsJson),
+				TaskDiffLines:          int(taskDiffLines),
+				UpstreamTokens:         upstreamTokens,
+				DownstreamTokens:       downstreamTokens,
+				Cost:                   cost,
+				TaskRealMinutes:        taskRealMinutes,
+				TaskAncientMinutes:     taskAncientMinutes,
+				TaskEfficiencyRatio:    taskEffRatio,
+				CommitIds:              models.StringJSON(commitIDsJSON),
+				CommitDiffLines:        int(commitDiffLines),
+				CommitAncientMinutes:   commitAncientMinutes,
+				CommitRealAiMinutes:    commitRealAiMinutes,
+				CommitRealNonAiMinutes: commitRealAncientMinutes,
+				CommitRealMinutes:      commitRealMinutes,
+				CommitEfficiencyRatio:  commitEffRatio,
 			}
 
 			// UPSERT：以 user_productivity_id 为唯一键，冲突时更新全部业务字段
@@ -330,7 +330,7 @@ func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg,
 // 关键技术原理:
 //  1. 与 aggregateTasksByUser 类似，使用 PostgreSQL 原生聚合函数
 //  2. commit_ancient_minutes 和 commit_real_minutes 同样采用人工修正值优先策略（xxx_manual）
-//  3. commit_real_ai_minutes 和 commit_real_ancient_minutes 直接求和，不涉及人工修正逻辑
+//  3. commit_real_ai_minutes 和 commit_real_non_ai_minutes 直接求和，不涉及人工修正逻辑
 //  4. 日期匹配使用 DATE(commit_time) = $1，确保跨时区场景下按自然日统计
 func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommitAgg, error) {
 	var rows []userCommitAgg
@@ -342,7 +342,7 @@ func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommit
 			COALESCE(SUM(diff_lines), 0) as commit_diff_lines,
 			COALESCE(SUM(COALESCE(commit_ancient_minutes_manual, commit_ancient_minutes)), 0) as commit_ancient_minutes,
 			COALESCE(SUM(commit_real_ai_minutes), 0) as commit_real_ai_minutes,
-			COALESCE(SUM(commit_real_ancient_minutes), 0) as commit_real_ancient_minutes,
+			COALESCE(SUM(commit_real_ancient_minutes), 0) as commit_real_non_ai_minutes,
 			COALESCE(SUM(COALESCE(commit_real_minutes_manual, commit_real_minutes)), 0) as commit_real_minutes
 		FROM commits
 		WHERE user_id IS NOT NULL AND user_id != '' AND DATE(commit_time) = $1

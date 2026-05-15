@@ -251,7 +251,7 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 }
 
 // saveConversations 将任务对话列表批量保存到数据库，使用事务保证原子性。
-// 功能：逐条将 taskConversation 转换为 models.TaskConversation 后插入，冲突时忽略（DoNothing）。
+// 功能：逐条将 taskConversation 转换为 models.Conversation 后插入，冲突时忽略（DoNothing）。
 // 参数：
 //   - db: GORM 数据库连接。
 //   - conversations: 需要保存的对话列表。
@@ -266,7 +266,7 @@ func saveConversations(db *gorm.DB, conversations []taskConversation) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
 			// 转换字段并对文本内容进行清洗，防止非法字符入库
-			tc := models.TaskConversation{
+			tc := models.Conversation{
 				TaskId:           "",
 				SessionId:        conv.sessionId,
 				RequestId:        conv.RequestId,

@@ -45,7 +45,7 @@ var cleanCmd = &cobra.Command{
 		}{
 			{"commits", "CommitTime", "commit_time < ?", &models.Commit{}},
 			{"tasks", "EndTime", "end_time < ?", &models.Task{}},
-			{"task_conversations", "EndTime", "end_time < ?", &models.TaskConversation{}},
+			{"task_conversations", "EndTime", "end_time < ?", &models.Conversation{}},
 			{"user_productivity", "CreateTime", "create_time < ?", &models.UserProductivity{}},
 		}
 

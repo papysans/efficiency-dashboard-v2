@@ -25,7 +25,6 @@ kbcli/
 - `kbcli import-conv -f`
 - `kbcli import-repo -f`
 - `kbcli import-org`
-- `kbcli silica -f`
 - `kbcli efficiency`
 
 ### hourly-cron.sh
@@ -39,7 +38,6 @@ kbcli/
 执行内容：
 - `kbcli import-conv`
 - `kbcli import-repo`
-- `kbcli silica`
 - `kbcli efficiency`
 
 此脚本可用于手动触发或作为外部调度（如 Kubernetes CronJob）的备用方案。
@@ -126,10 +124,6 @@ serve:
         force: false
     - schedule: "0 5 * * * *"
       command: import-repo
-      params:
-        force: false
-    - schedule: "0 10 * * * *"
-      command: silica
       params:
         force: false
     - schedule: "0 15 * * * *"

@@ -35,7 +35,7 @@ func GetConvInputForEstimation(db *gorm.DB, taskID string) ([]string, []string, 
 		DownstreamTokens *int64
 	}
 	var rows []row
-	if err := db.Model(&models.TaskConversation{}).
+	if err := db.Model(&models.Conversation{}).
 		Select("user_input, diff, diff_lines, upstream_tokens, downstream_tokens").
 		Where("task_id = ?", taskID).
 		Order("start_time").

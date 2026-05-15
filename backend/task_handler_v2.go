@@ -65,7 +65,7 @@ type TaskListResponse struct {
 
 type TaskDetailResponse struct {
 	Task            *StatTask              `json:"task"`
-	Conversations   []StatTaskConversation `json:"conversations"`
+	Conversations   []StatConversation `json:"conversations"`
 	EfficiencyRatio *float64               `json:"efficiency_ratio"`
 }
 
@@ -259,7 +259,7 @@ func getTaskDetailV2(c *gin.Context) {
 		return
 	}
 
-	convs, err := ListStatTaskConversations(statDB, taskId)
+	convs, err := ListStatConversations(statDB, taskId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return

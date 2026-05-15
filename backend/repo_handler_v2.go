@@ -45,39 +45,39 @@ type RepoSummary struct {
 }
 
 type RepoCommitItem struct {
-	CommitId                         string          `json:"commit_id"`
-	CommitTime                       time.Time       `json:"commit_time"`
-	RepoAddr                         string          `json:"repo_addr"`
-	RepoBranch                       string          `json:"repo_branch"`
-	GitUserName                      string          `json:"git_user_name"`
-	GitUserEmail                     string          `json:"git_user_email"`
-	UserId                           string          `json:"user_id"`
-	UserName                         string          `json:"user_name"`
-	ClientId                         string          `json:"client_id"`
-	WorkDir                          string          `json:"work_dir"`
-	WorkDirId                        string          `json:"work_dir_id"`
-	DiffLines                        int             `json:"diff_lines"`
-	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
-	CommitAncientReason       string          `json:"commit_ancient_minutes_reason"`
-	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
-	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
-	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
-	TaskAcceptRatios                 json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
-	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
-	CommitRealReason          string          `json:"commit_real_minutes_reason"`
-	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
-	CommitRealReasonManual    string          `json:"commit_real_minutes_reason_manual"`
-	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
-	Comment                          string          `json:"comment"`
-	CreatedAt                        time.Time       `json:"created_at"`
-	UpdatedAt                        time.Time       `json:"updated_at"`
-	Cost                             float64         `json:"cost"`
-	UpstreamTokens                   int64           `json:"upstream_tokens"`
-	DownstreamTokens                 int64           `json:"downstream_tokens"`
-	Silica                           *float64        `json:"silica"`
-	EfficiencyRatio                  *float64        `json:"efficiency_ratio"`
+	CommitId                   string          `json:"commit_id"`
+	CommitTime                 time.Time       `json:"commit_time"`
+	RepoAddr                   string          `json:"repo_addr"`
+	RepoBranch                 string          `json:"repo_branch"`
+	GitUserName                string          `json:"git_user_name"`
+	GitUserEmail               string          `json:"git_user_email"`
+	UserId                     string          `json:"user_id"`
+	UserName                   string          `json:"user_name"`
+	ClientId                   string          `json:"client_id"`
+	WorkDir                    string          `json:"work_dir"`
+	WorkDirId                  string          `json:"work_dir_id"`
+	DiffLines                  int             `json:"diff_lines"`
+	CommitAncientMinutes       float64         `json:"commit_ancient_minutes"`
+	CommitAncientReason        string          `json:"commit_ancient_minutes_reason"`
+	CommitAncientMinutesManual *float64        `json:"commit_ancient_minutes_manual"`
+	CommitAncientReasonManual  string          `json:"commit_ancient_minutes_reason_manual"`
+	TaskIds                    json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
+	TaskIdsSilica              json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
+	TaskAcceptRatios           json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
+	CommitRealMinutes          float64         `json:"commit_real_minutes"`
+	CommitRealReason           string          `json:"commit_real_minutes_reason"`
+	CommitRealMinutesManual    *float64        `json:"commit_real_minutes_manual"`
+	CommitRealReasonManual     string          `json:"commit_real_minutes_reason_manual"`
+	CommitRealAiMinutes        float64         `json:"commit_real_ai_minutes"`
+	CommitRealAncientMinutes   float64         `json:"commit_real_ancient_minutes"`
+	Comment                    string          `json:"comment"`
+	CreatedAt                  time.Time       `json:"created_at"`
+	UpdatedAt                  time.Time       `json:"updated_at"`
+	Cost                       float64         `json:"cost"`
+	UpstreamTokens             int64           `json:"upstream_tokens"`
+	DownstreamTokens           int64           `json:"downstream_tokens"`
+	Silica                     float64         `json:"silica"`
+	EfficiencyRatio            *float64        `json:"efficiency_ratio"`
 }
 
 type RepoDetailResponse struct {
@@ -301,19 +301,15 @@ func getRepoDetailV2(c *gin.Context) {
 	for _, cm := range commits {
 		ancient := cm.CommitAncientMinutes
 		if cm.CommitAncientMinutesManual != nil {
-			ancient = cm.CommitAncientMinutesManual
+			ancient = *cm.CommitAncientMinutesManual
 		}
-		if ancient != nil {
-			repoAncientMinutes += *ancient
-		}
+		repoAncientMinutes += ancient
 
 		real := cm.CommitRealMinutes
 		if cm.CommitRealMinutesManual != nil {
-			real = cm.CommitRealMinutesManual
+			real = *cm.CommitRealMinutesManual
 		}
-		if real != nil {
-			repoRealMinutes += *real
-		}
+		repoRealMinutes += real
 
 		// 收集 reason
 		ancientReason := cm.CommitAncientReason
@@ -345,45 +341,46 @@ func getRepoDetailV2(c *gin.Context) {
 	commitItems := make([]RepoCommitItem, 0, len(commits))
 	for _, cm := range commits {
 		item := RepoCommitItem{
-			CommitId:                         cm.CommitId,
-			CommitTime:                       cm.CommitTime,
-			RepoAddr:                         cm.RepoAddr,
-			RepoBranch:                       cm.RepoBranch,
-			GitUserName:                      cm.GitUserName,
-			GitUserEmail:                     cm.GitUserEmail,
-			UserId:                           cm.UserId,
-			UserName:                         cm.UserName,
-			ClientId:                         cm.ClientId,
-			WorkDir:                          cm.WorkDir,
-			WorkDirId:                        cm.WorkDirId,
-			DiffLines:                        cm.DiffLines,
-			CommitAncientMinutes:             cm.CommitAncientMinutes,
-			CommitAncientReason:       cm.CommitAncientReason,
-			CommitAncientMinutesManual:       cm.CommitAncientMinutesManual,
-			CommitAncientReasonManual: cm.CommitAncientReasonManual,
-			TaskIds:                          cm.TaskIds,
-			TaskIdsSilica:                    cm.TaskIdsSilica,
-			TaskAcceptRatios:                 cm.TaskAcceptRatios,
-			CommitRealMinutes:                cm.CommitRealMinutes,
-			CommitRealReason:          cm.CommitRealReason,
-			CommitRealMinutesManual:          cm.CommitRealMinutesManual,
-			CommitRealReasonManual:    cm.CommitRealReasonManual,
-			CommitRealAiMinutes:              cm.CommitRealAiMinutes,
-			CommitRealAncientMinutes:         cm.CommitRealAncientMinutes,
-			Comment:                          cm.Comment,
-			CreatedAt:                        cm.CreatedAt,
-			UpdatedAt:                        cm.UpdatedAt,
-			Cost:                             cm.Cost,
-			UpstreamTokens:                   cm.UpstreamTokens,
-			DownstreamTokens:                 cm.DownstreamTokens,
+			CommitId:                   cm.CommitId,
+			CommitTime:                 cm.CommitTime,
+			RepoAddr:                   cm.RepoAddr,
+			RepoBranch:                 cm.RepoBranch,
+			GitUserName:                cm.GitUserName,
+			GitUserEmail:               cm.GitUserEmail,
+			UserId:                     cm.UserId,
+			UserName:                   cm.UserName,
+			ClientId:                   cm.ClientId,
+			WorkDir:                    cm.WorkDir,
+			WorkDirId:                  cm.WorkDirId,
+			DiffLines:                  cm.DiffLines,
+			CommitAncientMinutes:       cm.CommitAncientMinutes,
+			CommitAncientReason:        cm.CommitAncientReason,
+			CommitAncientMinutesManual: cm.CommitAncientMinutesManual,
+			CommitAncientReasonManual:  cm.CommitAncientReasonManual,
+			TaskIds:                    cm.TaskIds,
+			TaskIdsSilica:              cm.TaskIdsSilica,
+			TaskAcceptRatios:           cm.TaskAcceptRatios,
+			CommitRealMinutes:          cm.CommitRealMinutes,
+			CommitRealReason:           cm.CommitRealReason,
+			CommitRealMinutesManual:    cm.CommitRealMinutesManual,
+			CommitRealReasonManual:     cm.CommitRealReasonManual,
+			CommitRealAiMinutes:        cm.CommitRealAiMinutes,
+			CommitRealAncientMinutes:   cm.CommitRealAncientMinutes,
+			Comment:                    cm.Comment,
+			CreatedAt:                  cm.CreatedAt,
+			UpdatedAt:                  cm.UpdatedAt,
+			Cost:                       cm.Cost,
+			UpstreamTokens:             cm.UpstreamTokens,
+			DownstreamTokens:           cm.DownstreamTokens,
 		}
-		if cm.Silica != nil && *cm.Silica > 0 {
-			s := math.Round(*cm.Silica*1000) / 10
-			item.Silica = &s
+		if cm.Silica > 0 {
+			item.Silica = math.Round(cm.Silica*1000) / 10
 		}
 		// 计算单条 commit 的效率比率
-		item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(cm.CommitAncientMinutes,
-			cm.CommitAncientMinutesManual, cm.CommitRealMinutes, cm.CommitRealMinutesManual)
+		ancient := cm.CommitAncientMinutes
+		real := cm.CommitRealMinutes
+		item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(&ancient,
+			cm.CommitAncientMinutesManual, &real, cm.CommitRealMinutesManual)
 		commitItems = append(commitItems, item)
 	}
 

@@ -3600,7 +3600,7 @@ const docTemplate = `{
                 }
             }
         },
-        "main.StatTaskConversation": {
+        "main.StatConversation": {
             "type": "object",
             "properties": {
                 "cost": {
@@ -3698,7 +3698,7 @@ const docTemplate = `{
                 "conversations": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/main.StatTaskConversation"
+                        "$ref": "#/definitions/main.StatConversation"
                     }
                 },
                 "efficiency_ratio": {

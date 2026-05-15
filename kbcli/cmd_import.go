@@ -6,13 +6,12 @@ import (
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "顺序执行完整的导入流程: import-conv → import-repo → import-org → silica → efficiency",
+	Short: "顺序执行完整的导入流程: import-conv → import-repo → import-org → efficiency",
 	Long: `顺序执行完整的导入流程:
   1. import-conv: 导入task数据
-  2. import-repo: 导入repo/commit数据
+  2. import-repo: 导入repo/commit数据（含silica计算）
   3. import-org: 导入用户组织信息
-  4. silica: 计算commit含硅量
-  5. efficiency: 计算用户和组织效能数据
+  4. efficiency: 计算用户和组织效能数据
 
 所有子命令的参数均可在import命令中使用，参数含义与各子命令一致。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -64,9 +63,10 @@ var importCmd = &cobra.Command{
 			fn   func() error
 		}{
 			{"import-conv", func() error { return runImportConv(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
-			{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
+			{"import-repo", func() error {
+				return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr)
+			}},
 			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-			{"silica", func() error { return runSilica(analysedDir, force, maxDays, startDateStr, endDateStr, dateStr) }},
 			{"efficiency", func() error { return runEfficiency(startDateStr, endDateStr, dateStr) }},
 		}
 

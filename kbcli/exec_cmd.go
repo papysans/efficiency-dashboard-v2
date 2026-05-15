@@ -13,8 +13,6 @@ func createTaskExecutor(taskType string, params map[string]interface{}) (func() 
 		return func() error { return executeImportRepo(params) }, nil
 	case "import-org":
 		return func() error { return executeImportOrg(params) }, nil
-	case "silica":
-		return func() error { return executeSilica(params) }, nil
 	case "efficiency":
 		return func() error { return executeEfficiency(params) }, nil
 	default:
@@ -86,10 +84,11 @@ func executeImportRepo(params map[string]interface{}) error {
 	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
 	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
+	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	return runImportRepo(repoDir, analysedDir, force, startDate, endDate, date)
+	return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
 }
 
 func executeImportOrg(params map[string]interface{}) error {
@@ -97,16 +96,6 @@ func executeImportOrg(params map[string]interface{}) error {
 	fromCSV := getStringParam(params, "from_csv", "")
 	toCSV := getStringParam(params, "to_csv", "")
 	return runImportOrg(fromDB, fromCSV, toCSV)
-}
-
-func executeSilica(params map[string]interface{}) error {
-	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
-	force := getBoolParam(params, "force", false)
-	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
-	startDate := getStringParam(params, "start_date", "")
-	endDate := getStringParam(params, "end_date", "")
-	date := getStringParam(params, "date", "")
-	return runSilica(analysedDir, force, maxDays, startDate, endDate, date)
 }
 
 func executeEfficiency(params map[string]interface{}) error {
@@ -133,9 +122,8 @@ func executeImport(params map[string]interface{}) error {
 		fn   func() error
 	}{
 		{"import-conv", func() error { return runImportConv(taskDir, analysedDir, force, startDate, endDate, date) }},
-		{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force, startDate, endDate, date) }},
+		{"import-repo", func() error { return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date) }},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-		{"silica", func() error { return runSilica(analysedDir, force, maxDays, startDate, endDate, date) }},
 		{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }},
 	}
 
