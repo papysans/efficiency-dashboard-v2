@@ -215,24 +215,24 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string, startD
 
 	// 构造数据库模型对象，准备写入 commits 表
 	commit := models.Commit{
-		CommitId:                   commitData.CommitId,
-		CommitTime:                 commitTime,
-		RepoAddr:                   commitData.RepoAddr,
-		RepoBranch:                 commitData.RepoBranch,
-		GitUserName:                commitData.GitUserName,
-		GitUserEmail:               commitData.GitUserEmail,
-		UserId:                     commitData.UserId,
-		UserName:                   commitData.UserName,
-		ClientId:                   commitData.ClientId,
-		WorkDir:                    workDir,
-		WorkDirId:                  utils.GenerateWorkDirID(commitData.ClientId, workDir),
-		Comment:                    commitData.Comment,
-		DiffLines:                  commitData.DiffLines,
-		TaskIds:                    models.StringJSON("[]"), // 初始化为空 JSON 数组，后续由 task 关联逻辑填充
-		TaskIdsSilica:              models.StringJSON("[]"), // 同上，Silica 关联任务列表
-		TaskAcceptRatios:           models.StringJSON("[]"), // 代码采纳率数组，与 task_ids 一一对应
-		CommitAncientMinutes:       &ancientMinutes,         // 指针类型，允许数据库 NULL
-		CommitAncientReason: ancientReason,           // 估算原因描述
+		CommitId:             commitData.CommitId,
+		CommitTime:           commitTime,
+		RepoAddr:             commitData.RepoAddr,
+		RepoBranch:           commitData.RepoBranch,
+		GitUserName:          commitData.GitUserName,
+		GitUserEmail:         commitData.GitUserEmail,
+		UserId:               commitData.UserId,
+		UserName:             commitData.UserName,
+		ClientId:             commitData.ClientId,
+		WorkDir:              workDir,
+		WorkDirId:            utils.GenerateWorkDirID(commitData.ClientId, workDir),
+		Comment:              commitData.Comment,
+		DiffLines:            commitData.DiffLines,
+		TaskIds:              models.StringJSON("[]"), // 初始化为空 JSON 数组，后续由 task 关联逻辑填充
+		TaskIdsSilica:        models.StringJSON("[]"), // 同上，Silica 关联任务列表
+		TaskAcceptRatios:     models.StringJSON("[]"), // 代码采纳率数组，与 task_ids 一一对应
+		CommitAncientMinutes: &ancientMinutes,         // 指针类型，允许数据库 NULL
+		CommitAncientReason:  ancientReason,           // 估算原因描述
 	}
 
 	// UPSERT 写入数据库：以 commit_id 为唯一键，冲突时更新指定字段
@@ -242,7 +242,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, analysedDir string, startD
 			"commit_time", "repo_addr", "repo_branch",
 			"git_user_name", "git_user_email", "user_id", "user_name",
 			"client_id", "work_dir", "work_dir_id", "comment", "diff_lines", "updated_at",
-			"commit_ancient_minutes", "commit_ancient_minutes_reason",
+			"commit_ancient_minutes", "commit_ancient_reason",
 		}),
 	}).Create(&commit)
 	if result.Error != nil {

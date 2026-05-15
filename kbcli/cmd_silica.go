@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/spf13/cobra"
 )
@@ -53,17 +53,14 @@ type groupIndexer struct {
 // conversationsIndexer 全局conversation指纹索引，聚合所有分组的数据。
 // 用于快速判断某行代码是否由某次AI对话生成。
 type conversationsIndexer struct {
-	groups       map[groupKey]groupIndexer // 分组索引
-	sessionCount int                       // 已加载的会话总数
-	convCount    int                       // 已加载的对话总数（仅用于统计）
-	hashCount    int                       // 已加载的唯一指纹总数（仅用于统计）
+	groups map[groupKey]groupIndexer // 分组索引
 }
 
 // commitParser 用于解析单个commit的指纹文件并计算含硅量及相关衍生指标。
 type commitParser struct {
 	commitId         string    // commit的唯一ID
 	fpHashs          []string  // commit指纹文件中的全部代码行指纹
-	taskIDs          []string  // 匹配的taskID列表（去重后）
+	taskIds          []string  // 匹配的taskId列表（去重后）
 	taskSilicas      []float64 // 每个task对当前commit的含硅量贡献值
 	taskAcceptRatios []float64 // 每个task被当前commit采纳的代码行占该task代码行的比例
 	totalLines       int       // commit总行数（指纹总数）
@@ -140,9 +137,14 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 	}
 
 	// 第二步：逐个解析文件并构建索引
+	var hashCount int
 	var skipCount int
+	var convCount int
+	var missRepoCount int
+	var missStartTimeCount int
+	var missEndTimeCount int
 	for i, silicaFile := range silicaFiles {
-		logPromptProgress(i, 50) // 每处理50个文件打印一次进度
+		logPromptProgress(i, 50)
 
 		// 加载单个task的silica数据文件
 		ss, err := loadTaskSilicaFile(silicaFile)
@@ -169,9 +171,20 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 				continue
 			}
 			if conv.RepoAddr == "" {
-				logDebugf("文件[%s]对话[%d]缺失字段[repo_addr]", silicaFile, i)
-				skipCount++
+				missRepoCount++
 				continue
+			}
+			// 解析对话结束时间，用于后续的时间窗口筛选和冲突仲裁
+			var startTime, endTime time.Time
+			if conv.EndTime != "" {
+				endTime, _ = time.Parse(time.RFC3339, conv.EndTime)
+			} else {
+				missStartTimeCount++
+			}
+			if conv.StartTime != "" {
+				startTime, _ = time.Parse(time.RFC3339, conv.StartTime)
+			} else {
+				missEndTimeCount++
 			}
 
 			// 按 repoAddr + userID 确定分组键
@@ -184,18 +197,9 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 					Lines:    make(map[string]*convMeta),
 					Sessions: make(map[string]*sessionMeta),
 				}
+				idx.groups[gk] = gi
 			}
 			gi.Sessions[ss.SessionId] = session
-			// 解析对话结束时间，用于后续的时间窗口筛选和冲突仲裁
-			var endTime time.Time
-			if conv.EndTime != "" {
-				endTime, _ = time.Parse(time.RFC3339, conv.EndTime)
-			}
-			// 解析对话开始时间
-			var startTime time.Time
-			if conv.StartTime != "" {
-				startTime, _ = time.Parse(time.RFC3339, conv.StartTime)
-			}
 
 			// 创建对话元数据对象
 			cm := &convMeta{
@@ -218,14 +222,17 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 				if !prevExists || endTime.After(prevConv.endTime) {
 					gi.Lines[h] = cm
 					if !prevExists {
-						idx.hashCount++ // 仅当新增唯一指纹时计数
+						hashCount++ // 仅当新增唯一指纹时计数
 					}
 				}
 			}
-			idx.convCount++ // 累计对话总数
 		}
+		convCount += len(ss.Conversations)
 	}
-	logInfof("加载[%d]个对话文件，忽略[%d]个文件，共[%d]组对话", len(silicaFiles), skipCount, idx.convCount)
+	logInfof("加载[%d]个对话文件，忽略其中[%d]个文件", len(silicaFiles), skipCount)
+	logInfof("共[%d]组对话,缺失repo_addr[%d]个,缺失start_time[%d]个,缺失end_time[%d]个",
+		convCount, missRepoCount, missStartTimeCount, missStartTimeCount)
+	logInfof("共[%d]个分组, [%d]个唯一哈希", len(idx.groups), hashCount)
 	return idx, nil
 }
 
@@ -375,7 +382,7 @@ type sessionConvs struct {
 // 注意：
 //
 //	同一task可能包含多个对话，这些对话的匹配行数会合并到该task的silica中。
-func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*convMeta) []models.Task {
+func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*convMeta) ([]models.Task, map[string][]string) {
 	p.totalLines = len(p.fpHashs)
 	matchedLines := 0
 
@@ -403,17 +410,19 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 	}
 
 	p.totalMatchLines = matchedLines
-	p.taskIDs = make([]string, 0)
+	p.taskIds = make([]string, 0)
 	p.taskSilicas = make([]float64, 0)
 	p.taskAcceptRatios = make([]float64, 0)
 	p.totalSilica = 0
 
 	// 无匹配或commit为空时直接返回零值
 	if p.totalLines == 0 || len(sessionConvsMap) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var tasks []models.Task
+	// taskConvMap 记录每个task包含的conversation request_id列表，用于后续更新conversations表的task_id
+	taskConvMap := make(map[string][]string)
 
 	// 遍历每个session，构建Task
 	for sessionId, sc := range sessionConvsMap {
@@ -448,10 +457,12 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 		var taskTotalLines int64
 		var taskTotalInchars int
 		var taskMatchLines int
+		var taskRequestIds []string
 
 		for _, cm := range session.conversations {
 			if (!cm.endTime.Before(firstConv.endTime) && !cm.endTime.After(lastConv.endTime)) ||
 				cm.endTime.Equal(firstConv.endTime) || cm.endTime.Equal(lastConv.endTime) {
+				taskRequestIds = append(taskRequestIds, cm.requestId)
 				if !cm.startTime.IsZero() {
 					validTimes = append(validTimes, cm.startTime)
 				}
@@ -465,8 +476,8 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 			}
 		}
 
-		// 生成uuid作为task_id
-		taskId := uuid.Must(uuid.NewRandom()).String()
+		// task_id 由 session_id + commit_id 确定，保证同一组合始终对应同一条记录
+		taskId := sessionId + "|" + p.commitId
 
 		// 第五步：计算TaskRealMinutes和TaskAncientMinutes
 		realMinutes, realReason := calcTaskRealMinutes(validTimes, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
@@ -477,6 +488,9 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 			TaskId:             taskId,
 			CommitId:           p.commitId,
 			SessionId:          sessionId,
+			UserName:           "",
+			ClientId:           "",
+			ClientIde:          "",
 			StartTime:          firstConv.startTime,
 			EndTime:            lastConv.endTime,
 			DiffLines:          int(taskTotalLines),
@@ -492,14 +506,15 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 		}
 
 		tasks = append(tasks, task)
+		taskConvMap[taskId] = taskRequestIds
 
-		p.taskIDs = append(p.taskIDs, taskId)
+		p.taskIds = append(p.taskIds, taskId)
 		p.taskSilicas = append(p.taskSilicas, task.Silica)
 		p.taskAcceptRatios = append(p.taskAcceptRatios, task.AcceptRatio)
 		p.totalSilica += task.Silica
 	}
 
-	return tasks
+	return tasks, taskConvMap
 }
 
 // 参数:
@@ -515,22 +530,13 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 //     调用 estimateCommitAncientMinutes 基于代码行数进行经验估算。
 //  3. 总实际耗时（realMinutes）= aiMinutes + ancientMinutes，代表该commit的完整人力成本估算。
 //  4. Token与Cost：直接累加各匹配task的 upstream_tokens、downstream_tokens 和 cost。
-func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
+func (p *commitParser) calcCommitDerivedMinutes(tasks []models.Task) error {
 	// 遍历所有匹配到的task，累加AI相关指标
-	for _, taskID := range p.taskIDs {
-		var task models.Task
-		// 优先查询手动修正值（*_manual），若无则使用自动计算值
-		if err := db.Select("COALESCE(task_real_minutes_manual, task_real_minutes) as task_real_minutes, COALESCE(task_ancient_minutes_manual, task_ancient_minutes) as task_ancient_minutes, upstream_tokens, downstream_tokens, cost").
-			Where("task_id = ?", taskID).First(&task).Error; err != nil {
-			if err != gorm.ErrRecordNotFound {
-				logWarnf("查询task数据失败 [%s]: %v", taskID, err)
-			}
-			continue // task不存在时跳过，不影响其他task的累加
-		}
-		p.aiMinutes += task.TaskRealMinutes
-		p.upstreamTokens += task.UpstreamTokens
-		p.downstreamTokens += task.DownstreamTokens
-		p.cost += task.Cost
+	for _, t := range tasks {
+		p.aiMinutes += t.TaskRealMinutes
+		p.upstreamTokens += t.UpstreamTokens
+		p.downstreamTokens += t.DownstreamTokens
+		p.cost += t.Cost
 	}
 
 	// 计算非AI代码行数（传统编码），基于总含硅量的反比
@@ -550,6 +556,138 @@ func (p *commitParser) calcCommitDerivedMinutes(db *gorm.DB) error {
 	p.realReason = fmt.Sprintf("AI耗时%.1f分钟 + 剩余代码%.1f分钟(%s) = %.1f分钟", p.aiMinutes, p.ancientMinutes, ancientReason, p.realMinutes)
 
 	return nil
+}
+
+func saveCommit(db *gorm.DB, commitPs *commitParser) error {
+	// 将taskID列表、含硅量列表和代码采纳率列表序列化为JSON字符串
+	taskIdsJSON, _ := json.Marshal(commitPs.taskIds)
+	silicaJSON, _ := json.Marshal(commitPs.taskSilicas)
+	acceptRatiosJSON, _ := json.Marshal(commitPs.taskAcceptRatios)
+
+	// 构建Commit对象
+	commit := models.Commit{
+		CommitId:                 commitPs.commitId,
+		TaskIds:                  models.StringJSON(taskIdsJSON),
+		TaskIdsSilica:            models.StringJSON(silicaJSON),
+		TaskAcceptRatios:         models.StringJSON(acceptRatiosJSON),
+		Silica:                   &commitPs.totalSilica,
+		CommitRealAiMinutes:      &commitPs.aiMinutes,
+		CommitRealAncientMinutes: &commitPs.ancientMinutes,
+		CommitRealMinutes:        &commitPs.realMinutes,
+		CommitRealReason:         commitPs.realReason,
+		UpstreamTokens:           &commitPs.upstreamTokens,
+		DownstreamTokens:         &commitPs.downstreamTokens,
+		Cost:                     &commitPs.cost,
+	}
+
+	// Upsert写入数据表
+	if err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "commit_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"task_ids", "task_ids_silica", "task_accept_ratios", "silica", "commit_real_ai_minutes", "commit_real_ancient_minutes", "commit_real_minutes", "commit_real_reason", "upstream_tokens", "downstream_tokens", "cost"}),
+	}).Create(&commit).Error; err != nil {
+		logWarnf("保存commits表失败 [%s]: %v", commitPs.commitId, err)
+		return err
+	}
+
+	// 调试日志：输出该commit的核心计算结果
+	logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
+		commitPs.commitId, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitPs.realMinutes)
+	return nil
+}
+
+// buildCommitTasks 为单个Commit构建关联Task，计算含硅量及相关衍生指标，并更新数据库。
+func buildCommitTasks(db *gorm.DB, commitFpFile string, idx *conversationsIndexer, force bool, maxDays int, startDate, endDate *time.Time) string {
+	// 从文件名中提取commitId（去掉 .fp 后缀）
+	commitId := strings.TrimSuffix(filepath.Base(commitFpFile), ".fp")
+
+	// 非强制模式下，跳过已计算过含硅量的commit
+	if !force {
+		var commit models.Commit
+		if err := db.Select("task_ids").Where("commit_id = ?", commitId).First(&commit).Error; err == nil {
+			// 如果task_ids已存在且非空（非 "null" 或 "[]"），则视为已处理
+			if string(commit.TaskIds) != "" && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
+				return "skip"
+			}
+		}
+	}
+
+	// 加载commit指纹
+	commitPs := buildCommitParser(commitId, commitFpFile)
+	if commitPs == nil {
+		logWarnf("读取commit指纹文件失败 [%s]", commitFpFile)
+		return "skip"
+	}
+
+	// 查询commit的元数据（仓库地址、用户ID、提交时间）
+	var commit models.Commit
+	if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitId).First(&commit).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			logWarnf("commit不存在于数据库 [%s]", commitId)
+			return "skip"
+		}
+		logWarnf("查询commit元数据失败 [%s]: %v", commitId, err)
+		return "fail"
+	}
+	if commit.CommitTime.IsZero() {
+		logErrorf("Commit [%s] 缺少提交时间", commitId)
+		return "skip"
+	}
+
+	// 日期范围过滤
+	if !isActiveTimeInRange(commit.CommitTime, startDate, endDate) {
+		logDebugf("跳过(日期范围过滤): %s", commitId)
+		return "skip"
+	}
+
+	// 使用commit的仓库地址和用户ID构建分组键
+	gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserId}
+	gi, exists := idx.groups[gk]
+	if !exists {
+		return "skip"
+	}
+
+	// 在时间窗口内筛选候选指纹，并计算含硅量
+	candidateHashes := gi.buildCandidateHashs(commit.CommitTime, maxDays)
+	tasks, taskConvMap := commitPs.computeCommitSilica(&gi, candidateHashes)
+
+	// 保存计算出的tasks到数据库，按 task_id 做 upsert
+	if len(tasks) > 0 {
+		if err := db.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "task_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"user_id", "user_name", "client_id", "client_ide",
+				"client_version", "client_os", "client_os_version", "caller",
+				"repo_addr", "repo_branch", "work_dir", "work_dir_id",
+				"start_time", "end_time", "diff_lines", "silica", "accept_ratio",
+				"upstream_tokens", "downstream_tokens", "cost",
+				"task_real_minutes", "task_real_reason",
+				"task_ancient_minutes", "task_ancient_reason",
+				"title",
+			}),
+		}).Create(&tasks).Error; err != nil {
+			logWarnf("批量upsert task失败: %v", err)
+		}
+	}
+
+	// 更新属于该task的所有conversation记录，设置task_id
+	for _, task := range tasks {
+		if requestIds, ok := taskConvMap[task.TaskId]; ok && len(requestIds) > 0 {
+			if err := db.Model(&models.TaskConversation{}).
+				Where("session_id = ? AND request_id IN ?", task.SessionId, requestIds).
+				Update("task_id", task.TaskId).Error; err != nil {
+				logWarnf("更新conversation的task_id失败 [%s]: %v", task.TaskId, err)
+			}
+		}
+	}
+	// 计算衍生指标：AI耗时、传统耗时、token、cost等
+	if err := commitPs.calcCommitDerivedMinutes(tasks); err != nil {
+		logWarnf("计算衍生数据失败 [%s]: %v", commitId, err)
+		return "fail"
+	}
+	if err := saveCommit(db, commitPs); err != nil {
+		return "fail"
+	}
+	return "success"
 }
 
 // runSilica 执行含硅量计算的主流程。
@@ -601,7 +739,6 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 		recordCommandRun("silica", startTime, 0, 0, 0, err)
 		return fmt.Errorf("构建conversation指纹索引失败: %w", err)
 	}
-	logInfof("已加载conversation指纹索引: %d个conversation, %d个分组, %d个哈希, max_days=%d", idx.convCount, len(idx.groups), idx.hashCount, maxDays)
 
 	// 扫描所有commit指纹文件
 	commitFPFiles, err := scanCommitFPFiles(repoFPDir)
@@ -620,127 +757,14 @@ func runSilica(analysedDir string, force bool, maxDays int, startDateStr, endDat
 	for i, commitFpFile := range commitFPFiles {
 		logPromptProgress(i, 50) // 每50个文件打印进度
 
-		// 从文件名中提取commitId（去掉 .fp 后缀）
-		commitId := strings.TrimSuffix(filepath.Base(commitFpFile), ".fp")
-
-		// 非强制模式下，跳过已计算过含硅量的commit
-		if !force {
-			var commit models.Commit
-			if err := db.Select("task_ids").Where("commit_id = ?", commitId).First(&commit).Error; err == nil {
-				// 如果task_ids已存在且非空（非 "null" 或 "[]"），则视为已处理
-				if string(commit.TaskIds) != "" && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
-					skipCount++
-					continue
-				}
-			}
-		}
-
-		// 加载commit指纹
-		commitPs := buildCommitParser(commitId, commitFpFile)
-		if commitPs == nil {
-			logWarnf("读取commit指纹文件失败 [%s]", commitFpFile)
-			skipCount++
-			continue
-		}
-
-		// 查询commit的元数据（仓库地址、用户ID、提交时间）
-		var commit models.Commit
-		if err := db.Select("repo_addr, user_id, commit_time").Where("commit_id = ?", commitId).First(&commit).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				logWarnf("commit不存在于数据库 [%s]", commitId)
-				skipCount++
-				continue
-			}
-			logWarnf("查询commit元数据失败 [%s]: %v", commitId, err)
-			failCount++
-			continue
-		}
-		if commit.CommitTime.IsZero() {
-			logErrorf("Commit [%s] 缺少提交时间", commitId)
-			continue
-		}
-
-		// 日期范围过滤
-		if !isActiveTimeInRange(commit.CommitTime, startDate, endDate) {
-			logDebugf("跳过(日期范围过滤): %s", commitId)
-			skipCount++
-			continue
-		}
-
-		// 使用commit的仓库地址和用户ID构建分组键
-		gk := groupKey{repoAddr: commit.RepoAddr, userID: commit.UserId}
-		gi, exists := idx.groups[gk]
-		if !exists {
-			continue
-		}
-
-		// 在时间窗口内筛选候选指纹，并计算含硅量
-		candidateHashes := gi.buildCandidateHashs(commit.CommitTime, maxDays)
-		tasks := commitPs.computeCommitSilica(&gi, candidateHashes)
-
-		// 保存计算出的tasks到数据库
-		for _, task := range tasks {
-			task.CommitId = commitId
-			if err := db.Create(&task).Error; err != nil {
-				logWarnf("创建task失败 [%s]: %v", task.TaskId, err)
-			}
-		}
-
-		// 未匹配到任何task时，将commit的含硅量置零并更新数据库
-		if len(commitPs.taskIDs) == 0 {
-			if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitId).Updates(map[string]interface{}{
-				"task_ids":                    "[]",
-				"task_ids_silica":             "[]",
-				"task_accept_ratios":          "[]",
-				"silica":                      0,
-				"commit_real_ai_minutes":      0,
-				"commit_real_ancient_minutes": gorm.Expr("COALESCE(commit_ancient_minutes, 0)"), // 保留原有的ancient值
-				"commit_real_minutes":         gorm.Expr("COALESCE(commit_ancient_minutes, 0)"), // 无AI贡献时等于ancient
-				"upstream_tokens":             0,
-				"downstream_tokens":           0,
-				"cost":                        0,
-			}).Error; err != nil {
-				logWarnf("更新commits表失败 [%s]: %v", commitId, err)
-				failCount++
-			} else {
-				successCount++
-			}
-			continue
-		}
-
-		// 计算衍生指标：AI耗时、远古耗时、token、cost等
-		if err := commitPs.calcCommitDerivedMinutes(db); err != nil {
-			logWarnf("计算衍生数据失败 [%s]: %v", commitId, err)
-			failCount++
-			continue
-		}
-
-		// 将taskID列表、含硅量列表和代码采纳率列表序列化为JSON字符串
-		taskIDsJSON, _ := json.Marshal(commitPs.taskIDs)
-		silicaJSON, _ := json.Marshal(commitPs.taskSilicas)
-		acceptRatiosJSON, _ := json.Marshal(commitPs.taskAcceptRatios)
-
-		// 更新数据库：写入含硅量及所有衍生指标
-		if err := db.Model(&models.Commit{}).Where("commit_id = ?", commitId).Updates(map[string]interface{}{
-			"task_ids":                    string(taskIDsJSON),
-			"task_ids_silica":             string(silicaJSON),
-			"task_accept_ratios":          string(acceptRatiosJSON),
-			"silica":                      commitPs.totalSilica,
-			"commit_real_ai_minutes":      commitPs.aiMinutes,
-			"commit_real_ancient_minutes": commitPs.ancientMinutes,
-			"commit_real_minutes":         commitPs.realMinutes,
-			"commit_real_minutes_reason":  commitPs.realReason,
-			"upstream_tokens":             commitPs.upstreamTokens,
-			"downstream_tokens":           commitPs.downstreamTokens,
-			"cost":                        commitPs.cost,
-		}).Error; err != nil {
-			logWarnf("更新commits表失败 [%s]: %v", commitId, err)
-			failCount++
-		} else {
-			// 调试日志：输出该commit的核心计算结果
-			logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
-				commitId, commitPs.totalSilica, commitPs.totalMatchLines, commitPs.totalLines, commitPs.aiMinutes, commitPs.ancientMinutes, commitPs.realMinutes)
+		status := buildCommitTasks(db, commitFpFile, idx, force, maxDays, startDate, endDate)
+		switch status {
+		case "success":
 			successCount++
+		case "skip":
+			skipCount++
+		case "fail":
+			failCount++
 		}
 	}
 

@@ -16,36 +16,36 @@ import (
 // ============================================================
 
 type StatTask struct {
-	TaskId                         string     `json:"task_id"`
-	UserId                         string     `json:"user_id"`
-	UserName                       string     `json:"user_name"`
-	ClientId                       string     `json:"client_id"`
-	ClientIde                      string     `json:"client_ide"`
-	ClientVersion                  string     `json:"client_version"`
-	ClientOs                       string     `json:"client_os"`
-	ClientOsVersion                string     `json:"client_os_version"`
-	Caller                         string     `json:"caller"`
-	RepoAddr                       string     `json:"repo_addr"`
-	RepoBranch                     string     `json:"repo_branch"`
-	WorkDir                        string     `json:"work_dir"`
-	WorkDirId                      string     `json:"work_dir_id"`
-	DiffLines                      int        `json:"diff_lines"`
-	StartTime                      *time.Time `json:"start_time"`
-	EndTime                        *time.Time `json:"end_time"`
-	UpstreamTokens                 int64      `json:"upstream_tokens"`
-	DownstreamTokens               int64      `json:"downstream_tokens"`
-	Cost                           float64    `json:"cost"`
-	TaskRealMinutes                *float64   `json:"task_real_minutes"`
-	TaskRealReason          string     `json:"task_real_minutes_reason"`
-	TaskRealMinutesManual          *float64   `json:"task_real_minutes_manual"`
-	TaskRealReasonManual    string     `json:"task_real_minutes_reason_manual"`
-	TaskAncientMinutes             *float64   `json:"task_ancient_minutes"`
-	TaskAncientReason       string     `json:"task_ancient_minutes_reason"`
-	TaskAncientMinutesManual       *float64   `json:"task_ancient_minutes_manual"`
-	TaskAncientReasonManual string     `json:"task_ancient_minutes_reason_manual"`
-	Title                          string     `json:"title"`
-	CreatedAt                      time.Time  `json:"created_at"`
-	UpdatedAt                      time.Time  `json:"updated_at"`
+	TaskId                   string     `json:"task_id"`
+	UserId                   string     `json:"user_id"`
+	UserName                 string     `json:"user_name"`
+	ClientId                 string     `json:"client_id"`
+	ClientIde                string     `json:"client_ide"`
+	ClientVersion            string     `json:"client_version"`
+	ClientOs                 string     `json:"client_os"`
+	ClientOsVersion          string     `json:"client_os_version"`
+	Caller                   string     `json:"caller"`
+	RepoAddr                 string     `json:"repo_addr"`
+	RepoBranch               string     `json:"repo_branch"`
+	WorkDir                  string     `json:"work_dir"`
+	WorkDirId                string     `json:"work_dir_id"`
+	DiffLines                int        `json:"diff_lines"`
+	StartTime                *time.Time `json:"start_time"`
+	EndTime                  *time.Time `json:"end_time"`
+	UpstreamTokens           int64      `json:"upstream_tokens"`
+	DownstreamTokens         int64      `json:"downstream_tokens"`
+	Cost                     float64    `json:"cost"`
+	TaskRealMinutes          *float64   `json:"task_real_minutes"`
+	TaskRealReason           string     `json:"task_real_minutes_reason"`
+	TaskRealMinutesManual    *float64   `json:"task_real_minutes_manual"`
+	TaskRealReasonManual     string     `json:"task_real_minutes_reason_manual"`
+	TaskAncientMinutes       *float64   `json:"task_ancient_minutes"`
+	TaskAncientReason        string     `json:"task_ancient_minutes_reason"`
+	TaskAncientMinutesManual *float64   `json:"task_ancient_minutes_manual"`
+	TaskAncientReasonManual  string     `json:"task_ancient_minutes_reason_manual"`
+	Title                    string     `json:"title"`
+	CreatedAt                time.Time  `json:"created_at"`
+	UpdatedAt                time.Time  `json:"updated_at"`
 }
 
 type StatTaskConversation struct {
@@ -78,68 +78,68 @@ type StatTaskConversation struct {
 }
 
 type StatCommit struct {
-	CommitId                         string          `json:"commit_id"`
-	CommitTime                       time.Time       `json:"commit_time"`
-	RepoAddr                         string          `json:"repo_addr"`
-	RepoBranch                       string          `json:"repo_branch"`
-	GitUserName                      string          `json:"git_user_name"`
-	GitUserEmail                     string          `json:"git_user_email"`
-	UserId                           string          `json:"user_id"`
-	UserName                         string          `json:"user_name"`
-	ClientId                         string          `json:"client_id"`
-	WorkDir                          string          `json:"work_dir"`
-	WorkDirId                        string          `json:"work_dir_id"`
-	DiffLines                        int             `json:"diff_lines"`
-	CommitAncientMinutes             *float64        `json:"commit_ancient_minutes"`
-	CommitAncientReason       string          `json:"commit_ancient_minutes_reason"`
-	CommitAncientMinutesManual       *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientReasonManual string          `json:"commit_ancient_minutes_reason_manual"`
-	TaskIds                          json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
-	TaskIdsSilica                    json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
-	TaskAcceptRatios                 json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
-	UpstreamTokens                   int64           `json:"upstream_tokens"`
-	DownstreamTokens                 int64           `json:"downstream_tokens"`
-	Cost                             float64         `json:"cost"`
-	Silica                           *float64        `json:"silica"`
-	CommitRealAiMinutes              *float64        `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes         *float64        `json:"commit_real_ancient_minutes"`
-	CommitRealMinutes                *float64        `json:"commit_real_minutes"`
-	CommitRealReason          string          `json:"commit_real_minutes_reason"`
-	CommitRealMinutesManual          *float64        `json:"commit_real_minutes_manual"`
-	CommitRealReasonManual    string          `json:"commit_real_minutes_reason_manual"`
-	Comment                          string          `json:"comment"`
-	CreatedAt                        time.Time       `json:"created_at"`
-	UpdatedAt                        time.Time       `json:"updated_at"`
+	CommitId                   string          `json:"commit_id"`
+	CommitTime                 time.Time       `json:"commit_time"`
+	RepoAddr                   string          `json:"repo_addr"`
+	RepoBranch                 string          `json:"repo_branch"`
+	GitUserName                string          `json:"git_user_name"`
+	GitUserEmail               string          `json:"git_user_email"`
+	UserId                     string          `json:"user_id"`
+	UserName                   string          `json:"user_name"`
+	ClientId                   string          `json:"client_id"`
+	WorkDir                    string          `json:"work_dir"`
+	WorkDirId                  string          `json:"work_dir_id"`
+	DiffLines                  int             `json:"diff_lines"`
+	CommitAncientMinutes       *float64        `json:"commit_ancient_minutes"`
+	CommitAncientReason        string          `json:"commit_ancient_minutes_reason"`
+	CommitAncientMinutesManual *float64        `json:"commit_ancient_minutes_manual"`
+	CommitAncientReasonManual  string          `json:"commit_ancient_minutes_reason_manual"`
+	TaskIds                    json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	TaskIdsSilica              json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	TaskAcceptRatios           json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"task1\", \"task2\"]"`
+	UpstreamTokens             int64           `json:"upstream_tokens"`
+	DownstreamTokens           int64           `json:"downstream_tokens"`
+	Cost                       float64         `json:"cost"`
+	Silica                     *float64        `json:"silica"`
+	CommitRealAiMinutes        *float64        `json:"commit_real_ai_minutes"`
+	CommitRealAncientMinutes   *float64        `json:"commit_real_ancient_minutes"`
+	CommitRealMinutes          *float64        `json:"commit_real_minutes"`
+	CommitRealReason           string          `json:"commit_real_minutes_reason"`
+	CommitRealMinutesManual    *float64        `json:"commit_real_minutes_manual"`
+	CommitRealReasonManual     string          `json:"commit_real_minutes_reason_manual"`
+	Comment                    string          `json:"comment"`
+	CreatedAt                  time.Time       `json:"created_at"`
+	UpdatedAt                  time.Time       `json:"updated_at"`
 }
 
 type Project struct {
-	ProjectId                             string          `json:"project_id"`
-	Name                                  string          `json:"name"`
-	Description                           string          `json:"description"`
-	Repos                                 json.RawMessage `json:"repos" swaggertype:"string"`
-	TaskIds                               json.RawMessage `json:"task_ids" swaggertype:"string"`
-	TaskIdsSilica                         json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
-	StartTime                             *time.Time      `json:"start_time"`
-	EndTime                               *time.Time      `json:"end_time"`
-	StartTimeManual                       *time.Time      `json:"start_time_manual"`
-	EndTimeManual                         *time.Time      `json:"end_time_manual"`
-	UpstreamTokens                        int64           `json:"upstream_tokens"`
-	DownstreamTokens                      int64           `json:"downstream_tokens"`
-	Cost                                  float64         `json:"cost"`
-	ProjectAncientMinutes                 *float64        `json:"project_ancient_minutes"`
-	ProjectAncientReason           string          `json:"project_ancient_minutes_reason"`
-	ProjectAncientMinutesManual           *float64        `json:"project_ancient_minutes_manual"`
-	ProjectAncientReasonManual     string          `json:"project_ancient_minutes_reason_manual"`
-	ProjectRealProcessMinutes             *float64        `json:"project_real_process_minutes"`
-	ProjectRealProcessReason       string          `json:"project_real_process_minutes_reason"`
-	ProjectRealProcessMinutesManual       *float64        `json:"project_real_process_minutes_manual"`
-	ProjectRealProcessReasonManual string          `json:"project_real_process_minutes_reason_manual"`
-	ProjectRealLeadMinutes                *float64        `json:"project_real_lead_minutes"`
-	ProjectRealLeadReason          string          `json:"project_real_lead_minutes_reason"`
-	ProjectRealLeadMinutesManual          *float64        `json:"project_real_lead_minutes_manual"`
-	ProjectRealLeadReasonManual    string          `json:"project_real_lead_minutes_reason_manual"`
-	CreatedAt                             time.Time       `json:"created_at"`
-	UpdatedAt                             time.Time       `json:"updated_at"`
+	ProjectId                       string          `json:"project_id"`
+	Name                            string          `json:"name"`
+	Description                     string          `json:"description"`
+	Repos                           json.RawMessage `json:"repos" swaggertype:"string"`
+	TaskIds                         json.RawMessage `json:"task_ids" swaggertype:"string"`
+	TaskIdsSilica                   json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
+	StartTime                       *time.Time      `json:"start_time"`
+	EndTime                         *time.Time      `json:"end_time"`
+	StartTimeManual                 *time.Time      `json:"start_time_manual"`
+	EndTimeManual                   *time.Time      `json:"end_time_manual"`
+	UpstreamTokens                  int64           `json:"upstream_tokens"`
+	DownstreamTokens                int64           `json:"downstream_tokens"`
+	Cost                            float64         `json:"cost"`
+	ProjectAncientMinutes           *float64        `json:"project_ancient_minutes"`
+	ProjectAncientReason            string          `json:"project_ancient_minutes_reason"`
+	ProjectAncientMinutesManual     *float64        `json:"project_ancient_minutes_manual"`
+	ProjectAncientReasonManual      string          `json:"project_ancient_minutes_reason_manual"`
+	ProjectRealProcessMinutes       *float64        `json:"project_real_process_minutes"`
+	ProjectRealProcessReason        string          `json:"project_real_process_minutes_reason"`
+	ProjectRealProcessMinutesManual *float64        `json:"project_real_process_minutes_manual"`
+	ProjectRealProcessReasonManual  string          `json:"project_real_process_minutes_reason_manual"`
+	ProjectRealLeadMinutes          *float64        `json:"project_real_lead_minutes"`
+	ProjectRealLeadReason           string          `json:"project_real_lead_minutes_reason"`
+	ProjectRealLeadMinutesManual    *float64        `json:"project_real_lead_minutes_manual"`
+	ProjectRealLeadReasonManual     string          `json:"project_real_lead_minutes_reason_manual"`
+	CreatedAt                       time.Time       `json:"created_at"`
+	UpdatedAt                       time.Time       `json:"updated_at"`
 }
 
 type UserProductivity struct {
@@ -193,17 +193,17 @@ type RepoAggregate struct {
 }
 
 type ProjectAggregates struct {
-	StartTime                       *time.Time
-	EndTime                         *time.Time
-	UpstreamTokens                  int64
-	DownstreamTokens                int64
-	Cost                            float64
-	ProjectAncientMinutes           *float64
-	ProjectAncientReason     string
-	ProjectRealProcessMinutes       *float64
-	ProjectRealProcessReason string
-	ProjectRealLeadMinutes          *float64
-	ProjectRealLeadReason    string
+	StartTime                 *time.Time
+	EndTime                   *time.Time
+	UpstreamTokens            int64
+	DownstreamTokens          int64
+	Cost                      float64
+	ProjectAncientMinutes     *float64
+	ProjectAncientReason      string
+	ProjectRealProcessMinutes *float64
+	ProjectRealProcessReason  string
+	ProjectRealLeadMinutes    *float64
+	ProjectRealLeadReason     string
 }
 
 type CommitLightStats struct {
@@ -286,36 +286,36 @@ func toStatTask(t *models.Task) *StatTask {
 		return nil
 	}
 	return &StatTask{
-		TaskId:                         t.TaskId,
-		UserId:                         t.UserId,
-		UserName:                       t.UserName,
-		ClientId:                       t.ClientId,
-		ClientIde:                      t.ClientIde,
-		ClientVersion:                  t.ClientVersion,
-		ClientOs:                       t.ClientOs,
-		ClientOsVersion:                t.ClientOsVersion,
-		Caller:                         t.Caller,
-		RepoAddr:                       t.RepoAddr,
-		RepoBranch:                     t.RepoBranch,
-		WorkDir:                        t.WorkDir,
-		WorkDirId:                      t.WorkDirId,
-		DiffLines:                      t.DiffLines,
-		StartTime:                      &t.StartTime,
-		EndTime:                        &t.EndTime,
-		UpstreamTokens:                 t.UpstreamTokens,
-		DownstreamTokens:               t.DownstreamTokens,
-		Cost:                           t.Cost,
-		TaskRealMinutes:                toFloat64Ptr(t.TaskRealMinutes),
-		TaskRealReason:          t.TaskRealReason,
-		TaskRealMinutesManual:          t.TaskRealMinutesManual,
-		TaskRealReasonManual:    t.TaskRealReasonManual,
-		TaskAncientMinutes:             toFloat64Ptr(t.TaskAncientMinutes),
-		TaskAncientReason:       t.TaskAncientReason,
-		TaskAncientMinutesManual:       t.TaskAncientMinutesManual,
-		TaskAncientReasonManual: t.TaskAncientReasonManual,
-		Title:                          t.Title,
-		CreatedAt:                      t.CreatedAt,
-		UpdatedAt:                      t.UpdatedAt,
+		TaskId:                   t.TaskId,
+		UserId:                   t.UserId,
+		UserName:                 t.UserName,
+		ClientId:                 t.ClientId,
+		ClientIde:                t.ClientIde,
+		ClientVersion:            t.ClientVersion,
+		ClientOs:                 t.ClientOs,
+		ClientOsVersion:          t.ClientOsVersion,
+		Caller:                   t.Caller,
+		RepoAddr:                 t.RepoAddr,
+		RepoBranch:               t.RepoBranch,
+		WorkDir:                  t.WorkDir,
+		WorkDirId:                t.WorkDirId,
+		DiffLines:                t.DiffLines,
+		StartTime:                &t.StartTime,
+		EndTime:                  &t.EndTime,
+		UpstreamTokens:           t.UpstreamTokens,
+		DownstreamTokens:         t.DownstreamTokens,
+		Cost:                     t.Cost,
+		TaskRealMinutes:          toFloat64Ptr(t.TaskRealMinutes),
+		TaskRealReason:           t.TaskRealReason,
+		TaskRealMinutesManual:    t.TaskRealMinutesManual,
+		TaskRealReasonManual:     t.TaskRealReasonManual,
+		TaskAncientMinutes:       toFloat64Ptr(t.TaskAncientMinutes),
+		TaskAncientReason:        t.TaskAncientReason,
+		TaskAncientMinutesManual: t.TaskAncientMinutesManual,
+		TaskAncientReasonManual:  t.TaskAncientReasonManual,
+		Title:                    t.Title,
+		CreatedAt:                t.CreatedAt,
+		UpdatedAt:                t.UpdatedAt,
 	}
 }
 
@@ -332,38 +332,38 @@ func toStatCommit(c *models.Commit) *StatCommit {
 		return nil
 	}
 	return &StatCommit{
-		CommitId:                         c.CommitId,
-		CommitTime:                       c.CommitTime,
-		RepoAddr:                         c.RepoAddr,
-		RepoBranch:                       c.RepoBranch,
-		GitUserName:                      c.GitUserName,
-		GitUserEmail:                     c.GitUserEmail,
-		UserId:                           c.UserId,
-		UserName:                         c.UserName,
-		ClientId:                         c.ClientId,
-		WorkDir:                          c.WorkDir,
-		WorkDirId:                        c.WorkDirId,
-		DiffLines:                        c.DiffLines,
-		CommitAncientMinutes:             c.CommitAncientMinutes,
-		CommitAncientReason:       c.CommitAncientReason,
-		CommitAncientMinutesManual:       c.CommitAncientMinutesManual,
-		CommitAncientReasonManual: c.CommitAncientReasonManual,
-		TaskIds:                          strJSONToRaw(c.TaskIds),
-		TaskIdsSilica:                    strJSONToRaw(c.TaskIdsSilica),
-		TaskAcceptRatios:                 strJSONToRaw(c.TaskAcceptRatios),
-		UpstreamTokens:                   ptrToInt64(c.UpstreamTokens),
-		DownstreamTokens:                 ptrToInt64(c.DownstreamTokens),
-		Cost:                             ptrToFloat64(c.Cost),
-		Silica:                           c.Silica,
-		CommitRealAiMinutes:              c.CommitRealAiMinutes,
-		CommitRealAncientMinutes:         c.CommitRealAncientMinutes,
-		CommitRealMinutes:                c.CommitRealMinutes,
-		CommitRealReason:          c.CommitRealReason,
-		CommitRealMinutesManual:          c.CommitRealMinutesManual,
-		CommitRealReasonManual:    c.CommitRealReasonManual,
-		Comment:                          c.Comment,
-		CreatedAt:                        c.CreatedAt,
-		UpdatedAt:                        c.UpdatedAt,
+		CommitId:                   c.CommitId,
+		CommitTime:                 c.CommitTime,
+		RepoAddr:                   c.RepoAddr,
+		RepoBranch:                 c.RepoBranch,
+		GitUserName:                c.GitUserName,
+		GitUserEmail:               c.GitUserEmail,
+		UserId:                     c.UserId,
+		UserName:                   c.UserName,
+		ClientId:                   c.ClientId,
+		WorkDir:                    c.WorkDir,
+		WorkDirId:                  c.WorkDirId,
+		DiffLines:                  c.DiffLines,
+		CommitAncientMinutes:       c.CommitAncientMinutes,
+		CommitAncientReason:        c.CommitAncientReason,
+		CommitAncientMinutesManual: c.CommitAncientMinutesManual,
+		CommitAncientReasonManual:  c.CommitAncientReasonManual,
+		TaskIds:                    strJSONToRaw(c.TaskIds),
+		TaskIdsSilica:              strJSONToRaw(c.TaskIdsSilica),
+		TaskAcceptRatios:           strJSONToRaw(c.TaskAcceptRatios),
+		UpstreamTokens:             ptrToInt64(c.UpstreamTokens),
+		DownstreamTokens:           ptrToInt64(c.DownstreamTokens),
+		Cost:                       ptrToFloat64(c.Cost),
+		Silica:                     c.Silica,
+		CommitRealAiMinutes:        c.CommitRealAiMinutes,
+		CommitRealAncientMinutes:   c.CommitRealAncientMinutes,
+		CommitRealMinutes:          c.CommitRealMinutes,
+		CommitRealReason:           c.CommitRealReason,
+		CommitRealMinutesManual:    c.CommitRealMinutesManual,
+		CommitRealReasonManual:     c.CommitRealReasonManual,
+		Comment:                    c.Comment,
+		CreatedAt:                  c.CreatedAt,
+		UpdatedAt:                  c.UpdatedAt,
 	}
 }
 
@@ -414,33 +414,33 @@ func toProject(p *models.Project) *Project {
 		return nil
 	}
 	return &Project{
-		ProjectId:                             p.ProjectId,
-		Name:                                  p.Name,
-		Description:                           p.Description,
-		Repos:                                 strJSONToRaw(p.Repos),
-		TaskIds:                               strJSONToRaw(p.TaskIds),
-		TaskIdsSilica:                         strJSONToRaw(p.TaskIdsSilica),
-		StartTime:                             p.StartTime,
-		EndTime:                               p.EndTime,
-		StartTimeManual:                       p.StartTimeManual,
-		EndTimeManual:                         p.EndTimeManual,
-		UpstreamTokens:                        p.UpstreamTokens,
-		DownstreamTokens:                      p.DownstreamTokens,
-		Cost:                                  p.Cost,
-		ProjectAncientMinutes:                 p.ProjectAncientMinutes,
-		ProjectAncientReason:           p.ProjectAncientReason,
-		ProjectAncientMinutesManual:           p.ProjectAncientMinutesManual,
-		ProjectAncientReasonManual:     p.ProjectAncientReasonManual,
-		ProjectRealProcessMinutes:             p.ProjectRealProcessMinutes,
-		ProjectRealProcessReason:       p.ProjectRealProcessReason,
-		ProjectRealProcessMinutesManual:       p.ProjectRealProcessMinutesManual,
-		ProjectRealProcessReasonManual: p.ProjectRealProcessReasonManual,
-		ProjectRealLeadMinutes:                p.ProjectRealLeadMinutes,
-		ProjectRealLeadReason:          p.ProjectRealLeadReason,
-		ProjectRealLeadMinutesManual:          p.ProjectRealLeadMinutesManual,
-		ProjectRealLeadReasonManual:    p.ProjectRealLeadReasonManual,
-		CreatedAt:                             p.CreatedAt,
-		UpdatedAt:                             p.UpdatedAt,
+		ProjectId:                       p.ProjectId,
+		Name:                            p.Name,
+		Description:                     p.Description,
+		Repos:                           strJSONToRaw(p.Repos),
+		TaskIds:                         strJSONToRaw(p.TaskIds),
+		TaskIdsSilica:                   strJSONToRaw(p.TaskIdsSilica),
+		StartTime:                       p.StartTime,
+		EndTime:                         p.EndTime,
+		StartTimeManual:                 p.StartTimeManual,
+		EndTimeManual:                   p.EndTimeManual,
+		UpstreamTokens:                  p.UpstreamTokens,
+		DownstreamTokens:                p.DownstreamTokens,
+		Cost:                            p.Cost,
+		ProjectAncientMinutes:           p.ProjectAncientMinutes,
+		ProjectAncientReason:            p.ProjectAncientReason,
+		ProjectAncientMinutesManual:     p.ProjectAncientMinutesManual,
+		ProjectAncientReasonManual:      p.ProjectAncientReasonManual,
+		ProjectRealProcessMinutes:       p.ProjectRealProcessMinutes,
+		ProjectRealProcessReason:        p.ProjectRealProcessReason,
+		ProjectRealProcessMinutesManual: p.ProjectRealProcessMinutesManual,
+		ProjectRealProcessReasonManual:  p.ProjectRealProcessReasonManual,
+		ProjectRealLeadMinutes:          p.ProjectRealLeadMinutes,
+		ProjectRealLeadReason:           p.ProjectRealLeadReason,
+		ProjectRealLeadMinutesManual:    p.ProjectRealLeadMinutesManual,
+		ProjectRealLeadReasonManual:     p.ProjectRealLeadReasonManual,
+		CreatedAt:                       p.CreatedAt,
+		UpdatedAt:                       p.UpdatedAt,
 	}
 }
 

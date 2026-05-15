@@ -447,9 +447,9 @@ func loadUserNamesFromCommits(db *gorm.DB) (map[string]string, error) {
 // runEfficiency 执行效能计算的主流程，支持按指定日期或全量日期计算用户生产力。
 //
 // 参数:
-//   - startDateStr: 限定起始日期，格式 2006-01-02
-//   - endDateStr: 限定结束日期，格式 2006-01-02
-//   - dateStr: 限定日期，格式 2006-01-02；与 startDateStr/endDateStr 互斥
+//   - startDateStr: 限定起始日期，格式 20060102
+//   - endDateStr: 限定结束日期，格式 20060102
+//   - dateStr: 限定日期，格式 20060102；与 startDateStr/endDateStr 互斥
 //
 // 返回值:
 //   - error: 参数校验、数据库连接、数据聚合或写入过程中发生的错误
@@ -484,8 +484,10 @@ func runEfficiency(startDateStr, endDateStr, dateStr string) error {
 	var dates []string
 	if dateStr != "" {
 		// 单日期模式：直接处理指定日期
-		t, _ := time.Parse("2006-01-02", dateStr)
-		dates = []string{t.Format("20060102")}
+		if _, err := time.Parse("20060102", dateStr); err != nil {
+			return fmt.Errorf("--date格式错误: %v", err)
+		}
+		dates = []string{dateStr}
 	} else {
 		// 全量模式：从数据库中提取所有有数据的日期
 		dates, err = getAllDates(db)

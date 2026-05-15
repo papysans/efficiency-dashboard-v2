@@ -156,8 +156,9 @@ func (l *Logger) Promptf(format string, args ...interface{}) {
 func logPrompt(msg string)                          { logger.Prompt(msg) }
 func logPromptf(format string, args ...interface{}) { logger.Promptf(format, args...) }
 
+// 进展提示，进度条长度为linecnt,进展到末尾后自动复位
 func logPromptProgress(cnt, linecnt int) {
-	if logger.consoleLevel <= LogInfo {
+	if logger.consoleLevel < LogInfo {
 		return
 	}
 	if linecnt < 2 {

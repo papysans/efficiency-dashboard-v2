@@ -81,7 +81,7 @@ type Session struct {
 func (Session) TableName() string { return "sessions" }
 
 type Task struct {
-	TaskId                   string    `gorm:"primaryKey;type:varchar(255)" json:"task_id"`
+	TaskId                   string    `gorm:"primaryKey;type:varchar(500)" json:"task_id"`
 	CommitId                 string    `gorm:"type:varchar(255);index" json:"commit_id"`
 	SessionId                string    `gorm:"type:varchar(255);index" json:"session_id"`
 	UserId                   string    `gorm:"type:varchar(255);index" json:"user_id"`

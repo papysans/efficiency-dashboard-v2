@@ -193,91 +193,6 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 	}
 }
 
-// func correctConversations(ss *taskSession, conversations []taskConversation) models.Session {
-// 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
-// 	rec := models.Session{
-// 		SessionId:       ss.SessionId,
-// 		UserId:          ss.UserId,
-// 		UserName:        ss.UserName,
-// 		ClientId:        ss.ClientId,
-// 		ClientIde:       ss.ClientIde,
-// 		ClientVersion:   ss.ClientVersion,
-// 		ClientOs:        ss.ClientOs,
-// 		ClientOsVersion: ss.ClientOsVersion,
-// 	}
-// 	// workDirId := utils.GenerateWorkDirID(ss.ClientId, ss.WorkDir)
-
-// 	// 聚合变量：时间范围、Token、成本、代码行数
-// 	var startTime, endTime *time.Time
-// 	var totalUpstream, totalDownstream int64
-// 	var totalCost float64
-// 	var totalLines int64
-
-// 	// 遍历所有对话，解析时间并累加指标；时间解析失败则跳过该对话并记录警告
-// 	for i, conv := range conversations {
-// 		if conv.StartTime == "" {
-// 			logWarnf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
-// 			continue
-// 		}
-// 		if conv.EndTime == "" {
-// 			logWarnf("conversation [%s-%s] 缺少end_time字段", ss.SessionId, conv.RequestId)
-// 			continue
-// 		}
-// 		t1, err := time.Parse(time.RFC3339, conv.StartTime)
-// 		if err != nil {
-// 			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
-// 			continue
-// 		}
-// 		t2, err := time.Parse(time.RFC3339, conv.EndTime)
-// 		if err != nil {
-// 			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
-// 			continue
-// 		}
-// 		if conv.Caller == "" {
-// 			conversations[i].Caller = ss.Caller
-// 		}
-// 		if conv.RepoAddr == "" {
-// 			conversations[i].RepoAddr = ss.RepoAddr
-// 		}
-// 		if conv.RepoBranch == "" {
-// 			conversations[i].RepoBranch = ss.RepoBranch
-// 		}
-// 		if conv.WorkDir == "" {
-// 			conversations[i].WorkDir = ss.WorkDir
-// 		}
-// 		// 维护任务级别最早开始时间和最晚结束时间
-// 		if startTime == nil || t1.Before(*startTime) {
-// 			startTime = &t1
-// 		}
-// 		if endTime == nil || t2.After(*endTime) {
-// 			endTime = &t2
-// 		}
-// 		totalUpstream += conv.UpstreamTokens
-// 		totalDownstream += conv.DownstreamTokens
-// 		totalCost += conv.Cost
-// 		totalLines += conv.DiffLines
-// 	}
-
-// 	// 将聚合结果写入 Task 记录
-// 	rec.StartTime = startTime
-// 	rec.EndTime = endTime
-// 	rec.UpstreamTokens = totalUpstream
-// 	rec.DownstreamTokens = totalDownstream
-// 	rec.Cost = totalCost
-// 	rec.DiffLines = int(totalLines)
-
-// 	// 计算真实工作时长（基于时间片段合并算法）
-// 	minutes, reason := calcTaskRealMinutes(conversations, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
-// 	rec.TaskRealMinutes = minutes
-// 	rec.TaskRealReason = reason
-
-// 	// 估算原始工作量（基于输入字符数和代码行数的因子模型）
-// 	minutes, reason = estimateTaskAncientMinutes(&cfg.AlgoEstimation, conversations, rec.TaskRealMinutes)
-// 	rec.TaskAncientMinutes = minutes
-// 	rec.TaskAncientReason = reason
-// 	return rec
-// }
-
 // importSingleTask 导入单个任务到数据库。
 // 功能：读取 ss 和 conversation 文件，解析并计算任务记录，生成 silica 文件后写入数据库。
 // 参数：
@@ -321,12 +236,11 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 
 	correctConversations(&ss, conversations)
 
-	// 若存在有效对话，将其保存到 task_conversations 表
-	if len(conversations) > 0 {
-		if err := saveConversations(db, conversations); err != nil {
-			return fmt.Errorf("保存conversations失败: %w", err)
-		}
+	// 保存到 conversations 表
+	if err := saveConversations(db, conversations); err != nil {
+		return fmt.Errorf("保存conversations失败: %w", err)
 	}
+
 	// 生成 task silica 文件用于后续增量检测；失败仅记录警告，不阻断主流程
 	if err := generateTaskSilicaFile(&ss, conversations, conversationPath, silicaPath); err != nil {
 		logWarnf("生成task silica文件失败 [%s]: %v", ss.SessionId, err)
@@ -346,6 +260,9 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 // 关键技术原理：通过 db.Transaction 开启事务，确保一批对话要么全部写入成功，要么全部回滚；
 // 复合唯一键 (task_id, request_id) 冲突时忽略插入，避免重复数据报错。
 func saveConversations(db *gorm.DB, conversations []taskConversation) error {
+	if len(conversations) == 0 {
+		return nil
+	}
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, conv := range conversations {
 			// 转换字段并对文本内容进行清洗，防止非法字符入库
@@ -671,9 +588,6 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 		UserId:          ss.UserId,
 		Size:            fileSize,
 		ConversationNum: len(conversations),
-	}
-	if ss.RepoAddr == "" {
-		logDebugf("任务[%s]无法关联Commit,忽略代码指纹信息生成", ss.SessionId)
 	}
 
 	// 逐条对话提取新增代码行的指纹
