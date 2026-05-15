@@ -77,19 +77,19 @@ func executeImportConv(params map[string]interface{}) error {
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	return runImportConv(taskDir, analysedDir, force, startDate, endDate, date)
+	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
+	return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
 }
 
 func executeImportRepo(params map[string]interface{}) error {
 	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
 	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
-	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
+	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	createPseudo := getBoolParam(params, "create_pseudo", cfg.CreatePseudoTask)
-	return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date, createPseudo)
+	return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
 }
 
 func executeImportOrg(params map[string]interface{}) error {
@@ -116,16 +116,18 @@ func executeImport(params map[string]interface{}) error {
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	maxDays := getIntParam(params, "max_days", cfg.SilicaMaxDays)
-	createPseudo := getBoolParam(params, "create_pseudo", cfg.CreatePseudoTask)
+	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
+	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
 
 	steps := []struct {
 		name string
 		fn   func() error
 	}{
-		{"import-conv", func() error { return runImportConv(taskDir, analysedDir, force, startDate, endDate, date) }},
+		{"import-conv", func() error {
+			return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+		}},
 		{"import-repo", func() error {
-			return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date, createPseudo)
+			return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
 		}},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
 		{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }},

@@ -69,19 +69,19 @@ type TaskListResponse struct {
 
 // importConvBody import-conv 请求体
 type importConvBody struct {
-	TaskDir     string `json:"task_dir" example:"/path/to/task"`
-	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
-	Force       bool   `json:"force" example:"false"`
-	StartDate   string `json:"start_date" example:"2024-01-01"`
-	EndDate     string `json:"end_date" example:"2024-01-31"`
+	TaskDir      string `json:"task_dir" example:"/path/to/task"`
+	AnalysedDir  string `json:"analysed_dir" example:"./analysed"`
+	Force        bool   `json:"force" example:"false"`
+	StartDate    string `json:"start_date" example:"2024-01-01"`
+	EndDate      string `json:"end_date" example:"2024-01-31"`
+	CreatePseudo bool   `json:"create_pseudo" example:"false"`
 }
 
 // ImportRepoBody import-repo 请求体
 type ImportRepoBody struct {
-	RepoDir      string `json:"repo_dir" example:"/path/to/repo"`
-	AnalysedDir  string `json:"analysed_dir" example:"./analysed"`
-	Force        bool   `json:"force" example:"false"`
-	CreatePseudo bool   `json:"create_pseudo" example:"false"`
+	RepoDir     string `json:"repo_dir" example:"/path/to/repo"`
+	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
+	Force       bool   `json:"force" example:"false"`
 }
 
 // ImportOrgBody import-org 请求体

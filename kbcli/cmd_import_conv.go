@@ -782,7 +782,7 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 //  2. 对每个 conversation 文件，先检查是否存在对应 summary；再调用 needUpdateConversations 进行增量检测。
 //  3. 调用 importSingleTask 完成单任务导入，并统计成功/失败/跳过数量。
 //  4. 通过 recordCommandRun 记录命令执行结果，便于运维监控和审计。
-func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string) error {
+func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string, createPseudo bool) error {
 	startTime := time.Now()
 	summaryDir := filepath.Join(taskDir, "summary")
 	conversationDir := filepath.Join(taskDir, "conversation")
@@ -866,6 +866,13 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	}
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
+
+	if createPseudo {
+		if err := createPseudoTasks(db); err != nil {
+			logWarnf("创建伪任务失败: %v", err)
+		}
+	}
+
 	recordCommandRun("import-conv", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
@@ -884,16 +891,21 @@ var importConvCmd = &cobra.Command{
 		startDate, _ := cmd.Flags().GetString("start-date")
 		endDate, _ := cmd.Flags().GetString("end-date")
 		date, _ := cmd.Flags().GetString("date")
+		createPseudo, _ := cmd.Flags().GetBool("create-pseudo")
+		if !cmd.Flags().Changed("create-pseudo") {
+			createPseudo = cfg.TaskCreate.CreatePseudoTask
+		}
 
 		// 若指定了 remote 地址，则将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
 			return sendToRemote(remote, "import-conv", map[string]interface{}{
-				"task_dir":     taskDir,
-				"analysed_dir": analysedDir,
-				"force":        force,
-				"start_date":   startDate,
-				"end_date":     endDate,
-				"date":         date,
+				"task_dir":      taskDir,
+				"analysed_dir":  analysedDir,
+				"force":         force,
+				"start_date":    startDate,
+				"end_date":      endDate,
+				"date":          date,
+				"create_pseudo": createPseudo,
 			})
 		}
 		// 若未显式指定目录，回退到配置文件中的默认值
@@ -904,7 +916,7 @@ var importConvCmd = &cobra.Command{
 			analysedDir = cfg.AnalysedDir
 		}
 
-		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date)
+		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
 	},
 }
 
@@ -918,6 +930,7 @@ func init() {
 	importConvCmd.Flags().String("start-date", "", "限定起始日期，格式 YYYYMMDD，为空则不限")
 	importConvCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
 	importConvCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
+	importConvCmd.Flags().Bool("create-pseudo", false, "为所有session创建伪任务（默认从config读取）")
 	importConvCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importConvCmd)
 }

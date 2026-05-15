@@ -27,7 +27,7 @@ var importCmd = &cobra.Command{
 		maxDays, _ := cmd.Flags().GetInt("max-days")
 		createPseudo, _ := cmd.Flags().GetBool("create-pseudo")
 		if !cmd.Flags().Changed("create-pseudo") {
-			createPseudo = cfg.CreatePseudoTask
+			createPseudo = cfg.TaskCreate.CreatePseudoTask
 		}
 		remote, _ := cmd.Flags().GetString("remote")
 
@@ -60,16 +60,18 @@ var importCmd = &cobra.Command{
 			fromDB = cfg.OrgDSN
 		}
 		if maxDays <= 0 {
-			maxDays = cfg.SilicaMaxDays
+			maxDays = cfg.TaskCreate.SilicaMaxDays
 		}
 
 		steps := []struct {
 			name string
 			fn   func() error
 		}{
-			{"import-conv", func() error { return runImportConv(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
+			{"import-conv", func() error {
+				return runImportConv(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr, createPseudo)
+			}},
 			{"import-repo", func() error {
-				return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr, createPseudo)
+				return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr)
 			}},
 			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
 			{"efficiency", func() error { return runEfficiency(startDateStr, endDateStr, dateStr) }},

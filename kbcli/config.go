@@ -43,6 +43,11 @@ type TaskTimeStatistics struct {
 	ExtensionMinutes    int `yaml:"extension_minutes"`
 }
 
+type TaskCreateConfig struct {
+	SilicaMaxDays    int  `yaml:"silica_max_days"`    // 计算task和commit相关性/硅含量时的最大关联天数
+	CreatePseudoTask bool `yaml:"create_pseudo_task"` // 为所有session创建伪任务
+}
+
 // CrontabConfig 定时任务配置
 type CrontabConfig struct {
 	Schedule string                 `yaml:"schedule"`
@@ -64,21 +69,20 @@ type ServeConfig struct {
 
 // Config 全局配置结构
 type Config struct {
-	ModelPrices      map[string]ModelPrice `yaml:"model_prices"`
-	TaskDir          string                `yaml:"task_dir"`
-	RepoDir          string                `yaml:"repo_dir"`
-	AnalysedDir      string                `yaml:"analysed_dir"`
-	OrgCSVFile       string                `yaml:"org_csv_file"`
-	AIEstimation     AIEstimationConfig    `yaml:"ai_estimation"`
-	BackendURL       string                `yaml:"backend_url"`
-	HTTPProxy        string                `yaml:"http_proxy"`
-	StatDatabase     config.DatabaseConfig `yaml:"stat_database"`
-	OrgDSN           string                `yaml:"org_dsn"`
-	AlgoEstimation   EstimateConfig        `yaml:"algo_estimation"`
-	SilicaMaxDays    int                   `yaml:"silica_max_days"` //计算task和commit相关性/硅含量时的最大关联天数
-	Serve            ServeConfig           `yaml:"serve"`
-	TaskStatistics   TaskTimeStatistics    `yaml:"task_statistics"`
-	CreatePseudoTask bool                  `yaml:"create_pseudo_task"`
+	ModelPrices    map[string]ModelPrice `yaml:"model_prices"`
+	TaskDir        string                `yaml:"task_dir"`
+	RepoDir        string                `yaml:"repo_dir"`
+	AnalysedDir    string                `yaml:"analysed_dir"`
+	OrgCSVFile     string                `yaml:"org_csv_file"`
+	AIEstimation   AIEstimationConfig    `yaml:"ai_estimation"`
+	BackendURL     string                `yaml:"backend_url"`
+	HTTPProxy      string                `yaml:"http_proxy"`
+	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
+	OrgDSN         string                `yaml:"org_dsn"`
+	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
+	TaskCreate     TaskCreateConfig      `yaml:"task_create"`
+	Serve          ServeConfig           `yaml:"serve"`
+	TaskStatistics TaskTimeStatistics    `yaml:"task_statistics"`
 }
 
 func LoadFirstConfig(files []string) (*Config, error) {
@@ -186,8 +190,8 @@ func LoadConfig(filename string) (*Config, error) {
 	if c.TaskStatistics.GapThresholdMinutes == 0 {
 		c.TaskStatistics.GapThresholdMinutes = 10
 	}
-	if c.SilicaMaxDays == 0 {
-		c.SilicaMaxDays = 7
+	if c.TaskCreate.SilicaMaxDays == 0 {
+		c.TaskCreate.SilicaMaxDays = 7
 	}
 
 	return &c, nil

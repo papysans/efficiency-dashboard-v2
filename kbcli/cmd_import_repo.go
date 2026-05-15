@@ -402,7 +402,7 @@ func saveTasksAndConv(db *gorm.DB, tasks []models.Task, taskConvMap map[string][
 //  5. 批量处理：逐个文件调用 importCommitFile，失败时记录日志并计数，不中断整体流程
 //  6. 进度提示：每成功导入 50 个文件调用 logPromptProgress 输出进度信息
 //  7. 命令埋点：通过 recordCommandRun 记录命令执行时间、成功/失败/跳过数量，用于运维监控
-func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string, createPseudo bool) error {
+func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 
 	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
@@ -461,13 +461,6 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	}
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
-
-	if createPseudo {
-		if err := createPseudoTasks(db); err != nil {
-			logWarnf("创建伪任务失败: %v", err)
-		}
-	}
-
 	recordCommandRun("import-repo", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
@@ -495,22 +488,16 @@ var importRepoCmd = &cobra.Command{
 		endDate, _ := cmd.Flags().GetString("end-date")
 		date, _ := cmd.Flags().GetString("date")
 		maxDays, _ := cmd.Flags().GetInt("max-days")
-		createPseudo, _ := cmd.Flags().GetBool("create-pseudo")
-		if !cmd.Flags().Changed("create-pseudo") {
-			createPseudo = cfg.CreatePseudoTask
-		}
-
 		// 若指定了 remote，将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
 			return sendToRemote(remote, "import-repo", map[string]interface{}{
-				"repo_dir":      repoDir,
-				"analysed_dir":  analysedDir,
-				"force":         force,
-				"start_date":    startDate,
-				"end_date":      endDate,
-				"date":          date,
-				"max_days":      maxDays,
-				"create_pseudo": createPseudo,
+				"repo_dir":     repoDir,
+				"analysed_dir": analysedDir,
+				"force":        force,
+				"start_date":   startDate,
+				"end_date":     endDate,
+				"date":         date,
+				"max_days":     maxDays,
 			})
 		}
 
@@ -522,11 +509,11 @@ var importRepoCmd = &cobra.Command{
 			analysedDir = cfg.AnalysedDir
 		}
 		if maxDays <= 0 {
-			maxDays = cfg.SilicaMaxDays
+			maxDays = cfg.TaskCreate.SilicaMaxDays
 		}
 
 		// 执行本地导入流程
-		return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date, createPseudo)
+		return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
 	},
 }
 
@@ -544,7 +531,6 @@ func init() {
 	importRepoCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
 	importRepoCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
 	importRepoCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（默认从config读取）")
-	importRepoCmd.Flags().Bool("create-pseudo", false, "为所有session创建伪任务（默认从config读取）")
 	importRepoCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importRepoCmd)
 }
