@@ -25,21 +25,26 @@ var importCmd = &cobra.Command{
 		startDateStr, _ := cmd.Flags().GetString("start-date")
 		endDateStr, _ := cmd.Flags().GetString("end-date")
 		maxDays, _ := cmd.Flags().GetInt("max-days")
+		createPseudo, _ := cmd.Flags().GetBool("create-pseudo")
+		if !cmd.Flags().Changed("create-pseudo") {
+			createPseudo = cfg.CreatePseudoTask
+		}
 		remote, _ := cmd.Flags().GetString("remote")
 
 		// 如果指定了远程地址，发送到远程 kbcli 服务执行
 		if remote != "" {
 			return sendToRemote(remote, "import", map[string]interface{}{
-				"task_dir":     taskDir,
-				"repo_dir":     repoDir,
-				"analysed_dir": analysedDir,
-				"force":        force,
-				"from_db":      fromDB,
-				"from_csv":     fromCSV,
-				"date":         dateStr,
-				"start_date":   startDateStr,
-				"end_date":     endDateStr,
-				"max_days":     maxDays,
+				"task_dir":      taskDir,
+				"repo_dir":      repoDir,
+				"analysed_dir":  analysedDir,
+				"force":         force,
+				"from_db":       fromDB,
+				"from_csv":      fromCSV,
+				"date":          dateStr,
+				"start_date":    startDateStr,
+				"end_date":      endDateStr,
+				"max_days":      maxDays,
+				"create_pseudo": createPseudo,
 			})
 		}
 		if taskDir == "" {
@@ -64,7 +69,7 @@ var importCmd = &cobra.Command{
 		}{
 			{"import-conv", func() error { return runImportConv(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr) }},
 			{"import-repo", func() error {
-				return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr)
+				return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr, createPseudo)
 			}},
 			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
 			{"efficiency", func() error { return runEfficiency(startDateStr, endDateStr, dateStr) }},
@@ -95,6 +100,7 @@ func init() {
 	importCmd.Flags().String("start-date", "", "限定起始日期，格式YYYYMMDD，限定活跃时间在该日期之后（含）")
 	importCmd.Flags().String("end-date", "", "限定结束日期，格式YYYYMMDD，限定活跃时间在该日期之前（含）")
 	importCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（silica用，默认从config读取）")
+	importCmd.Flags().Bool("create-pseudo", false, "为所有session创建伪任务（默认从config读取）")
 	importCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 
 	rootCmd.AddCommand(importCmd)

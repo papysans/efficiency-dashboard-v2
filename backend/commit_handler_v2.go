@@ -20,16 +20,6 @@ type CommitListResponse struct {
 	Data     []CommitListItem `json:"data"`
 }
 
-type RelatedTask struct {
-	TaskId          string    `json:"task_id"`
-	UserName        string    `json:"user_name"`
-	StartTime       time.Time `json:"start_time"`
-	TaskRealMinutes float64   `json:"task_real_minutes"`
-	Silica          float64   `json:"silica"`
-	Cost            float64   `json:"cost"`
-	DiffLines       int       `json:"diff_lines"`
-}
-
 type UpdateCommitManualRequest struct {
 	CommitAncientMinutesManual *float64 `json:"commit_ancient_minutes_manual"`
 	CommitAncientReasonManual  *string  `json:"commit_ancient_minutes_reason_manual"`
@@ -125,7 +115,7 @@ func listCommitsV2(c *gin.Context) {
 		return
 	}
 	orderClause := buildCommitOrder(orderField, orderDir)
-	list, total, err := ListStatCommits(statDB, filter, page, pageSize, orderClause)
+	list, total, err := ListCommits(statDB, filter, page, pageSize, orderClause)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -155,7 +145,7 @@ func listCommitsV2(c *gin.Context) {
 func getCommitDetailV2(c *gin.Context) {
 	commitID := c.Param("commitId")
 
-	commit, err := GetStatCommitByID(statDB, commitID)
+	commit, err := GetCommitByID(statDB, commitID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
@@ -165,10 +155,9 @@ func getCommitDetailV2(c *gin.Context) {
 		return
 	}
 
-	var relatedTasks []RelatedTask
-	var taskIDs []string
+	var taskIds []string
 	if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
-		if err := json.Unmarshal([]byte(commit.TaskIds), &taskIDs); err != nil {
+		if err := json.Unmarshal([]byte(commit.TaskIds), &taskIds); err != nil {
 			log.Printf("解析 commit task_ids 失败: %v", err)
 		}
 	}
@@ -179,25 +168,7 @@ func getCommitDetailV2(c *gin.Context) {
 			log.Printf("解析 commit task_ids_silica 失败: %v", err)
 		}
 	}
-
-	for i, taskID := range taskIDs {
-		rt := RelatedTask{TaskId: taskID}
-		task, err := GetTask(statDB, taskID)
-		if err != nil {
-			log.Printf("查询关联 task %s 失败: %v", taskID, err)
-		}
-		if task != nil {
-			rt.UserName = task.UserName
-			rt.StartTime = task.StartTime
-			rt.TaskRealMinutes = task.TaskRealMinutes
-			rt.Cost = task.Cost
-			rt.DiffLines = task.DiffLines
-		}
-		if i < len(silicaList) {
-			rt.Silica = silicaList[i]
-		}
-		relatedTasks = append(relatedTasks, rt)
-	}
+	relatedTasks := GetRelatedTasks(statDB, taskIds, silicaList)
 
 	ancient := commit.CommitAncientMinutes
 	real := commit.CommitRealMinutes
@@ -238,7 +209,7 @@ func updateCommitManualV2(c *gin.Context) {
 		return
 	}
 
-	if err := UpdateStatCommitManual(statDB, commitId, req.CommitAncientMinutesManual, req.CommitAncientReasonManual, req.CommitRealMinutesManual, req.CommitRealReasonManual); err != nil {
+	if err := UpdateCommitManual(statDB, commitId, req.CommitAncientMinutesManual, req.CommitAncientReasonManual, req.CommitRealMinutesManual, req.CommitRealReasonManual); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}

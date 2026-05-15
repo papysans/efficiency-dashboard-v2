@@ -65,17 +65,19 @@ type Commit struct {
 func (Commit) TableName() string { return "commits" }
 
 type Session struct {
-	SessionId       string    `gorm:"primaryKey;type:varchar(255)" json:"session_id"`
-	CreateTime      time.Time `gorm:"type:timestamptz;index" json:"create_time"`
-	UserId          string    `gorm:"type:varchar(255);index" json:"user_id"`
-	UserName        string    `gorm:"type:varchar(255)" json:"user_name"`
-	ClientId        string    `gorm:"column:client_id;type:varchar(255)" json:"client_id"`
-	ClientIde       string    `gorm:"column:client_ide;type:varchar(100)" json:"client_ide"`
-	ClientVersion   string    `gorm:"type:varchar(100)" json:"client_version"`
-	ClientOs        string    `gorm:"column:client_os;type:varchar(100)" json:"client_os"`
-	ClientOsVersion string    `gorm:"column:client_os_version;type:varchar(100)" json:"client_os_version"`
-	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	SessionId        string    `gorm:"primaryKey;type:varchar(255)" json:"session_id"`
+	CreateTime       time.Time `gorm:"type:timestamptz;index" json:"create_time"`
+	UserId           string    `gorm:"type:varchar(255);index" json:"user_id"`
+	UserName         string    `gorm:"type:varchar(255)" json:"user_name"`
+	ClientId         string    `gorm:"column:client_id;type:varchar(255)" json:"client_id"`
+	ClientIde        string    `gorm:"column:client_ide;type:varchar(100)" json:"client_ide"`
+	ClientVersion    string    `gorm:"type:varchar(100)" json:"client_version"`
+	ClientOs         string    `gorm:"column:client_os;type:varchar(100)" json:"client_os"`
+	ClientOsVersion  string    `gorm:"column:client_os_version;type:varchar(100)" json:"client_os_version"`
+	SessionDate      string    `gorm:"type:varchar(10)" json:"session_date"`
+	ConversationDate string    `gorm:"type:varchar(10)" json:"conversation_date"`
+	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt        time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Session) TableName() string { return "sessions" }

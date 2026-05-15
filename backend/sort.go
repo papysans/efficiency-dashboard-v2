@@ -5,6 +5,21 @@ import (
 	"strings"
 )
 
+// ===================== Sessions =====================
+
+var sessionSortFields = []string{
+	"createTime",
+}
+
+func buildSessionOrder(field, dir string) string {
+	switch field {
+	case "createTime":
+		return "create_time " + dir
+	default:
+		return "create_time DESC"
+	}
+}
+
 // ===================== Commits =====================
 
 var commitSortFields = []string{
@@ -327,12 +342,8 @@ func sortRepoData(data []RepoListItem, field, dir string) {
 			return cmp > 0
 		case "sumAncientMinutes":
 			va, vb := 0.0, 0.0
-			if a.SumAncientMinutes != nil {
-				va = *a.SumAncientMinutes
-			}
-			if b.SumAncientMinutes != nil {
-				vb = *b.SumAncientMinutes
-			}
+			va = a.SumAncientMinutes
+			vb = b.SumAncientMinutes
 			if va == vb {
 				return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
 			}
@@ -342,12 +353,8 @@ func sortRepoData(data []RepoListItem, field, dir string) {
 			return va > vb
 		case "sumRealMinutes":
 			va, vb := 0.0, 0.0
-			if a.SumRealMinutes != nil {
-				va = *a.SumRealMinutes
-			}
-			if b.SumRealMinutes != nil {
-				vb = *b.SumRealMinutes
-			}
+			va = a.SumRealMinutes
+			vb = b.SumRealMinutes
 			if va == vb {
 				return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
 			}
@@ -365,12 +372,8 @@ func sortRepoData(data []RepoListItem, field, dir string) {
 			return a.TaskCount > b.TaskCount
 		case "efficiencyRatio":
 			va, vb := 0.0, 0.0
-			if a.EfficiencyRatio != nil {
-				va = *a.EfficiencyRatio
-			}
-			if b.EfficiencyRatio != nil {
-				vb = *b.EfficiencyRatio
-			}
+			va = a.EfficiencyRatio
+			vb = b.EfficiencyRatio
 			if va == vb {
 				return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
 			}

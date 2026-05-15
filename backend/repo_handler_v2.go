@@ -13,15 +13,15 @@ import (
 )
 
 type RepoListItem struct {
-	RepoAddr          string   `json:"repo_addr"`
-	RepoBranch        string   `json:"repo_branch"`
-	CommitCount       int      `json:"commit_count"`
-	StartTime         string   `json:"start_time"`
-	EndTime           string   `json:"end_time"`
-	SumAncientMinutes *float64 `json:"sum_ancient_minutes"`
-	SumRealMinutes    *float64 `json:"sum_real_minutes"`
-	TaskCount         int      `json:"task_count"`
-	EfficiencyRatio   *float64 `json:"efficiency_ratio"`
+	RepoAddr          string  `json:"repo_addr"`
+	RepoBranch        string  `json:"repo_branch"`
+	CommitCount       int     `json:"commit_count"`
+	StartTime         string  `json:"start_time"`
+	EndTime           string  `json:"end_time"`
+	SumAncientMinutes float64 `json:"sum_ancient_minutes"`
+	SumRealMinutes    float64 `json:"sum_real_minutes"`
+	TaskCount         int     `json:"task_count"`
+	EfficiencyRatio   float64 `json:"efficiency_ratio"`
 }
 
 type ReposListResponse struct {
@@ -148,19 +148,12 @@ func listReposV2(c *gin.Context) {
 		ri.RepoAddr = agg.RepoAddr
 		ri.RepoBranch = agg.RepoBranch
 		ri.CommitCount = agg.CommitCount
-		if agg.StartTime != nil {
-			ri.StartTime = agg.StartTime.Format("2006-01-02")
-		}
-		if agg.EndTime != nil {
-			ri.EndTime = agg.EndTime.Format("2006-01-02")
-		}
+		ri.StartTime = agg.StartTime.Format("2006-01-02")
+		ri.EndTime = agg.EndTime.Format("2006-01-02")
 		ri.SumAncientMinutes = agg.SumAncientMinutes
 		ri.SumRealMinutes = agg.SumRealMinutes
 		ri.TaskCount = agg.TaskCount
-		if agg.SumAncientMinutes != nil && agg.SumRealMinutes != nil && *agg.SumAncientMinutes > 0 && *agg.SumRealMinutes > 0 {
-			ratio := utils.CalcEfficiencyRatio(*agg.SumAncientMinutes, *agg.SumRealMinutes)
-			ri.EfficiencyRatio = &ratio
-		}
+		ri.EfficiencyRatio = utils.CalcEfficiencyRatio(agg.SumAncientMinutes, agg.SumRealMinutes)
 		items = append(items, ri)
 	}
 	sortRepoData(items, orderField, orderDir)
@@ -263,7 +256,7 @@ func getRepoDetailV2(c *gin.Context) {
 	filter.EndTime = endTime
 
 	// 步骤 1：获取 commits
-	commits, _, err := ListStatCommits(statDB, filter, 1, 10000, "commit_time DESC")
+	commits, _, err := ListCommits(statDB, filter, 1, 10000, "commit_time DESC")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 commits 失败: " + err.Error()})
 		return
@@ -482,16 +475,7 @@ func filterPreferredBranchAggregates(aggregates []RepoAggregate) []RepoAggregate
 				return scoreI > scoreJ
 			}
 			ti, tj := aggs[i].EndTime, aggs[j].EndTime
-			if ti != nil && tj != nil {
-				return ti.After(*tj)
-			}
-			if ti != nil {
-				return true
-			}
-			if tj != nil {
-				return false
-			}
-			return true
+			return ti.After(tj)
 		})
 		result = append(result, aggs[0])
 	}

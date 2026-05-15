@@ -64,20 +64,21 @@ type ServeConfig struct {
 
 // Config 全局配置结构
 type Config struct {
-	ModelPrices    map[string]ModelPrice `yaml:"model_prices"`
-	TaskDir        string                `yaml:"task_dir"`
-	RepoDir        string                `yaml:"repo_dir"`
-	AnalysedDir    string                `yaml:"analysed_dir"`
-	OrgCSVFile     string                `yaml:"org_csv_file"`
-	AIEstimation   AIEstimationConfig    `yaml:"ai_estimation"`
-	BackendURL     string                `yaml:"backend_url"`
-	HTTPProxy      string                `yaml:"http_proxy"`
-	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
-	OrgDSN         string                `yaml:"org_dsn"`
-	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
-	SilicaMaxDays  int                   `yaml:"silica_max_days"` //计算task和commit相关性/硅含量时的最大关联天数
-	Serve          ServeConfig           `yaml:"serve"`
-	TaskStatistics TaskTimeStatistics    `yaml:"task_statistics"`
+	ModelPrices      map[string]ModelPrice `yaml:"model_prices"`
+	TaskDir          string                `yaml:"task_dir"`
+	RepoDir          string                `yaml:"repo_dir"`
+	AnalysedDir      string                `yaml:"analysed_dir"`
+	OrgCSVFile       string                `yaml:"org_csv_file"`
+	AIEstimation     AIEstimationConfig    `yaml:"ai_estimation"`
+	BackendURL       string                `yaml:"backend_url"`
+	HTTPProxy        string                `yaml:"http_proxy"`
+	StatDatabase     config.DatabaseConfig `yaml:"stat_database"`
+	OrgDSN           string                `yaml:"org_dsn"`
+	AlgoEstimation   EstimateConfig        `yaml:"algo_estimation"`
+	SilicaMaxDays    int                   `yaml:"silica_max_days"` //计算task和commit相关性/硅含量时的最大关联天数
+	Serve            ServeConfig           `yaml:"serve"`
+	TaskStatistics   TaskTimeStatistics    `yaml:"task_statistics"`
+	CreatePseudoTask bool                  `yaml:"create_pseudo_task"`
 }
 
 func LoadFirstConfig(files []string) (*Config, error) {

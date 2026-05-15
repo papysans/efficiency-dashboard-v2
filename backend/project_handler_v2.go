@@ -184,7 +184,7 @@ func collectProjectCommits(project *models.Project) (map[string]*models.Commit, 
 			endTime = *rf.EndTime
 		}
 
-		commits, _, err := ListStatCommits(statDB, CommitFilter{
+		commits, _, err := ListCommits(statDB, CommitFilter{
 			RepoAddr:   rf.RepoAddr,
 			RepoBranch: rf.RepoBranch,
 			StartTime:  startTime,

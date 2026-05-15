@@ -116,7 +116,19 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 //   - estimateTaskAncientMinutes 基于输入字符数和代码行数，用线性因子模型估算原始工作量。
 var errSkipTask = errors.New("task skipped by date filter")
 
-func saveSession(db *gorm.DB, ss *taskSession) error {
+func extractDateFromPath(baseDir, filePath string) string {
+	relPath, err := filepath.Rel(baseDir, filePath)
+	if err != nil {
+		return ""
+	}
+	dir := filepath.ToSlash(filepath.Dir(relPath))
+	if _, err := time.Parse("2006/01/02", dir); err == nil {
+		return dir
+	}
+	return ""
+}
+
+func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate string) error {
 	var startTime time.Time = time.Now().UTC()
 	var err error
 	if ss.StartTime != "" {
@@ -126,15 +138,17 @@ func saveSession(db *gorm.DB, ss *taskSession) error {
 	}
 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
 	rec := models.Session{
-		SessionId:       ss.SessionId,
-		CreateTime:      startTime,
-		UserId:          ss.UserId,
-		UserName:        ss.UserName,
-		ClientId:        ss.ClientId,
-		ClientIde:       ss.ClientIde,
-		ClientVersion:   ss.ClientVersion,
-		ClientOs:        ss.ClientOs,
-		ClientOsVersion: ss.ClientOsVersion,
+		SessionId:        ss.SessionId,
+		CreateTime:       startTime,
+		UserId:           ss.UserId,
+		UserName:         ss.UserName,
+		ClientId:         ss.ClientId,
+		ClientIde:        ss.ClientIde,
+		ClientVersion:    ss.ClientVersion,
+		ClientOs:         ss.ClientOs,
+		ClientOsVersion:  ss.ClientOsVersion,
+		SessionDate:      sessionDate,
+		ConversationDate: conversationDate,
 	}
 
 	// 使用 UPSERT 写入 tasks 表：task_id 冲突时更新除主键外的业务字段
@@ -144,6 +158,7 @@ func saveSession(db *gorm.DB, ss *taskSession) error {
 			"user_id", "user_name", "create_time",
 			"client_id", "client_ide", "client_version",
 			"client_os", "client_os_version",
+			"session_date", "conversation_date",
 			"updated_at",
 		}),
 	}).Create(&rec)
@@ -230,7 +245,13 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	}
 
 	// 根据 ss 和 conversations 计算完整的 Task 记录
-	if err := saveSession(db, &ss); err != nil {
+	summaryDir := filepath.Dir(filepath.Dir(summaryPath))
+	summaryDir = filepath.Dir(filepath.Dir(summaryDir))
+	sessionDate := extractDateFromPath(summaryDir, summaryPath)
+	conversationDir := filepath.Dir(filepath.Dir(conversationPath))
+	conversationDir = filepath.Dir(filepath.Dir(conversationDir))
+	conversationDate := extractDateFromPath(conversationDir, conversationPath)
+	if err := saveSession(db, &ss, sessionDate, conversationDate); err != nil {
 		return err
 	}
 

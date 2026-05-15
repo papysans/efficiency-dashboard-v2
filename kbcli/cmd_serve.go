@@ -78,9 +78,10 @@ type importConvBody struct {
 
 // ImportRepoBody import-repo 请求体
 type ImportRepoBody struct {
-	RepoDir     string `json:"repo_dir" example:"/path/to/repo"`
-	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
-	Force       bool   `json:"force" example:"false"`
+	RepoDir      string `json:"repo_dir" example:"/path/to/repo"`
+	AnalysedDir  string `json:"analysed_dir" example:"./analysed"`
+	Force        bool   `json:"force" example:"false"`
+	CreatePseudo bool   `json:"create_pseudo" example:"false"`
 }
 
 // ImportOrgBody import-org 请求体
@@ -104,13 +105,14 @@ type EfficiencyBody struct {
 
 // ImportBody import 请求体
 type ImportBody struct {
-	TaskDir     string `json:"task_dir" example:"/path/to/task"`
-	RepoDir     string `json:"repo_dir" example:"/path/to/repo"`
-	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
-	Force       bool   `json:"force" example:"false"`
-	FromDB      string `json:"from_db" example:"host=localhost dbname=auth"`
-	FromCSV     string `json:"from_csv" example:"./org.csv"`
-	Date        string `json:"date" example:"20240101"`
+	TaskDir      string `json:"task_dir" example:"/path/to/task"`
+	RepoDir      string `json:"repo_dir" example:"/path/to/repo"`
+	AnalysedDir  string `json:"analysed_dir" example:"./analysed"`
+	Force        bool   `json:"force" example:"false"`
+	FromDB       string `json:"from_db" example:"host=localhost dbname=auth"`
+	FromCSV      string `json:"from_csv" example:"./org.csv"`
+	Date         string `json:"date" example:"20240101"`
+	CreatePseudo bool   `json:"create_pseudo" example:"false"`
 }
 
 func writeError(c *gin.Context, status int, message string) {

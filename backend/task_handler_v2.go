@@ -239,8 +239,45 @@ func getTaskFile(c *gin.Context) {
 		return
 	}
 
-	parts := strings.Split(date, "-")
-	yyyy, mm, dd := parts[0], parts[1], parts[2]
+	task, err := GetTask(statDB, taskId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if task == nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "task not found"})
+		return
+	}
+
+	session, err := GetSession(statDB, task.SessionId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "session not found"})
+		return
+	}
+
+	var dateStr string
+	if typ == "summary" {
+		dateStr = session.SessionDate
+	} else {
+		dateStr = session.ConversationDate
+	}
+
+	var yyyy, mm, dd string
+	if dateStr != "" {
+		parts := strings.Split(dateStr, "/")
+		if len(parts) == 3 {
+			yyyy, mm, dd = parts[0], parts[1], parts[2]
+		}
+	}
+
+	if yyyy == "" {
+		parts := strings.Split(date, "-")
+		yyyy, mm, dd = parts[0], parts[1], parts[2]
+	}
 
 	var filePath string
 	var contentType string
@@ -248,11 +285,11 @@ func getTaskFile(c *gin.Context) {
 	if typ == "summary" {
 		filePath = filepath.Join(appConfig.AnalysedDir, "analysed", yyyy, mm, dd, taskId+".json")
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			filePath = filepath.Join(appConfig.TaskDir, "summary", yyyy, mm, dd, taskId+".json")
+			filePath = filepath.Join(appConfig.TaskDir, "summary", yyyy, mm, dd, task.SessionId+".json")
 		}
 		contentType = "application/json"
 	} else {
-		filePath = filepath.Join(appConfig.TaskDir, "conversation", yyyy, mm, dd, taskId+".jsonl")
+		filePath = filepath.Join(appConfig.TaskDir, "conversation", yyyy, mm, dd, task.SessionId+".jsonl")
 		contentType = "text/plain; charset=utf-8"
 	}
 

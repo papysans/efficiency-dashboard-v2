@@ -206,6 +206,16 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 		maxDays,
 	)
 
+	// 填充 commit 关联字段到 tasks
+	for i := range tasks {
+		tasks[i].RepoAddr = commitData.RepoAddr
+		tasks[i].RepoBranch = commitData.RepoBranch
+		tasks[i].UserId = commitData.UserId
+		tasks[i].UserName = commitData.UserName
+		tasks[i].ClientId = commitData.ClientId
+		tasks[i].WorkDir = commitData.WorkDir
+	}
+
 	// 保存 tasks 和更新 conversations
 	if err := saveTasksAndConv(db, tasks, taskConvMap); err != nil {
 		logWarnf("保存Commit[%s]关联数据失败: %v", commitData.CommitId, err)
@@ -278,6 +288,72 @@ func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commit
 // saveTasksAndConv 将计算出的tasks保存到数据库，并更新关联的conversation记录。
 func saveTasksAndConv(db *gorm.DB, tasks []models.Task, taskConvMap map[string][]string) error {
 	if len(tasks) > 0 {
+		// 收集所有 session_id
+		sessionIDs := make([]string, 0, len(tasks))
+		for _, t := range tasks {
+			sessionIDs = append(sessionIDs, t.SessionId)
+		}
+
+		// 查询 sessions 表补全元数据
+		var sessions []models.Session
+		sessionMap := make(map[string]models.Session)
+		if err := db.Where("session_id IN ?", sessionIDs).Find(&sessions).Error; err != nil {
+			logWarnf("查询sessions表失败: %v", err)
+		} else {
+			for _, s := range sessions {
+				sessionMap[s.SessionId] = s
+			}
+		}
+
+		// 查询 conversations 表，按 session_id 聚合 token 和 cost
+		type convAgg struct {
+			SessionId        string
+			UpstreamTokens   int64
+			DownstreamTokens int64
+			Cost             float64
+		}
+		var aggs []convAgg
+		convAggMap := make(map[string]convAgg)
+		if err := db.Model(&models.Conversation{}).
+			Select("session_id, SUM(upstream_tokens) as upstream_tokens, SUM(downstream_tokens) as downstream_tokens, SUM(cost) as cost").
+			Where("session_id IN ?", sessionIDs).
+			Group("session_id").
+			Find(&aggs).Error; err != nil {
+			logWarnf("查询conversations表失败: %v", err)
+		} else {
+			for _, a := range aggs {
+				convAggMap[a.SessionId] = a
+			}
+		}
+
+		// 填充 task 缺失字段
+		for i := range tasks {
+			sessionID := tasks[i].SessionId
+			if s, ok := sessionMap[sessionID]; ok {
+				if tasks[i].UserId == "" {
+					tasks[i].UserId = s.UserId
+				}
+				if tasks[i].UserName == "" {
+					tasks[i].UserName = s.UserName
+				}
+				tasks[i].ClientIde = s.ClientIde
+				tasks[i].ClientVersion = s.ClientVersion
+				tasks[i].ClientOs = s.ClientOs
+				tasks[i].ClientOsVersion = s.ClientOsVersion
+				if tasks[i].ClientId == "" {
+					tasks[i].ClientId = s.ClientId
+				}
+				if tasks[i].WorkDir != "" {
+					tasks[i].WorkDirId = utils.GenerateWorkDirID(tasks[i].ClientId, tasks[i].WorkDir)
+				}
+			}
+			if a, ok := convAggMap[sessionID]; ok {
+				tasks[i].UpstreamTokens = a.UpstreamTokens
+				tasks[i].DownstreamTokens = a.DownstreamTokens
+				tasks[i].Cost = a.Cost
+			}
+		}
+
 		if err := db.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "task_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
@@ -326,7 +402,7 @@ func saveTasksAndConv(db *gorm.DB, tasks []models.Task, taskConvMap map[string][
 //  5. 批量处理：逐个文件调用 importCommitFile，失败时记录日志并计数，不中断整体流程
 //  6. 进度提示：每成功导入 50 个文件调用 logPromptProgress 输出进度信息
 //  7. 命令埋点：通过 recordCommandRun 记录命令执行时间、成功/失败/跳过数量，用于运维监控
-func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string) error {
+func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string, createPseudo bool) error {
 	startTime := time.Now()
 
 	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
@@ -385,6 +461,13 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	}
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
+
+	if createPseudo {
+		if err := createPseudoTasks(db); err != nil {
+			logWarnf("创建伪任务失败: %v", err)
+		}
+	}
+
 	recordCommandRun("import-repo", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
@@ -412,17 +495,22 @@ var importRepoCmd = &cobra.Command{
 		endDate, _ := cmd.Flags().GetString("end-date")
 		date, _ := cmd.Flags().GetString("date")
 		maxDays, _ := cmd.Flags().GetInt("max-days")
+		createPseudo, _ := cmd.Flags().GetBool("create-pseudo")
+		if !cmd.Flags().Changed("create-pseudo") {
+			createPseudo = cfg.CreatePseudoTask
+		}
 
 		// 若指定了 remote，将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
 			return sendToRemote(remote, "import-repo", map[string]interface{}{
-				"repo_dir":     repoDir,
-				"analysed_dir": analysedDir,
-				"force":        force,
-				"start_date":   startDate,
-				"end_date":     endDate,
-				"date":         date,
-				"max_days":     maxDays,
+				"repo_dir":      repoDir,
+				"analysed_dir":  analysedDir,
+				"force":         force,
+				"start_date":    startDate,
+				"end_date":      endDate,
+				"date":          date,
+				"max_days":      maxDays,
+				"create_pseudo": createPseudo,
 			})
 		}
 
@@ -438,7 +526,7 @@ var importRepoCmd = &cobra.Command{
 		}
 
 		// 执行本地导入流程
-		return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
+		return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date, createPseudo)
 	},
 }
 
@@ -456,6 +544,7 @@ func init() {
 	importRepoCmd.Flags().String("end-date", "", "限定结束日期，格式 YYYYMMDD，为空则不限")
 	importRepoCmd.Flags().String("date", "", "限定日期，格式 YYYYMMDD，限定活跃时间在该日期之内（与start-date/end-date互斥）")
 	importRepoCmd.Flags().Int("max-days", 0, "对话结束后多少天内的commit算相关（默认从config读取）")
+	importRepoCmd.Flags().Bool("create-pseudo", false, "为所有session创建伪任务（默认从config读取）")
 	importRepoCmd.Flags().String("remote", "", "远程kbcli服务地址（如 http://127.0.0.1:8080），指定后命令将发送到远程执行")
 	rootCmd.AddCommand(importRepoCmd)
 }

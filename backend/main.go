@@ -103,6 +103,9 @@ func main() {
 	{
 		v2.GET("/dashboard/summary", getDashboardSummary)
 
+		v2.GET("/sessions", listSessionsV2)
+		v2.GET("/sessions/:session_id", getSessionDetailV2)
+
 		v2.GET("/tasks", listTasksV2)
 		v2.GET("/tasks/file", getTaskFile)
 		v2.GET("/tasks/:taskId", getTaskDetailV2)

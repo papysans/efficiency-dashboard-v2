@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"kanban/core/config"
@@ -118,6 +119,16 @@ type CommitListItem struct {
 	OrgDisplay                 string          `json:"org_display"`
 }
 
+type RelatedTask struct {
+	TaskId          string    `json:"task_id"`
+	UserName        string    `json:"user_name"`
+	StartTime       time.Time `json:"start_time"`
+	TaskRealMinutes float64   `json:"task_real_minutes"`
+	Silica          float64   `json:"silica"`
+	Cost            float64   `json:"cost"`
+	DiffLines       int       `json:"diff_lines"`
+}
+
 // ============================================================
 // 聚合类型（非DB表，查询结果）
 // ============================================================
@@ -126,12 +137,12 @@ type RepoAggregate struct {
 	RepoAddr          string
 	RepoBranch        string
 	CommitCount       int
-	StartTime         *time.Time
-	EndTime           *time.Time
-	SumAncientMinutes *float64
-	SumRealMinutes    *float64
+	StartTime         time.Time
+	EndTime           time.Time
+	SumAncientMinutes float64
+	SumRealMinutes    float64
 	TaskCount         int
-	EfficiencyRatio   *float64
+	EfficiencyRatio   float64
 }
 
 type ProjectAggregates struct {
@@ -306,9 +317,69 @@ func toTaskListItemSlice(tasks []models.Task) []TaskListItem {
 	return result
 }
 
-func GetTask(db *gorm.DB, taskID string) (*models.Task, error) {
+func toRelatedTask(t *models.Task) *RelatedTask {
+	if t == nil {
+		return nil
+	}
+	return &RelatedTask{
+		TaskId:          t.TaskId,
+		UserName:        t.UserName,
+		StartTime:       t.StartTime,
+		TaskRealMinutes: t.TaskRealMinutes,
+		Cost:            t.Cost,
+		DiffLines:       t.DiffLines,
+	}
+}
+
+func toRelatedTaskSlice(tasks []models.Task) []RelatedTask {
+	result := make([]RelatedTask, len(tasks))
+	for i, t := range tasks {
+		if rt := toRelatedTask(&t); rt != nil {
+			result[i] = *rt
+		}
+	}
+	return result
+}
+
+func GetRelatedTasks(db *gorm.DB, taskIds []string, taskSilicas []float64) []RelatedTask {
+	var relatedTasks []RelatedTask
+	for i, taskId := range taskIds {
+		var rt RelatedTask
+		task, err := GetTask(statDB, taskId)
+		if err != nil {
+			log.Printf("查询关联 task %s 失败: %v", taskId, err)
+		}
+		if task != nil {
+			rt = *toRelatedTask(task)
+		} else {
+			rt.TaskId = taskId
+		}
+		if i < len(taskSilicas) {
+			rt.Silica = taskSilicas[i]
+		}
+		relatedTasks = append(relatedTasks, rt)
+	}
+	return relatedTasks
+}
+
+func BatchGetTasks(db *gorm.DB, taskIds []string) (map[string]*models.Task, error) {
+	result := make(map[string]*models.Task)
+	if len(taskIds) == 0 {
+		return result, nil
+	}
+	var tasks []models.Task
+	if err := db.Where("task_id IN ?", taskIds).Find(&tasks).Error; err != nil {
+		return nil, fmt.Errorf("批量查询 tasks 失败: %w", err)
+	}
+	for i := range tasks {
+		result[tasks[i].TaskId] = &tasks[i]
+	}
+	return result, nil
+}
+
+func GetTask(db *gorm.DB, taskId string) (*models.Task, error) {
 	var t models.Task
-	err := db.Where("task_id = ?", taskID).First(&t).Error
+	err := db.Where("task_id = ?", taskId).First(&t).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil
 	}
@@ -318,19 +389,78 @@ func GetTask(db *gorm.DB, taskID string) (*models.Task, error) {
 	return &t, nil
 }
 
-func BatchGetTasks(db *gorm.DB, taskIDs []string) (map[string]*models.Task, error) {
-	result := make(map[string]*models.Task)
-	if len(taskIDs) == 0 {
-		return result, nil
+func GetSession(db *gorm.DB, sessionId string) (*models.Session, error) {
+	var s models.Session
+	err := db.Where("session_id = ?", sessionId).First(&s).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
 	}
-	var tasks []models.Task
-	if err := db.Where("task_id IN ?", taskIDs).Find(&tasks).Error; err != nil {
-		return nil, fmt.Errorf("批量查询 tasks 失败: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("查询 sessions 失败: %w", err)
 	}
-	for i := range tasks {
-		result[tasks[i].TaskId] = &tasks[i]
+	return &s, nil
+}
+
+type SessionFilter struct {
+	UserId        string
+	UserIds       []string
+	UserName      string
+	ClientId      string
+	ClientIde     string
+	ClientVersion string
+	ClientOs      string
+	StartTime     string
+	EndTime       string
+}
+
+func (f *SessionFilter) applyToQuery(q *gorm.DB) *gorm.DB {
+	if f.UserId != "" {
+		q = q.Where("user_id = ?", f.UserId)
 	}
-	return result, nil
+	if len(f.UserIds) > 0 {
+		q = q.Where("user_id IN ?", f.UserIds)
+	}
+	if f.UserName != "" {
+		q = q.Where("user_name = ?", f.UserName)
+	}
+	if f.ClientId != "" {
+		q = q.Where("client_id = ?", f.ClientId)
+	}
+	if f.ClientIde != "" {
+		q = q.Where("client_ide = ?", f.ClientIde)
+	}
+	if f.ClientVersion != "" {
+		q = q.Where("client_version = ?", f.ClientVersion)
+	}
+	if f.ClientOs != "" {
+		q = q.Where("client_os = ?", f.ClientOs)
+	}
+	if f.StartTime != "" {
+		q = q.Where("create_time >= ?", f.StartTime)
+	}
+	if f.EndTime != "" {
+		q = q.Where("create_time <= ?", f.EndTime)
+	}
+	return q
+}
+
+func ListSessions(db *gorm.DB, filter SessionFilter, page, pageSize int, orderClause string) ([]models.Session, int, error) {
+	q := filter.applyToQuery(db.Model(&models.Session{}))
+	var sessions []models.Session
+	var count int64
+	if err := q.Count(&count).Error; err != nil {
+		return []models.Session{}, 0, fmt.Errorf("统计 sessions 总数失败: %w", err)
+	}
+	if orderClause != "" {
+		q = q.Order(orderClause)
+	}
+	if pageSize > 0 {
+		q = q.Limit(pageSize).Offset((page - 1) * pageSize)
+	}
+	if err := q.Find(&sessions).Error; err != nil {
+		return nil, int(count), fmt.Errorf("查询 sessions 列表失败: %w", err)
+	}
+	return sessions, int(count), nil
 }
 
 type TaskFilter struct {
@@ -413,7 +543,7 @@ func ListTasks(db *gorm.DB, filter TaskFilter, page, pageSize int, orderClause s
 	return tasks, int(count), nil
 }
 
-func UpdateStatTaskManual(db *gorm.DB, taskID string, realManual *float64, realReasonManual *string, ancientManual *float64, ancientReasonManual *string) error {
+func UpdateStatTaskManual(db *gorm.DB, taskId string, realManual *float64, realReasonManual *string, ancientManual *float64, ancientReasonManual *string) error {
 	updates := map[string]interface{}{
 		"task_real_minutes_manual":           realManual,
 		"task_real_minutes_reason_manual":    realReasonManual,
@@ -421,12 +551,12 @@ func UpdateStatTaskManual(db *gorm.DB, taskID string, realManual *float64, realR
 		"task_ancient_minutes_reason_manual": ancientReasonManual,
 		"updated_at":                         time.Now(),
 	}
-	result := db.Model(&models.Task{}).Where("task_id = ?", taskID).Updates(updates)
+	result := db.Model(&models.Task{}).Where("task_id = ?", taskId).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("更新 tasks manual 字段失败: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("tasks task_id=%s 不存在", taskID)
+		return fmt.Errorf("tasks task_id=%s 不存在", taskId)
 	}
 	return nil
 }
@@ -435,9 +565,9 @@ func UpdateStatTaskManual(db *gorm.DB, taskID string, realManual *float64, realR
 // conversations CRUD (GORM)
 // ============================================================
 
-func ListConversations(db *gorm.DB, taskID string) ([]models.Conversation, error) {
+func ListConversations(db *gorm.DB, taskId string) ([]models.Conversation, error) {
 	var convs []models.Conversation
-	if err := db.Where("task_id = ?", taskID).Order("start_time ASC").Find(&convs).Error; err != nil {
+	if err := db.Where("task_id = ?", taskId).Order("start_time ASC").Find(&convs).Error; err != nil {
 		return nil, fmt.Errorf("查询 conversations 列表失败: %w", err)
 	}
 	return convs, nil
@@ -681,7 +811,7 @@ func toCommitListItemSlice(commits []models.Commit) []CommitListItem {
 	return result
 }
 
-func GetStatCommitByID(db *gorm.DB, commitID string) (*models.Commit, error) {
+func GetCommitByID(db *gorm.DB, commitID string) (*models.Commit, error) {
 	var c models.Commit
 	err := db.Where("commit_id = ?", commitID).First(&c).Error
 	if err == gorm.ErrRecordNotFound {
@@ -693,7 +823,7 @@ func GetStatCommitByID(db *gorm.DB, commitID string) (*models.Commit, error) {
 	return &c, nil
 }
 
-func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]models.Commit, int, error) {
+func ListCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, orderClause string) ([]models.Commit, int, error) {
 	q := filter.applyToQuery(db.Model(&models.Commit{}))
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -706,7 +836,7 @@ func ListStatCommits(db *gorm.DB, filter CommitFilter, page, pageSize int, order
 	return commits, int(total), nil
 }
 
-func UpdateStatCommitManual(db *gorm.DB, commitID string, ancientManual *float64, ancientReasonManual *string, realManual *float64, realReasonManual *string) error {
+func UpdateCommitManual(db *gorm.DB, commitID string, ancientManual *float64, ancientReasonManual *string, realManual *float64, realReasonManual *string) error {
 	updates := map[string]interface{}{
 		"commit_ancient_minutes_manual":        ancientManual,
 		"commit_ancient_minutes_reason_manual": ancientReasonManual,
@@ -724,7 +854,7 @@ func UpdateStatCommitManual(db *gorm.DB, commitID string, ancientManual *float64
 	return nil
 }
 
-func UpdateStatCommitTaskAssoc(db *gorm.DB, commitID string, taskIDs, taskIDsSilica json.RawMessage, realMinutes *float64, realAIMinutes *float64, realAncientMinutes *float64, realReason *string) error {
+func UpdateCommitTaskAssoc(db *gorm.DB, commitID string, taskIDs, taskIDsSilica json.RawMessage, realMinutes *float64, realAIMinutes *float64, realAncientMinutes *float64, realReason *string) error {
 	tids := models.StringJSON(taskIDs)
 	if tids == "" || tids == "null" {
 		tids = "[]"
