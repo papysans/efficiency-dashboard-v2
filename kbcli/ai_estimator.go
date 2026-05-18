@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -23,11 +20,11 @@ type taskConvContent struct {
 }
 
 type taskContent struct {
-	TaskAncientMinutes       float64           `json:"task_ancient_minutes"`
-	TaskAncientReason string            `json:"task_ancient_minutes_reason"`
-	Conversations            []taskConvContent `json:"conversations"`
-	TotalUserInChars         int               `json:"total_user_inchars"`
-	TotalCodeLines           int               `json:"total_code_lines"`
+	TaskAncientMinutes float64           `json:"task_ancient_minutes"`
+	TaskAncientReason  string            `json:"task_ancient_minutes_reason"`
+	Conversations      []taskConvContent `json:"conversations"`
+	TotalUserInChars   int               `json:"total_user_inchars"`
+	TotalCodeLines     int               `json:"total_code_lines"`
 }
 
 // extractJSON 从 AI 响应文本中提取 JSON 对象
@@ -120,72 +117,26 @@ func EstimateTaskMinutes(config AIEstimationConfig, taskContent *taskContent) (f
 	prompt = strings.ReplaceAll(prompt, "{{total_chars}}", fmt.Sprintf("%d", taskContent.TotalUserInChars))
 	prompt = strings.ReplaceAll(prompt, "{{total_lines}}", fmt.Sprintf("%d", taskContent.TotalCodeLines))
 
-	// 构建 HTTP 请求（Anthropic Messages API）
-	reqBody := map[string]interface{}{
-		"model":      config.Model,
-		"max_tokens": 1024,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
+	messages := []chatMessage{
+		{Role: "system", Content: "请回答问题"},
+		{Role: "user", Content: prompt},
 	}
-	bodyBytes, err := json.Marshal(reqBody)
+	content, err := callLLM(config, messages, 1024)
 	if err != nil {
-		return 0, "", fmt.Errorf("序列化请求体失败: %w", err)
+		return 0, "", err
 	}
-
-	url := config.BaseURL + "/v1/messages"
-	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return 0, "", fmt.Errorf("创建HTTP请求失败: %w", err)
-	}
-	httpReq.Header.Set("x-api-key", config.APIKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{
-		Timeout: time.Duration(config.TimeoutMS) * time.Millisecond,
-	}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return 0, "", fmt.Errorf("AI API 请求失败（可能超时）: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, "", fmt.Errorf("读取AI响应失败: %w", err)
-	}
-
-	if resp.StatusCode != 200 {
-		return 0, "", fmt.Errorf("AI API 返回非200状态码: %d, 响应: %s", resp.StatusCode, string(respBody))
-	}
-
-	// 解析 Anthropic 响应
-	var anthropicResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(respBody, &anthropicResp); err != nil {
-		return 0, "", fmt.Errorf("解析AI响应JSON失败: %w, 原始响应: %s", err, string(respBody))
-	}
-	if len(anthropicResp.Content) == 0 {
-		return 0, "", fmt.Errorf("AI响应content为空, 原始响应: %s", string(respBody))
-	}
-
-	text := anthropicResp.Content[0].Text
 
 	// 从响应文本中提取 JSON 对象
 	// 模型可能返回：纯 JSON / markdown 代码块包裹的 JSON / 中文分析 + JSON 混合格式
-	jsonText := extractJSON(text)
+	jsonText := extractJSON(content)
 
 	// 解析估时结果
 	var result struct {
-		TaskAncientMinutes       float64 `json:"task_ancient_minutes"`
-		TaskAncientReason string  `json:"task_ancient_minutes_reason"`
+		TaskAncientMinutes float64 `json:"task_ancient_minutes"`
+		TaskAncientReason  string  `json:"task_ancient_minutes_reason"`
 	}
 	if err := json.Unmarshal([]byte(jsonText), &result); err != nil {
-		return 0, "", fmt.Errorf("解析AI估时结果JSON失败: %w, 原始文本: %s", err, text)
+		return 0, "", fmt.Errorf("解析AI估时结果JSON失败: %w, 原始文本: %s", err, content)
 	}
 
 	if result.TaskAncientMinutes < 0 || result.TaskAncientMinutes > 100000 {

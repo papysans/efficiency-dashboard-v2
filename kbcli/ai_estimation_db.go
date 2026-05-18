@@ -14,7 +14,7 @@ import (
 func GetTaskIDsForEstimation(db *gorm.DB, specificTaskID string) ([]string, error) {
 	var taskIDs []string
 	q := db.Model(&models.Task{}).Select("task_id").
-		Where("task_ancient_minutes IS NULL AND task_ancient_minutes_manual IS NULL")
+		Where("task_ancient_minutes_manual IS NULL")
 	if specificTaskID != "" {
 		q = q.Where("task_id = ?", specificTaskID)
 	} else {

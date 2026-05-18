@@ -205,6 +205,21 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 		conversations[i].sessionId = ss.SessionId
 		conversations[i].clientId = ss.ClientId
 		conversations[i].workDirId = utils.GenerateWorkDirID(ss.ClientId, conversations[i].WorkDir)
+		// 计算并校验字段；校验失败不返回错误，仅记录警告并返回 nil，避免单条坏数据阻断整批导入
+
+		// 若成本缺失且存在 Token 和模型信息，自动计算成本
+		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
+			conversations[i].Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, cfg.ModelPrices)
+		}
+		// 去除用户输入的包装标签
+		conversations[i].UserInput = parseUserInput(conv.UserInput)
+		// 解析 Diff 文本，提取新增代码行
+		if strings.TrimSpace(conv.Diff) != "" {
+			conversations[i].addedLines = extractAddedLinesFromDiff(conv.Diff)
+		}
+		// 统计新增代码行数，并清空 Diff 原文以释放内存
+		conversations[i].DiffLines = int64(len(conv.addedLines))
+		conversations[i].Diff = ""
 	}
 }
 
@@ -353,16 +368,8 @@ func parseUserInput(userInput string) string {
 	return userInput[startIdx : startIdx+endIdx]
 }
 
-// calcConversation 对单个对话进行字段解析和指标计算。
-// 功能：解析时间字段、补全缺失的成本、提取用户输入、解析 Diff 并统计新增行数。
-// 参数：
-//   - conv: 指向 taskConversation 的指针，函数会直接修改该结构体。
-//
-// 返回值：校验或解析失败时返回错误；成功返回 nil。
-// 关键技术原理：
-//   - 若 Cost 为 0 但有 Token 和模型信息，则调用 calculateCost 自动补全成本。
-//   - Diff 通过 extractAddedLinesFromDiff 解析为新增代码行列表；解析后清空 Diff 原文以节省内存。
-func calcConversation(conv *taskConversation) error {
+// checkConversation 对单个对话进行字段合法性检查
+func checkConversation(conv *taskConversation) error {
 	// 基础字段校验
 	if conv.RequestId == "" {
 		return fmt.Errorf("对话缺失request_id字段")
@@ -385,19 +392,6 @@ func calcConversation(conv *taskConversation) error {
 		conv.endTime = t
 	}
 
-	// 若成本缺失且存在 Token 和模型信息，自动计算成本
-	if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-		conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, cfg.ModelPrices)
-	}
-	// 去除用户输入的包装标签
-	conv.UserInput = parseUserInput(conv.UserInput)
-	// 解析 Diff 文本，提取新增代码行
-	if strings.TrimSpace(conv.Diff) != "" {
-		conv.addedLines = extractAddedLinesFromDiff(conv.Diff)
-	}
-	// 统计新增代码行数，并清空 Diff 原文以释放内存
-	conv.DiffLines = int64(len(conv.addedLines))
-	conv.Diff = ""
 	return nil
 }
 
@@ -427,7 +421,7 @@ func skeletonize(content string, head, maxSize int) string {
 }
 
 // parseConversation 解析单行 JSON 数据为 taskConversation 结构体。
-// 功能：尝试将一行 JSONL 内容反序列化为 taskConversation，并调用 calcConversation 完成字段计算和校验。
+// 功能：尝试将一行 JSONL 内容反序列化为 taskConversation。
 // 参数：
 //   - path: 源文件路径，仅用于日志输出。
 //   - lineNum: 当前行号，仅用于日志输出。
@@ -446,9 +440,8 @@ func parseConversation(path string, lineNum int, content []byte, ignoreUnmarshal
 		}
 		return nil, err
 	}
-	// 计算并校验字段；校验失败不返回错误，仅记录警告并返回 nil，避免单条坏数据阻断整批导入
-	if err := calcConversation(&conv); err != nil {
-		logWarnf("解析[%s:%d]中的对话发生错误: %v", path, lineNum, err)
+	if err := checkConversation(&conv); err != nil {
+		logWarnf("解析[%s:%d]发现错误: %v", path, lineNum, err)
 		return nil, nil
 	}
 	return &conv, nil

@@ -27,6 +27,29 @@ type sessionMeta struct {
 	conversations []*convMeta
 }
 
+type convKey struct {
+	sessionId string // 所属的session
+	requestId string // 对话请求ID，在一个session中，是唯一的，标识一次AI请求
+}
+
+type convMatched struct {
+	conv       *convMeta
+	matchLines int
+}
+
+type taskMatched struct {
+	sessionId    string
+	matchLines   int
+	totalLines   int64
+	totalInchars int
+	startTime    time.Time
+	endTime      time.Time
+	silica       float64
+	acceptRatio  float64
+	task         *models.Task
+	convs        []convMatched
+}
+
 // groupKey 定义分组的复合键，将同一仓库下同一用户的对话归为一组。
 // 原理：AI对话产生的代码行通常与特定仓库和特定开发者强相关，
 // 按(repoAddr, userID)分组可避免跨仓库/跨用户的指纹误匹配。
@@ -42,7 +65,7 @@ type groupKey struct {
 // 确保“最接近commit时间”的对话获得该指纹的归属权。
 type groupIndexer struct {
 	Lines    map[string]*convMeta    // 代码行指纹 -> Convs数组索引，映射到生成该行的对话
-	Sessions map[string]*sessionMeta //sessionId -> sessionMeta对象
+	Sessions map[string]*sessionMeta // sessionId -> sessionMeta对象
 }
 
 // conversationsIndexer 全局conversation指纹索引，聚合所有分组的数据。
@@ -83,8 +106,9 @@ type commitParser struct {
 //   - *commitParser: 解析器实例，包含已加载的指纹列表。
 func buildCommitParser(commitId string, fpHashes []string) *commitParser {
 	return &commitParser{
-		commitId: commitId,
-		fpHashs:  fpHashes,
+		commitId:   commitId,
+		fpHashs:    fpHashes,
+		totalLines: len(fpHashes),
 	}
 }
 
@@ -336,15 +360,7 @@ func scanCommitFPFiles(repoFPDir string) ([]string, error) {
 	return files, err
 }
 
-type sessionConvs struct {
-	SessionId  string
-	convs      []*convMeta
-	startTime  time.Time
-	endTime    time.Time
-	matchLines int
-}
-
-// computeCommitSilica 构建对该Commit产生贡献的Task，并计算每个Task的代码贡献率(即含硅量silica),以及Commit的总含硅量。
+// buildCommitTasks 构建对该Commit产生贡献的Task基础信息，仅做归因分析，不计算任何指标。
 //
 // 参数:
 //   - gi: 和该Commit相关的分组索引
@@ -355,159 +371,162 @@ type sessionConvs struct {
 //	Task: 同一个会话(Session)下的一组为该提交(Commit)贡献了代码的对话(Conversation)
 //
 // 关键技术原理:
-//
-// 含硅量定义为：commit中与AI对话指纹匹配的代码行所占的比例。
-// 代码采纳率定义为：commit中匹配的某task代码行占该task总代码行的比例。
-// 具体计算步骤：
-//  1. 遍历commit的所有指纹，统计在 hashs 中存在的匹配行数，并对匹配到的convMeta按sessionId分组，同一个会话为一组,保存在map[string]sessionConvs中，sessionConvs记录一个会话的所有对话convMeta
-//  2. 按convMeta聚合匹配行数，实现对话级精确归因。该匹配行数也累加到convMeta所在的sessionConvs中。
+//  1. 遍历commit的所有指纹，统计在 hashs 中存在的匹配行数。按convMeta聚合匹配行数，实现对话级精确归因。
+//  2. 按sessionId分组，将每个会话匹配到的信息汇总到taskMatched中。
+//     taskMatched.convs 保存该task涉及的所有conversation及其匹配行数。
 //  3. 将一个会话匹配到的所有convMeta按EndTime排序，得到最早一个convMeta(firstConv)和最晚一个convMeta(lastConv).
-//  4. 从session中获取从firstConv到lastConv之间的所有对话，构建一个models.Task（newTask），
-//     newTask的task_id是随机生成的uuid，设这些对话的TaskId为newTask的TaskId(即这些对话从属于newTask)
-//  5. 计算每个models.Task的各项数据：
-//     含硅量(Silica) = 该session下所有对话匹配行数 / commit总行数。
-//     代码接受率(AcceptRatio)=该task下所有对话匹配行数 / 该task总代码行数
-//     TaskRealMinutes(调用calcTaskRealMinutes)
-//     TaskAncientMinutes(调用estimateTaskAncientMinutes)，
-//     开始时间，结束时间等
-//  6. Commit的总含硅量 totalSilica 为各task含硅量之和，理论上限为1.0（100%）。
+//  4. 从session中获取从firstConv到lastConv之间的所有对话，纳入taskMatched，填充基础统计字段。
 //
 // 注意：
 //
-//	同一task可能包含多个对话，这些对话的匹配行数会合并到该task的silica中。
-func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*convMeta) ([]models.Task, map[string][]string) {
-	p.totalLines = len(p.fpHashs)
+//	同一task可能包含多个对话，这些对话的匹配行数会合并到该task的matchLines中。
+//	具体的含硅量、采纳率、耗时等指标由 calcTaskMetrics 在后续阶段计算。
+func (p *commitParser) buildCommitTasks(gi *groupIndexer, hashs map[string]*convMeta) []taskMatched {
 	matchedLines := 0
 
-	// 第一步：遍历commit的所有指纹，统计在hashs中存在的匹配行数
-	// convMatchedLines 用于按对话维度聚合匹配行数，键格式为 "sessionId|requestId"
-	convMatchedLines := make(map[string]int)
-	// sessionConvsMap 记录每个session的匹配情况
-	sessionConvsMap := make(map[string]*sessionConvs)
+	// 第一步：遍历commit指纹，按对话维度聚合匹配行数
+	convMatchLines := make(map[convKey]int)
+	taskMap := make(map[string]*taskMatched)
 
 	for _, hash := range p.fpHashs {
 		if cm, ok := hashs[hash]; ok {
-			key := cm.sessionId + "|" + cm.requestId
-			convMatchedLines[key]++
+			key := convKey{sessionId: cm.sessionId, requestId: cm.requestId}
+			convMatchLines[key]++
 			matchedLines++
 
-			sc, exists := sessionConvsMap[cm.sessionId]
-			if !exists {
-				sc = &sessionConvs{
-					SessionId: cm.sessionId,
-				}
-				sessionConvsMap[cm.sessionId] = sc
+			if taskMap[cm.sessionId] == nil {
+				taskMap[cm.sessionId] = &taskMatched{sessionId: cm.sessionId}
 			}
-			sc.matchLines++
+			taskMap[cm.sessionId].matchLines++
 		}
 	}
 
-	p.totalMatchLines = matchedLines
-	p.taskIds = make([]string, 0)
-	p.taskSilicas = make([]float64, 0)
-	p.taskAcceptRatios = make([]float64, 0)
-	p.totalSilica = 0
-
-	// 无匹配或commit为空时直接返回零值
-	if p.totalLines == 0 || len(sessionConvsMap) == 0 {
-		return nil, nil
+	if p.totalLines == 0 || matchedLines == 0 {
+		return nil
 	}
 
-	var tasks []models.Task
-	// taskConvMap 记录每个task包含的conversation request_id列表，用于后续更新conversations表的task_id
-	taskConvMap := make(map[string][]string)
+	var result []taskMatched
 
-	// 遍历每个session，构建Task
-	for sessionId, sc := range sessionConvsMap {
+	// 第二步：遍历每个有匹配的session，构建taskMatched基础信息
+	for sessionId, tm := range taskMap {
 		session, ok := gi.Sessions[sessionId]
 		if !ok {
 			continue
 		}
 
-		// 收集该session下所有匹配到的convMeta
+		// 收集匹配到的convMeta并排序，确定task时间范围
 		var matchedConvs []*convMeta
 		for _, cm := range session.conversations {
-			key := cm.sessionId + "|" + cm.requestId
-			if _, ok := convMatchedLines[key]; ok {
+			key := convKey{sessionId: cm.sessionId, requestId: cm.requestId}
+			if convMatchLines[key] > 0 {
 				matchedConvs = append(matchedConvs, cm)
 			}
 		}
-
 		if len(matchedConvs) == 0 {
 			continue
 		}
 
-		// 第三步：将匹配到的convMeta按EndTime排序
 		sort.Slice(matchedConvs, func(i, j int) bool {
 			return matchedConvs[i].endTime.Before(matchedConvs[j].endTime)
 		})
 
 		firstConv := matchedConvs[0]
 		lastConv := matchedConvs[len(matchedConvs)-1]
-
-		// 第四步：从session中获取从firstConv到lastConv之间的所有对话
-		var validTimes []time.Time
-		var taskTotalLines int64
-		var taskTotalInchars int
-		var taskMatchLines int
-		var taskRequestIds []string
+		tm.startTime = firstConv.startTime
+		tm.endTime = lastConv.endTime
 
 		for _, cm := range session.conversations {
-			if (!cm.endTime.Before(firstConv.endTime) && !cm.endTime.After(lastConv.endTime)) ||
-				cm.endTime.Equal(firstConv.endTime) || cm.endTime.Equal(lastConv.endTime) {
-				taskRequestIds = append(taskRequestIds, cm.requestId)
-				if !cm.startTime.IsZero() {
-					validTimes = append(validTimes, cm.startTime)
-				}
-				taskTotalLines += int64(cm.DiffLines)
-				taskTotalInchars += cm.UserInputChars
+			if (cm.endTime.Before(firstConv.endTime) || cm.endTime.After(lastConv.endTime)) &&
+				!cm.endTime.Equal(firstConv.endTime) && !cm.endTime.Equal(lastConv.endTime) {
+				continue
+			}
 
-				key := cm.sessionId + "|" + cm.requestId
-				if lines, ok := convMatchedLines[key]; ok {
-					taskMatchLines += lines
-				}
+			key := convKey{sessionId: cm.sessionId, requestId: cm.requestId}
+			lines := convMatchLines[key]
+
+			tm.convs = append(tm.convs, convMatched{conv: cm, matchLines: lines})
+			tm.totalLines += int64(cm.DiffLines)
+			tm.totalInchars += cm.UserInputChars
+		}
+
+		if len(tm.convs) == 0 {
+			continue
+		}
+
+		result = append(result, *tm)
+	}
+
+	return result
+}
+
+// calcTaskMetrics 计算每个task的含硅量、采纳率、耗时等指标，并构建models.Task对象。
+//
+// 参数:
+//   - tms: buildCommitTasks 返回的taskMatched基础列表。
+//   - commitId: 当前commit的ID，用于生成taskId。
+//   - totalLines: commit的总代码行数，用于计算含硅量。
+//
+// 返回值:
+//   - []taskMatched: 填充了指标和task对象的task列表。
+func calcTaskMetrics(tms []taskMatched, commitId string, totalLines int) []taskMatched {
+	for i := range tms {
+		tm := &tms[i]
+
+		tm.silica = float64(tm.matchLines) / float64(totalLines)
+		if tm.totalLines > 0 {
+			tm.acceptRatio = float64(tm.matchLines) / float64(tm.totalLines)
+		}
+
+		var validTimes []time.Time
+		for _, c := range tm.convs {
+			if !c.conv.startTime.IsZero() {
+				validTimes = append(validTimes, c.conv.startTime)
 			}
 		}
 
-		// task_id 由 session_id + commit_id 确定，保证同一组合始终对应同一条记录
-		taskId := sessionId + "|" + p.commitId
-
-		// 第五步：计算TaskRealMinutes和TaskAncientMinutes
 		realMinutes, realReason := calcTaskRealMinutes(validTimes, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
-		ancientMinutes, ancientReason := estimateTaskAncientMinutes(&cfg.AlgoEstimation, float64(taskTotalInchars), float64(taskTotalLines), realMinutes)
+		ancientMinutes, ancientReason := estimateTaskAncientMinutes(&cfg.AlgoEstimation, float64(tm.totalInchars), float64(tm.totalLines), realMinutes)
 
-		// 构建models.Task
-		task := models.Task{
+		taskId := tm.sessionId + "|" + commitId
+		tm.task = &models.Task{
 			TaskId:             taskId,
-			CommitId:           p.commitId,
-			SessionId:          sessionId,
+			CommitId:           commitId,
+			SessionId:          tm.sessionId,
 			UserName:           "",
 			ClientId:           "",
 			ClientIde:          "",
-			StartTime:          firstConv.startTime,
-			EndTime:            lastConv.endTime,
-			DiffLines:          int(taskTotalLines),
-			Silica:             float64(sc.matchLines) / float64(p.totalLines),
+			StartTime:          tm.startTime,
+			EndTime:            tm.endTime,
+			DiffLines:          int(tm.totalLines),
+			Silica:             tm.silica,
+			AcceptRatio:        tm.acceptRatio,
 			TaskRealMinutes:    realMinutes,
 			TaskRealReason:     realReason,
 			TaskAncientMinutes: ancientMinutes,
 			TaskAncientReason:  ancientReason,
 		}
-
-		if taskTotalLines > 0 {
-			task.AcceptRatio = float64(taskMatchLines) / float64(taskTotalLines)
-		}
-
-		tasks = append(tasks, task)
-		taskConvMap[taskId] = taskRequestIds
-
-		p.taskIds = append(p.taskIds, taskId)
-		p.taskSilicas = append(p.taskSilicas, task.Silica)
-		p.taskAcceptRatios = append(p.taskAcceptRatios, task.AcceptRatio)
-		p.totalSilica += task.Silica
 	}
+	return tms
+}
 
-	return tasks, taskConvMap
+// aggregateCommitTaskStats 聚合task指标到commitParser的统计字段中。
+//
+// 参数:
+//   - tms: 已计算完指标的taskMatched列表。
+func (p *commitParser) aggregateCommitTaskStats(tms []taskMatched) {
+	p.taskIds = make([]string, 0, len(tms))
+	p.taskSilicas = make([]float64, 0, len(tms))
+	p.taskAcceptRatios = make([]float64, 0, len(tms))
+	p.totalSilica = 0
+	p.totalMatchLines = 0
+
+	for _, tm := range tms {
+		p.taskIds = append(p.taskIds, tm.task.TaskId)
+		p.taskSilicas = append(p.taskSilicas, tm.silica)
+		p.taskAcceptRatios = append(p.taskAcceptRatios, tm.acceptRatio)
+		p.totalSilica += tm.silica
+		p.totalMatchLines += tm.matchLines
+	}
 }
 
 // 参数:
@@ -523,13 +542,16 @@ func (p *commitParser) computeCommitSilica(gi *groupIndexer, hashs map[string]*c
 //     调用 estimateCommitAncientMinutes 基于代码行数进行经验估算。
 //  3. 总实际耗时（realMinutes）= aiMinutes + ancientMinutes，代表该commit的完整人力成本估算。
 //  4. Token与Cost：直接累加各匹配task的 upstream_tokens、downstream_tokens 和 cost。
-func (p *commitParser) calcCommitDerivedMinutes(tasks []models.Task) error {
+func (p *commitParser) calcCommitDerivedMinutes(tms []taskMatched) error {
 	// 遍历所有匹配到的task，累加AI相关指标
-	for _, t := range tasks {
-		p.aiMinutes += t.TaskRealMinutes
-		p.upstreamTokens += t.UpstreamTokens
-		p.downstreamTokens += t.DownstreamTokens
-		p.cost += t.Cost
+	for _, tm := range tms {
+		if tm.task == nil {
+			continue
+		}
+		p.aiMinutes += tm.task.TaskRealMinutes
+		p.upstreamTokens += tm.task.UpstreamTokens
+		p.downstreamTokens += tm.task.DownstreamTokens
+		p.cost += tm.task.Cost
 	}
 
 	// 计算非AI代码行数（传统编码），基于总含硅量的反比
@@ -559,19 +581,21 @@ func analyzeCommitSilica(
 	fpHashes []string,
 	idx *conversationsIndexer,
 	maxDays int,
-) (*commitParser, []models.Task, map[string][]string) {
+) (*commitParser, []taskMatched) {
 	p := buildCommitParser(commitId, fpHashes)
 
 	gk := groupKey{repoAddr: repoAddr, userID: userId}
 	gi, exists := idx.groups[gk]
 	if !exists {
-		return p, nil, nil
+		return p, nil
 	}
 
 	candidateHashes := gi.buildCandidateHashs(commitTime, maxDays)
-	tasks, taskConvMap := p.computeCommitSilica(&gi, candidateHashes)
-	p.calcCommitDerivedMinutes(tasks)
+	tms := p.buildCommitTasks(&gi, candidateHashes)
+	tms = calcTaskMetrics(tms, p.commitId, p.totalLines)
+	p.aggregateCommitTaskStats(tms)
+	p.calcCommitDerivedMinutes(tms)
 	p.ancientMinutes, p.ancientReason = estimateCommitAncientMinutes(len(fpHashes))
 
-	return p, tasks, taskConvMap
+	return p, tms
 }

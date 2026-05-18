@@ -27,6 +27,55 @@ type UserOrg struct {
 
 func (UserOrg) TableName() string { return "user_org" }
 
+type Session struct {
+	SessionId        string    `gorm:"primaryKey;type:varchar(255)" json:"session_id"`
+	CreateTime       time.Time `gorm:"type:timestamptz;index" json:"create_time"`
+	UserId           string    `gorm:"type:varchar(255);index" json:"user_id"`
+	UserName         string    `gorm:"type:varchar(255)" json:"user_name"`
+	ClientId         string    `gorm:"column:client_id;type:varchar(255)" json:"client_id"`
+	ClientIde        string    `gorm:"column:client_ide;type:varchar(100)" json:"client_ide"`
+	ClientVersion    string    `gorm:"type:varchar(100)" json:"client_version"`
+	ClientOs         string    `gorm:"column:client_os;type:varchar(100)" json:"client_os"`
+	ClientOsVersion  string    `gorm:"column:client_os_version;type:varchar(100)" json:"client_os_version"`
+	SessionDate      string    `gorm:"type:varchar(10)" json:"session_date"`
+	ConversationDate string    `gorm:"type:varchar(10)" json:"conversation_date"`
+	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt        time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (Session) TableName() string { return "sessions" }
+
+type Conversation struct {
+	ID               int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	SessionId        string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"session_id"`
+	RequestId        string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"request_id"`
+	TaskId           string    `gorm:"type:varchar(255);index" json:"task_id"`
+	Sender           string    `gorm:"type:varchar(50)" json:"sender"`
+	PromptMode       string    `gorm:"type:varchar(50)" json:"prompt_mode"`
+	Mode             string    `gorm:"type:varchar(100)" json:"mode"`
+	Model            string    `gorm:"type:varchar(200)" json:"model"`
+	StartTime        time.Time `gorm:"type:timestamptz;index" json:"start_time"`
+	EndTime          time.Time `gorm:"type:timestamptz" json:"end_time"`
+	ProcessTime      int64     `gorm:"type:bigint" json:"process_time"`
+	ProcessTtft      int64     `gorm:"type:bigint" json:"process_ttft"`
+	UpstreamTokens   int64     `gorm:"type:bigint" json:"upstream_tokens"`
+	DownstreamTokens int64     `gorm:"type:bigint" json:"downstream_tokens"`
+	Cost             float64   `gorm:"type:float8" json:"cost"`
+	DiffLines        int64     `gorm:"type:bigint" json:"diff_lines"`
+	RepoAddr         string    `gorm:"type:text" json:"repo_addr"`
+	RepoBranch       string    `gorm:"type:varchar(500)" json:"repo_branch"`
+	WorkDir          string    `gorm:"type:text" json:"work_dir"`
+	WorkDirId        string    `gorm:"type:varchar(500);index" json:"work_dir_id"`
+	UserInput        string    `gorm:"type:text" json:"user_input"`
+	RequestContent   string    `gorm:"type:text" json:"request_content"`
+	ResponseContent  string    `gorm:"type:text" json:"response_content"`
+	ErrorCode        string    `gorm:"type:varchar(100)" json:"error_code"`
+	ErrorReason      string    `gorm:"type:text" json:"error_reason"`
+	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+func (Conversation) TableName() string { return "conversations" }
+
 type Commit struct {
 	CommitId                   string     `gorm:"primaryKey;type:varchar(255)" json:"commit_id"`
 	CommitTime                 time.Time  `gorm:"type:timestamptz;index" json:"commit_time"`
@@ -64,24 +113,6 @@ type Commit struct {
 
 func (Commit) TableName() string { return "commits" }
 
-type Session struct {
-	SessionId        string    `gorm:"primaryKey;type:varchar(255)" json:"session_id"`
-	CreateTime       time.Time `gorm:"type:timestamptz;index" json:"create_time"`
-	UserId           string    `gorm:"type:varchar(255);index" json:"user_id"`
-	UserName         string    `gorm:"type:varchar(255)" json:"user_name"`
-	ClientId         string    `gorm:"column:client_id;type:varchar(255)" json:"client_id"`
-	ClientIde        string    `gorm:"column:client_ide;type:varchar(100)" json:"client_ide"`
-	ClientVersion    string    `gorm:"type:varchar(100)" json:"client_version"`
-	ClientOs         string    `gorm:"column:client_os;type:varchar(100)" json:"client_os"`
-	ClientOsVersion  string    `gorm:"column:client_os_version;type:varchar(100)" json:"client_os_version"`
-	SessionDate      string    `gorm:"type:varchar(10)" json:"session_date"`
-	ConversationDate string    `gorm:"type:varchar(10)" json:"conversation_date"`
-	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt        time.Time `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-func (Session) TableName() string { return "sessions" }
-
 type Task struct {
 	TaskId                   string    `gorm:"primaryKey;type:varchar(500)" json:"task_id"`
 	CommitId                 string    `gorm:"type:varchar(255);index" json:"commit_id"`
@@ -115,42 +146,13 @@ type Task struct {
 	TaskAncientMinutesManual *float64  `gorm:"type:float8" json:"task_ancient_minutes_manual"`
 	TaskAncientReasonManual  string    `gorm:"type:text" json:"task_ancient_minutes_reason_manual"`
 	Title                    string    `gorm:"type:varchar(200)" json:"title"`
+	SessionDate              string    `gorm:"type:varchar(10)" json:"session_date"`
+	ConversationDate         string    `gorm:"type:varchar(10)" json:"conversation_date"`
 	CreatedAt                time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Task) TableName() string { return "tasks" }
-
-type Conversation struct {
-	ID               int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	SessionId        string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"session_id"`
-	RequestId        string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"request_id"`
-	TaskId           string    `gorm:"type:varchar(255);index" json:"task_id"`
-	Sender           string    `gorm:"type:varchar(50)" json:"sender"`
-	PromptMode       string    `gorm:"type:varchar(50)" json:"prompt_mode"`
-	Mode             string    `gorm:"type:varchar(100)" json:"mode"`
-	Model            string    `gorm:"type:varchar(200)" json:"model"`
-	StartTime        time.Time `gorm:"type:timestamptz;index" json:"start_time"`
-	EndTime          time.Time `gorm:"type:timestamptz" json:"end_time"`
-	ProcessTime      int64     `gorm:"type:bigint" json:"process_time"`
-	ProcessTtft      int64     `gorm:"type:bigint" json:"process_ttft"`
-	UpstreamTokens   int64     `gorm:"type:bigint" json:"upstream_tokens"`
-	DownstreamTokens int64     `gorm:"type:bigint" json:"downstream_tokens"`
-	Cost             float64   `gorm:"type:float8" json:"cost"`
-	RequestContent   string    `gorm:"type:text" json:"request_content"`
-	ResponseContent  string    `gorm:"type:text" json:"response_content"`
-	UserInput        string    `gorm:"type:text" json:"user_input"`
-	DiffLines        int64     `gorm:"type:bigint" json:"diff_lines"`
-	ErrorCode        string    `gorm:"type:varchar(100)" json:"error_code"`
-	ErrorReason      string    `gorm:"type:text" json:"error_reason"`
-	RepoAddr         string    `gorm:"type:text" json:"repo_addr"`
-	RepoBranch       string    `gorm:"type:varchar(500)" json:"repo_branch"`
-	WorkDir          string    `gorm:"type:text" json:"work_dir"`
-	WorkDirId        string    `gorm:"type:varchar(500);index" json:"work_dir_id"`
-	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
-}
-
-func (Conversation) TableName() string { return "conversations" }
 
 type UserProductivity struct {
 	UserProductivityId     string     `gorm:"primaryKey;type:varchar(255)" json:"user_productivity_id"`

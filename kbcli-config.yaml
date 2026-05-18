@@ -118,6 +118,9 @@ model_prices:
 
 ai_estimation:
   enabled: true
+  # api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  # base_url: "https://open.bigmodel.cn/api/anthropic"
+  # model: "claude-3-5-sonnet-20241022"
   api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
   base_url: "https://open.bigmodel.cn/api/anthropic"
   model: "claude-3-5-sonnet-20241022"

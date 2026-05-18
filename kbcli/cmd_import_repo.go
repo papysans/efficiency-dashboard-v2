@@ -196,7 +196,7 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 	}
 
 	// 计算 silica
-	p, tasks, taskConvMap := analyzeCommitSilica(
+	p, tms := analyzeCommitSilica(
 		commitData.CommitId,
 		commitData.RepoAddr,
 		commitData.UserId,
@@ -207,17 +207,20 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 	)
 
 	// 填充 commit 关联字段到 tasks
-	for i := range tasks {
-		tasks[i].RepoAddr = commitData.RepoAddr
-		tasks[i].RepoBranch = commitData.RepoBranch
-		tasks[i].UserId = commitData.UserId
-		tasks[i].UserName = commitData.UserName
-		tasks[i].ClientId = commitData.ClientId
-		tasks[i].WorkDir = commitData.WorkDir
+	for _, tm := range tms {
+		if tm.task == nil {
+			continue
+		}
+		tm.task.RepoAddr = commitData.RepoAddr
+		tm.task.RepoBranch = commitData.RepoBranch
+		tm.task.UserId = commitData.UserId
+		tm.task.UserName = commitData.UserName
+		tm.task.ClientId = commitData.ClientId
+		tm.task.WorkDir = commitData.WorkDir
 	}
 
 	// 保存 tasks 和更新 conversations
-	if err := saveTasksAndConv(db, tasks, taskConvMap); err != nil {
+	if err := saveTasksAndConv(db, tms); err != nil {
 		logWarnf("保存Commit[%s]关联数据失败: %v", commitData.CommitId, err)
 	}
 	if err := saveCommit(db, &commitData, p, commitTime); err != nil {
@@ -225,6 +228,10 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 	}
 
 	logDebugf("导入成功: %s (新增行: %d, silica: %.4f)", commitData.CommitId, len(addedLines), p.totalSilica)
+	logDebugf("  commit_ancient_minutes=%.1f (%s)", p.ancientMinutes, p.ancientReason)
+	// 调试日志：输出该commit的核心计算结果
+	logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
+		p.commitId, p.totalSilica, p.totalMatchLines, p.totalLines, p.aiMinutes, p.nonAiMinutes, p.realMinutes)
 	return nil
 }
 
@@ -278,105 +285,131 @@ func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commit
 	if result.Error != nil {
 		return fmt.Errorf("写入commits表失败: %w", result.Error)
 	}
-	logDebugf("  commit_ancient_minutes=%.1f (%s)", p.ancientMinutes, p.ancientReason)
-	// 调试日志：输出该commit的核心计算结果
-	logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
-		p.commitId, p.totalSilica, p.totalMatchLines, p.totalLines, p.aiMinutes, p.nonAiMinutes, p.realMinutes)
 	return nil
 }
 
 // saveTasksAndConv 将计算出的tasks保存到数据库，并更新关联的conversation记录。
-func saveTasksAndConv(db *gorm.DB, tasks []models.Task, taskConvMap map[string][]string) error {
-	if len(tasks) > 0 {
-		// 收集所有 session_id
-		sessionIDs := make([]string, 0, len(tasks))
-		for _, t := range tasks {
-			sessionIDs = append(sessionIDs, t.SessionId)
-		}
+func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
+	if len(tms) == 0 {
+		return nil
+	}
 
-		// 查询 sessions 表补全元数据
-		var sessions []models.Session
-		sessionMap := make(map[string]models.Session)
-		if err := db.Where("session_id IN ?", sessionIDs).Find(&sessions).Error; err != nil {
-			logWarnf("查询sessions表失败: %v", err)
-		} else {
-			for _, s := range sessions {
-				sessionMap[s.SessionId] = s
-			}
+	// 收集所有 session_id
+	sessionIDs := make([]string, 0, len(tms))
+	for _, tm := range tms {
+		if tm.task != nil {
+			sessionIDs = append(sessionIDs, tm.task.SessionId)
 		}
+	}
+	if len(sessionIDs) == 0 {
+		return nil
+	}
 
-		// 查询 conversations 表，按 session_id 聚合 token 和 cost
-		type convAgg struct {
-			SessionId        string
-			UpstreamTokens   int64
-			DownstreamTokens int64
-			Cost             float64
-		}
-		var aggs []convAgg
-		convAggMap := make(map[string]convAgg)
-		if err := db.Model(&models.Conversation{}).
-			Select("session_id, SUM(upstream_tokens) as upstream_tokens, SUM(downstream_tokens) as downstream_tokens, SUM(cost) as cost").
-			Where("session_id IN ?", sessionIDs).
-			Group("session_id").
-			Find(&aggs).Error; err != nil {
-			logWarnf("查询conversations表失败: %v", err)
-		} else {
-			for _, a := range aggs {
-				convAggMap[a.SessionId] = a
-			}
-		}
-
-		// 填充 task 缺失字段
-		for i := range tasks {
-			sessionID := tasks[i].SessionId
-			if s, ok := sessionMap[sessionID]; ok {
-				if tasks[i].UserId == "" {
-					tasks[i].UserId = s.UserId
-				}
-				if tasks[i].UserName == "" {
-					tasks[i].UserName = s.UserName
-				}
-				tasks[i].ClientIde = s.ClientIde
-				tasks[i].ClientVersion = s.ClientVersion
-				tasks[i].ClientOs = s.ClientOs
-				tasks[i].ClientOsVersion = s.ClientOsVersion
-				if tasks[i].ClientId == "" {
-					tasks[i].ClientId = s.ClientId
-				}
-				if tasks[i].WorkDir != "" {
-					tasks[i].WorkDirId = utils.GenerateWorkDirID(tasks[i].ClientId, tasks[i].WorkDir)
-				}
-			}
-			if a, ok := convAggMap[sessionID]; ok {
-				tasks[i].UpstreamTokens = a.UpstreamTokens
-				tasks[i].DownstreamTokens = a.DownstreamTokens
-				tasks[i].Cost = a.Cost
-			}
-		}
-
-		if err := db.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "task_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"user_id", "user_name", "client_id", "client_ide",
-				"client_version", "client_os", "client_os_version", "caller",
-				"repo_addr", "repo_branch", "work_dir", "work_dir_id",
-				"start_time", "end_time", "diff_lines", "silica", "accept_ratio",
-				"upstream_tokens", "downstream_tokens", "cost",
-				"task_real_minutes", "task_real_reason",
-				"task_ancient_minutes", "task_ancient_reason",
-				"title",
-			}),
-		}).Create(&tasks).Error; err != nil {
-			return err
+	// 查询 sessions 表补全元数据
+	var sessions []models.Session
+	sessionMap := make(map[string]models.Session)
+	if err := db.Where("session_id IN ?", sessionIDs).Find(&sessions).Error; err != nil {
+		logWarnf("查询sessions表失败: %v", err)
+	} else {
+		for _, s := range sessions {
+			sessionMap[s.SessionId] = s
 		}
 	}
 
-	for _, task := range tasks {
-		if requestIds, ok := taskConvMap[task.TaskId]; ok && len(requestIds) > 0 {
+	// 查询 conversations 表，按 session_id 聚合 token 和 cost
+	type convAgg struct {
+		SessionId        string
+		UpstreamTokens   int64
+		DownstreamTokens int64
+		Cost             float64
+	}
+	var aggs []convAgg
+	convAggMap := make(map[string]convAgg)
+	if err := db.Model(&models.Conversation{}).
+		Select("session_id, SUM(upstream_tokens) as upstream_tokens, SUM(downstream_tokens) as downstream_tokens, SUM(cost) as cost").
+		Where("session_id IN ?", sessionIDs).
+		Group("session_id").
+		Find(&aggs).Error; err != nil {
+		logWarnf("查询conversations表失败: %v", err)
+	} else {
+		for _, a := range aggs {
+			convAggMap[a.SessionId] = a
+		}
+	}
+
+	// 填充 task 缺失字段并收集待保存对象
+	var tasks []models.Task
+	for _, tm := range tms {
+		if tm.task == nil {
+			continue
+		}
+		t := tm.task
+		sessionID := t.SessionId
+		if s, ok := sessionMap[sessionID]; ok {
+			if t.UserId == "" {
+				t.UserId = s.UserId
+			}
+			if t.UserName == "" {
+				t.UserName = s.UserName
+			}
+			t.ClientIde = s.ClientIde
+			t.ClientVersion = s.ClientVersion
+			t.ClientOs = s.ClientOs
+			t.ClientOsVersion = s.ClientOsVersion
+			if t.ClientId == "" {
+				t.ClientId = s.ClientId
+			}
+			if t.WorkDir != "" {
+				t.WorkDirId = utils.GenerateWorkDirID(t.ClientId, t.WorkDir)
+			}
+			if t.SessionDate == "" {
+				t.SessionDate = s.SessionDate
+			}
+			if t.ConversationDate == "" {
+				t.ConversationDate = s.ConversationDate
+			}
+		}
+		if a, ok := convAggMap[sessionID]; ok {
+			t.UpstreamTokens = a.UpstreamTokens
+			t.DownstreamTokens = a.DownstreamTokens
+			t.Cost = a.Cost
+		}
+		tasks = append(tasks, *t)
+	}
+
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	if err := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "task_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"user_id", "user_name", "client_id", "client_ide",
+			"client_version", "client_os", "client_os_version", "caller",
+			"repo_addr", "repo_branch", "work_dir", "work_dir_id",
+			"start_time", "end_time", "diff_lines", "silica", "accept_ratio",
+			"upstream_tokens", "downstream_tokens", "cost",
+			"task_real_minutes", "task_real_reason",
+			"task_ancient_minutes", "task_ancient_reason",
+			"title", "session_date", "conversation_date",
+		}),
+	}).Create(&tasks).Error; err != nil {
+		return err
+	}
+
+	for _, tm := range tms {
+		if tm.task == nil || len(tm.convs) == 0 {
+			continue
+		}
+		var requestIds []string
+		for _, c := range tm.convs {
+			requestIds = append(requestIds, c.conv.requestId)
+		}
+		if len(requestIds) > 0 {
 			if err := db.Model(&models.Conversation{}).
-				Where("session_id = ? AND request_id IN ?", task.SessionId, requestIds).
-				Update("task_id", task.TaskId).Error; err != nil {
-				logWarnf("更新conversation的task_id失败 [%s]: %v", task.TaskId, err)
+				Where("session_id = ? AND request_id IN ?", tm.task.SessionId, requestIds).
+				Update("task_id", tm.task.TaskId).Error; err != nil {
+				logWarnf("更新conversation的task_id失败 [%s]: %v", tm.task.TaskId, err)
 			}
 		}
 	}

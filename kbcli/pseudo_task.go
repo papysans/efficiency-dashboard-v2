@@ -127,6 +127,8 @@ func buildPseudoTask(session models.Session, conversations []models.Conversation
 		TaskAncientMinutes: ancientMinutes,
 		TaskAncientReason:  ancientReason,
 		Title:              title,
+		SessionDate:        session.SessionDate,
+		ConversationDate:   session.ConversationDate,
 	}
 
 	return task
@@ -143,6 +145,6 @@ func pseudoTaskUpdateColumns() []string {
 		"task_real_minutes_manual", "task_real_reason_manual",
 		"task_ancient_minutes", "task_ancient_reason",
 		"task_ancient_minutes_manual", "task_ancient_reason_manual",
-		"title", "updated_at",
+		"title", "session_date", "conversation_date", "updated_at",
 	}
 }

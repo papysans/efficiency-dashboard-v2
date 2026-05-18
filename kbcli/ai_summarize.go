@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"kanban/core/models"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -15,10 +12,10 @@ import (
 )
 
 // callAIForTaskTitle 调用 AI 从对话记录提取任务标题（不超过100字符）
-func callAIForTaskTitle(db *gorm.DB, taskID string, userInputs []string) {
+func callAIForTaskTitle(db *gorm.DB, taskID string, userInputs []string) (string, error) {
 	aiCfg := cfg.AIEstimation
 	if !aiCfg.Enabled || aiCfg.APIKey == "" {
-		return
+		return "", fmt.Errorf("AI estimation not enabled or API key missing")
 	}
 
 	prompt := fmt.Sprintf(`请根据以下用户与AI助手的对话记录，用一句简短的中文描述这个任务的目标，不超过100个字符。
@@ -27,61 +24,26 @@ func callAIForTaskTitle(db *gorm.DB, taskID string, userInputs []string) {
 用户输入记录：
 %s`, truncateSlice(userInputs, 3000))
 
-	reqBody := map[string]interface{}{
-		"model":      aiCfg.Model,
-		"max_tokens": 256,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
+	messages := []chatMessage{
+		{Role: "system", Content: "请回答问题"},
+		{Role: "user", Content: prompt},
 	}
-	bodyBytes, _ := json.Marshal(reqBody)
-
-	url := strings.TrimRight(aiCfg.BaseURL, "/") + "/v1/messages"
-	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	content, err := callLLM(aiCfg, messages, 256)
 	if err != nil {
-		log.Printf("创建AI请求失败(title): %v", err)
-		return
-	}
-	httpReq.Header.Set("x-api-key", aiCfg.APIKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: time.Duration(aiCfg.TimeoutMS) * time.Millisecond}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		log.Printf("AI请求失败(title): %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		log.Printf("AI返回非200(title): %d, %s", resp.StatusCode, string(respBody))
-		return
+		return "", err
 	}
 
-	var anthropicResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(respBody, &anthropicResp); err != nil || len(anthropicResp.Content) == 0 {
-		log.Printf("解析AI响应失败(title): %v", err)
-		return
-	}
-
-	title := strings.TrimSpace(anthropicResp.Content[0].Text)
+	title := strings.TrimSpace(content)
 	title = strings.Trim(title, "\"'`")
 	runes := []rune(title)
 	if len(runes) > 100 {
 		title = string(runes[:100])
 	}
 	if title == "" {
-		return
+		return "", fmt.Errorf("AI返回空标题")
 	}
 
-	UpdateTaskTitle(db, taskID, title)
-	log.Printf("AI提取title完成: task=%s, title=%s", taskID, title)
+	return title, nil
 }
 
 func UpdateTaskTitle(db *gorm.DB, taskID string, title string) error {
@@ -127,55 +89,22 @@ AI 生成的代码片段：
 		totalLines,
 	)
 
-	reqBody := map[string]interface{}{
-		"model":      aiCfg.Model,
-		"max_tokens": 1024,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
+	messages := []chatMessage{
+		{Role: "system", Content: "请回答问题"},
+		{Role: "user", Content: prompt},
 	}
-	bodyBytes, _ := json.Marshal(reqBody)
-
-	url := strings.TrimRight(aiCfg.BaseURL, "/") + "/v1/messages"
-	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	content, err := callLLM(aiCfg, messages, 1024)
 	if err != nil {
 		return 0, "", err
 	}
-	httpReq.Header.Set("x-api-key", aiCfg.APIKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	httpReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: time.Duration(aiCfg.TimeoutMS) * time.Millisecond}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return 0, "", fmt.Errorf("AI API 请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return 0, "", fmt.Errorf("AI API 返回 %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var anthropicResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(respBody, &anthropicResp); err != nil {
-		return 0, "", fmt.Errorf("解析响应失败: %w", err)
-	}
-	if len(anthropicResp.Content) == 0 {
-		return 0, "", fmt.Errorf("AI 响应 content 为空")
-	}
-
-	jsonText := extractJSON(anthropicResp.Content[0].Text)
+	jsonText := extractJSON(content)
 	var result struct {
 		Minutes float64 `json:"task_ancient_minutes"`
 		Reason  string  `json:"task_ancient_minutes_reason"`
 	}
 	if err := json.Unmarshal([]byte(jsonText), &result); err != nil {
-		return 0, "", fmt.Errorf("解析估时结果失败: %w, text: %s", err, anthropicResp.Content[0].Text)
+		return 0, "", fmt.Errorf("解析估时结果失败: %w, text: %s", err, content)
 	}
 
 	if result.Minutes < 0 || result.Minutes > 100000 {

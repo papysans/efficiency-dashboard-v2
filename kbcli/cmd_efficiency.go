@@ -149,7 +149,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			}
 
 			// 声明所有需要写入 user_productivity 的字段，默认零值
-			var TaskIdsJSON, WorkDirIdsJson, commitIDsJSON []byte
+			var taskIdsJSON, workDirIdsJson, commitIDsJSON []byte
 			var taskDiffLines, upstreamTokens, downstreamTokens int64
 			var cost, taskRealMinutes, taskAncientMinutes float64
 			var commitDiffLines int64
@@ -157,8 +157,8 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 
 			// 如果该用户有 task 数据，提取对应指标
 			if ta != nil {
-				TaskIdsJSON = defaultSliceJSON(ta.TaskIds)
-				WorkDirIdsJson = defaultSliceJSON(ta.WorkDirIds)
+				taskIdsJSON = defaultSliceJSON(ta.TaskIds)
+				workDirIdsJson = defaultSliceJSON(ta.WorkDirIds)
 				taskDiffLines = ta.TaskDiffLines
 				upstreamTokens = ta.UpstreamTokens
 				downstreamTokens = ta.DownstreamTokens
@@ -181,11 +181,11 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMinutes, commitRealMinutes)
 
 			// 兜底：确保 JSON 字段不为空，统一为 "[]"
-			if TaskIdsJSON == nil {
-				TaskIdsJSON = []byte("[]")
+			if taskIdsJSON == nil {
+				taskIdsJSON = []byte("[]")
 			}
-			if WorkDirIdsJson == nil {
-				WorkDirIdsJson = []byte("[]")
+			if workDirIdsJson == nil {
+				workDirIdsJson = []byte("[]")
 			}
 			if commitIDsJSON == nil {
 				commitIDsJSON = []byte("[]")
@@ -204,8 +204,8 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				CreateTime:             createTime,
 				UserId:                 uid,
 				UserName:               userName,
-				TaskIds:                models.StringJSON(TaskIdsJSON),
-				WorkDirIds:             models.StringJSON(WorkDirIdsJson),
+				TaskIds:                models.StringJSON(taskIdsJSON),
+				WorkDirIds:             models.StringJSON(workDirIdsJson),
 				TaskDiffLines:          int(taskDiffLines),
 				UpstreamTokens:         upstreamTokens,
 				DownstreamTokens:       downstreamTokens,

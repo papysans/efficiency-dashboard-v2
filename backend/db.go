@@ -854,34 +854,6 @@ func UpdateCommitManual(db *gorm.DB, commitID string, ancientManual *float64, an
 	return nil
 }
 
-func UpdateCommitTaskAssoc(db *gorm.DB, commitID string, taskIDs, taskIDsSilica json.RawMessage, realMinutes *float64, realAIMinutes *float64, realAncientMinutes *float64, realReason *string) error {
-	tids := models.StringJSON(taskIDs)
-	if tids == "" || tids == "null" {
-		tids = "[]"
-	}
-	ts := models.StringJSON(taskIDsSilica)
-	if ts == "" || ts == "null" {
-		ts = "[]"
-	}
-	updates := map[string]interface{}{
-		"task_ids":                    tids,
-		"task_ids_silica":             ts,
-		"commit_real_minutes":         realMinutes,
-		"commit_real_ai_minutes":      realAIMinutes,
-		"commit_real_ancient_minutes": realAncientMinutes,
-		"commit_real_minutes_reason":  realReason,
-		"updated_at":                  time.Now(),
-	}
-	result := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).Updates(updates)
-	if result.Error != nil {
-		return fmt.Errorf("更新 commits task 关联信息失败: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("commits commit_id=%s 不存在", commitID)
-	}
-	return nil
-}
-
 func ListRepoAggregates(db *gorm.DB, startTime, endTime string) ([]RepoAggregate, error) {
 	var list []RepoAggregate
 

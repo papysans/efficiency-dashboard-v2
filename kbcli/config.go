@@ -18,13 +18,16 @@ type ModelPrice struct {
 
 // AIEstimationConfig AI 估时配置
 type AIEstimationConfig struct {
-	Enabled   bool   `yaml:"enabled"`
-	APIKey    string `yaml:"api_key"`
-	BaseURL   string `yaml:"base_url"`
-	Model     string `yaml:"model"`
-	TimeoutMS int    `yaml:"timeout_ms"`
-	HTTPProxy string `yaml:"http_proxy"`
-	Prompt    string `yaml:"prompt"`
+	Enabled      bool              `yaml:"enabled"`
+	APIKey       string            `yaml:"api_key"`
+	XApiKey      string            `yaml:"x_api_key"`
+	BaseURL      string            `yaml:"base_url"`
+	Model        string            `yaml:"model"`
+	TimeoutMS    int               `yaml:"timeout_ms"`
+	HTTPProxy    string            `yaml:"http_proxy"`
+	Prompt       string            `yaml:"prompt"`
+	APIFormat    string            `yaml:"api_format"`
+	ExtraHeaders map[string]string `yaml:"extra_headers"`
 }
 
 type EstimateConfig struct {
@@ -138,6 +141,9 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 	if c.AIEstimation.Model == "" {
 		c.AIEstimation.Model = "claude-3-5-sonnet-20241022"
+	}
+	if c.AIEstimation.APIFormat == "" {
+		c.AIEstimation.APIFormat = "anthropic"
 	}
 	if c.BackendURL == "" {
 		c.BackendURL = "http://localhost:9990"

@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -210,7 +209,7 @@ func updateTaskManualV2(c *gin.Context) {
 // @Produce json
 // @Param type query string true "文件类型(summary/conversation)"
 // @Param taskId query string true "任务ID"
-// @Param date query string true "日期(YYYYMMDD)"
+
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -219,22 +218,16 @@ func updateTaskManualV2(c *gin.Context) {
 func getTaskFile(c *gin.Context) {
 	typ := c.Query("type")
 	taskId := c.Query("taskId")
-	date := c.Query("date")
 
 	if typ != "summary" && typ != "conversation" {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "type must be summary or conversation"})
 		return
 	}
-	if taskId == "" || date == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "taskId and date are required"})
+	if taskId == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "taskId is required"})
 		return
 	}
-	if _, err := time.Parse("2006-01-02", date); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "date must be YYYY-MM-DD format"})
-		return
-	}
-	if strings.Contains(taskId, "..") || strings.Contains(taskId, "/") || strings.Contains(taskId, "\\") ||
-		strings.Contains(date, "..") || strings.Contains(date, "/") || strings.Contains(date, "\\") {
+	if strings.Contains(taskId, "..") || strings.Contains(taskId, "/") || strings.Contains(taskId, "\\") {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid characters in parameters"})
 		return
 	}
@@ -249,51 +242,19 @@ func getTaskFile(c *gin.Context) {
 		return
 	}
 
-	session, err := GetSession(statDB, task.SessionId)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if session == nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "session not found"})
-		return
-	}
-
-	var dateStr string
-	if typ == "summary" {
-		dateStr = session.SessionDate
-	} else {
-		dateStr = session.ConversationDate
-	}
-
-	var yyyy, mm, dd string
-	if dateStr != "" {
-		parts := strings.Split(dateStr, "/")
-		if len(parts) == 3 {
-			yyyy, mm, dd = parts[0], parts[1], parts[2]
-		}
-	}
-
-	if yyyy == "" {
-		parts := strings.Split(date, "-")
-		yyyy, mm, dd = parts[0], parts[1], parts[2]
-	}
-
 	var filePath string
 	var contentType string
+	var found bool
 
 	if typ == "summary" {
-		filePath = filepath.Join(appConfig.AnalysedDir, "analysed", yyyy, mm, dd, taskId+".json")
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			filePath = filepath.Join(appConfig.TaskDir, "summary", yyyy, mm, dd, task.SessionId+".json")
-		}
+		filePath, found = models.GetSummaryFilePath(appConfig.TaskDir, task)
 		contentType = "application/json"
 	} else {
-		filePath = filepath.Join(appConfig.TaskDir, "conversation", yyyy, mm, dd, task.SessionId+".jsonl")
+		filePath, found = models.GetConversationFilePath(appConfig.TaskDir, task)
 		contentType = "text/plain; charset=utf-8"
 	}
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	if !found {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "文件不存在"})
 		return
 	}
