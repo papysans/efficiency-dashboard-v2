@@ -190,8 +190,8 @@ func callAIForCommitEstimation(comment, diff string, diffLines int) (float64, st
 func updateCommitAncientEstimation(db *gorm.DB, commitID string, minutes float64, reason string) error {
 	result := db.Model(&models.Commit{}).Where("commit_id = ?", commitID).
 		Updates(map[string]interface{}{
-			"commit_ancient_minutes":        minutes,
-			"commit_ancient_minutes_reason": reason,
+			"commit_ancient_minutes_manual": minutes,
+			"commit_ancient_reason_manual":  reason,
 			"updated_at":                    time.Now(),
 		})
 	return result.Error

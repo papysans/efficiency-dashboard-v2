@@ -28,8 +28,9 @@ var validTaskTypes = map[string]bool{
 	"import-conv": true,
 	"import-repo": true,
 	"import-org":  true,
-	"silica":      true,
 	"efficiency":  true,
+	"fix-task":    true,
+	"fix-commit":  true,
 }
 
 // HealthResponse 健康检查响应
@@ -101,6 +102,26 @@ type SilicaBody struct {
 // EfficiencyBody efficiency 请求体
 type EfficiencyBody struct {
 	Date string `json:"date" example:"20240101"`
+}
+
+// FixTaskBody fix-task 请求体
+type FixTaskBody struct {
+	TaskDir   string `json:"task_dir" example:"/path/to/task"`
+	StartDate string `json:"start_date" example:"2024-01-01"`
+	EndDate   string `json:"end_date" example:"2024-01-31"`
+	Date      string `json:"date" example:"20240101"`
+	Task      string `json:"task" example:"task-id-123"`
+	Max       int    `json:"max" example:"10"`
+}
+
+// FixCommitBody fix-commit 请求体
+type FixCommitBody struct {
+	RepoDir   string `json:"repo_dir" example:"/path/to/repo"`
+	StartDate string `json:"start_date" example:"2024-01-01"`
+	EndDate   string `json:"end_date" example:"2024-01-31"`
+	Date      string `json:"date" example:"20240101"`
+	Commit    string `json:"commit" example:"abc123"`
+	Max       int    `json:"max" example:"10"`
 }
 
 // ImportBody import 请求体
@@ -218,6 +239,36 @@ func createEfficiencyHandler(c *gin.Context) {
 // @Router /api/tasks/import [post]
 func createImportHandler(c *gin.Context) {
 	createTaskHandlerFunc("import", c)
+}
+
+// createFixTaskHandler 创建 fix-task 异步任务
+// @Summary 提交 fix-task 异步任务
+// @Description 将 fix-task 逻辑以异步任务方式提交到队列执行
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body FixTaskBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/fix-task [post]
+func createFixTaskHandler(c *gin.Context) {
+	createTaskHandlerFunc("fix-task", c)
+}
+
+// createFixCommitHandler 创建 fix-commit 异步任务
+// @Summary 提交 fix-commit 异步任务
+// @Description 将 fix-commit 逻辑以异步任务方式提交到队列执行
+// @Tags tasks
+// @Accept json
+// @Produce json
+// @Param body body FixCommitBody true "请求参数"
+// @Success 202 {object} CreateTaskResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 405 {object} ErrorResponse
+// @Router /api/tasks/fix-commit [post]
+func createFixCommitHandler(c *gin.Context) {
+	createTaskHandlerFunc("fix-commit", c)
 }
 
 func createTaskHandlerFunc(taskType string, c *gin.Context) {
@@ -351,6 +402,8 @@ func setupRouter() *gin.Engine {
 	r.POST("/api/tasks/import-org", createImportOrgHandler)
 	r.POST("/api/tasks/silica", createSilicaHandler)
 	r.POST("/api/tasks/efficiency", createEfficiencyHandler)
+	r.POST("/api/tasks/fix-task", createFixTaskHandler)
+	r.POST("/api/tasks/fix-commit", createFixCommitHandler)
 
 	// 任务管理接口
 	r.GET("/api/tasks", listTasksHandler)

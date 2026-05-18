@@ -138,6 +138,10 @@ serve:
       command: import
       params:
         force: false
+    - schedule: "0 0 1 * * *"
+      command: fix-task
+    - schedule: "0 0 3 * * *"
+      command: fix-commit
 
 # 算法估时配置
 algo_estimation:
@@ -148,3 +152,14 @@ algo_estimation:
   inchars_per_minutes: 20    # 人每分钟输入20个字
   lines_per_minutes: 2       # 人每分钟输入2行代码
   min_minutes: 5             # 最小分钟数
+
+ai_estimation:
+  enabled: true
+  # api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  # base_url: "https://open.bigmodel.cn/api/anthropic"
+  # model: "claude-3-5-sonnet-20241022"
+  api_key: "sk-dS7wLEuc6RbCwgUgURqNt3PImhGFbbIc2XedVIJ03NZNt6dd"
+  base_url: "https://newapi-ai.sangfor.com"
+  model: "openrouter-deepseek-v4-flash"
+  timeout_ms: 300000
+  http_proxy: ""

@@ -15,6 +15,10 @@ func createTaskExecutor(taskType string, params map[string]interface{}) (func() 
 		return func() error { return executeImportOrg(params) }, nil
 	case "efficiency":
 		return func() error { return executeEfficiency(params) }, nil
+	case "fix-task":
+		return func() error { return executeFixTask(params) }, nil
+	case "fix-commit":
+		return func() error { return executeFixCommit(params) }, nil
 	default:
 		return nil, fmt.Errorf("未知任务类型: %s", taskType)
 	}
@@ -142,4 +146,24 @@ func executeImport(params map[string]interface{}) error {
 
 	logInfo("========== [import] 全部步骤完成 ==========")
 	return nil
+}
+
+func executeFixTask(params map[string]interface{}) error {
+	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
+	date := getStringParam(params, "date", "")
+	specificTask := getStringParam(params, "task", "")
+	max := getIntParam(params, "max", 0)
+	return runFixTask(taskDir, startDate, endDate, date, specificTask, max)
+}
+
+func executeFixCommit(params map[string]interface{}) error {
+	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
+	date := getStringParam(params, "date", "")
+	commitID := getStringParam(params, "commit", "")
+	max := getIntParam(params, "max", 0)
+	return runFixCommit(repoDir, startDate, endDate, date, commitID, max)
 }

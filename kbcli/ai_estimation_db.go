@@ -10,12 +10,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// UpdateTaskAncientEstimation 将 AI 估算结果写回数据库
+// 将 AI 估算结果写回数据库
 func UpdateTaskAncientEstimation(db *gorm.DB, taskID string, minutes float64, reason string) error {
 	result := db.Model(&models.Task{}).Where("task_id = ?", taskID).
 		Updates(map[string]interface{}{
-			"task_ancient_minutes":        minutes,
-			"task_ancient_minutes_reason": reason,
+			"task_ancient_minutes_manual": minutes,
+			"task_ancient_reason_manual":  reason,
 			"updated_at":                  time.Now(),
 		})
 	if result.Error != nil {

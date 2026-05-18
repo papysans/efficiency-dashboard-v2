@@ -67,8 +67,8 @@ AI 生成的代码片段：
 
 请输出 JSON 格式：
 {
-  "task_ancient_minutes": 270,
-  "task_ancient_minutes_reason": "估算理由..."
+  "ancient_minutes": 270,
+  "ancient_reason": "估算理由..."
 }`,
 		truncateSlice(userInputs, 5000),
 		truncateSlice(codeOutputs, 8000),
@@ -87,8 +87,8 @@ AI 生成的代码片段：
 
 	jsonText := extractJSON(content)
 	var result struct {
-		Minutes float64 `json:"task_ancient_minutes"`
-		Reason  string  `json:"task_ancient_minutes_reason"`
+		Minutes float64 `json:"ancient_minutes"`
+		Reason  string  `json:"ancient_reason"`
 	}
 	if err := json.Unmarshal([]byte(jsonText), &result); err != nil {
 		return 0, "", fmt.Errorf("解析估时结果失败: %w, text: %s", err, content)

@@ -121,7 +121,7 @@ func runAICommit(path, op string) error {
 	return fmt.Errorf("未知的op: %s", op)
 }
 
-// callAIForCommitSummarize 调用AI生成commit摘要
+// 调用AI生成commit摘要
 func callAIForCommitSummarize(comment, diff string, diffLines int) (string, error) {
 	aiCfg := cfg.AIEstimation
 	if !aiCfg.Enabled || aiCfg.APIKey == "" {

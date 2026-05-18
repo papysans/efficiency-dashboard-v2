@@ -93,11 +93,6 @@ func buildPseudoTask(session models.Session, conversations []models.Conversation
 		workDirID = utils.GenerateWorkDirID(session.ClientId, firstConv.WorkDir)
 	}
 
-	title := firstConv.UserInput
-	if len(title) > 200 {
-		title = title[:200]
-	}
-
 	task := models.Task{
 		TaskId:             session.SessionId,
 		CommitId:           "",
@@ -126,7 +121,6 @@ func buildPseudoTask(session models.Session, conversations []models.Conversation
 		TaskRealReason:     realReason,
 		TaskAncientMinutes: ancientMinutes,
 		TaskAncientReason:  ancientReason,
-		Title:              title,
 		SessionDate:        session.SessionDate,
 		ConversationDate:   session.ConversationDate,
 	}
