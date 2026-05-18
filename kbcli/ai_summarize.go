@@ -3,10 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"kanban/core/models"
-	"log"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 )
@@ -44,16 +41,6 @@ func callAIForTaskTitle(db *gorm.DB, taskID string, userInputs []string) (string
 	}
 
 	return title, nil
-}
-
-func UpdateTaskTitle(db *gorm.DB, taskID string, title string) error {
-	result := db.Model(&models.Task{}).Where("task_id = ?", taskID).
-		Updates(map[string]interface{}{"title": title, "updated_at": time.Now()})
-	if result.Error != nil {
-		log.Printf("回写title失败: %v", result.Error)
-		return result.Error
-	}
-	return nil
 }
 
 // callAIForAncientEstimation 调用 AI 估算传统开发时长
@@ -132,79 +119,4 @@ func truncateSlice(items []string, maxLen int) string {
 		sb.WriteString(s)
 	}
 	return sb.String()
-}
-
-// EstimateAncientResult AI 估时单条结果
-type EstimateAncientResult struct {
-	TaskId  string  `json:"task_id"`
-	Minutes float64 `json:"minutes"`
-	Reason  string  `json:"reason"`
-	Error   string  `json:"error,omitempty"`
-}
-
-// EstimateAncientResponse AI 估时批量结果
-type EstimateAncientResponse struct {
-	Status  string                  `json:"status"`
-	Total   int                     `json:"total"`
-	Success int                     `json:"success"`
-	Results []EstimateAncientResult `json:"results"`
-}
-
-// RunAncientMinutesEstimation 批量执行 AI 估时，对应原后端 HTTP handler 的核心逻辑
-// specificTaskID 为空时，自动取最近 50 个未估算任务
-func RunAncientMinutesEstimation(db *gorm.DB, aiCfg AIEstimationConfig, specificTaskID string) *EstimateAncientResponse {
-	if !aiCfg.Enabled || aiCfg.APIKey == "" {
-		return &EstimateAncientResponse{Status: "error", Total: 0, Success: 0, Results: []EstimateAncientResult{
-			{TaskId: "", Error: "AI estimation not enabled or API key missing"},
-		}}
-	}
-
-	taskIDs, err := GetTaskIDsForEstimation(db, specificTaskID)
-	if err != nil {
-		return &EstimateAncientResponse{Status: "error", Total: 0, Success: 0, Results: []EstimateAncientResult{
-			{TaskId: "", Error: err.Error()},
-		}}
-	}
-
-	if len(taskIDs) == 0 {
-		return &EstimateAncientResponse{Status: "ok", Total: 0, Success: 0}
-	}
-
-	var results []EstimateAncientResult
-
-	for _, tid := range taskIDs {
-		userInputs, codeOutputs, totalChars, totalLines, err := GetConvInputForEstimation(db, tid)
-		if err != nil {
-			results = append(results, EstimateAncientResult{TaskId: tid, Error: err.Error()})
-			continue
-		}
-
-		if len(userInputs) == 0 {
-			results = append(results, EstimateAncientResult{TaskId: tid, Error: "no conversation data"})
-			continue
-		}
-
-		minutes, reason, err := callAIForAncientEstimation(userInputs, codeOutputs, totalChars, totalLines)
-		if err != nil {
-			results = append(results, EstimateAncientResult{TaskId: tid, Error: err.Error()})
-			continue
-		}
-
-		if err := UpdateTaskAncientEstimation(db, tid, minutes, reason); err != nil {
-			results = append(results, EstimateAncientResult{TaskId: tid, Minutes: minutes, Reason: reason, Error: "db update failed: " + err.Error()})
-			continue
-		}
-
-		results = append(results, EstimateAncientResult{TaskId: tid, Minutes: minutes, Reason: reason})
-		logInfof("AI估时完成: task=%s, minutes=%.1f", tid, minutes)
-	}
-
-	successCount := 0
-	for _, r := range results {
-		if r.Error == "" {
-			successCount++
-		}
-	}
-
-	return &EstimateAncientResponse{Status: "ok", Total: len(taskIDs), Success: successCount, Results: results}
 }

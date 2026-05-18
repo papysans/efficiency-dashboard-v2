@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -22,39 +21,6 @@ func parseDateParam(dateStr string) (time.Time, error) {
 
 func formatDateYMD(t time.Time) string {
 	return t.Format("2006-01-02")
-}
-
-// extractJSON 从 AI 响应文本中提取 JSON 对象
-func extractJSON(text string) string {
-	text = strings.TrimSpace(text)
-	if json.Valid([]byte(text)) {
-		return text
-	}
-	re := regexp.MustCompile("(?s)```(?:json)?\\s*\\n?(.*?)\\n?```")
-	if matches := re.FindStringSubmatch(text); len(matches) > 1 {
-		candidate := strings.TrimSpace(matches[1])
-		if json.Valid([]byte(candidate)) {
-			return candidate
-		}
-	}
-	lastBrace := strings.LastIndex(text, "}")
-	if lastBrace >= 0 {
-		depth := 0
-		for i := lastBrace; i >= 0; i-- {
-			if text[i] == '}' {
-				depth++
-			} else if text[i] == '{' {
-				depth--
-				if depth == 0 {
-					candidate := strings.TrimSpace(text[i : lastBrace+1])
-					if json.Valid([]byte(candidate)) {
-						return candidate
-					}
-				}
-			}
-		}
-	}
-	return text
 }
 
 func getDefaultInt(c *gin.Context, key string, defaultVal int) int {
