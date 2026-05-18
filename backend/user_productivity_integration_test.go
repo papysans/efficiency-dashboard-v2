@@ -51,7 +51,6 @@ func TestUserProductivityDB_TableAndIndexes(t *testing.T) {
 		"user_id":                     "character varying",
 		"user_name":                   "character varying",
 		"task_ids":                    "jsonb",
-		"work_dir_ids":                "jsonb",
 		"task_diff_lines":             "integer",
 		"upstream_tokens":             "bigint",
 		"downstream_tokens":           "bigint",

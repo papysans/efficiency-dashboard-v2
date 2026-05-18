@@ -10,7 +10,7 @@ import (
 var diagnoseCmd = &cobra.Command{
 	Use:   "diagnose",
 	Short: "诊断 user_productivity 表中数据为空的原因",
-	Long:  "诊断指定用户在指定日期的 tasks 和 commits 数据，找出为什么 task_ids, commit_ids, work_dir_ids 为空",
+	Long:  "诊断指定用户在指定日期的 tasks 和 commits 数据，找出为什么 task_ids, commit_ids 为空",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		UserId, _ := cmd.Flags().GetString("user-id")
 		dateStr, _ := cmd.Flags().GetString("date")
@@ -238,7 +238,6 @@ func runDiagnose(UserId, dateStr string) error {
 	type taskAgg struct {
 		UserId             string
 		TaskIds            string
-		WorkDirIds         string
 		TaskDiffLines      int64
 		UpstreamTokens     int64
 		DownstreamTokens   int64
@@ -251,7 +250,6 @@ func runDiagnose(UserId, dateStr string) error {
 		SELECT
 			user_id,
 			COALESCE(array_to_json(array_agg(task_id)), '[]') as task_ids,
-			COALESCE(array_to_json(array_agg(DISTINCT work_dir_id) FILTER (WHERE work_dir_id IS NOT NULL AND work_dir_id != '')), '[]') as work_dir_ids,
 			COALESCE(SUM(diff_lines), 0) as task_diff_lines,
 			COALESCE(SUM(upstream_tokens), 0) as upstream_tokens,
 			COALESCE(SUM(downstream_tokens), 0) as downstream_tokens,
@@ -266,7 +264,6 @@ func runDiagnose(UserId, dateStr string) error {
 	for _, ta := range taskAggs {
 		logInfof("   - UserId: %s", ta.UserId)
 		logInfof("     TaskIds: %s", ta.TaskIds)
-		logInfof("     WorkDirIds: %s", ta.WorkDirIds)
 		logInfof("     TaskDiffLines: %d, TaskRealMinutes: %.2f", ta.TaskDiffLines, ta.TaskRealMinutes)
 	}
 	logInfo("")
@@ -359,7 +356,6 @@ func runDiagnose(UserId, dateStr string) error {
 		UserId             string
 		CreateTime         string
 		TaskIds            string
-		WorkDirIds         string
 		CommitIds          string
 		TaskDiffLines      int
 		CommitDiffLines    int
@@ -373,7 +369,6 @@ func runDiagnose(UserId, dateStr string) error {
 			user_id,
 			TO_CHAR(create_time, 'YYYY-MM-DD HH24:MI:SS') as create_time,
 			task_ids,
-			work_dir_ids,
 			commit_ids,
 			task_diff_lines,
 			commit_diff_lines,
@@ -386,7 +381,6 @@ func runDiagnose(UserId, dateStr string) error {
 	for _, up := range userProds {
 		logInfof("   - ID: %s, CreateTime: %s", up.UserProductivityId, up.CreateTime)
 		logInfof("     TaskIds: %s", up.TaskIds)
-		logInfof("     WorkDirIds: %s", up.WorkDirIds)
 		logInfof("     CommitIds: %s", up.CommitIds)
 	}
 	logInfo("")

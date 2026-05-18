@@ -236,11 +236,6 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 }
 
 func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commitTime time.Time) error {
-	// 构建完整 commit 对象（基本信息 + silica 相关字段）
-	taskIdsJSON, _ := json.Marshal(p.taskIds)
-	silicaJSON, _ := json.Marshal(p.taskSilicas)
-	acceptRatiosJSON, _ := json.Marshal(p.taskAcceptRatios)
-
 	commit := models.Commit{
 		CommitId:               commitData.CommitId,
 		CommitTime:             commitTime,
@@ -255,9 +250,6 @@ func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commit
 		WorkDirId:              utils.GenerateWorkDirID(commitData.ClientId, commitData.WorkDir),
 		Comment:                commitData.Comment,
 		DiffLines:              commitData.DiffLines,
-		TaskIds:                models.StringJSON(taskIdsJSON),
-		TaskIdsSilica:          models.StringJSON(silicaJSON),
-		TaskAcceptRatios:       models.StringJSON(acceptRatiosJSON),
 		Silica:                 p.totalSilica,
 		CommitRealAiMinutes:    p.aiMinutes,
 		CommitRealNonAiMinutes: p.nonAiMinutes,
@@ -277,7 +269,7 @@ func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commit
 			"git_user_name", "git_user_email", "user_id", "user_name",
 			"client_id", "work_dir", "work_dir_id", "comment", "diff_lines", "updated_at",
 			"commit_ancient_minutes", "commit_ancient_reason",
-			"task_ids", "task_ids_silica", "task_accept_ratios", "silica",
+			"silica",
 			"commit_real_ai_minutes", "commit_real_non_ai_minutes", "commit_real_minutes", "commit_real_reason",
 			"upstream_tokens", "downstream_tokens", "cost",
 		}),

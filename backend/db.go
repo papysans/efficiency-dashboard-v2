@@ -11,6 +11,7 @@ import (
 	"kanban/core/utils"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ============================================================
@@ -75,48 +76,45 @@ type TaskListItem struct {
 }
 
 type CommitListItem struct {
-	CommitId                   string          `json:"commit_id"`
-	CommitTime                 time.Time       `json:"commit_time"`
-	RepoAddr                   string          `json:"repo_addr"`
-	RepoBranch                 string          `json:"repo_branch"`
-	GitUserName                string          `json:"git_user_name"`
-	GitUserEmail               string          `json:"git_user_email"`
-	UserId                     string          `json:"user_id"`
-	UserName                   string          `json:"user_name"`
-	ClientId                   string          `json:"client_id"`
-	WorkDir                    string          `json:"work_dir"`
-	DiffLines                  int             `json:"diff_lines"`
-	CommitAncientMinutes       float64         `json:"commit_ancient_minutes"`
-	CommitAncientReason        string          `json:"commit_ancient_minutes_reason"`
-	CommitAncientMinutesManual *float64        `json:"commit_ancient_minutes_manual"`
-	CommitAncientReasonManual  string          `json:"commit_ancient_minutes_reason_manual"`
-	CommitRealMinutes          float64         `json:"commit_real_minutes"`
-	CommitRealReason           string          `json:"commit_real_minutes_reason"`
-	CommitRealMinutesManual    *float64        `json:"commit_real_minutes_manual"`
-	CommitRealReasonManual     string          `json:"commit_real_minutes_reason_manual"`
-	CommitRealAiMinutes        float64         `json:"commit_real_ai_minutes"`
-	CommitRealAncientMinutes   float64         `json:"commit_real_ancient_minutes"`
-	TaskIds                    json.RawMessage `json:"task_ids" swaggertype:"string" example:"[\"task1\"]"`
-	TaskIdsSilica              json.RawMessage `json:"task_ids_silica" swaggertype:"string" example:"[\"1.0\"]"`
-	TaskAcceptRatios           json.RawMessage `json:"task_accept_ratios" swaggertype:"string" example:"[\"0.5\"]"`
-	Comment                    string          `json:"comment"`
-	CreatedAt                  time.Time       `json:"created_at"`
-	UpdatedAt                  time.Time       `json:"updated_at"`
-	Cost                       float64         `json:"cost"`
-	UpstreamTokens             int64           `json:"upstream_tokens"`
-	DownstreamTokens           int64           `json:"downstream_tokens"`
-	Silica                     float64         `json:"silica"`
-	EfficiencyRatio            float64         `json:"efficiency_ratio"`
-	Org1                       string          `json:"org1"`
-	Org2                       string          `json:"org2"`
-	Org3                       string          `json:"org3"`
-	Org4                       string          `json:"org4"`
-	Org5                       string          `json:"org5"`
-	Org6                       string          `json:"org6"`
-	Org7                       string          `json:"org7"`
-	Org8                       string          `json:"org8"`
-	Org9                       string          `json:"org9"`
-	OrgDisplay                 string          `json:"org_display"`
+	CommitId                   string    `json:"commit_id"`
+	CommitTime                 time.Time `json:"commit_time"`
+	RepoAddr                   string    `json:"repo_addr"`
+	RepoBranch                 string    `json:"repo_branch"`
+	GitUserName                string    `json:"git_user_name"`
+	GitUserEmail               string    `json:"git_user_email"`
+	UserId                     string    `json:"user_id"`
+	UserName                   string    `json:"user_name"`
+	ClientId                   string    `json:"client_id"`
+	WorkDir                    string    `json:"work_dir"`
+	DiffLines                  int       `json:"diff_lines"`
+	CommitAncientMinutes       float64   `json:"commit_ancient_minutes"`
+	CommitAncientReason        string    `json:"commit_ancient_minutes_reason"`
+	CommitAncientMinutesManual *float64  `json:"commit_ancient_minutes_manual"`
+	CommitAncientReasonManual  string    `json:"commit_ancient_minutes_reason_manual"`
+	CommitRealMinutes          float64   `json:"commit_real_minutes"`
+	CommitRealReason           string    `json:"commit_real_minutes_reason"`
+	CommitRealMinutesManual    *float64  `json:"commit_real_minutes_manual"`
+	CommitRealReasonManual     string    `json:"commit_real_minutes_reason_manual"`
+	CommitRealAiMinutes        float64   `json:"commit_real_ai_minutes"`
+	CommitRealAncientMinutes   float64   `json:"commit_real_ancient_minutes"`
+	Comment                    string    `json:"comment"`
+	CreatedAt                  time.Time `json:"created_at"`
+	UpdatedAt                  time.Time `json:"updated_at"`
+	Cost                       float64   `json:"cost"`
+	UpstreamTokens             int64     `json:"upstream_tokens"`
+	DownstreamTokens           int64     `json:"downstream_tokens"`
+	Silica                     float64   `json:"silica"`
+	EfficiencyRatio            float64   `json:"efficiency_ratio"`
+	Org1                       string    `json:"org1"`
+	Org2                       string    `json:"org2"`
+	Org3                       string    `json:"org3"`
+	Org4                       string    `json:"org4"`
+	Org5                       string    `json:"org5"`
+	Org6                       string    `json:"org6"`
+	Org7                       string    `json:"org7"`
+	Org8                       string    `json:"org8"`
+	Org9                       string    `json:"org9"`
+	OrgDisplay                 string    `json:"org_display"`
 }
 
 type RelatedTask struct {
@@ -768,9 +766,6 @@ func toCommitListItem(commit *models.Commit) CommitListItem {
 		CommitRealReasonManual:     commit.CommitRealReasonManual,
 		CommitRealAiMinutes:        commit.CommitRealAiMinutes,
 		CommitRealAncientMinutes:   commit.CommitRealNonAiMinutes,
-		TaskIds:                    json.RawMessage(commit.TaskIds),
-		TaskIdsSilica:              json.RawMessage(commit.TaskIdsSilica),
-		TaskAcceptRatios:           json.RawMessage(commit.TaskAcceptRatios),
 		Comment:                    commit.Comment,
 		CreatedAt:                  commit.CreatedAt,
 		UpdatedAt:                  commit.UpdatedAt,
@@ -858,23 +853,24 @@ func ListRepoAggregates(db *gorm.DB, startTime, endTime string) ([]RepoAggregate
 	var list []RepoAggregate
 
 	q := db.Model(&models.Commit{}).
-		Select(`repo_addr, repo_branch,
+		Select(`commits.repo_addr, commits.repo_branch,
 			COUNT(*) AS commit_count,
-			MIN(commit_time) AS start_time,
-			MAX(commit_time) AS end_time,
-			SUM(commit_ancient_minutes) AS sum_ancient_minutes,
-			SUM(commit_real_minutes) AS sum_real_minutes,
-			SUM(CASE WHEN task_ids IS NOT NULL AND task_ids::text NOT IN ('null', '[]') THEN jsonb_array_length(task_ids) ELSE 0 END) AS task_count`).
-		Where("repo_addr IS NOT NULL AND repo_addr != ''")
+			MIN(commits.commit_time) AS start_time,
+			MAX(commits.commit_time) AS end_time,
+			SUM(commits.commit_ancient_minutes) AS sum_ancient_minutes,
+			SUM(commits.commit_real_minutes) AS sum_real_minutes,
+			COUNT(DISTINCT tasks.task_id) AS task_count`).
+		Joins("LEFT JOIN tasks ON tasks.commit_id = commits.commit_id").
+		Where("commits.repo_addr IS NOT NULL AND commits.repo_addr != ''")
 
 	if startTime != "" {
-		q = q.Where("commit_time >= ?", startTime)
+		q = q.Where("commits.commit_time >= ?", startTime)
 	}
 	if endTime != "" {
-		q = q.Where("commit_time <= ?", endTime)
+		q = q.Where("commits.commit_time <= ?", endTime)
 	}
 
-	if err := q.Group("repo_addr, repo_branch").Order("repo_addr, repo_branch").Scan(&list).Error; err != nil {
+	if err := q.Group("commits.repo_addr, commits.repo_branch").Order("commits.repo_addr, commits.repo_branch").Scan(&list).Error; err != nil {
 		return nil, fmt.Errorf("查询 commits 聚合失败: %w", err)
 	}
 
@@ -1011,6 +1007,101 @@ func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregat
 		return fmt.Errorf("project project_id=%s 不存在", projectID)
 	}
 	return nil
+}
+
+// ============================================================
+// project_tasks CRUD (GORM)
+// ============================================================
+
+func AddProjectTasks(db *gorm.DB, projectID string, taskIDs []string, silicas []float64) error {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	pts := make([]models.ProjectTask, len(taskIDs))
+	for i, tid := range taskIDs {
+		s := 1.0
+		if i < len(silicas) {
+			s = silicas[i]
+		}
+		pts[i] = models.ProjectTask{
+			ProjectId: projectID,
+			TaskId:    tid,
+			Silica:    s,
+		}
+	}
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "project_id"},
+			{Name: "task_id"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{"silica", "updated_at"}),
+	}).Create(&pts).Error
+}
+
+func RemoveProjectTasks(db *gorm.DB, projectID string, taskIDs []string) error {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	return db.Where("project_id = ? AND task_id IN ?", projectID, taskIDs).Delete(&models.ProjectTask{}).Error
+}
+
+func UpdateProjectTaskSilica(db *gorm.DB, projectID, taskID string, silica float64) error {
+	result := db.Model(&models.ProjectTask{}).Where("project_id = ? AND task_id = ?", projectID, taskID).Update("silica", silica)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("project_task (project_id=%s, task_id=%s) 不存在", projectID, taskID)
+	}
+	return nil
+}
+
+func ReplaceProjectTasks(db *gorm.DB, projectID string, taskIDs []string, silicas []float64) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("project_id = ?", projectID).Delete(&models.ProjectTask{}).Error; err != nil {
+			return err
+		}
+		if len(taskIDs) == 0 {
+			return nil
+		}
+		pts := make([]models.ProjectTask, len(taskIDs))
+		for i, tid := range taskIDs {
+			s := 1.0
+			if i < len(silicas) {
+				s = silicas[i]
+			}
+			pts[i] = models.ProjectTask{
+				ProjectId: projectID,
+				TaskId:    tid,
+				Silica:    s,
+			}
+		}
+		return tx.Create(&pts).Error
+	})
+}
+
+func ListProjectTasks(db *gorm.DB, projectID string) ([]models.ProjectTask, error) {
+	var pts []models.ProjectTask
+	if err := db.Where("project_id = ?", projectID).Find(&pts).Error; err != nil {
+		return nil, fmt.Errorf("查询 project_tasks 失败: %w", err)
+	}
+	return pts, nil
+}
+
+func CountProjectTasks(db *gorm.DB, projectID string) (int, error) {
+	var count int64
+	if err := db.Model(&models.ProjectTask{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("统计 project_tasks 失败: %w", err)
+	}
+	return int(count), nil
+}
+
+func GetProjectTaskIDs(db *gorm.DB, projectID string) ([]string, error) {
+	var ids []string
+	if err := db.Model(&models.ProjectTask{}).Where("project_id = ?", projectID).Pluck("task_id", &ids).Error; err != nil {
+		return nil, fmt.Errorf("查询 project_task_ids 失败: %w", err)
+	}
+	return ids, nil
 }
 
 // ============================================================
@@ -1217,8 +1308,8 @@ func queryUserProdAgg(db *gorm.DB, startTime, endTime string) ([]userProdAggRow,
 		Select(`user_id,
 			COALESCE(MAX(user_name), '') as user_name,
 			COUNT(*) as day_count,
-			COALESCE(SUM(jsonb_array_length(task_ids)), 0) as task_count,
-			COALESCE(SUM(jsonb_array_length(commit_ids)), 0) as commit_count,
+			COALESCE(SUM(task_count), 0) as task_count,
+			COALESCE(SUM(commit_count), 0) as commit_count,
 			COALESCE(SUM(task_diff_lines), 0) as task_diff_lines,
 			COALESCE(SUM(commit_diff_lines), 0) as commit_diff_lines,
 			COALESCE(SUM(upstream_tokens), 0) as upstream_tokens,
@@ -1247,8 +1338,8 @@ func queryUserProdAggForIDs(db *gorm.DB, userIDs []string, startTime, endTime st
 	var rows []userProdAggRow
 	q := db.Model(&models.UserProductivity{}).
 		Select(`user_id,
-			COALESCE(SUM(jsonb_array_length(task_ids)), 0) as task_count,
-			COALESCE(SUM(jsonb_array_length(commit_ids)), 0) as commit_count,
+			COALESCE(SUM(task_count), 0) as task_count,
+			COALESCE(SUM(commit_count), 0) as commit_count,
 			COALESCE(SUM(task_diff_lines), 0) as task_diff_lines,
 			COALESCE(SUM(commit_diff_lines), 0) as commit_diff_lines,
 			COALESCE(SUM(upstream_tokens), 0) as upstream_tokens,
@@ -1294,8 +1385,8 @@ func queryUserProdTimeSeries(db *gorm.DB, userIDs []string, startTime, endTime s
 	var rows []userProdTimeSeriesRow
 	q := db.Model(&models.UserProductivity{}).
 		Select(`user_id, create_time,
-			COALESCE(jsonb_array_length(task_ids), 0) as task_count,
-			COALESCE(jsonb_array_length(commit_ids), 0) as commit_count,
+			COALESCE(task_count, 0) as task_count,
+			COALESCE(commit_count, 0) as commit_count,
 			COALESCE(task_diff_lines, 0) as task_diff_lines,
 			COALESCE(commit_diff_lines, 0) as commit_diff_lines,
 			COALESCE(upstream_tokens, 0) as upstream_tokens,

@@ -238,18 +238,8 @@ func listUsersV2(c *gin.Context) {
 				}
 				dayCount += len(daily)
 				for _, d := range daily {
-					if d.TaskIds != "" {
-						var ids []interface{}
-						if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
-							taskCount += len(ids)
-						}
-					}
-					if d.CommitIds != "" {
-						var ids []interface{}
-						if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
-							commitCount += len(ids)
-						}
-					}
+					taskCount += d.TaskCount
+					commitCount += d.CommitCount
 					taskDiffLines += d.TaskDiffLines
 					commitDiffLines += d.CommitDiffLines
 					upTokens += d.UpstreamTokens
@@ -570,18 +560,8 @@ func getUserDetailV2(c *gin.Context) {
 		if i == 0 {
 			userName = d.UserName
 		}
-		if d.TaskIds != "" {
-			var ids []interface{}
-			if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
-				taskCount += len(ids)
-			}
-		}
-		if d.CommitIds != "" {
-			var ids []interface{}
-			if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
-				commitCount += len(ids)
-			}
-		}
+		taskCount += d.TaskCount
+		commitCount += d.CommitCount
 		taskDiffLines += d.TaskDiffLines
 		commitDiffLines += d.CommitDiffLines
 		upTokens += d.UpstreamTokens

@@ -4349,9 +4349,6 @@ const docTemplate = `{
                 "user_productivity_id": {
                     "type": "string"
                 },
-                "work_dir_ids": {
-                    "type": "string"
-                }
             }
         },
         "main.UserSeriesItem": {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
@@ -187,18 +186,8 @@ func AggregateDailyByGranularity(daily []models.UserProductivity, granularity st
 			periodMap[key] = pd
 			orderKeys = append(orderKeys, key)
 		}
-		if d.TaskIds != "" {
-			var ids []interface{}
-			if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
-				pd.TaskCount += len(ids)
-			}
-		}
-		if d.CommitIds != "" {
-			var ids []interface{}
-			if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
-				pd.CommitCount += len(ids)
-			}
-		}
+		pd.TaskCount += d.TaskCount
+		pd.CommitCount += d.CommitCount
 		pd.TaskDiffLines += d.TaskDiffLines
 		pd.CommitDiffLines += d.CommitDiffLines
 		pd.UpstreamTokens += d.UpstreamTokens

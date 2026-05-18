@@ -15,7 +15,7 @@ import (
 // userTaskAgg 存储按用户聚合的 task 统计数据，用于后续计算用户生产力。
 //
 // 字段说明:
-//   - TaskIds / WorkDirIds: 使用 PostgreSQL array_to_json 聚合得到的 JSON 数组字符串
+//   - TaskCount: 该用户当日 task 数量
 //   - TaskDiffLines: 该用户当日所有 task 的新增代码行数总和
 //   - UpstreamTokens / DownstreamTokens: AI 对话上下文的 token 消耗统计
 //   - Cost: AI 服务调用成本汇总
@@ -23,8 +23,7 @@ import (
 //   - TaskAncientMinutes: 原始人分钟估算值（优先取人工修正值 task_ancient_minutes_manual）
 type userTaskAgg struct {
 	UserId             string
-	TaskIds            models.StringJSON
-	WorkDirIds         models.StringJSON
+	TaskCount          int64
 	TaskDiffLines      int64
 	UpstreamTokens     int64
 	DownstreamTokens   int64
@@ -36,7 +35,7 @@ type userTaskAgg struct {
 // userCommitAgg 存储按用户聚合的 commit 统计数据，用于后续计算用户生产力。
 //
 // 字段说明:
-//   - CommitIds: 该用户当日所有 commit ID 的 JSON 数组字符串
+//   - CommitCount: 该用户当日 commit 数量
 //   - CommitDiffLines: 新增代码行数总和
 //   - CommitAncientMinutes: 原始人分钟估算值（优先取人工修正值 commit_ancient_minutes_manual）
 //   - commitRealAiMinutes: AI 实际耗时分钟数
@@ -44,7 +43,7 @@ type userTaskAgg struct {
 //   - CommitRealMinutes: 用户实际耗时分钟数（优先取人工修正值 commit_real_minutes_manual）
 type userCommitAgg struct {
 	UserId                 string
-	CommitIds              models.StringJSON
+	CommitCount            int64
 	CommitDiffLines        int64
 	CommitAncientMinutes   float64
 	commitRealAiMinutes    float64
@@ -149,16 +148,14 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			}
 
 			// 声明所有需要写入 user_productivity 的字段，默认零值
-			var taskIdsJSON, workDirIdsJson, commitIDsJSON []byte
-			var taskDiffLines, upstreamTokens, downstreamTokens int64
+			var taskCount, taskDiffLines, upstreamTokens, downstreamTokens int64
 			var cost, taskRealMinutes, taskAncientMinutes float64
-			var commitDiffLines int64
+			var commitCount, commitDiffLines int64
 			var commitAncientMinutes, commitRealAiMinutes, commitRealAncientMinutes, commitRealMinutes float64
 
 			// 如果该用户有 task 数据，提取对应指标
 			if ta != nil {
-				taskIdsJSON = defaultSliceJSON(ta.TaskIds)
-				workDirIdsJson = defaultSliceJSON(ta.WorkDirIds)
+				taskCount = ta.TaskCount
 				taskDiffLines = ta.TaskDiffLines
 				upstreamTokens = ta.UpstreamTokens
 				downstreamTokens = ta.DownstreamTokens
@@ -168,7 +165,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			}
 			// 如果该用户有 commit 数据，提取对应指标
 			if ca != nil {
-				commitIDsJSON = defaultSliceJSON(ca.CommitIds)
+				commitCount = ca.CommitCount
 				commitDiffLines = ca.CommitDiffLines
 				commitAncientMinutes = ca.CommitAncientMinutes
 				commitRealAiMinutes = ca.commitRealAiMinutes
@@ -179,17 +176,6 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			// 计算 task 和 commit 的效能比：原始人分钟 / 实际分钟
 			taskEffRatio := utils.CalcEfficiencyRatio(taskAncientMinutes, taskRealMinutes)
 			commitEffRatio := utils.CalcEfficiencyRatio(commitAncientMinutes, commitRealMinutes)
-
-			// 兜底：确保 JSON 字段不为空，统一为 "[]"
-			if taskIdsJSON == nil {
-				taskIdsJSON = []byte("[]")
-			}
-			if workDirIdsJson == nil {
-				workDirIdsJson = []byte("[]")
-			}
-			if commitIDsJSON == nil {
-				commitIDsJSON = []byte("[]")
-			}
 
 			// 将 YYYYMMDD 字符串解析为 time.Time，并统一设置为 UTC 零点
 			createTime, err := time.Parse("20060102", dateStr)
@@ -204,8 +190,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				CreateTime:             createTime,
 				UserId:                 uid,
 				UserName:               userName,
-				TaskIds:                models.StringJSON(taskIdsJSON),
-				WorkDirIds:             models.StringJSON(workDirIdsJson),
+				TaskCount:              int(taskCount),
 				TaskDiffLines:          int(taskDiffLines),
 				UpstreamTokens:         upstreamTokens,
 				DownstreamTokens:       downstreamTokens,
@@ -213,7 +198,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 				TaskRealMinutes:        taskRealMinutes,
 				TaskAncientMinutes:     taskAncientMinutes,
 				TaskEfficiencyRatio:    taskEffRatio,
-				CommitIds:              models.StringJSON(commitIDsJSON),
+				CommitCount:            int(commitCount),
 				CommitDiffLines:        int(commitDiffLines),
 				CommitAncientMinutes:   commitAncientMinutes,
 				CommitRealAiMinutes:    commitRealAiMinutes,
@@ -226,7 +211,7 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			result := tx.Clauses(clause.OnConflict{
 				Columns: []clause.Column{{Name: "user_productivity_id"}},
 				DoUpdates: clause.AssignmentColumns([]string{
-					"user_name", "task_ids", "work_dir_ids", "task_diff_lines",
+					"user_name", "task_ids", "task_diff_lines",
 					"upstream_tokens", "downstream_tokens", "cost",
 					"task_real_minutes", "task_ancient_minutes", "task_efficiency_ratio",
 					"commit_ids", "commit_diff_lines", "commit_ancient_minutes",
@@ -281,21 +266,13 @@ func loadUserNames(db *gorm.DB) (map[string]string, error) {
 // 返回值:
 //   - map[string]*userTaskAgg: user_id -> task 聚合数据的映射
 //   - error: SQL 执行失败时返回错误
-//
-// 关键技术原理:
-//  1. 使用 PostgreSQL 原生 SQL 聚合：array_to_json(array_agg(...)) 将多个 task_id 转为 JSON 数组字符串
-//  2. array_agg(DISTINCT ...) FILTER 用于去空值后聚合 work_dir_id
-//  3. COALESCE(SUM(...), 0) 保证无数据时返回 0 而非 NULL，避免下游空指针
-//  4. 实际耗时和原始人分钟优先取人工修正值（xxx_manual），未修正时使用算法估算值
-//  5. 日期匹配使用 DATE(start_time) = $1，利用 PostgreSQL 的日期类型自动转换和索引优化
 func aggregateTasksByUser(db *gorm.DB, dateStr string) (map[string]*userTaskAgg, error) {
 	var rows []userTaskAgg
 	// 原生 SQL 按 user_id 分组聚合 task 数据
 	if err := db.Raw(`
 		SELECT
 			user_id,
-			COALESCE(array_to_json(array_agg(task_id)), '[]') as task_ids,
-			COALESCE(array_to_json(array_agg(DISTINCT work_dir_id) FILTER (WHERE work_dir_id IS NOT NULL AND work_dir_id != '')), '[]') as work_dir_ids,
+			COUNT(*) as task_count,
 			COALESCE(SUM(diff_lines), 0) as task_diff_lines,
 			COALESCE(SUM(upstream_tokens), 0) as upstream_tokens,
 			COALESCE(SUM(downstream_tokens), 0) as downstream_tokens,
@@ -338,7 +315,7 @@ func aggregateCommitsByUser(db *gorm.DB, dateStr string) (map[string]*userCommit
 	if err := db.Raw(`
 		SELECT
 			user_id,
-			COALESCE(array_to_json(array_agg(commit_id)), '[]') as commit_ids,
+			COUNT(*) as commit_count,
 			COALESCE(SUM(diff_lines), 0) as commit_diff_lines,
 			COALESCE(SUM(COALESCE(commit_ancient_minutes_manual, commit_ancient_minutes)), 0) as commit_ancient_minutes,
 			COALESCE(SUM(commit_real_ai_minutes), 0) as commit_real_ai_minutes,

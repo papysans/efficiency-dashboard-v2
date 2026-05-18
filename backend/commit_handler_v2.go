@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -155,18 +154,16 @@ func getCommitDetailV2(c *gin.Context) {
 		return
 	}
 
-	var taskIds []string
-	if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
-		if err := json.Unmarshal([]byte(commit.TaskIds), &taskIds); err != nil {
-			log.Printf("解析 commit task_ids 失败: %v", err)
-		}
+	var tasks []models.Task
+	if err := statDB.Where("commit_id = ?", commitID).Find(&tasks).Error; err != nil {
+		log.Printf("查询 commit %s 关联 tasks 失败: %v", commitID, err)
 	}
 
-	var silicaList []float64
-	if len(commit.TaskIdsSilica) > 0 && string(commit.TaskIdsSilica) != "null" && string(commit.TaskIdsSilica) != "[]" {
-		if err := json.Unmarshal([]byte(commit.TaskIdsSilica), &silicaList); err != nil {
-			log.Printf("解析 commit task_ids_silica 失败: %v", err)
-		}
+	taskIds := make([]string, len(tasks))
+	silicaList := make([]float64, len(tasks))
+	for i, t := range tasks {
+		taskIds[i] = t.TaskId
+		silicaList[i] = t.Silica
 	}
 	relatedTasks := GetRelatedTasks(statDB, taskIds, silicaList)
 

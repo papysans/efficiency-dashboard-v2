@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
@@ -692,8 +691,8 @@ func getOrgDetailV2(c *gin.Context) {
 		upTokens         int64
 		downTokens       int64
 		cost             float64
-		taskIDs          map[string]bool
-		commitIDs        map[string]bool
+		taskCount        int
+		commitCount      int
 	}
 	dailyMap := make(map[string]*dailyAgg)
 
@@ -709,34 +708,12 @@ func getOrgDetailV2(c *gin.Context) {
 			}
 			dateStr := d.CreateTime.Format("2006-01-02")
 			if _, ok := dailyMap[dateStr]; !ok {
-				dailyMap[dateStr] = &dailyAgg{
-					taskIDs:   make(map[string]bool),
-					commitIDs: make(map[string]bool),
-				}
+				dailyMap[dateStr] = &dailyAgg{}
 			}
 			da := dailyMap[dateStr]
 
-			if d.TaskIds != "" {
-				var ids []interface{}
-				if err := json.Unmarshal([]byte(d.TaskIds), &ids); err == nil {
-					for _, id := range ids {
-						if s, ok := id.(string); ok {
-							da.taskIDs[s] = true
-						}
-					}
-				}
-			}
-			if d.CommitIds != "" {
-				var ids []interface{}
-				if err := json.Unmarshal([]byte(d.CommitIds), &ids); err == nil {
-					for _, id := range ids {
-						if s, ok := id.(string); ok {
-							da.commitIDs[s] = true
-						}
-					}
-				}
-			}
-
+			da.taskCount += d.TaskCount
+			da.commitCount += d.CommitCount
 			da.taskDiffLines += d.TaskDiffLines
 			da.commitDiffLines += d.CommitDiffLines
 			da.taskRealMin += d.TaskRealMinutes
@@ -749,32 +726,14 @@ func getOrgDetailV2(c *gin.Context) {
 		}
 	}
 
-	// 将 dailyMap 转为 UserProductivity 切片，复用 AggregateDailyByGranularity
-	var dates []string
-	for date := range dailyMap {
-		dates = append(dates, date)
-	}
-	sort.Strings(dates)
-
-	dailySlice := make([]models.UserProductivity, 0, len(dates))
-	for _, date := range dates {
-		da := dailyMap[date]
-		t, _ := time.Parse("2006-01-02", date)
-
-		var taskIDList, commitIDList []string
-		for id := range da.taskIDs {
-			taskIDList = append(taskIDList, id)
-		}
-		for id := range da.commitIDs {
-			commitIDList = append(commitIDList, id)
-		}
-		taskIDsJSON, _ := json.Marshal(taskIDList)
-		commitIDsJSON, _ := json.Marshal(commitIDList)
-
+	// 转换为 UserProductivity 列表
+	var dailySlice []models.UserProductivity
+	for dateStr, da := range dailyMap {
+		t, _ := time.Parse("2006-01-02", dateStr)
 		dailySlice = append(dailySlice, models.UserProductivity{
 			CreateTime:           t,
-			TaskIds:              models.StringJSON(taskIDsJSON),
-			CommitIds:            models.StringJSON(commitIDsJSON),
+			TaskCount:            da.taskCount,
+			CommitCount:          da.commitCount,
 			TaskDiffLines:        da.taskDiffLines,
 			CommitDiffLines:      da.commitDiffLines,
 			TaskRealMinutes:      da.taskRealMin,

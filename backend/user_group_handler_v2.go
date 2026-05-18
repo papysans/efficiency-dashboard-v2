@@ -195,18 +195,8 @@ func getUserGroupDetailHandler(c *gin.Context) {
 			if userName == "" {
 				userName = d.UserName
 			}
-			if d.TaskIds != "" {
-				var ids []interface{}
-				if json.Unmarshal([]byte(d.TaskIds), &ids) == nil {
-					taskCount += len(ids)
-				}
-			}
-			if d.CommitIds != "" {
-				var ids []interface{}
-				if json.Unmarshal([]byte(d.CommitIds), &ids) == nil {
-					commitCount += len(ids)
-				}
-			}
+			taskCount += d.TaskCount
+			commitCount += d.CommitCount
 			taskDiffLines += d.TaskDiffLines
 			upTokens += d.UpstreamTokens
 			downTokens += d.DownstreamTokens

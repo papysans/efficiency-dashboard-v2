@@ -222,32 +222,28 @@ func collectProjectCommits(project *models.Project) (map[string]*models.Commit, 
 func collectProjectTasks(project *models.Project, commitMap map[string]*models.Commit) ([]ProjectTaskItem, error) {
 	taskSilicaMap := map[string]float64{}
 
-	for _, commit := range commitMap {
-		if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
-			var ids []string
-			if err := json.Unmarshal([]byte(commit.TaskIds), &ids); err == nil {
-				for _, id := range ids {
-					taskSilicaMap[id] = 1.0
-				}
-			}
+	// 从 commits 查关联 tasks
+	commitIDs := make([]string, 0, len(commitMap))
+	for cid := range commitMap {
+		commitIDs = append(commitIDs, cid)
+	}
+	if len(commitIDs) > 0 {
+		var autoTaskIDs []string
+		if err := statDB.Model(&models.Task{}).Where("commit_id IN ?", commitIDs).Pluck("task_id", &autoTaskIDs).Error; err != nil {
+			log.Printf("批量查询 commit tasks 失败: %v", err)
+		}
+		for _, id := range autoTaskIDs {
+			taskSilicaMap[id] = 1.0
 		}
 	}
 
-	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-		var ids []string
-		var silicas []float64
-		if err := json.Unmarshal([]byte(project.TaskIds), &ids); err == nil {
-			if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" {
-				_ = json.Unmarshal([]byte(project.TaskIdsSilica), &silicas)
-			}
-			for i, id := range ids {
-				s := 1.0
-				if i < len(silicas) {
-					s = silicas[i]
-				}
-				taskSilicaMap[id] = s
-			}
-		}
+	// 从 project_tasks 关联表获取手动添加的 tasks
+	projectTasks, err := ListProjectTasks(statDB, project.ProjectId)
+	if err != nil {
+		log.Printf("查询 project_tasks 失败: %v", err)
+	}
+	for _, pt := range projectTasks {
+		taskSilicaMap[pt.TaskId] = pt.Silica
 	}
 
 	allTaskIDs := make([]string, 0, len(taskSilicaMap))
@@ -334,30 +330,28 @@ func recalculateProjectAggregates(projectID string) error {
 	}
 
 	// 从 commits 提取 task_ids
+	commitIDs := make([]string, 0, len(commitMap))
+	for cid := range commitMap {
+		commitIDs = append(commitIDs, cid)
+	}
 	tasksets := NewTaskIdSet()
-	tasksets.MergeCommitMapTasks(commitMap)
-	tasksets.MergeTaskIds([]byte(project.TaskIds))
-	// taskIDSet := map[string]bool{}
-	// for _, commit := range commitMap {
-	// 	if len(commit.TaskIds) > 0 && string(commit.TaskIds) != "null" && string(commit.TaskIds) != "[]" {
-	// 		var ids []string
-	// 		if err := json.Unmarshal(commit.TaskIds, &ids); err == nil {
-	// 			for _, id := range ids {
-	// 				taskIDSet[id] = true
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// // 从 project.TaskIds 追加
-	// if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-	// 	var ids []string
-	// 	if err := json.Unmarshal([]byte(project.TaskIds), &ids); err == nil {
-	// 		for _, id := range ids {
-	// 			taskIDSet[id] = true
-	// 		}
-	// 	}
-	// }
+	if len(commitIDs) > 0 {
+		var autoTaskIDs []string
+		if err := statDB.Model(&models.Task{}).Where("commit_id IN ?", commitIDs).Pluck("task_id", &autoTaskIDs).Error; err != nil {
+			log.Printf("批量查询 commit tasks 失败: %v", err)
+		}
+		for _, tid := range autoTaskIDs {
+			tasksets.tasks[tid] = true
+		}
+	}
+	// 从 project_tasks 关联表追加手动 task
+	projectTasks, err := ListProjectTasks(statDB, project.ProjectId)
+	if err != nil {
+		log.Printf("查询 project_tasks 失败: %v", err)
+	}
+	for _, pt := range projectTasks {
+		tasksets.tasks[pt.TaskId] = true
+	}
 
 	var upstreamTokens, downstreamTokens int64
 	var cost float64
@@ -532,13 +526,12 @@ func listProjectsV2(c *gin.Context) {
 				repoCount = len(repos)
 			}
 		}
-		// task_count
-		taskCount := 0
-		var taskIDs []string
-		if len(p.TaskIds) > 0 && string(p.TaskIds) != "null" && string(p.TaskIds) != "[]" {
-			if err := json.Unmarshal([]byte(p.TaskIds), &taskIDs); err == nil {
-				taskCount = len(taskIDs)
-			}
+		// task_count 和手动 task IDs 从 project_tasks 关联表获取
+		projectTasks, _ := ListProjectTasks(statDB, p.ProjectId)
+		taskCount := len(projectTasks)
+		taskIDs := make([]string, len(projectTasks))
+		for i, pt := range projectTasks {
+			taskIDs[i] = pt.TaskId
 		}
 
 		// user_count & total_code_lines: 轻量查询 commits
@@ -612,8 +605,8 @@ func listProjectsV2(c *gin.Context) {
 			Name:                            p.Name,
 			Description:                     p.Description,
 			Repos:                           json.RawMessage(p.Repos),
-			TaskIds:                         json.RawMessage(p.TaskIds),
-			TaskIdsSilica:                   json.RawMessage(p.TaskIdsSilica),
+			TaskIds:                         json.RawMessage([]byte("[]")),
+			TaskIdsSilica:                   json.RawMessage([]byte("[]")),
 			StartTime:                       &p.StartTime,
 			EndTime:                         &p.EndTime,
 			StartTimeManual:                 p.StartTimeManual,
@@ -769,15 +762,35 @@ func updateProjectV2(c *gin.Context) {
 		return
 	}
 
-	project.Name = req.Name
-	if req.Description != nil {
-		project.Description = *req.Description
+	updates := map[string]interface{}{
+		"name":        req.Name,
+		"description": project.Description,
+		"repos":       models.StringJSON(req.Repos),
+		"updated_at":  time.Now(),
 	}
-	project.Repos = models.StringJSON(req.Repos)
-	project.TaskIds = models.StringJSON(req.TaskIds)
-	project.TaskIdsSilica = models.StringJSON(req.TaskIdsSilica)
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	result := statDB.Model(&models.Project{}).Where("project_id = ?", projectID).Updates(updates)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "project not found"})
+		return
+	}
 
-	if err := UpdateProject(statDB, project); err != nil {
+	// 解析请求中的 task_ids 和 silica，替换 project_tasks
+	var taskIDs []string
+	var silicas []float64
+	if len(req.TaskIds) > 0 && string(req.TaskIds) != "null" && string(req.TaskIds) != "[]" {
+		json.Unmarshal(req.TaskIds, &taskIDs)
+	}
+	if len(req.TaskIdsSilica) > 0 && string(req.TaskIdsSilica) != "null" && string(req.TaskIdsSilica) != "[]" {
+		json.Unmarshal(req.TaskIdsSilica, &silicas)
+	}
+	if err := ReplaceProjectTasks(statDB, projectID, taskIDs, silicas); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -868,40 +881,8 @@ func addTasksToProjectV2(c *gin.Context) {
 		return
 	}
 
-	// 解析现有 task_ids
-	var existingIDs []string
-	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-		json.Unmarshal([]byte(project.TaskIds), &existingIDs)
-	}
-	// 解析现有 task_ids_silica
-	var existingSilica []float64
-	if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" && string(project.TaskIdsSilica) != "[]" {
-		json.Unmarshal([]byte(project.TaskIdsSilica), &existingSilica)
-	}
-
-	// 去重追加
-	existSet := make(map[string]bool, len(existingIDs))
-	for _, id := range existingIDs {
-		existSet[id] = true
-	}
-	for i, id := range req.TaskIds {
-		if !existSet[id] {
-			existingIDs = append(existingIDs, id)
-			silica := 0.0
-			if i < len(req.TaskIdsSilica) {
-				silica = req.TaskIdsSilica[i]
-			}
-			existingSilica = append(existingSilica, silica)
-			existSet[id] = true
-		}
-	}
-
-	idsJSON, _ := json.Marshal(existingIDs)
-	silicaJSON, _ := json.Marshal(existingSilica)
-	project.TaskIds = models.StringJSON(idsJSON)
-	project.TaskIdsSilica = models.StringJSON(silicaJSON)
-
-	if err := UpdateProject(statDB, project); err != nil {
+	// 去重追加到 project_tasks
+	if err := AddProjectTasks(statDB, projectID, req.TaskIds, req.TaskIdsSilica); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -1105,43 +1086,7 @@ func removeTasksFromProjectV2(c *gin.Context) {
 		return
 	}
 
-	// 解析现有 task_ids
-	var existingIDs []string
-	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-		json.Unmarshal([]byte(project.TaskIds), &existingIDs)
-	}
-	// 解析现有 task_ids_silica
-	var existingSilica []float64
-	if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" && string(project.TaskIdsSilica) != "[]" {
-		json.Unmarshal([]byte(project.TaskIdsSilica), &existingSilica)
-	}
-
-	// 构建 remove set
-	removeSet := make(map[string]bool, len(req.TaskIds))
-	for _, id := range req.TaskIds {
-		removeSet[id] = true
-	}
-
-	// 过滤掉要删除的 task
-	var newIDs []string
-	var newSilica []float64
-	for i, id := range existingIDs {
-		if !removeSet[id] {
-			newIDs = append(newIDs, id)
-			if i < len(existingSilica) {
-				newSilica = append(newSilica, existingSilica[i])
-			} else {
-				newSilica = append(newSilica, 0)
-			}
-		}
-	}
-
-	idsJSON, _ := json.Marshal(newIDs)
-	silicaJSON, _ := json.Marshal(newSilica)
-	project.TaskIds = models.StringJSON(idsJSON)
-	project.TaskIdsSilica = models.StringJSON(silicaJSON)
-
-	if err := UpdateProject(statDB, project); err != nil {
+	if err := RemoveProjectTasks(statDB, projectID, req.TaskIds); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -1188,44 +1133,8 @@ func updateTaskSilicaInProjectV2(c *gin.Context) {
 		return
 	}
 
-	// 解析现有 task_ids
-	var existingIDs []string
-	if len(project.TaskIds) > 0 && string(project.TaskIds) != "null" && string(project.TaskIds) != "[]" {
-		json.Unmarshal([]byte(project.TaskIds), &existingIDs)
-	}
-	// 解析现有 task_ids_silica
-	var existingSilica []float64
-	if len(project.TaskIdsSilica) > 0 && string(project.TaskIdsSilica) != "null" && string(project.TaskIdsSilica) != "[]" {
-		json.Unmarshal([]byte(project.TaskIdsSilica), &existingSilica)
-	}
-
-	// 找到 task_id 的索引并更新 silica
-	found := false
-	for i, id := range existingIDs {
-		if id == req.TaskId {
-			if i < len(existingSilica) {
-				existingSilica[i] = req.Silica
-			} else {
-				// 补齐 silica 数组
-				for j := len(existingSilica); j < i; j++ {
-					existingSilica = append(existingSilica, 0)
-				}
-				existingSilica = append(existingSilica, req.Silica)
-			}
-			found = true
-			break
-		}
-	}
-	if !found {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("task_id %s 不在此 project 中", req.TaskId)})
-		return
-	}
-
-	silicaJSON, _ := json.Marshal(existingSilica)
-	project.TaskIdsSilica = models.StringJSON(silicaJSON)
-
-	if err := UpdateProject(statDB, project); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	if err := UpdateProjectTaskSilica(statDB, projectID, req.TaskId, req.Silica); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
