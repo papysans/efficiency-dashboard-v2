@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // createTaskExecutor 根据任务类型创建对应的执行回调函数
 func createTaskExecutor(taskType string, params map[string]interface{}) (func() error, error) {
@@ -15,6 +18,8 @@ func createTaskExecutor(taskType string, params map[string]interface{}) (func() 
 		return func() error { return executeImportOrg(params) }, nil
 	case "efficiency":
 		return func() error { return executeEfficiency(params) }, nil
+	case "efficiency-v2":
+		return func() error { return executeEfficiencyV2(params) }, nil
 	case "fix-task":
 		return func() error { return executeFixTask(params) }, nil
 	case "fix-commit":
@@ -122,6 +127,10 @@ func executeImport(params map[string]interface{}) error {
 	date := getStringParam(params, "date", "")
 	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
 	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
+	mode := strings.ToLower(strings.TrimSpace(getStringParam(params, "efficiency_mode", cfg.EfficiencyMode)))
+	if mode == "" {
+		mode = "legacy"
+	}
 
 	steps := []struct {
 		name string
@@ -134,7 +143,29 @@ func executeImport(params map[string]interface{}) error {
 			return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
 		}},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-		{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }},
+	}
+	switch mode {
+	case "new":
+		steps = append(steps, struct {
+			name string
+			fn   func() error
+		}{"efficiency-v2", func() error { return runEfficiencyV2(startDate, endDate, date) }})
+	case "both":
+		steps = append(steps,
+			struct {
+				name string
+				fn   func() error
+			}{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }},
+			struct {
+				name string
+				fn   func() error
+			}{"efficiency-v2", func() error { return runEfficiencyV2(startDate, endDate, date) }},
+		)
+	default:
+		steps = append(steps, struct {
+			name string
+			fn   func() error
+		}{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }})
 	}
 
 	for _, step := range steps {
@@ -146,6 +177,13 @@ func executeImport(params map[string]interface{}) error {
 
 	logInfo("========== [import] 全部步骤完成 ==========")
 	return nil
+}
+
+func executeEfficiencyV2(params map[string]interface{}) error {
+	startDate := getStringParam(params, "start_date", "")
+	endDate := getStringParam(params, "end_date", "")
+	date := getStringParam(params, "date", "")
+	return runEfficiencyV2(startDate, endDate, date)
 }
 
 func executeFixTask(params map[string]interface{}) error {

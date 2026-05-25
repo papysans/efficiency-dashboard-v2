@@ -293,8 +293,19 @@ func AutoMigrate(db *gorm.DB) error {
 		&ProjectCommit{},
 		&UserProductivity{},
 		&UserGroup{},
+		&ConversationEvent{},
+		&SessionStageMetric{},
+		&Need{},
+		&UserProductivityV2{},
+		&AnchorSet{},
+		&BaselineCoefficient{},
+		&BaselineFusionWeight{},
 	); err != nil {
 		return fmt.Errorf("AutoMigrate 失败: %w", err)
+	}
+
+	if err := migrateEfficiencyV2DDL(db); err != nil {
+		return fmt.Errorf("迁移 v2 效率表结构失败: %w", err)
 	}
 
 	// execDDLIgnoreError(db, `ALTER TABLE commits RENAME COLUMN work_path TO work_dir`)

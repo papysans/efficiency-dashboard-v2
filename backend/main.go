@@ -145,6 +145,10 @@ func main() {
 		v2.GET("/user-groups/:groupId", getUserGroupDetailHandler)
 
 		v2.GET("/config", getConfigV2)
+
+		v2.GET("/needs", listNeedsV2)
+		v2.GET("/needs/:needId", getNeedV2)
+		v2.GET("/efficiency", getEfficiencyV2Aggregate)
 	}
 
 	port := appConfig.Server.Port

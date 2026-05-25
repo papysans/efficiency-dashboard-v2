@@ -159,3 +159,24 @@ tmp/**/
 tools/
 task/
 rawdata/
+
+# macOS / IDE / Agent residue
+.DS_Store
+.claude/
+.codex/
+.idea/
+.vscode/
+AGENTS.md
+ai-estimate.json
+
+# v2 local mock environment (Postgres data + binaries)
+.local/
+
+# Raw data dumps (proprietary input data)
+工时估算数据.zip
+工时估算数据/
+
+# AI 产物 / 跑批报告（含内网人名/仓库，禁止提交；本地保留）
+outputs/
+prompt_v*.md
+.playwright-mcp/

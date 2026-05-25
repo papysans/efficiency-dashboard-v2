@@ -1,0 +1,376 @@
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"kanban/core/models"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+// AggregateAndUpsertEfficiencyV2UserProductivity computes user-week v2
+// aggregates from the persisted Needs and upserts user_productivity_v2 rows.
+// It returns the number of weekly rows upserted.
+//
+// startDate/endDate are YYYY-MM-DD strings; empty means "no bound". When set,
+// only Needs whose dev window overlaps the range are loaded, so reruns on a
+// narrow window do not touch other weeks.
+func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV2Config, startDate, endDate string) (int, error) {
+	cfg = normalizeEfficiencyV2Config(cfg)
+	q := db.Model(&models.Need{}).Order("primary_user_id ASC")
+	if startDate != "" {
+		q = q.Where("dev_end_ts >= ? OR dev_start_ts >= ?", startDate, startDate)
+	}
+	if endDate != "" {
+		end := endDate + " 23:59:59"
+		q = q.Where("dev_start_ts <= ? OR dev_end_ts <= ?", end, end)
+	}
+	var needs []models.Need
+	if err := q.Find(&needs).Error; err != nil {
+		return 0, fmt.Errorf("load needs: %w", err)
+	}
+	rows := AggregateEfficiencyV2UserProductivity(needs, cfg)
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	// 与老 user_productivity 对齐：补 token / cost / commit 用量字段。
+	// 通过 Need 反查（Need 已经有 PrimaryUserId + 周锚点 + session_ids + commit_ids），
+	// 比直接 join sessions 表更稳（sessions 表在 v2 路径下可能未被填充）。
+	usage, err := rollupEfficiencyV2UsageFromNeeds(db, needs)
+	if err != nil {
+		return 0, fmt.Errorf("rollup usage from needs: %w", err)
+	}
+	for i := range rows {
+		key := efficiencyV2UserWeekKey{UserID: rows[i].UserId, WeekStart: rows[i].WeekStart}
+		if u, ok := usage[key]; ok {
+			rows[i].UpstreamTokens = u.UpstreamTokens
+			rows[i].DownstreamTokens = u.DownstreamTokens
+			rows[i].Cost = u.Cost
+			rows[i].CommitCount = u.CommitCount
+			rows[i].CommitDiffLines = u.CommitDiffLines
+		}
+	}
+	if err := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "week_start"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"user_name", "need_ids",
+			"merged_need_count", "active_need_count", "abandoned_need_count",
+			"actual_calendar_min", "baseline_calendar_min", "efficiency_ratio",
+			"actual_active_work_corrected_min", "baseline_fused_work_min", "work_efficiency_ratio",
+			"coverage_high_confidence", "coverage_medium", "coverage_low_unreported",
+			"coverage_abandoned", "coverage_active",
+			"confidence_limited", "confidence_reason",
+			"upstream_tokens", "downstream_tokens", "cost",
+			"commit_count", "commit_diff_lines",
+			"updated_at",
+		}),
+	}).Create(&rows).Error; err != nil {
+		return 0, fmt.Errorf("upsert user_productivity_v2: %w", err)
+	}
+	return len(rows), nil
+}
+
+// AggregateEfficiencyV2UserProductivity buckets Needs by (user, week) and
+// produces deterministic user-week aggregate rows.
+func AggregateEfficiencyV2UserProductivity(needs []models.Need, cfg EfficiencyV2Config) []models.UserProductivityV2 {
+	cfg = normalizeEfficiencyV2Config(cfg)
+	type bucketKey struct {
+		userID    string
+		weekStart time.Time
+	}
+	type bucket struct {
+		needIDs []string
+		needs   []models.Need
+	}
+	buckets := map[bucketKey]*bucket{}
+	for _, need := range needs {
+		anchor := efficiencyV2WeekAnchorForNeed(need)
+		key := bucketKey{userID: need.PrimaryUserId, weekStart: anchor}
+		b := buckets[key]
+		if b == nil {
+			b = &bucket{}
+			buckets[key] = b
+		}
+		b.needIDs = append(b.needIDs, need.NeedId)
+		b.needs = append(b.needs, need)
+	}
+
+	rows := make([]models.UserProductivityV2, 0, len(buckets))
+	for key, b := range buckets {
+		if key.userID == "" {
+			continue
+		}
+		row := buildEfficiencyV2UserWeekRow(key.userID, key.weekStart, b.needs, cfg)
+		row.NeedIds = efficiencyV2StringJSON(sortedStrings(b.needIDs))
+		rows = append(rows, row)
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].UserId != rows[j].UserId {
+			return rows[i].UserId < rows[j].UserId
+		}
+		return rows[i].WeekStart.Before(rows[j].WeekStart)
+	})
+	return rows
+}
+
+func buildEfficiencyV2UserWeekRow(userID string, weekStart time.Time, needs []models.Need, cfg EfficiencyV2Config) models.UserProductivityV2 {
+	row := models.UserProductivityV2{
+		UserProductivityV2Id: efficiencyV2UserWeekID(userID, weekStart),
+		UserId:               userID,
+		WeekStart:            weekStart,
+	}
+	var (
+		merged, active, abandoned int64
+		actualCalSum, baseCalSum  float64
+		actualWorkSum, baseWorkSum float64
+		coverageActive, coverageAbandoned float64
+		coverageLowUnreported, coverageHigh, coverageMedium float64
+		userName string
+		ratioEligibleHighCalendar, ratioEligibleHighBase float64
+		ratioEligibleMedCalendar, ratioEligibleMedBase float64
+		ratioEligibleHighWork, ratioEligibleMedWork float64
+	)
+	for _, need := range needs {
+		if userName == "" && need.PrimaryUserId == userID {
+			userName = need.PrimaryUserId
+		}
+		switch strings.ToLower(strings.TrimSpace(need.Status)) {
+		case "merged":
+			merged++
+		case "abandoned":
+			abandoned++
+		default:
+			active++
+		}
+
+		switch need.Status {
+		case "merged":
+			switch need.BoundaryConfidence {
+			case efficiencyV2ConfidenceHigh:
+				coverageHigh += need.TotalActiveWorkCorrectedMin
+				ratioEligibleHighCalendar += need.TotalCalendarMin
+				ratioEligibleHighWork += need.TotalActiveWorkCorrectedMin
+				if need.BaselineCalendarMin != nil {
+					ratioEligibleHighBase += *need.BaselineCalendarMin
+				}
+			case efficiencyV2ConfidenceMedium:
+				coverageMedium += need.TotalActiveWorkCorrectedMin
+				ratioEligibleMedCalendar += need.TotalCalendarMin
+				ratioEligibleMedWork += need.TotalActiveWorkCorrectedMin
+				if need.BaselineCalendarMin != nil {
+					ratioEligibleMedBase += *need.BaselineCalendarMin
+				}
+			default:
+				coverageLowUnreported += need.TotalActiveWorkCorrectedMin
+			}
+		case "abandoned":
+			coverageAbandoned += need.TotalActiveWorkCorrectedMin
+		default:
+			coverageActive += need.TotalActiveWorkCorrectedMin
+		}
+		if need.BaselineFusedWorkMin != nil &&
+			(need.BoundaryConfidence == efficiencyV2ConfidenceHigh || need.BoundaryConfidence == efficiencyV2ConfidenceMedium) &&
+			need.Status == "merged" {
+			baseWorkSum += *need.BaselineFusedWorkMin
+		}
+	}
+	// work_efficiency_ratio 必须用同口径的 actual（per design line 1295：
+	// 只算 coverage_eligible = status=merged + high/medium 的 need）
+	actualWorkSum = ratioEligibleHighWork + ratioEligibleMedWork
+	row.UserName = userName
+	row.MergedNeedCount = merged
+	row.ActiveNeedCount = active
+	row.AbandonedNeedCount = abandoned
+
+	actualCalSum = ratioEligibleHighCalendar + ratioEligibleMedCalendar
+	baseCalSum = ratioEligibleHighBase + ratioEligibleMedBase
+	row.ActualCalendarMin = actualCalSum
+	row.BaselineCalendarMin = baseCalSum
+	if baseCalSum > 0 && actualCalSum > 0 {
+		ratio := (baseCalSum - actualCalSum) / actualCalSum
+		row.EfficiencyRatio = &ratio
+	}
+	row.ActualActiveWorkCorrectedMin = actualWorkSum
+	row.BaselineFusedWorkMin = baseWorkSum
+	if baseWorkSum > 0 && actualWorkSum > 0 {
+		wer := (baseWorkSum - actualWorkSum) / actualWorkSum
+		row.WorkEfficiencyRatio = &wer
+	}
+	row.CoverageHigh = coverageHigh
+	row.CoverageMedium = coverageMedium
+	row.CoverageLowUnreported = coverageLowUnreported
+	row.CoverageAbandoned = coverageAbandoned
+	row.CoverageActive = coverageActive
+
+	totalCoverage := coverageHigh + coverageMedium + coverageLowUnreported + coverageAbandoned + coverageActive
+	confidenceLimited := false
+	reasons := []string{}
+	if totalCoverage > 0 {
+		lowRatio := (coverageLowUnreported + coverageAbandoned) / totalCoverage
+		if lowRatio > 0.5 {
+			confidenceLimited = true
+			reasons = append(reasons, fmt.Sprintf("low_unreported_ratio=%.3f", lowRatio))
+		}
+		highRatio := coverageHigh / totalCoverage
+		if highRatio < 0.1 {
+			confidenceLimited = true
+			reasons = append(reasons, fmt.Sprintf("high_confidence_ratio=%.3f", highRatio))
+		}
+	}
+	if baseCalSum == 0 {
+		confidenceLimited = true
+		reasons = append(reasons, "no_eligible_baseline")
+	}
+	row.ConfidenceLimited = confidenceLimited
+	row.ConfidenceReason = strings.Join(reasons, "; ")
+	return row
+}
+
+func efficiencyV2WeekAnchorForNeed(need models.Need) time.Time {
+	anchor := time.Time{}
+	if need.DevEndTs != nil {
+		anchor = *need.DevEndTs
+	} else if need.DevStartTs != nil {
+		anchor = *need.DevStartTs
+	}
+	if anchor.IsZero() {
+		anchor = time.Now().UTC()
+	}
+	return efficiencyV2MondayAnchor(anchor)
+}
+
+func efficiencyV2MondayAnchor(t time.Time) time.Time {
+	weekStart := t.UTC()
+	weekday := int(weekStart.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	weekStart = weekStart.AddDate(0, 0, -(weekday - 1))
+	return time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func efficiencyV2UserWeekID(userID string, weekStart time.Time) string {
+	parts := userID + "|" + weekStart.UTC().Format("2006-01-02")
+	sum := sha256.Sum256([]byte(parts))
+	return "uw_" + hex.EncodeToString(sum[:12])
+}
+
+func sortedStrings(values []string) []string {
+	out := append([]string(nil), values...)
+	sort.Strings(out)
+	return out
+}
+
+type efficiencyV2UserWeekKey struct {
+	UserID    string
+	WeekStart time.Time
+}
+
+type efficiencyV2UserWeekUsage struct {
+	UpstreamTokens   int64
+	DownstreamTokens int64
+	Cost             float64
+	CommitCount      int64
+	CommitDiffLines  int64
+}
+
+// rollupEfficiencyV2UsageFromNeeds 通过 Need 反查 tokens/cost/commits 用量。
+// Need 已经有 PrimaryUserId + dev_end_ts(确定周锚点) + session_ids + commit_ids，
+// 所以可以避开 sessions 表（v2 路径不一定填充它）直接聚合。
+func rollupEfficiencyV2UsageFromNeeds(db *gorm.DB, needs []models.Need) (map[efficiencyV2UserWeekKey]efficiencyV2UserWeekUsage, error) {
+	out := map[efficiencyV2UserWeekKey]efficiencyV2UserWeekUsage{}
+	if len(needs) == 0 {
+		return out, nil
+	}
+
+	// 收集所有 session_ids 和 commit_ids，去重一次性查
+	sessionSet := map[string]bool{}
+	commitSet := map[string]bool{}
+	for _, n := range needs {
+		for _, s := range efficiencyV2StringsFromJSON(n.SessionIds) {
+			sessionSet[s] = true
+		}
+		for _, c := range efficiencyV2StringsFromJSON(n.CommitIds) {
+			commitSet[c] = true
+		}
+	}
+
+	// session_id → (upstream, downstream, cost)
+	type convSum struct {
+		SessionId        string
+		UpstreamTokens   int64
+		DownstreamTokens int64
+		Cost             float64
+	}
+	convAgg := map[string]convSum{}
+	if len(sessionSet) > 0 {
+		sessionIDs := make([]string, 0, len(sessionSet))
+		for s := range sessionSet {
+			sessionIDs = append(sessionIDs, s)
+		}
+		var rows []convSum
+		if err := db.Model(&models.Conversation{}).
+			Select("session_id, COALESCE(SUM(upstream_tokens),0) AS upstream_tokens, " +
+				"COALESCE(SUM(downstream_tokens),0) AS downstream_tokens, " +
+				"COALESCE(SUM(cost),0) AS cost").
+			Where("session_id IN ?", sessionIDs).
+			Group("session_id").Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("agg conversations by session: %w", err)
+		}
+		for _, r := range rows {
+			convAgg[r.SessionId] = r
+		}
+	}
+
+	// commit_id → diff_lines
+	commitAgg := map[string]int64{}
+	if len(commitSet) > 0 {
+		commitIDs := make([]string, 0, len(commitSet))
+		for c := range commitSet {
+			commitIDs = append(commitIDs, c)
+		}
+		type commitRow struct {
+			CommitId  string
+			DiffLines int64
+		}
+		var rows []commitRow
+		if err := db.Model(&models.Commit{}).
+			Select("commit_id, diff_lines").
+			Where("commit_id IN ?", commitIDs).Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("agg commits: %w", err)
+		}
+		for _, r := range rows {
+			commitAgg[r.CommitId] = r.DiffLines
+		}
+	}
+
+	// 按 (user_id, week_start) bucket
+	for _, n := range needs {
+		if n.PrimaryUserId == "" {
+			continue
+		}
+		key := efficiencyV2UserWeekKey{UserID: n.PrimaryUserId, WeekStart: efficiencyV2WeekAnchorForNeed(n)}
+		u := out[key]
+		for _, sid := range efficiencyV2StringsFromJSON(n.SessionIds) {
+			if cs, ok := convAgg[sid]; ok {
+				u.UpstreamTokens += cs.UpstreamTokens
+				u.DownstreamTokens += cs.DownstreamTokens
+				u.Cost += cs.Cost
+			}
+		}
+		for _, cid := range efficiencyV2StringsFromJSON(n.CommitIds) {
+			if dl, ok := commitAgg[cid]; ok {
+				u.CommitCount++
+				u.CommitDiffLines += dl
+			}
+		}
+		out[key] = u
+	}
+	return out, nil
+}
