@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "镜像 tag（如 v1.0.1）"
+        description: "版本号（如 v1.1.1，最终镜像 tag 为 beta-v1.1.1）"
         required: true
-        default: "v1.0.1"
+        default: "v1.1.1"
 
 env:
   REGISTRY: ghcr.io
@@ -33,16 +33,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 计算版本号
+      - name: 计算版本号（beta 前缀）
         id: ver
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            RAW="${{ github.event.inputs.version }}"
           else
-            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            RAW="${GITHUB_REF_NAME}"
           fi
+          echo "version=beta-${RAW}" >> "$GITHUB_OUTPUT"   # ← beta 前缀
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"   # 转小写，ghcr 要求
 
+      - uses: docker/setup-qemu-action@v3        # 跨架构（构建 arm64 需要）
       - uses: docker/setup-buildx-action@v3
 
       - name: 登录 ghcr
@@ -52,14 +54,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 构建并推送 ${{ matrix.name }}
+      - name: 构建并推送 ${{ matrix.name }}（amd64 + arm64）
         uses: docker/build-push-action@v6
         with:
           context: .                       # 仓库根（Dockerfile 的 COPY 基于根目录）
           file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64    # ← x86 + arm 双架构
           push: true
+          provenance: false                # 单一 manifest list，便于 docker save/load 到内网
           build-args: |
             VERSION=${{ steps.ver.outputs.version }}
           tags: |
             ${{ env.REGISTRY }}/${{ steps.ver.outputs.owner }}/efficiency-dashboard-${{ matrix.name }}:${{ steps.ver.outputs.version }}
-            ${{ env.REGISTRY }}/${{ steps.ver.outputs.owner }}/efficiency-dashboard-${{ matrix.name }}:latest
+            ${{ env.REGISTRY }}/${{ steps.ver.outputs.owner }}/efficiency-dashboard-${{ matrix.name }}:beta

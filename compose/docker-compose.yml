@@ -1,4 +1,6 @@
-version: '3.8'
+# 项目名隔离：容器/网络/卷都带 efficiency-dashboard-v2 前缀，与机器上的旧服务共存、不撞名。
+# 也可用环境变量 COMPOSE_PROJECT_NAME 覆盖。
+name: efficiency-dashboard-v2
 
 services:
   server:

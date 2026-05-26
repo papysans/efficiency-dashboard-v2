@@ -1,4 +1,5 @@
-FROM node:20-alpine AS builder
+# builder 固定在构建机架构上原生跑（前端 dist 与架构无关），多架构时不走 QEMU 模拟
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 WORKDIR /app/frontend
 
 COPY frontend/package*.json ./
