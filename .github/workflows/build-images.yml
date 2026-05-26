@@ -8,60 +8,58 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "版本号（如 v1.1.1，最终镜像 tag 为 beta-v1.1.1）"
+        description: "版本号（如 v1.1.1，最终 tag 为 beta-v1.1.1-amd64 / -arm64）"
         required: true
         default: "v1.1.1"
 
 env:
   REGISTRY: ghcr.io
 
-# 只用 actions/checkout；docker login/build/push 全走 runner 自带 docker CLI，
-# 不依赖 docker/* marketplace action（该 runner 下载 docker/* action 持续失败）。
+# 强行拆 amd64 / arm64 两套独立 tag（不出 manifest list），避免 save/load 选错架构。
+# 只用 actions/checkout；docker 全走 runner 自带 CLI，不依赖 docker/* marketplace action。
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write        # GITHUB_TOKEN 推 ghcr 所需，无需额外 PAT
+      packages: write
     strategy:
-      fail-fast: false        # 一个镜像偶发失败（如 checkout 瞬时 403）不连累其它
+      fail-fast: false        # 某个 image×arch 偶发失败不连累其它
       matrix:
-        include:
-          - name: server
-            dockerfile: backend/Dockerfile
-          - name: kbcli
-            dockerfile: kbcli/Dockerfile
-          - name: portal
-            dockerfile: compose/portal/Dockerfile
+        image:
+          - { name: server, dockerfile: backend/Dockerfile }
+          - { name: kbcli,  dockerfile: kbcli/Dockerfile }
+          - { name: portal, dockerfile: compose/portal/Dockerfile }
+        arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
 
-      - name: 构建并推送 ${{ matrix.name }}（linux/amd64,arm64）
+      - name: 构建并推送 ${{ matrix.image.name }} (${{ matrix.arch }})
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
           OWNER: ${{ github.repository_owner }}
-          DOCKERFILE: ${{ matrix.dockerfile }}
-          NAME: ${{ matrix.name }}
+          DOCKERFILE: ${{ matrix.image.dockerfile }}
+          NAME: ${{ matrix.image.name }}
+          ARCH: ${{ matrix.arch }}
           EVENT: ${{ github.event_name }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then RAW="$INPUT_VERSION"; else RAW="$GITHUB_REF_NAME"; fi
-          VERSION="beta-${RAW}"                       # beta 前缀
-          OWNER_LC="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"   # ghcr 要求小写
+          OWNER_LC="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           IMG="${REGISTRY}/${OWNER_LC}/efficiency-dashboard-${NAME}"
-          echo "==> $IMG:$VERSION (+ :beta)  amd64+arm64"
-          # QEMU（跨架构）：从 DockerHub 拉 binfmt 镜像，不用 docker/setup-qemu-action（该 runner 下不动 docker/* action）
-          docker run --privileged --rm tonistiigi/binfmt --install arm64
-          # docker-container 驱动的 buildx builder（支持多架构 + --push 推 manifest list）
-          docker buildx create --name multi --driver docker-container --use
+          TAG="beta-${RAW}-${ARCH}"            # ← 架构后缀，强行分开
+          echo "==> $IMG:$TAG  (linux/$ARCH)"
+          # arm64 在 amd64 runner 上需要 QEMU（仅 runtime 的 apk 走模拟）；amd64 原生不需要
+          if [ "$ARCH" = "arm64" ]; then docker run --privileged --rm tonistiigi/binfmt --install arm64; fi
+          docker buildx create --name b --driver docker-container --use
           docker buildx inspect --bootstrap
           echo "$GH_TOKEN" | docker login "$REGISTRY" -u "$ACTOR" --password-stdin
           docker buildx build \
             -f "$DOCKERFILE" \
-            --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION="$VERSION" \
+            --platform "linux/${ARCH}" \
+            --build-arg VERSION="beta-${RAW}" \
             --provenance=false \
-            -t "$IMG:$VERSION" -t "$IMG:beta" \
+            -t "$IMG:$TAG" \
             --push .
