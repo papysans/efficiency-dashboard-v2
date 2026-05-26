@@ -24,6 +24,7 @@ jobs:
       contents: read
       packages: write        # GITHUB_TOKEN 推 ghcr 所需，无需额外 PAT
     strategy:
+      fail-fast: false        # 一个镜像偶发失败（如 checkout 瞬时 403）不连累其它
       matrix:
         include:
           - name: server
