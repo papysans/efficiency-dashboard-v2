@@ -138,6 +138,10 @@ serve:
       command: import
       params:
         force: false
+    # import 只跑到 v1 efficiency；v2 看板(needs/提效比)由 efficiency-v2 产出，
+    # 每小时 import 后 30 分跑一次，让 v2 看板自动刷新。
+    - schedule: "0 30 * * * *"
+      command: efficiency-v2
     - schedule: "0 0 1 * * *"
       command: fix-task
     - schedule: "0 0 3 * * *"

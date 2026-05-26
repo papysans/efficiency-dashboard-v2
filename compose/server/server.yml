@@ -5,8 +5,9 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       # 组织映射由 backend 从 user_org 表加载（kbcli import-org 写入），不读 CSV，故不挂载。
-      - /mnt/prod_env/user-indicator/raw/task:/app/task
-      - /mnt/prod_env/user-indicator/raw/repo:/app/repo
+      # 数据源（上游只读映射的两个 mnt）路径由 .env 指定，位置不固定时改 .env 即可。
+      - ${DATA_TASK_DIR}:/app/task:ro
+      - ${DATA_REPO_DIR}:/app/repo:ro
     ports:
       - "${PORT_BACKEND}:9990"
     healthcheck:

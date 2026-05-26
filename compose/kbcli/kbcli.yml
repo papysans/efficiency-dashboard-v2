@@ -6,8 +6,9 @@ services:
       - "${PORT_KBCLI}:8080"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - /mnt/prod_env/user-indicator/raw/task:/app/task
-      - /mnt/prod_env/user-indicator/raw/repo:/app/repo
+      # 数据源（上游只读映射的两个 mnt）路径由 .env 指定；task/repo 只读，analysed 可写。
+      - ${DATA_TASK_DIR}:/app/task:ro
+      - ${DATA_REPO_DIR}:/app/repo:ro
       - ./analysed:/app/analysed
     environment:
       TZ: Asia/Shanghai

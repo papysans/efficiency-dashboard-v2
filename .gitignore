@@ -190,3 +190,5 @@ compose/efficiency-dashboard-images-*.tar
 compose/**/*.tar
 docs/data/*.json
 docs/data/*fullrun*
+compose/kbcli/config.local.yaml
+compose/server/config.local.yaml
