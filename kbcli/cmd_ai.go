@@ -78,11 +78,15 @@ func runAITask(path, op string) error {
 		if len(userInputs) == 0 {
 			return fmt.Errorf("无用户输入，无法estimation")
 		}
-		minutes, reason, err := callAIForAncientEstimation(userInputs, codeOutputs, totalChars, totalLines)
+		title, err := callAIForTaskTitle(nil, "", userInputs)
+		if err != nil {
+			return fmt.Errorf("AI 取标题失败: %w", err)
+		}
+		minutes, reason, err := callAIForAncientEstimation(title, int(totalLines), totalChars)
 		if err != nil {
 			return fmt.Errorf("AI estimation失败: %w", err)
 		}
-		fmt.Printf("Ancient Minutes: %.1f\nReason: %s\n", minutes, reason)
+		fmt.Printf("Title: %s\nAncient Minutes: %.1f\nReason: %s\n", title, minutes, reason)
 		return nil
 	}
 

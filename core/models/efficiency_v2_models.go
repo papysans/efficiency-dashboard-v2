@@ -234,13 +234,13 @@ type UserProductivityV2 struct {
 	ConfidenceLimited            bool       `gorm:"type:boolean;default:false;index" json:"confidence_limited"`
 	ConfidenceReason             string     `gorm:"type:text" json:"confidence_reason"`
 	// 与老 user_productivity 对齐：用户级 token/cost 累加，方便看板展示用量与成本
-	UpstreamTokens               int64      `gorm:"type:bigint;default:0" json:"upstream_tokens"`
-	DownstreamTokens             int64      `gorm:"type:bigint;default:0" json:"downstream_tokens"`
-	Cost                         float64    `gorm:"type:float8;default:0" json:"cost"`
-	CommitCount                  int64      `gorm:"type:bigint;default:0" json:"commit_count"`
-	CommitDiffLines              int64      `gorm:"type:bigint;default:0" json:"commit_diff_lines"`
-	CreatedAt                    time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt                    time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	UpstreamTokens   int64     `gorm:"type:bigint;default:0" json:"upstream_tokens"`
+	DownstreamTokens int64     `gorm:"type:bigint;default:0" json:"downstream_tokens"`
+	Cost             float64   `gorm:"type:float8;default:0" json:"cost"`
+	CommitCount      int64     `gorm:"type:bigint;default:0" json:"commit_count"`
+	CommitDiffLines  int64     `gorm:"type:bigint;default:0" json:"commit_diff_lines"`
+	CreatedAt        time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt        time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (UserProductivityV2) TableName() string { return "user_productivity_v2" }
@@ -309,6 +309,8 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 		name string
 		ddl  string
 	}{
+		{"commits touched files column", `ALTER TABLE commits ADD COLUMN IF NOT EXISTS touched_files jsonb DEFAULT '[]'::jsonb`},
+		{"commits touched files default", `ALTER TABLE commits ALTER COLUMN touched_files SET DEFAULT '[]'::jsonb`},
 		{"conversation_events.touched_files default", `ALTER TABLE conversation_events ALTER COLUMN touched_files SET DEFAULT '[]'::jsonb`},
 		{"conversation_events.payload default", `ALTER TABLE conversation_events ALTER COLUMN payload SET DEFAULT '{}'::jsonb`},
 		{"conversation_events logical unique index", `CREATE UNIQUE INDEX IF NOT EXISTS ux_conversation_events_logical ON conversation_events (session_id, request_id, event_start_ts, event_kind, source, COALESCE(tool_name, ''))`},

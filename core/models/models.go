@@ -77,35 +77,36 @@ type Conversation struct {
 func (Conversation) TableName() string { return "conversations" }
 
 type Commit struct {
-	CommitId                   string    `gorm:"primaryKey;type:varchar(255)" json:"commit_id"`
-	CommitTime                 time.Time `gorm:"type:timestamptz;index" json:"commit_time"`
-	RepoAddr                   string    `gorm:"type:text;index;index:idx_commits_repo_addr_branch" json:"repo_addr"`
-	RepoBranch                 string    `gorm:"type:varchar(500);index:idx_commits_repo_addr_branch" json:"repo_branch"`
-	GitUserName                string    `gorm:"type:varchar(255)" json:"git_user_name"`
-	GitUserEmail               string    `gorm:"type:varchar(255)" json:"git_user_email"`
-	UserId                     string    `gorm:"type:varchar(255);index" json:"user_id"`
-	UserName                   string    `gorm:"type:varchar(255)" json:"user_name"`
-	ClientId                   string    `gorm:"type:varchar(255)" json:"client_id"`
-	WorkDir                    string    `gorm:"type:text" json:"work_dir"`
-	WorkDirId                  string    `gorm:"type:varchar(500);index" json:"work_dir_id"`
-	DiffLines                  int       `gorm:"type:int" json:"diff_lines"`
-	CommitAncientMinutes       float64   `gorm:"type:float8" json:"commit_ancient_minutes"`
-	CommitAncientReason        string    `gorm:"type:text" json:"commit_ancient_minutes_reason"`
-	CommitAncientMinutesManual *float64  `gorm:"type:float8" json:"commit_ancient_minutes_manual"`
-	CommitAncientReasonManual  string    `gorm:"type:text" json:"commit_ancient_minutes_reason_manual"`
-	UpstreamTokens             int64     `gorm:"type:bigint" json:"upstream_tokens"`
-	DownstreamTokens           int64     `gorm:"type:bigint" json:"downstream_tokens"`
-	Cost                       float64   `gorm:"type:float8" json:"cost"`
-	Silica                     float64   `gorm:"type:float8;default:0" json:"silica"`
-	CommitRealAiMinutes        float64   `gorm:"type:float8" json:"commit_real_ai_minutes"`
-	CommitRealNonAiMinutes     float64   `gorm:"type:float8" json:"commit_real_ancient_minutes"`
-	CommitRealMinutes          float64   `gorm:"type:float8" json:"commit_real_minutes"`
-	CommitRealReason           string    `gorm:"type:text" json:"commit_real_minutes_reason"`
-	CommitRealMinutesManual    *float64  `gorm:"type:float8" json:"commit_real_minutes_manual"`
-	CommitRealReasonManual     string    `gorm:"type:text" json:"commit_real_minutes_reason_manual"`
-	Comment                    string    `gorm:"type:text" json:"comment"`
-	CreatedAt                  time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt                  time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	CommitId                   string     `gorm:"primaryKey;type:varchar(255)" json:"commit_id"`
+	CommitTime                 time.Time  `gorm:"type:timestamptz;index" json:"commit_time"`
+	RepoAddr                   string     `gorm:"type:text;index;index:idx_commits_repo_addr_branch" json:"repo_addr"`
+	RepoBranch                 string     `gorm:"type:varchar(500);index:idx_commits_repo_addr_branch" json:"repo_branch"`
+	GitUserName                string     `gorm:"type:varchar(255)" json:"git_user_name"`
+	GitUserEmail               string     `gorm:"type:varchar(255)" json:"git_user_email"`
+	UserId                     string     `gorm:"type:varchar(255);index" json:"user_id"`
+	UserName                   string     `gorm:"type:varchar(255)" json:"user_name"`
+	ClientId                   string     `gorm:"type:varchar(255)" json:"client_id"`
+	WorkDir                    string     `gorm:"type:text" json:"work_dir"`
+	WorkDirId                  string     `gorm:"type:varchar(500);index" json:"work_dir_id"`
+	DiffLines                  int        `gorm:"type:int" json:"diff_lines"`
+	TouchedFiles               StringJSON `gorm:"type:jsonb;default:'[]'" json:"touched_files"`
+	CommitAncientMinutes       float64    `gorm:"type:float8" json:"commit_ancient_minutes"`
+	CommitAncientReason        string     `gorm:"type:text" json:"commit_ancient_minutes_reason"`
+	CommitAncientMinutesManual *float64   `gorm:"type:float8" json:"commit_ancient_minutes_manual"`
+	CommitAncientReasonManual  string     `gorm:"type:text" json:"commit_ancient_minutes_reason_manual"`
+	UpstreamTokens             int64      `gorm:"type:bigint" json:"upstream_tokens"`
+	DownstreamTokens           int64      `gorm:"type:bigint" json:"downstream_tokens"`
+	Cost                       float64    `gorm:"type:float8" json:"cost"`
+	Silica                     float64    `gorm:"type:float8;default:0" json:"silica"`
+	CommitRealAiMinutes        float64    `gorm:"type:float8" json:"commit_real_ai_minutes"`
+	CommitRealNonAiMinutes     float64    `gorm:"type:float8" json:"commit_real_ancient_minutes"`
+	CommitRealMinutes          float64    `gorm:"type:float8" json:"commit_real_minutes"`
+	CommitRealReason           string     `gorm:"type:text" json:"commit_real_minutes_reason"`
+	CommitRealMinutesManual    *float64   `gorm:"type:float8" json:"commit_real_minutes_manual"`
+	CommitRealReasonManual     string     `gorm:"type:text" json:"commit_real_minutes_reason_manual"`
+	Comment                    string     `gorm:"type:text" json:"comment"`
+	CreatedAt                  time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt                  time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Commit) TableName() string { return "commits" }

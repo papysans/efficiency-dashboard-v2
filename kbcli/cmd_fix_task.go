@@ -83,23 +83,19 @@ func fixSingleTask(db *gorm.DB, taskDir, taskID string) error {
 	}
 
 	var userInputs []string
-	var codeOutputs []string
-	var totalChars, totalLines int64
+	var totalChars int64
 	for _, c := range convs {
 		if c.UserInput != "" {
 			userInputs = append(userInputs, c.UserInput)
 			totalChars += int64(len(c.UserInput))
 		}
-		if c.Diff != "" {
-			codeOutputs = append(codeOutputs, c.Diff)
-		}
-		totalLines += c.DiffLines
 	}
 
 	if task.Title == "" && len(userInputs) > 0 {
 		title, err := callAIForTaskTitle(db, task.TaskId, userInputs)
 		if err == nil && title != "" {
 			UpdateTaskTitle(db, task.TaskId, title)
+			task.Title = title
 			logInfof("AI提取title完成: task=%s, title=%s", task.TaskId, title)
 		}
 	}
@@ -109,7 +105,11 @@ func fixSingleTask(db *gorm.DB, taskDir, taskID string) error {
 			logWarnf("task无对话数据，跳过估时: %s", task.TaskId)
 			return nil
 		}
-		minutes, reason, err := callAIForAncientEstimation(userInputs, codeOutputs, totalChars, totalLines)
+		if task.Title == "" {
+			logWarnf("task无标题，跳过估时: %s", task.TaskId)
+			return nil
+		}
+		minutes, reason, err := callAIForAncientEstimation(task.Title, task.DiffLines, totalChars)
 		if err != nil {
 			return fmt.Errorf("AI估时失败: %w", err)
 		}

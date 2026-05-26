@@ -63,6 +63,9 @@ func assertEfficiencyV2Tables(t *testing.T, db *sql.DB) {
 func assertEfficiencyV2Columns(t *testing.T, db *sql.DB) {
 	t.Helper()
 	expected := map[string]map[string]string{
+		"commits": {
+			"touched_files": "jsonb",
+		},
 		"conversation_events": {
 			"event_id":       "character varying",
 			"session_id":     "character varying",
@@ -333,6 +336,7 @@ func assertEfficiencyV2JSONDefaults(t *testing.T, db *sql.DB) {
 		fragment string
 	}{
 		{"conversation_events", "touched_files", "'[]'::jsonb"},
+		{"commits", "touched_files", "'[]'::jsonb"},
 		{"conversation_events", "payload", "'{}'::jsonb"},
 		{"session_stage_metrics", "event_kind_counts", "'{}'::jsonb"},
 		{"needs", "boundary_evidence", "'{}'::jsonb"},

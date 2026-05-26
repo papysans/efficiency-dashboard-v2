@@ -289,6 +289,7 @@ func efficiencyV2CandidateFromCommit(commit models.Commit) efficiencyV2BoundaryC
 		start:    commit.CommitTime,
 		end:      commit.CommitTime,
 		comment:  commit.Comment,
+		files:    efficiencyV2StringsFromJSON(commit.TouchedFiles),
 	}
 	candidate.prID = efficiencyV2ExtractPRID(commit.Comment)
 	candidate.issueID = efficiencyV2ExtractIssueID(commit.Comment)
