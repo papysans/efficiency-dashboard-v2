@@ -370,6 +370,20 @@ func TestAggregateEfficiencyV2NeedActuals_AlwaysIncludesCoveredRuleReason(t *tes
 	}
 }
 
+func TestNormalizeEfficiencyV2AlgoConfigCommitMinutesPerLineOverridesLineRate(t *testing.T) {
+	algo := normalizeEfficiencyV2AlgoConfig(EstimateConfig{
+		CommitLinePerMinutes: 0.2,
+		CommitMinutesPerLine: 2,
+	})
+
+	if algo.CommitMinutesPerLine != 2 {
+		t.Fatalf("CommitMinutesPerLine = %v, want 2", algo.CommitMinutesPerLine)
+	}
+	if algo.CommitLinePerMinutes != 0.5 {
+		t.Fatalf("CommitLinePerMinutes = %v, want 0.5", algo.CommitLinePerMinutes)
+	}
+}
+
 func efficiencyV2AggTestMetric(sessionID, userID string, start, end time.Time, activeMin float64) models.SessionStageMetric {
 	startCopy := start
 	endCopy := end

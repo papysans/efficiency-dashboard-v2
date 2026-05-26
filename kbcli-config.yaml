@@ -128,6 +128,10 @@ ai_estimation:
   http_proxy: ""
 
 algo_estimation:
+  # === v2 常用调参 ===
+  # 古法每写 1 行代码需要多少分钟。数值越大，古法基线越高，工作量提效越容易为正。
+  # 例如 2.0 表示古法约 30 行/小时；如果同时配置 commit_line_per_minutes，优先使用本字段。
+  commit_minutes_per_line: 2.0
   max_input_chars: 300000    # 最大输入字符数
   max_ratio: 50              # 工作量的最大倍数
   max_factor: 1.0            # 最大的加权系数
@@ -135,6 +139,32 @@ algo_estimation:
   inchars_per_minutes: 20    # 人每分钟输入20个字
   lines_per_minutes: 2       # 人每分钟输入2行代码
   min_minutes: 5             # 最小分钟数
+  # 兼容旧字段：古法每分钟写多少行。新调参优先改 commit_minutes_per_line。
+  # commit_line_per_minutes: 0.5
+
+efficiency_mode: new
+
+efficiency_v2:
+  # === v2 常用调参 ===
+  baseline_defaults:
+    # 三种古法基线的融合权重。LLM 关闭时，会在可用基线之间自动重归一。
+    # 想让工作量提效更容易为正：提高 weight_algo，降低 weight_knn。
+    weight_algo: 0.60
+    weight_knn: 0.15
+    weight_llm: 0.25
+    # 工作量换算为日历周期的密度，只影响日历提效，不影响工作量提效。
+    team_work_density: 0.35
+  stage:
+    # 原始工具调用没有结束时间时，用这些默认耗时补齐。
+    default_edit_duration_seconds: 30
+    default_read_duration_seconds: 10
+    default_command_duration_seconds: 30
+    default_other_duration_seconds: 10
+    # 消息事件按字符数估时：300 表示每分钟 300 字。
+    default_message_chars_per_minute: 300
+    gap_threshold_minutes: 5
+    extension_minutes: 2
+    max_inferred_duration_gap_minutes: 5
 
 task_statistics:
   gap_threshold_minutes: 10
@@ -158,4 +188,3 @@ serve:
       command: import
       params:
         force: false
-

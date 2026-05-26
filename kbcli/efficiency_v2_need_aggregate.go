@@ -486,8 +486,13 @@ func mergeEfficiencyV2Intervals(intervals [][2]time.Time) [][2]time.Time {
 }
 
 func normalizeEfficiencyV2AlgoConfig(algo EstimateConfig) EstimateConfig {
-	if algo.CommitLinePerMinutes <= 0 {
+	if algo.CommitMinutesPerLine > 0 {
+		algo.CommitLinePerMinutes = 1 / algo.CommitMinutesPerLine
+	} else if algo.CommitLinePerMinutes <= 0 {
 		algo.CommitLinePerMinutes = efficiencyV2DefaultLinesPerMinute
+		algo.CommitMinutesPerLine = 1 / algo.CommitLinePerMinutes
+	} else {
+		algo.CommitMinutesPerLine = 1 / algo.CommitLinePerMinutes
 	}
 	if algo.MinMinutes < 0 {
 		algo.MinMinutes = 0

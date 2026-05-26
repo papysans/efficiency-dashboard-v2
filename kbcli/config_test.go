@@ -265,6 +265,12 @@ model_prices: {}
 	if baseline.TeamWorkDensity != 0.25 {
 		t.Errorf("BaselineDefaults.TeamWorkDensity: want 0.25, got %f", baseline.TeamWorkDensity)
 	}
+	if cfg.AlgoEstimation.CommitLinePerMinutes != 100.0/480.0 {
+		t.Errorf("AlgoEstimation.CommitLinePerMinutes: want %v, got %v", 100.0/480.0, cfg.AlgoEstimation.CommitLinePerMinutes)
+	}
+	if cfg.AlgoEstimation.CommitMinutesPerLine != 480.0/100.0 {
+		t.Errorf("AlgoEstimation.CommitMinutesPerLine: want %v, got %v", 480.0/100.0, cfg.AlgoEstimation.CommitMinutesPerLine)
+	}
 
 	expectedPatterns := []string{
 		"go test",
@@ -312,6 +318,34 @@ model_prices: {}
 	}
 	if !reflect.DeepEqual(cfg.EfficiencyV2.VerificationCommandPatterns, expectedPatterns) {
 		t.Errorf("VerificationCommandPatterns mismatch:\nwant %#v\ngot  %#v", expectedPatterns, cfg.EfficiencyV2.VerificationCommandPatterns)
+	}
+}
+
+func TestLoadConfig_CommitMinutesPerLineOverridesLineRate(t *testing.T) {
+	yaml := `
+model_prices: {}
+algo_estimation:
+  commit_line_per_minutes: 0.2
+  commit_minutes_per_line: 2
+`
+	f, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatalf("创建临时文件失败: %v", err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(yaml)
+	f.Close()
+
+	cfg, err := LoadConfig(f.Name())
+	if err != nil {
+		t.Fatalf("LoadConfig 返回错误: %v", err)
+	}
+
+	if cfg.AlgoEstimation.CommitMinutesPerLine != 2 {
+		t.Errorf("CommitMinutesPerLine: want 2, got %v", cfg.AlgoEstimation.CommitMinutesPerLine)
+	}
+	if cfg.AlgoEstimation.CommitLinePerMinutes != 0.5 {
+		t.Errorf("CommitLinePerMinutes: want 0.5, got %v", cfg.AlgoEstimation.CommitLinePerMinutes)
 	}
 }
 

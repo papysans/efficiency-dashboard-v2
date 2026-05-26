@@ -39,6 +39,7 @@ type EstimateConfig struct {
 	LinesPerMinutes      float64 `yaml:"lines_per_minutes"`       //人每分钟输入2行代码
 	MinMinutes           float64 `yaml:"min_minutes"`             //最小分钟数
 	CommitLinePerMinutes float64 `yaml:"commit_line_per_minutes"` //传统开发人天代码量基准值（行/人天），默认值100行/人天
+	CommitMinutesPerLine float64 `yaml:"commit_minutes_per_line"` //传统开发每行代码耗时；优先级高于 commit_line_per_minutes
 }
 
 type TaskTimeStatistics struct {
@@ -284,8 +285,13 @@ func LoadConfig(filename string) (*Config, error) {
 	if c.AlgoEstimation.MinMinutes == 0 {
 		c.AlgoEstimation.MinMinutes = 5
 	}
-	if c.AlgoEstimation.CommitLinePerMinutes == 0 {
+	if c.AlgoEstimation.CommitMinutesPerLine > 0 {
+		c.AlgoEstimation.CommitLinePerMinutes = 1 / c.AlgoEstimation.CommitMinutesPerLine
+	} else if c.AlgoEstimation.CommitLinePerMinutes == 0 {
 		c.AlgoEstimation.CommitLinePerMinutes = DefaultTraditionalDevLinesPerDay / 480.0
+		c.AlgoEstimation.CommitMinutesPerLine = 1 / c.AlgoEstimation.CommitLinePerMinutes
+	} else {
+		c.AlgoEstimation.CommitMinutesPerLine = 1 / c.AlgoEstimation.CommitLinePerMinutes
 	}
 	if c.TaskStatistics.ExtensionMinutes == 0 {
 		c.TaskStatistics.ExtensionMinutes = 5
