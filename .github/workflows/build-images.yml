@@ -15,6 +15,8 @@ on:
 env:
   REGISTRY: ghcr.io
 
+# 只用 actions/checkout；docker login/build/push 全走 runner 自带 docker CLI，
+# 不依赖 docker/* marketplace action（该 runner 下载 docker/* action 持续失败）。
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,36 +35,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 计算版本号（beta 前缀）
-        id: ver
+      - name: 构建并推送 ${{ matrix.name }}（linux/amd64）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          NAME: ${{ matrix.name }}
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            RAW="${{ github.event.inputs.version }}"
-          else
-            RAW="${GITHUB_REF_NAME}"
-          fi
-          echo "version=beta-${RAW}" >> "$GITHUB_OUTPUT"   # ← beta 前缀
-          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"   # 转小写，ghcr 要求
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: 登录 ghcr
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 构建并推送 ${{ matrix.name }}（amd64 + arm64）
-        uses: docker/build-push-action@v6
-        with:
-          context: .                       # 仓库根（Dockerfile 的 COPY 基于根目录）
-          file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64    # 内网为 x86；如需 arm64 再加回 ,linux/arm64（需 setup-qemu-action）
-          push: true
-          provenance: false                # 单一 manifest list，便于 docker save/load 到内网
-          build-args: |
-            VERSION=${{ steps.ver.outputs.version }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.ver.outputs.owner }}/efficiency-dashboard-${{ matrix.name }}:${{ steps.ver.outputs.version }}
-            ${{ env.REGISTRY }}/${{ steps.ver.outputs.owner }}/efficiency-dashboard-${{ matrix.name }}:beta
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then RAW="$INPUT_VERSION"; else RAW="$GITHUB_REF_NAME"; fi
+          VERSION="beta-${RAW}"                       # beta 前缀
+          OWNER_LC="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"   # ghcr 要求小写
+          IMG="${REGISTRY}/${OWNER_LC}/efficiency-dashboard-${NAME}"
+          echo "==> $IMG:$VERSION (+ :beta)"
+          echo "$GH_TOKEN" | docker login "$REGISTRY" -u "$ACTOR" --password-stdin
+          DOCKER_BUILDKIT=1 docker build \
+            -f "$DOCKERFILE" \
+            --build-arg VERSION="$VERSION" \
+            -t "$IMG:$VERSION" -t "$IMG:beta" .
+          docker push "$IMG:$VERSION"
+          docker push "$IMG:beta"
