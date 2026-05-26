@@ -24,6 +24,8 @@ FROM alpine:3.21 AS runtime
 ENV env=prod
 ENV TZ=Asia/Shanghai
 WORKDIR /app
+# curl 供 compose healthcheck 使用（alpine 默认无 curl）；tzdata 供 Asia/Shanghai 时区
+RUN apk add --no-cache curl tzdata
 COPY --from=builder /app/efficiency-dashboard-backend /app/efficiency-dashboard-backend
 
 ENTRYPOINT ["/app/efficiency-dashboard-backend"]

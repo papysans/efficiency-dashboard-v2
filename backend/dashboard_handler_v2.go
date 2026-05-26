@@ -28,6 +28,25 @@ type DashboardSummaryResponse struct {
 	TotalCommitAncientMinutes float64 `json:"total_commit_ancient_minutes"`
 	TotalCommitRealMinutes    float64 `json:"total_commit_real_minutes"`
 	CommitEfficiencyRatio     float64 `json:"commit_efficiency_ratio"`
+
+	// v2（Need 维度）派生指标：当只跑了 v2 管道、tasks 表为空时，首页用这些字段展示真实数据。
+	TotalUsersV2            int      `json:"total_users_v2"`
+	TotalNeeds              int      `json:"total_needs"`
+	MergedNeeds             int      `json:"merged_needs"`
+	EligibleNeeds           int      `json:"eligible_needs"`
+	NeedActualCalendarMin   float64  `json:"need_actual_calendar_min"`
+	NeedBaselineCalendarMin float64  `json:"need_baseline_calendar_min"`
+	NeedCalendarRatio       *float64 `json:"need_calendar_ratio"`
+	NeedWorkRatio           *float64 `json:"need_work_ratio"`
+}
+
+// efficiencyV2Ratio 返回 v2 小数口径提效比 (baseline - actual) / actual；actual<=0 返回 nil。
+func efficiencyV2Ratio(baseline, actual float64) *float64 {
+	if actual <= 0 {
+		return nil
+	}
+	r := (baseline - actual) / actual
+	return &r
 }
 
 // getDashboardSummary GET /api/v2/dashboard/summary
@@ -75,12 +94,36 @@ func getDashboardSummary(c *gin.Context) {
 		return
 	}
 
+	needAgg, err := QueryDashboardNeedAgg(statDB, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
 	taskRatio := utils.CalcEfficiencyRatio(taskAgg.TotalAncientMinutes, taskAgg.TotalRealMinutes)
 	commitRatio := utils.CalcEfficiencyRatio(commitAgg.TotalAncientMinutes, commitAgg.TotalRealMinutes)
 
+	// Need 维度综合提效：小数口径 (baseline - actual) / actual，仅当实际值>0时有意义。
+	needCalendarRatio := efficiencyV2Ratio(needAgg.BaselineCalendarMin, needAgg.ActualCalendarMin)
+	needWorkRatio := efficiencyV2Ratio(needAgg.BaselineWorkMin, needAgg.ActualWorkMin)
+
+	// 总用户数：tasks 为空时回退到 commits 去重用户，保证首页有真实值。
+	totalUsers := taskAgg.TotalUsers
+	if totalUsers == 0 {
+		totalUsers = commitAgg.TotalUsers
+	}
+
 	c.JSON(http.StatusOK, DashboardSummaryResponse{
+		TotalUsersV2:            commitAgg.TotalUsers,
+		TotalNeeds:              needAgg.TotalNeeds,
+		MergedNeeds:             needAgg.MergedNeeds,
+		EligibleNeeds:           needAgg.EligibleNeeds,
+		NeedActualCalendarMin:   needAgg.ActualCalendarMin,
+		NeedBaselineCalendarMin: needAgg.BaselineCalendarMin,
+		NeedCalendarRatio:       needCalendarRatio,
+		NeedWorkRatio:           needWorkRatio,
 		TotalTasks:                taskAgg.TotalTasks,
-		TotalUsers:                taskAgg.TotalUsers,
+		TotalUsers:                totalUsers,
 		TotalWorkDirs:             taskAgg.TotalWorkDirs,
 		TotalCost:                 taskAgg.TotalCost,
 		TotalTokens:               taskAgg.TotalTokens,

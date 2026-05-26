@@ -397,16 +397,30 @@ func recalculateProjectAggregates(projectID string) error {
 	}
 
 	// 遍历 commits
+	commitIDsForDerive := make([]string, 0, len(commitMap))
+	for _, commit := range commitMap {
+		if commit.CommitAncientMinutes <= 0 || commit.CommitRealMinutes <= 0 {
+			commitIDsForDerive = append(commitIDsForDerive, commit.CommitId)
+		}
+	}
+	derivedAncient, derivedReal, err := deriveCommitWorkMinutesBatch(statDB, commitIDsForDerive)
+	if err != nil {
+		log.Printf("批量派生项目 commit 工时失败: %v", err)
+	}
 	for _, commit := range commitMap {
 		if commit.CommitAncientMinutesManual != nil {
 			ancientMinutes += *commit.CommitAncientMinutesManual
-		} else {
+		} else if commit.CommitAncientMinutes > 0 {
 			ancientMinutes += commit.CommitAncientMinutes
+		} else {
+			ancientMinutes += derivedAncient[commit.CommitId]
 		}
 		if commit.CommitRealMinutesManual != nil {
 			realProcessMinutes += *commit.CommitRealMinutesManual
-		} else {
+		} else if commit.CommitRealMinutes > 0 {
 			realProcessMinutes += commit.CommitRealMinutes
+		} else {
+			realProcessMinutes += derivedReal[commit.CommitId]
 		}
 		if !commit.CommitTime.IsZero() {
 			if minTime == nil || commit.CommitTime.Before(*minTime) {
@@ -561,6 +575,12 @@ func listProjectsV2(c *gin.Context) {
 				}
 				if lc.DiffLines > 0 {
 					totalCodeLines += int64(lc.DiffLines)
+				}
+				if lc.AncientMinutes > 0 {
+					p.ProjectAncientMinutes += lc.AncientMinutes
+				}
+				if lc.RealMinutes > 0 {
+					p.ProjectRealProcessMinutes += lc.RealMinutes
 				}
 			}
 		}

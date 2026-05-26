@@ -8,6 +8,30 @@ export function fmtCost(row, col, value) {
 }
 
 /**
+ * v2 提效比格式化。
+ * v2 ratio 是小数口径：0.25 表示 25%，不同于 legacy 300=300%。
+ */
+export function formatV2Ratio(value, digits = 1) {
+  if (value == null || value === '') return '-'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  return `${(num * 100).toFixed(digits)}%`
+}
+
+/**
+ * 数值千分位格式化。
+ */
+export function formatNumber(value, digits = 0) {
+  if (value == null || value === '') return '-'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  return num.toLocaleString('zh-CN', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}
+
+/**
  * AI预估人天（保留1位小数，0 返回 '-'）
  * 兼容 el-table :formatter 签名
  */

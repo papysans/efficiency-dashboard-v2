@@ -85,6 +85,7 @@ func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need,
 			"silica_signal",
 			"ai_code_ratio_signal",
 			"uncovered_work_signal",
+			"coverage_eligible",
 			"updated_at",
 		}),
 	}).CreateInBatches(&updated, 500).Error; err != nil {
@@ -140,6 +141,14 @@ func aggregateOneEfficiencyV2Need(need models.Need, metricsBySession map[string]
 
 	idleThreshold := efficiencyV2IdleThreshold(cfg)
 	need.TotalCalendarMin = computeEfficiencyV2DevCalendarMinutes(need.DevStartTs, need.DevEndTs, sessions, needCommits, idleThreshold)
+
+	// 提效比依赖"真实可测的开发日历"。无真实时间信号的 Need（无会话、单 commit/零跨度）
+	// total_calendar_min<=0，标为数据受限、排除出提效计算——不用 commit 估时硬填，
+	// 经仿真验证硬填 30min 对上千分钟 baseline 会产出 40x~700x 的离谱比值。
+	// 多 commit 时间跨度 (>0) 仍保留，是有意义的实际耗时。
+	if need.CoverageEligible && need.TotalCalendarMin <= 0 {
+		need.CoverageEligible = false
+	}
 	return need
 }
 

@@ -4,7 +4,7 @@ services:
     restart: always
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - ./org_mapping.csv:/app/org_mapping.csv:ro
+      # 组织映射由 backend 从 user_org 表加载（kbcli import-org 写入），不读 CSV，故不挂载。
       - /mnt/prod_env/user-indicator/raw/task:/app/task
       - /mnt/prod_env/user-indicator/raw/repo:/app/repo
     ports:

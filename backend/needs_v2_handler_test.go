@@ -12,27 +12,30 @@ func TestSummarizeNeed_CopiesPersistedFields(t *testing.T) {
 	bandHigh := 0.4
 	work := 0.30
 	calendar := 400.0
+	fused := 260.0
 	need := models.Need{
-		NeedId:                "n-1",
-		BoundarySource:        "lv2_branch",
-		BoundaryConfidence:    "high",
-		Status:                "merged",
-		RepoAddr:              "git@example.com/x.git",
-		RepoBranch:            "feature/x",
-		PrimaryUserId:         "u-1",
-		TotalCalendarMin:      300,
-		BaselineCalendarMin:   &calendar,
-		EfficiencyRatio:       &ratio,
-		EfficiencyLowerBand:   &bandLow,
-		EfficiencyUpperBand:   &bandHigh,
-		WorkEfficiencyRatio:   &work,
-		ConfidenceLevel:       "high",
-		OutlierFlag:           false,
-		CoverageEligible:      true,
-		ThinkActiveMin:        20,
-		ExecutionActiveMin:    40,
-		VerificationActiveMin: 10,
-		Reason:                "ok",
+		NeedId:                      "n-1",
+		BoundarySource:              "lv2_branch",
+		BoundaryConfidence:          "high",
+		Status:                      "merged",
+		RepoAddr:                    "git@example.com/x.git",
+		RepoBranch:                  "feature/x",
+		PrimaryUserId:               "u-1",
+		TotalCalendarMin:            300,
+		BaselineCalendarMin:         &calendar,
+		TotalActiveWorkCorrectedMin: 210,
+		BaselineFusedWorkMin:        &fused,
+		EfficiencyRatio:             &ratio,
+		EfficiencyLowerBand:         &bandLow,
+		EfficiencyUpperBand:         &bandHigh,
+		WorkEfficiencyRatio:         &work,
+		ConfidenceLevel:             "high",
+		OutlierFlag:                 false,
+		CoverageEligible:            true,
+		ThinkActiveMin:              20,
+		ExecutionActiveMin:          40,
+		VerificationActiveMin:       10,
+		Reason:                      "ok",
 	}
 	got := summarizeNeed(need)
 	if got.NeedId != "n-1" || got.EfficiencyRatio == nil || *got.EfficiencyRatio != 0.25 {
@@ -43,6 +46,9 @@ func TestSummarizeNeed_CopiesPersistedFields(t *testing.T) {
 	}
 	if got.WorkEfficiencyRatio == nil || *got.WorkEfficiencyRatio != 0.30 {
 		t.Fatalf("work efficiency not copied")
+	}
+	if got.TotalActiveWorkMin != 210 || got.BaselineFusedWorkMin == nil || *got.BaselineFusedWorkMin != 260 {
+		t.Fatalf("work terms not copied")
 	}
 }
 

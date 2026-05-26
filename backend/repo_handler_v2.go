@@ -260,6 +260,29 @@ func getRepoDetailV2(c *gin.Context) {
 		return
 	}
 
+	// 步骤 1.5：为缺失工时的 commit 派生 实际耗时（提交间隔法）/ 传统耗时（Need 平摊）。
+	deriveIDs := make([]string, 0, len(commits))
+	for i := range commits {
+		if commits[i].CommitAncientMinutes <= 0 || commits[i].CommitRealMinutes <= 0 {
+			deriveIDs = append(deriveIDs, commits[i].CommitId)
+		}
+	}
+	if len(deriveIDs) > 0 {
+		dAnc, dReal, derr := deriveCommitWorkMinutesBatch(statDB, deriveIDs)
+		if derr != nil {
+			log.Printf("repo 详情派生 commit 工时失败: %v", derr)
+		} else {
+			for i := range commits {
+				if commits[i].CommitAncientMinutes <= 0 && dAnc[commits[i].CommitId] > 0 {
+					commits[i].CommitAncientMinutes = dAnc[commits[i].CommitId]
+				}
+				if commits[i].CommitRealMinutes <= 0 && dReal[commits[i].CommitId] > 0 {
+					commits[i].CommitRealMinutes = dReal[commits[i].CommitId]
+				}
+			}
+		}
+	}
+
 	// 步骤 2：从 commits 查关联 tasks
 	commitIDs := make([]string, len(commits))
 	for i, cm := range commits {

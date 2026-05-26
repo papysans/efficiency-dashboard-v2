@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatLocalTime, formatDuration } from './formatters.js'
+import { formatLocalTime, formatDuration, formatNumber, formatV2Ratio } from './formatters.js'
 
 // ============================================================
 // 测试点 3: formatLocalTime 函数
@@ -114,5 +114,36 @@ describe('formatDuration', () => {
 
   it('30.6 分钟四舍五入为 "31分钟"', () => {
     expect(formatDuration(30.6)).toBe('31分钟')
+  })
+})
+
+describe('formatV2Ratio', () => {
+  it('按 v2 小数口径渲染百分比', () => {
+    expect(formatV2Ratio(0.0667)).toBe('6.7%')
+    expect(formatV2Ratio(-0.0911)).toBe('-9.1%')
+    expect(formatV2Ratio(1)).toBe('100.0%')
+  })
+
+  it('不使用 legacy 300=300% 口径', () => {
+    expect(formatV2Ratio(300)).toBe('30000.0%')
+  })
+
+  it('空值和非法值返回 "-"', () => {
+    expect(formatV2Ratio(null)).toBe('-')
+    expect(formatV2Ratio(undefined)).toBe('-')
+    expect(formatV2Ratio('abc')).toBe('-')
+  })
+})
+
+describe('formatNumber', () => {
+  it('格式化千分位和小数位', () => {
+    expect(formatNumber(12345.678, 2)).toBe('12,345.68')
+    expect(formatNumber(12345.678)).toBe('12,346')
+  })
+
+  it('空值和非法值返回 "-"', () => {
+    expect(formatNumber(null)).toBe('-')
+    expect(formatNumber(undefined)).toBe('-')
+    expect(formatNumber('abc')).toBe('-')
   })
 })

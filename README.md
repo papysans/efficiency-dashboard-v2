@@ -154,6 +154,18 @@ docker-compose up -d
 - `portal` — 前端 Nginx
 - `kbcli` — 数据处理 CLI 服务
 
+前端看板可单独打包为 Nginx 镜像：
+
+```bash
+make package-portal VER=1.0.2
+```
+
+后端与前端镜像一起打包：
+
+```bash
+make package-all VER=1.0.2
+```
+
 ### Helm（Kubernetes）
 
 支持两种部署模式：

@@ -218,7 +218,8 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 			conversations[i].addedLines = extractAddedLinesFromDiff(conv.Diff)
 		}
 		// 统计新增代码行数，并清空 Diff 原文以释放内存
-		conversations[i].DiffLines = int64(len(conv.addedLines))
+		// 注意：必须读 conversations[i]（切片元素），conv 是 range 的值拷贝，addedLines 不会同步。
+		conversations[i].DiffLines = int64(len(conversations[i].addedLines))
 		conversations[i].Diff = ""
 	}
 }

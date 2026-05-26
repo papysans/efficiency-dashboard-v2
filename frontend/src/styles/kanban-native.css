@@ -1,0 +1,251 @@
+/*
+ * kanban-native.css —— 复刻 costrict-web/opencode (app-ai-native) 看板观感的设计 token。
+ * 所有规则都挂在 .kanban-native 作用域下，仅作用于 Need 维度页面，
+ * 不影响项目其它 Element Plus 页面。token 取自 opencode native-theme.css 的 light 主题。
+ */
+.kanban-native {
+  --native-bg: oklch(98.2% 0.007 255);
+  --native-bg-subtle: oklch(96.8% 0.01 255);
+  --native-surface: oklch(95.2% 0.013 255);
+  --native-surface-strong: oklch(92.7% 0.017 255);
+  --native-panel: oklch(99.3% 0.003 255);
+  --native-panel-soft: color-mix(in oklab, var(--native-panel) 90%, var(--native-bg-subtle));
+  --native-foreground: oklch(27.4% 0.031 258);
+  --native-muted: oklch(44.9% 0.018 255);
+  --native-dim: oklch(59.6% 0.014 255);
+  --native-border: oklch(82.8% 0.014 255);
+  --native-border-strong: oklch(65.5% 0.022 256);
+  --native-primary: #0053dc;
+  --native-primary-hover: #0045b9;
+  --native-primary-soft: color-mix(in oklab, var(--native-primary) 11%, var(--native-panel));
+  --native-success: oklch(58.1% 0.129 160);
+  --native-success-soft: oklch(95.5% 0.035 163);
+  --native-warning: oklch(71.8% 0.149 71);
+  --native-warning-soft: oklch(96.4% 0.038 80);
+  --native-error: oklch(60.8% 0.203 25);
+  --native-error-soft: oklch(96.1% 0.032 20);
+  --native-info: oklch(64.2% 0.127 248);
+  --native-info-soft: oklch(95.9% 0.025 248);
+  --native-radius-md: 0.875rem;
+  --native-radius-lg: 1.125rem;
+  --native-radius-full: 9999px;
+  --native-shadow-sm: 0 10px 24px -20px color-mix(in oklab, var(--native-foreground) 14%, transparent);
+  --native-shadow-md: 0 18px 50px -28px color-mix(in oklab, var(--native-foreground) 20%, transparent),
+    0 10px 22px -18px color-mix(in oklab, var(--native-primary) 10%, transparent);
+  --native-border-weak: color-mix(in oklab, var(--native-border) 24%, transparent);
+
+  position: relative;
+  min-height: 100%;
+  overflow: hidden auto;
+  background:
+    radial-gradient(circle at top, color-mix(in oklab, var(--native-primary) 6%, transparent) 0, transparent 34%),
+    var(--native-bg);
+  color: var(--native-foreground);
+  font-family: "Aptos", "Segoe UI Variable Text", "SF Pro Text", -apple-system, system-ui, sans-serif;
+}
+
+/* 背景柔光，复刻 opencode layout 的两团 radial blob */
+.kanban-native::before,
+.kanban-native::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 0;
+}
+.kanban-native::before {
+  left: -8rem;
+  top: -8rem;
+  width: 18rem;
+  height: 18rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--native-success) 8%, transparent), transparent 72%);
+}
+.kanban-native::after {
+  right: -8rem;
+  bottom: -9rem;
+  width: 19rem;
+  height: 19rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--native-warning) 8%, transparent), transparent 72%);
+}
+
+/* 页面骨架 */
+.kn-page {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(1rem, 2vw, 2rem);
+}
+.kn-header { display: flex; flex-direction: column; gap: 0.75rem; }
+.kn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  font-size: 0.875rem;
+  color: var(--native-muted);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: color 150ms;
+}
+.kn-back:hover { color: var(--native-foreground); }
+.kn-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.kn-title {
+  margin: 0;
+  font-size: 1.875rem;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  color: var(--native-foreground);
+}
+.kn-subtitle { margin: 0.25rem 0 0; font-size: 0.875rem; color: var(--native-muted); }
+.kn-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; }
+
+/* 指标卡网格 */
+.kn-metrics {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 768px) { .kn-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .kn-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.kn-metrics-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1024px) { .kn-metrics-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* 面板 */
+.kn-panel {
+  overflow: hidden;
+  border: 1px solid var(--native-border-weak);
+  border-radius: var(--native-radius-lg);
+  background: var(--native-panel);
+  box-shadow: var(--native-shadow-sm);
+}
+.kn-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--native-border-weak);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--native-foreground);
+}
+.kn-panel-head .kn-panel-hint { font-size: 0.8125rem; font-weight: 400; color: var(--native-muted); }
+.kn-panel-body { padding: 1rem; }
+.kn-grid-2 { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+@media (min-width: 1024px) { .kn-grid-2 { grid-template-columns: 1fr 1fr; } }
+
+/* key-value 信息网格（替代裸 el-descriptions / JSON） */
+.kn-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.25rem 1.5rem;
+}
+.kn-kv-item { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.5rem 0; min-width: 0; }
+.kn-kv-item.is-wide { grid-column: 1 / -1; }
+.kn-kv-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--native-dim);
+}
+.kn-kv-value { font-size: 0.9375rem; color: var(--native-foreground); word-break: break-word; }
+.kn-kv-value.is-mono { font-family: "SF Mono", "Cascadia Mono", Consolas, monospace; font-size: 0.8125rem; }
+.kn-kv-value.is-muted { color: var(--native-muted); }
+
+/* 原生表格（plain table，复刻 opencode 表观感） */
+.kn-table-wrap { overflow-x: auto; }
+.kn-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.kn-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--native-panel);
+  text-align: left;
+  font-weight: 600;
+  color: var(--native-muted);
+  white-space: nowrap;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--native-border-weak);
+}
+.kn-table tbody td {
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--native-border) 16%, transparent);
+  color: var(--native-foreground);
+  vertical-align: middle;
+}
+.kn-table tbody tr:last-child td { border-bottom: 0; }
+.kn-table tbody tr.is-clickable { cursor: pointer; }
+.kn-table tbody tr:hover td { background: color-mix(in oklab, var(--native-primary) 4%, transparent); }
+.kn-table tbody tr.is-outlier td { background: color-mix(in oklab, var(--native-error) 7%, transparent); }
+.kn-table tbody tr.is-outlier:hover td { background: color-mix(in oklab, var(--native-error) 12%, transparent); }
+.kn-num { text-align: right; font-variant-numeric: tabular-nums; }
+.kn-empty { padding: 2.5rem 1rem; text-align: center; color: var(--native-muted); font-size: 0.875rem; }
+.kn-ellipsis { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 链接按钮 */
+.kn-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--native-primary);
+  cursor: pointer;
+  transition: color 150ms;
+  font: inherit;
+}
+.kn-link:hover { color: var(--native-foreground); }
+
+/* 状态/信号 chip */
+.kn-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid;
+  border-radius: var(--native-radius-full);
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.kn-tag--neutral { border-color: var(--native-border); background: var(--native-surface); color: var(--native-muted); }
+.kn-tag--primary { border-color: color-mix(in oklab, var(--native-primary) 30%, transparent); background: var(--native-primary-soft); color: var(--native-primary); }
+.kn-tag--success { border-color: color-mix(in oklab, var(--native-success) 35%, transparent); background: var(--native-success-soft); color: var(--native-success); }
+.kn-tag--warning { border-color: color-mix(in oklab, var(--native-warning) 40%, transparent); background: var(--native-warning-soft); color: oklch(46.4% 0.085 62); }
+.kn-tag--error { border-color: color-mix(in oklab, var(--native-error) 35%, transparent); background: var(--native-error-soft); color: var(--native-error); }
+.kn-tag--info { border-color: color-mix(in oklab, var(--native-info) 35%, transparent); background: var(--native-info-soft); color: var(--native-info); }
+
+.kn-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.kn-pagination { display: flex; justify-content: flex-end; padding: 0.75rem 1rem; border-top: 1px solid var(--native-border-weak); }
+
+/* ===== 把 .kanban-native 内的 Element Plus 表单控件对齐 native 观感 ===== */
+.kanban-native .el-input__wrapper,
+.kanban-native .el-select__wrapper {
+  border-radius: var(--native-radius-md);
+  background: var(--native-panel);
+  box-shadow: 0 0 0 1px var(--native-border) inset;
+}
+.kanban-native .el-input__wrapper.is-focus,
+.kanban-native .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--native-primary) inset;
+}
+.kanban-native .el-button {
+  border-radius: var(--native-radius-md);
+}
+.kanban-native .el-button--primary {
+  --el-button-bg-color: var(--native-primary);
+  --el-button-border-color: var(--native-primary);
+  --el-button-hover-bg-color: var(--native-primary-hover);
+  --el-button-hover-border-color: var(--native-primary-hover);
+}
+.kanban-native .el-pagination { --el-pagination-button-bg-color: transparent; }

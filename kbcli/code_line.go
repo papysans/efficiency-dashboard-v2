@@ -46,7 +46,38 @@ func extractAddedLinesFromDiff(diffText string) []addedLine {
 		return extractFromBeforeAfterDiff(diffText)
 	}
 
-	return extractFromUnifiedDiff(diffText)
+	unified := extractFromUnifiedDiff(diffText)
+	if len(unified) > 0 {
+		return unified
+	}
+
+	// 兜底：部分对话的 diff 字段是 AI 直接输出的裸代码（无 diff --git / @@ / + 标记，
+	// 也没有文件名），unified-diff 解析会得到 0 行。此时把每个非空行当作新增代码行，
+	// 以便统计 diff_lines（用于阶段分类 edit/exec）。注意：缺文件名时指纹无法与 commit
+	// 侧匹配，故对 silica 帮助有限，主要用于恢复"执行"阶段。
+	if !looksLikeUnifiedDiff(diffText) {
+		return extractFromRawCode(diffText)
+	}
+	return unified
+}
+
+// looksLikeUnifiedDiff 判断文本是否为标准 unified diff（含 diff --git / @@ 块头 / +++ 文件头）。
+func looksLikeUnifiedDiff(diffText string) bool {
+	return strings.Contains(diffText, "diff --git") ||
+		strings.Contains(diffText, "\n@@ ") || strings.HasPrefix(diffText, "@@ ") ||
+		strings.Contains(diffText, "\n+++ ") || strings.HasPrefix(diffText, "+++ ")
+}
+
+// extractFromRawCode 把裸代码文本的每个非空行当作一条新增行（无文件路径）。
+func extractFromRawCode(text string) []addedLine {
+	var result []addedLine
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			result = append(result, addedLine{FilePath: "", Content: trimmed})
+		}
+	}
+	return result
 }
 
 func extractFromUnifiedDiff(diffText string) []addedLine {

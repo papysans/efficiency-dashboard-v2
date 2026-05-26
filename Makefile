@@ -4,6 +4,7 @@
 # 如果要在生产环境部署应用可以指定ENV参数，如: make ENV=prod deploy
 #
 APP    := efficiency-dashboard-backend
+PORTAL_APP := efficiency-dashboard-portal
 VER    := 1.0.2
 OS     := $(shell go env GOOS)
 ARCH   := $(shell go env GOARCH)
@@ -34,7 +35,12 @@ docs:
 
 # 打镜像包
 package:
-	docker build --build-arg VERSION=$(VER) -f Dockerfile . -t zgsm/$(APP):$(VER)
+	docker build --build-arg VERSION=$(VER) -f backend/Dockerfile . -t zgsm/$(APP):$(VER)
+
+package-portal:
+	docker build -f compose/portal/Dockerfile . -t zgsm/$(PORTAL_APP):$(VER)
+
+package-all: package package-portal
 
 # 上传镜像包到dockerhub
 upload_dockerhub:
@@ -45,4 +51,4 @@ upload_dockerhub:
 # 上传镜像包到制品库和前置harbor
 upload: upload_dockerhub
 
-.PHONY: docs build package upload deploy upload_dockerhub clean 
+.PHONY: docs build package package-portal package-all upload deploy upload_dockerhub clean 

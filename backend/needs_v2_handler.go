@@ -13,9 +13,9 @@ import (
 )
 
 type NeedsV2ListResponse struct {
-	Total    int64           `json:"total"`
-	Page     int             `json:"page"`
-	PageSize int             `json:"pageSize"`
+	Total    int64            `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"pageSize"`
 	Data     []NeedsV2Summary `json:"data"`
 }
 
@@ -32,6 +32,8 @@ type NeedsV2Summary struct {
 	MergeTs              *time.Time `json:"merge_ts"`
 	TotalCalendarMin     float64    `json:"total_calendar_min"`
 	BaselineCalendarMin  *float64   `json:"baseline_calendar_min"`
+	TotalActiveWorkMin   float64    `json:"total_active_work_corrected_min"`
+	BaselineFusedWorkMin *float64   `json:"baseline_fused_work_min"`
 	EfficiencyRatio      *float64   `json:"efficiency_ratio"`
 	EfficiencyBandLow    *float64   `json:"efficiency_band_low"`
 	EfficiencyBandHigh   *float64   `json:"efficiency_band_high"`
@@ -46,13 +48,13 @@ type NeedsV2Summary struct {
 }
 
 type NeedsV2DetailResponse struct {
-	Need               models.Need                    `json:"need"`
-	Sessions           []models.SessionStageMetric    `json:"sessions"`
-	Commits            []models.Commit                `json:"commits"`
-	StageMetrics       []models.SessionStageMetric    `json:"stage_metrics"`
-	BaselineComponents NeedsV2BaselineComponents       `json:"baseline_components"`
-	ConfidenceSignals  models.ObjectJSON              `json:"confidence_signals"`
-	QualitySignals     models.ObjectJSON              `json:"quality_signals"`
+	Need               models.Need                 `json:"need"`
+	Sessions           []models.SessionStageMetric `json:"sessions"`
+	Commits            []models.Commit             `json:"commits"`
+	StageMetrics       []models.SessionStageMetric `json:"stage_metrics"`
+	BaselineComponents NeedsV2BaselineComponents   `json:"baseline_components"`
+	ConfidenceSignals  models.ObjectJSON           `json:"confidence_signals"`
+	QualitySignals     models.ObjectJSON           `json:"quality_signals"`
 }
 
 type NeedsV2BaselineComponents struct {
@@ -75,8 +77,8 @@ type NeedsV2BaselineComponents struct {
 }
 
 type EfficiencyV2AggregateResponse struct {
-	Total    int64                      `json:"total"`
-	Data     []models.UserProductivityV2 `json:"data"`
+	Total int64                       `json:"total"`
+	Data  []models.UserProductivityV2 `json:"data"`
 }
 
 // listNeedsV2 GET /api/v2/needs
@@ -123,7 +125,7 @@ func getNeedV2(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
 		return
 	}
-	needID := c.Param("needId")
+	needID := strings.TrimPrefix(c.Param("needId"), "/")
 	resp, err := QueryNeedV2Detail(statDB, needID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -200,7 +202,9 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 	if filter.UserId != "" {
 		q = q.Where("primary_user_id = ?", strings.TrimSpace(filter.UserId))
 	}
-	if filter.Status != "" {
+	// 看板口径：非 active(已交付) + 非主干分支。详见 applyNeedCaliberFilter。
+	q = applyNeedCaliberFilter(q)
+	if filter.Status != "" && strings.TrimSpace(filter.Status) != "active" {
 		q = q.Where("status = ?", strings.TrimSpace(filter.Status))
 	}
 	if filter.BoundarySource != "" {
@@ -221,7 +225,8 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 	}
 	offset := (resp.Page - 1) * resp.PageSize
 	var rows []models.Need
-	if err := q.Order("dev_end_ts DESC NULLS LAST").Order("need_id ASC").Limit(resp.PageSize).Offset(offset).Find(&rows).Error; err != nil {
+	// 低价值需求（孤儿边界 lv5_orphan 或 very_low 置信）排到最后，正常需求仍按 dev_end 倒序。
+	if err := q.Order("CASE WHEN boundary_source = 'lv5_orphan' OR boundary_confidence = 'very_low' THEN 1 ELSE 0 END ASC").Order("dev_end_ts DESC NULLS LAST").Order("need_id ASC").Limit(resp.PageSize).Offset(offset).Find(&rows).Error; err != nil {
 		return resp, err
 	}
 	for _, n := range rows {
@@ -244,13 +249,17 @@ func QueryNeedV2Detail(db *gorm.DB, needID string) (NeedsV2DetailResponse, error
 	sessionIDs := efficiencyV2DecodeJSONStringSlice(need.SessionIds)
 	commitIDs := efficiencyV2DecodeJSONStringSlice(need.CommitIds)
 	if len(sessionIDs) > 0 {
-		if err := db.Where("session_id IN ?", sessionIDs).Find(&resp.Sessions).Error; err != nil {
+		// 按活跃工作量降序：让有执行/实质活动的会话排在前面，避免纯聊天会话（exec=0）占满表头。
+		if err := db.Where("session_id IN ?", sessionIDs).
+			Order("total_active_min DESC").Order("session_start_ts ASC").
+			Find(&resp.Sessions).Error; err != nil {
 			return resp, err
 		}
 		resp.StageMetrics = resp.Sessions
 	}
 	if len(commitIDs) > 0 {
-		if err := db.Where("commit_id IN ?", commitIDs).Find(&resp.Commits).Error; err != nil {
+		if err := db.Where("commit_id IN ?", commitIDs).
+			Order("commit_time DESC").Find(&resp.Commits).Error; err != nil {
 			return resp, err
 		}
 	}
@@ -280,29 +289,31 @@ func QueryEfficiencyV2Aggregate(db *gorm.DB, startDate, endDate, userID string) 
 
 func summarizeNeed(n models.Need) NeedsV2Summary {
 	return NeedsV2Summary{
-		NeedId:              n.NeedId,
-		BoundarySource:      n.BoundarySource,
-		BoundaryConfidence:  n.BoundaryConfidence,
-		Status:              n.Status,
-		RepoAddr:            n.RepoAddr,
-		RepoBranch:          n.RepoBranch,
-		PrimaryUserId:       n.PrimaryUserId,
-		DevStartTs:          n.DevStartTs,
-		DevEndTs:            n.DevEndTs,
-		MergeTs:             n.MergeTs,
-		TotalCalendarMin:    n.TotalCalendarMin,
-		BaselineCalendarMin: n.BaselineCalendarMin,
-		EfficiencyRatio:     n.EfficiencyRatio,
-		EfficiencyBandLow:   n.EfficiencyLowerBand,
-		EfficiencyBandHigh:  n.EfficiencyUpperBand,
-		WorkEfficiencyRatio: n.WorkEfficiencyRatio,
-		ConfidenceLevel:     n.ConfidenceLevel,
-		OutlierFlag:         n.OutlierFlag,
-		CoverageEligible:    n.CoverageEligible,
-		TotalThinkMin:       n.ThinkActiveMin,
-		TotalExecMin:        n.ExecutionActiveMin,
-		TotalVerifyMin:      n.VerificationActiveMin,
-		Reason:              n.Reason,
+		NeedId:               n.NeedId,
+		BoundarySource:       n.BoundarySource,
+		BoundaryConfidence:   n.BoundaryConfidence,
+		Status:               n.Status,
+		RepoAddr:             n.RepoAddr,
+		RepoBranch:           n.RepoBranch,
+		PrimaryUserId:        n.PrimaryUserId,
+		DevStartTs:           n.DevStartTs,
+		DevEndTs:             n.DevEndTs,
+		MergeTs:              n.MergeTs,
+		TotalCalendarMin:     n.TotalCalendarMin,
+		BaselineCalendarMin:  n.BaselineCalendarMin,
+		TotalActiveWorkMin:   n.TotalActiveWorkCorrectedMin,
+		BaselineFusedWorkMin: n.BaselineFusedWorkMin,
+		EfficiencyRatio:      n.EfficiencyRatio,
+		EfficiencyBandLow:    n.EfficiencyLowerBand,
+		EfficiencyBandHigh:   n.EfficiencyUpperBand,
+		WorkEfficiencyRatio:  n.WorkEfficiencyRatio,
+		ConfidenceLevel:      n.ConfidenceLevel,
+		OutlierFlag:          n.OutlierFlag,
+		CoverageEligible:     n.CoverageEligible,
+		TotalThinkMin:        n.ThinkActiveMin,
+		TotalExecMin:         n.ExecutionActiveMin,
+		TotalVerifyMin:       n.VerificationActiveMin,
+		Reason:               n.Reason,
 	}
 }
 

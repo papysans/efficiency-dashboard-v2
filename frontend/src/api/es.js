@@ -96,6 +96,14 @@ export function getDashboardSummary(params) {
   return request({ url: '/v2/dashboard/summary', method: 'get', params })
 }
 
+export function getNeedsV2(params) {
+  return request({ url: '/v2/needs', method: 'get', params })
+}
+
+export function getNeedDetailV2(needId) {
+  return request({ url: `/v2/needs/${encodeURIComponent(needId)}`, method: 'get' })
+}
+
 export function getReposV2(params) {
   return request({ url: '/v2/repos', method: 'get', params })
 }

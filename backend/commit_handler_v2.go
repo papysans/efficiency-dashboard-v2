@@ -169,6 +169,20 @@ func getCommitDetailV2(c *gin.Context) {
 
 	ancient := commit.CommitAncientMinutes
 	real := commit.CommitRealMinutes
+	if ancient <= 0 || real <= 0 {
+		derivedAncient, derivedReal, err := deriveCommitWorkMinutes(statDB, commit.CommitId)
+		if err != nil {
+			log.Printf("派生 commit %s 详情工时失败: %v", commit.CommitId, err)
+		}
+		if ancient <= 0 && derivedAncient > 0 {
+			ancient = derivedAncient
+			commit.CommitAncientMinutes = derivedAncient
+		}
+		if real <= 0 && derivedReal > 0 {
+			real = derivedReal
+			commit.CommitRealMinutes = derivedReal
+		}
+	}
 	efficiencyRatio := utils.CalcEfficiencyRatioManual(ancient,
 		real,
 		commit.CommitAncientMinutesManual,

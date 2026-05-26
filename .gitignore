@@ -180,3 +180,13 @@ ai-estimate.json
 outputs/
 prompt_v*.md
 .playwright-mcp/
+
+# Docker compose 运行时/本地产物（勿提交）
+compose/postgres/data/
+compose/kbcli/analysed/
+compose/.env.local
+compose/docker-compose.local.yml
+compose/efficiency-dashboard-images-*.tar
+compose/**/*.tar
+docs/data/*.json
+docs/data/*fullrun*

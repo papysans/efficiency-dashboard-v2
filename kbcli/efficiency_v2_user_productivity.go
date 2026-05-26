@@ -132,9 +132,6 @@ func buildEfficiencyV2UserWeekRow(userID string, weekStart time.Time, needs []mo
 		coverageActive, coverageAbandoned float64
 		coverageLowUnreported, coverageHigh, coverageMedium float64
 		userName string
-		ratioEligibleHighCalendar, ratioEligibleHighBase float64
-		ratioEligibleMedCalendar, ratioEligibleMedBase float64
-		ratioEligibleHighWork, ratioEligibleMedWork float64
 	)
 	for _, need := range needs {
 		if userName == "" && need.PrimaryUserId == userID {
@@ -149,23 +146,14 @@ func buildEfficiencyV2UserWeekRow(userID string, weekStart time.Time, needs []mo
 			active++
 		}
 
+		// 工作量覆盖度分桶（仅展示 + 置信度判定用，与提效比口径无关）。
 		switch need.Status {
 		case "merged":
 			switch need.BoundaryConfidence {
 			case efficiencyV2ConfidenceHigh:
 				coverageHigh += need.TotalActiveWorkCorrectedMin
-				ratioEligibleHighCalendar += need.TotalCalendarMin
-				ratioEligibleHighWork += need.TotalActiveWorkCorrectedMin
-				if need.BaselineCalendarMin != nil {
-					ratioEligibleHighBase += *need.BaselineCalendarMin
-				}
 			case efficiencyV2ConfidenceMedium:
 				coverageMedium += need.TotalActiveWorkCorrectedMin
-				ratioEligibleMedCalendar += need.TotalCalendarMin
-				ratioEligibleMedWork += need.TotalActiveWorkCorrectedMin
-				if need.BaselineCalendarMin != nil {
-					ratioEligibleMedBase += *need.BaselineCalendarMin
-				}
 			default:
 				coverageLowUnreported += need.TotalActiveWorkCorrectedMin
 			}
@@ -174,22 +162,26 @@ func buildEfficiencyV2UserWeekRow(userID string, weekStart time.Time, needs []mo
 		default:
 			coverageActive += need.TotalActiveWorkCorrectedMin
 		}
-		if need.BaselineFusedWorkMin != nil &&
-			(need.BoundaryConfidence == efficiencyV2ConfidenceHigh || need.BoundaryConfidence == efficiencyV2ConfidenceMedium) &&
-			need.Status == "merged" {
-			baseWorkSum += *need.BaselineFusedWorkMin
+
+		// 提效比累加口径必须与 dashboard 完全一致：coverage_eligible(merged+高/中置信
+		// +有可测日历) 且非 outlier。修复前这里只用 merged+confidence、漏了 outlier 和
+		// coverage_eligible，导致个人提效把 outlier need 灌进来、与首页严重对不上。
+		if need.CoverageEligible && !need.OutlierFlag {
+			actualCalSum += need.TotalCalendarMin
+			actualWorkSum += need.TotalActiveWorkCorrectedMin
+			if need.BaselineCalendarMin != nil {
+				baseCalSum += *need.BaselineCalendarMin
+			}
+			if need.BaselineFusedWorkMin != nil {
+				baseWorkSum += *need.BaselineFusedWorkMin
+			}
 		}
 	}
-	// work_efficiency_ratio 必须用同口径的 actual（per design line 1295：
-	// 只算 coverage_eligible = status=merged + high/medium 的 need）
-	actualWorkSum = ratioEligibleHighWork + ratioEligibleMedWork
 	row.UserName = userName
 	row.MergedNeedCount = merged
 	row.ActiveNeedCount = active
 	row.AbandonedNeedCount = abandoned
 
-	actualCalSum = ratioEligibleHighCalendar + ratioEligibleMedCalendar
-	baseCalSum = ratioEligibleHighBase + ratioEligibleMedBase
 	row.ActualCalendarMin = actualCalSum
 	row.BaselineCalendarMin = baseCalSum
 	if baseCalSum > 0 && actualCalSum > 0 {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"kanban/core/config"
@@ -158,8 +159,11 @@ type ProjectAggregates struct {
 }
 
 type CommitLightStats struct {
-	UserName  string
-	DiffLines int
+	CommitId       string
+	UserName       string
+	DiffLines      int
+	AncientMinutes float64
+	RealMinutes    float64
 }
 
 // ============================================================
@@ -744,6 +748,20 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 }
 
 func toCommitListItem(commit *models.Commit) CommitListItem {
+	ancient := commit.CommitAncientMinutes
+	real := commit.CommitRealMinutes
+	if ancient <= 0 || real <= 0 {
+		derivedAncient, derivedReal, err := deriveCommitWorkMinutes(statDB, commit.CommitId)
+		if err != nil {
+			log.Printf("派生 commit %s 工时失败: %v", commit.CommitId, err)
+		}
+		if ancient <= 0 && derivedAncient > 0 {
+			ancient = derivedAncient
+		}
+		if real <= 0 && derivedReal > 0 {
+			real = derivedReal
+		}
+	}
 	item := CommitListItem{
 		CommitId:                   commit.CommitId,
 		CommitTime:                 commit.CommitTime,
@@ -756,11 +774,11 @@ func toCommitListItem(commit *models.Commit) CommitListItem {
 		ClientId:                   commit.ClientId,
 		WorkDir:                    commit.WorkDir,
 		DiffLines:                  commit.DiffLines,
-		CommitAncientMinutes:       commit.CommitAncientMinutes,
+		CommitAncientMinutes:       ancient,
 		CommitAncientReason:        commit.CommitAncientReason,
 		CommitAncientMinutesManual: commit.CommitAncientMinutesManual,
 		CommitAncientReasonManual:  commit.CommitAncientReasonManual,
-		CommitRealMinutes:          commit.CommitRealMinutes,
+		CommitRealMinutes:          real,
 		CommitRealReason:           commit.CommitRealReason,
 		CommitRealMinutesManual:    commit.CommitRealMinutesManual,
 		CommitRealReasonManual:     commit.CommitRealReasonManual,
@@ -774,8 +792,6 @@ func toCommitListItem(commit *models.Commit) CommitListItem {
 		DownstreamTokens:           commit.DownstreamTokens,
 		Silica:                     commit.Silica,
 	}
-	ancient := commit.CommitAncientMinutes
-	real := commit.CommitRealMinutes
 	item.EfficiencyRatio = utils.CalcEfficiencyRatioManual(ancient,
 		real,
 		commit.CommitAncientMinutesManual,
@@ -798,9 +814,154 @@ func toCommitListItem(commit *models.Commit) CommitListItem {
 	return item
 }
 
+func deriveCommitWorkMinutes(db *gorm.DB, commitID string) (float64, float64, error) {
+	ancientMap, realMap, err := deriveCommitWorkMinutesBatch(db, []string{commitID})
+	if err != nil {
+		return 0, 0, err
+	}
+	return ancientMap[commitID], realMap[commitID], nil
+}
+
+// 提交间隔法（git-hours 思路）参数：相邻提交间隔上限 + 新会话首个提交默认耗时。
+const (
+	commitGapMaxMinutes       = 120.0
+	commitFirstSessionMinutes = 30.0
+)
+
+func deriveCommitWorkMinutesBatch(db *gorm.DB, commitIDs []string) (map[string]float64, map[string]float64, error) {
+	ancientByCommit := make(map[string]float64)
+	realByCommit := make(map[string]float64)
+	if len(commitIDs) == 0 {
+		return ancientByCommit, realByCommit, nil
+	}
+	// 1) Need 归属（精确）：从包含该 commit 的 Need 把工作量按 commit 数平摊。
+	// 注意：不能用 jsonb 的 `?|` 操作符——GORM 会把其中的 `?` 当成占位符导致 SQL 语法错误。
+	// Need 数量很少（数十个），直接全量加载后在 Go 里按 commit 归属即可。
+	var needs []models.Need
+	if err := db.Select("commit_ids", "baseline_fused_work_min", "total_active_work_corrected_min").
+		Find(&needs).Error; err != nil {
+		return nil, nil, err
+	}
+	wanted := make(map[string]bool, len(commitIDs))
+	for _, id := range commitIDs {
+		wanted[id] = true
+	}
+	for _, need := range needs {
+		needCommitIDs := efficiencyV2DecodeJSONStringSlice(need.CommitIds)
+		if len(needCommitIDs) == 0 {
+			continue
+		}
+		share := 1.0 / float64(len(needCommitIDs))
+		var ancientShare float64
+		if need.BaselineFusedWorkMin != nil {
+			ancientShare = *need.BaselineFusedWorkMin * share
+		}
+		realShare := need.TotalActiveWorkCorrectedMin * share
+		for _, id := range needCommitIDs {
+			if !wanted[id] {
+				continue
+			}
+			ancientByCommit[id] += ancientShare
+			realByCommit[id] += realShare
+		}
+	}
+	// 2) 提交间隔法兜底：Need 未覆盖到实际耗时的 commit，用同用户相邻提交间隔估算。
+	missing := make([]string, 0, len(commitIDs))
+	for _, id := range commitIDs {
+		if realByCommit[id] <= 0 {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		gapReal, err := estimateCommitRealByGap(db, missing)
+		if err != nil {
+			return nil, nil, err
+		}
+		for id, v := range gapReal {
+			if realByCommit[id] <= 0 && v > 0 {
+				realByCommit[id] = v
+			}
+		}
+	}
+	return ancientByCommit, realByCommit, nil
+}
+
+// estimateCommitRealByGap 用「提交间隔法」估算实际耗时：同一用户的提交按时间排序，
+// 相邻间隔 ≤ commitGapMaxMinutes 视为该提交的连续编码耗时；超过则视为新会话，
+// 首个提交给 commitFirstSessionMinutes 默认值。仅依赖提交时间，可覆盖所有 commit。
+func estimateCommitRealByGap(db *gorm.DB, commitIDs []string) (map[string]float64, error) {
+	out := make(map[string]float64)
+	type commitTime struct {
+		CommitId   string
+		UserId     string
+		CommitTime time.Time
+	}
+	var heads []commitTime
+	if err := db.Model(&models.Commit{}).Select("commit_id, user_id").
+		Where("commit_id IN ?", commitIDs).Scan(&heads).Error; err != nil {
+		return nil, err
+	}
+	userSet := make(map[string]bool)
+	for _, h := range heads {
+		if strings.TrimSpace(h.UserId) != "" {
+			userSet[h.UserId] = true
+		}
+	}
+	if len(userSet) == 0 {
+		return out, nil
+	}
+	userList := make([]string, 0, len(userSet))
+	for u := range userSet {
+		userList = append(userList, u)
+	}
+	target := make(map[string]bool, len(commitIDs))
+	for _, id := range commitIDs {
+		target[id] = true
+	}
+	var all []commitTime
+	if err := db.Model(&models.Commit{}).Select("commit_id, user_id, commit_time").
+		Where("user_id IN ?", userList).
+		Order("user_id, commit_time, commit_id").Scan(&all).Error; err != nil {
+		return nil, err
+	}
+	var prevUser string
+	var prevTime time.Time
+	for _, c := range all {
+		est := commitFirstSessionMinutes
+		if c.UserId == prevUser {
+			gap := c.CommitTime.Sub(prevTime).Minutes()
+			if gap > 0 && gap <= commitGapMaxMinutes {
+				est = gap
+			}
+		}
+		if target[c.CommitId] {
+			out[c.CommitId] = est
+		}
+		prevUser = c.UserId
+		prevTime = c.CommitTime
+	}
+	return out, nil
+}
+
 func toCommitListItemSlice(commits []models.Commit) []CommitListItem {
+	ids := make([]string, 0, len(commits))
+	for i := range commits {
+		if commits[i].CommitAncientMinutes <= 0 || commits[i].CommitRealMinutes <= 0 {
+			ids = append(ids, commits[i].CommitId)
+		}
+	}
+	derivedAncient, derivedReal, err := deriveCommitWorkMinutesBatch(statDB, ids)
+	if err != nil {
+		log.Printf("批量派生 commit 工时失败: %v", err)
+	}
 	result := make([]CommitListItem, len(commits))
 	for i := range commits {
+		if commits[i].CommitAncientMinutes <= 0 && derivedAncient[commits[i].CommitId] > 0 {
+			commits[i].CommitAncientMinutes = derivedAncient[commits[i].CommitId]
+		}
+		if commits[i].CommitRealMinutes <= 0 && derivedReal[commits[i].CommitId] > 0 {
+			commits[i].CommitRealMinutes = derivedReal[commits[i].CommitId]
+		}
 		result[i] = toCommitListItem(&commits[i])
 	}
 	return result
@@ -1189,7 +1350,7 @@ func DeleteUserGroup(db *gorm.DB, groupId string) error {
 
 func ListCommitLightByRepoRange(db *gorm.DB, repoAddr, repoBranch, startTime, endTime string) ([]CommitLightStats, error) {
 	q := db.Model(&models.Commit{}).
-		Select("COALESCE(user_name, git_user_name) AS user_name, diff_lines")
+		Select("commit_id, COALESCE(user_name, git_user_name) AS user_name, diff_lines, commit_ancient_minutes AS ancient_minutes, commit_real_minutes AS real_minutes")
 
 	if repoAddr != "" {
 		q = q.Where("repo_addr = ?", repoAddr)
@@ -1207,6 +1368,24 @@ func ListCommitLightByRepoRange(db *gorm.DB, repoAddr, repoBranch, startTime, en
 	var list []CommitLightStats
 	if err := q.Scan(&list).Error; err != nil {
 		return nil, fmt.Errorf("轻量查询 commits 失败: %w", err)
+	}
+	ids := make([]string, 0, len(list))
+	for i := range list {
+		if list[i].AncientMinutes <= 0 || list[i].RealMinutes <= 0 {
+			ids = append(ids, list[i].CommitId)
+		}
+	}
+	derivedAncient, derivedReal, err := deriveCommitWorkMinutesBatch(db, ids)
+	if err != nil {
+		log.Printf("批量派生轻量 commit 工时失败: %v", err)
+	}
+	for i := range list {
+		if list[i].AncientMinutes <= 0 {
+			list[i].AncientMinutes = derivedAncient[list[i].CommitId]
+		}
+		if list[i].RealMinutes <= 0 {
+			list[i].RealMinutes = derivedReal[list[i].CommitId]
+		}
 	}
 	return list, nil
 }
@@ -1257,6 +1436,7 @@ type dashboardCommitAgg struct {
 	TotalCommits        int
 	TotalDiffLines      int64
 	TotalBranchs        int
+	TotalUsers          int
 	TotalRealMinutes    float64
 	TotalAncientMinutes float64
 }
@@ -1265,6 +1445,7 @@ func queryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboard
 	var agg dashboardCommitAgg
 	q := db.Model(&models.Commit{}).Select(`COUNT(*) as total_commits,
 		COALESCE(SUM(diff_lines), 0) as total_diff_lines,
+		COUNT(DISTINCT NULLIF(user_id, '')) as total_users,
 		COUNT(DISTINCT NULLIF(repo_addr, '')) as total_repos,
 		(SELECT COUNT(*) FROM (SELECT DISTINCT repo_addr, repo_branch FROM commits WHERE repo_addr IS NOT NULL AND repo_addr != '') sub) as total_branchs,
 		COALESCE(SUM(CASE WHEN commit_real_minutes_manual IS NOT NULL THEN commit_real_minutes_manual ELSE commit_real_minutes END), 0) as total_real_minutes,
@@ -1277,6 +1458,47 @@ func queryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboard
 	}
 	if err := q.Scan(&agg).Error; err != nil {
 		return nil, fmt.Errorf("查询 commits 仪表盘聚合失败: %w", err)
+	}
+	return &agg, nil
+}
+
+// dashboardNeedAgg 汇总 Need 维度（v2）指标，供首页综合提效展示。
+// 提效相关只统计可计入且非异常的 Need，避免孤儿/异常样本污染。
+type dashboardNeedAgg struct {
+	TotalNeeds          int
+	MergedNeeds         int
+	EligibleNeeds       int
+	ActualCalendarMin   float64
+	BaselineCalendarMin float64
+	ActualWorkMin       float64
+	BaselineWorkMin     float64
+}
+
+// applyNeedCaliberFilter 限定到看板口径：已交付(非 active) + 非主干分支。
+// main/master/develop/release 等主干提交不形成 branch Need，是落到 cluster/orphan 兜底桶的
+// 散落提交，与 "branch=Need" 口径不一致，列表与首页计数都按此口径收口。
+func applyNeedCaliberFilter(q *gorm.DB) *gorm.DB {
+	return q.Where("status <> ?", "active").
+		Where("NOT (LOWER(TRIM(COALESCE(repo_branch,''))) IN ('main','master','develop','release') OR LOWER(TRIM(COALESCE(repo_branch,''))) LIKE 'release/%')")
+}
+
+func queryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNeedAgg, error) {
+	var agg dashboardNeedAgg
+	q := applyNeedCaliberFilter(db.Model(&models.Need{})).Select(`COUNT(*) as total_needs,
+		COUNT(*) FILTER (WHERE status = 'merged') as merged_needs,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag) as eligible_needs,
+		COALESCE(SUM(total_calendar_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as actual_calendar_min,
+		COALESCE(SUM(baseline_calendar_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as baseline_calendar_min,
+		COALESCE(SUM(total_active_work_corrected_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as actual_work_min,
+		COALESCE(SUM(baseline_fused_work_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as baseline_work_min`)
+	if startTime != "" {
+		q = q.Where("dev_end_ts >= ?", startTime)
+	}
+	if endTime != "" {
+		q = q.Where("dev_end_ts <= ?", endTime)
+	}
+	if err := q.Scan(&agg).Error; err != nil {
+		return nil, fmt.Errorf("查询 needs 仪表盘聚合失败: %w", err)
 	}
 	return &agg, nil
 }
@@ -1438,6 +1660,10 @@ func QueryDashboardTaskAgg(db *gorm.DB, startTime, endTime string) (*dashboardTa
 
 func QueryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboardCommitAgg, error) {
 	return queryDashboardCommitAgg(db, startTime, endTime)
+}
+
+func QueryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNeedAgg, error) {
+	return queryDashboardNeedAgg(db, startTime, endTime)
 }
 
 func QueryUserProdAgg(db *gorm.DB, startTime, endTime string) ([]userProdAggRow, error) {

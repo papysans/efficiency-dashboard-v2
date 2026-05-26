@@ -18,7 +18,10 @@ func isPostgresUndefinedColumn(err error) bool {
 }
 
 func postgresOpener(dsn string) gorm.Dialector {
-	return postgres.Open(dsn)
+	return postgres.New(postgres.Config{
+		DSN:                  dsn,
+		PreferSimpleProtocol: true,
+	})
 }
 
 func OpenSQLDB(dsn string) (*sql.DB, error) {

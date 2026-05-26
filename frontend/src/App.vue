@@ -8,7 +8,7 @@
         router
         class="app-menu"
       >
-        <el-menu-item class="app-logo" disabled>
+        <el-menu-item index="app-logo" class="app-logo" disabled>
           <el-icon><DataAnalysis /></el-icon>
           <span>AI Coding 指标看板</span>
         </el-menu-item>
@@ -20,6 +20,7 @@
         </el-sub-menu>
         <el-sub-menu index="group-project">
           <template #title>项目看板</template>
+          <el-menu-item index="/needs-v2">需求 Need</el-menu-item>
           <el-menu-item index="/project-v2">项目</el-menu-item>
           <el-menu-item index="/repo-v2">仓库</el-menu-item>
           <el-menu-item index="/commit-v2">提交</el-menu-item>
@@ -42,7 +43,12 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  if (route.path.startsWith('/needs/')) return '/needs-v2'
+  if (route.path.startsWith('/kanban/need')) return '/needs-v2'
+  if (route.path === '/cloud/kanban') return '/needs-v2'
+  return route.path
+})
 </script>
 
 <style scoped>

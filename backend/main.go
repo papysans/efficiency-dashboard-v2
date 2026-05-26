@@ -115,14 +115,14 @@ func main() {
 		v2.GET("/commits/:commitId", getCommitDetailV2)
 		v2.PUT("/commits/:commitId/manual", updateCommitManualV2)
 
-		v2.GET("/users", listUsersV2)
-		v2.GET("/users/:userId", getUserDetailV2)
+		v2.GET("/users", listUsersV2Native)
+		v2.GET("/users/:userId", getUserV2DetailNative)
 
 		v2.GET("/repos", listReposV2)
 		v2.GET("/repos/detail", getRepoDetailV2)
 		v2.GET("/repos/branches", listRepoBranchesV2)
 
-		v2.GET("/orgs", listOrgV2)
+		v2.GET("/orgs", listOrgsV2Native)
 		v2.GET("/orgs/detail", getOrgDetailV2)
 		v2.POST("/orgs/refresh", refreshOrgMappingV2)
 		v2.GET("/group", getGroupDetailV2)
@@ -147,7 +147,7 @@ func main() {
 		v2.GET("/config", getConfigV2)
 
 		v2.GET("/needs", listNeedsV2)
-		v2.GET("/needs/:needId", getNeedV2)
+		v2.GET("/needs/*needId", getNeedV2)
 		v2.GET("/efficiency", getEfficiencyV2Aggregate)
 	}
 
