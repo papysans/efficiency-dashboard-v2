@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 构建并推送 ${{ matrix.name }}（linux/amd64）
+      - name: 构建并推送 ${{ matrix.name }}（linux/amd64,arm64）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
@@ -51,11 +51,17 @@ jobs:
           VERSION="beta-${RAW}"                       # beta 前缀
           OWNER_LC="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"   # ghcr 要求小写
           IMG="${REGISTRY}/${OWNER_LC}/efficiency-dashboard-${NAME}"
-          echo "==> $IMG:$VERSION (+ :beta)"
+          echo "==> $IMG:$VERSION (+ :beta)  amd64+arm64"
+          # QEMU（跨架构）：从 DockerHub 拉 binfmt 镜像，不用 docker/setup-qemu-action（该 runner 下不动 docker/* action）
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
+          # docker-container 驱动的 buildx builder（支持多架构 + --push 推 manifest list）
+          docker buildx create --name multi --driver docker-container --use
+          docker buildx inspect --bootstrap
           echo "$GH_TOKEN" | docker login "$REGISTRY" -u "$ACTOR" --password-stdin
-          DOCKER_BUILDKIT=1 docker build \
+          docker buildx build \
             -f "$DOCKERFILE" \
+            --platform linux/amd64,linux/arm64 \
             --build-arg VERSION="$VERSION" \
-            -t "$IMG:$VERSION" -t "$IMG:beta" .
-          docker push "$IMG:$VERSION"
-          docker push "$IMG:beta"
+            --provenance=false \
+            -t "$IMG:$VERSION" -t "$IMG:beta" \
+            --push .
