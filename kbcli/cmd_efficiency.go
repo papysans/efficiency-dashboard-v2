@@ -211,10 +211,10 @@ func calculateUserProductivity(db *gorm.DB, dateStr string, userNameMap, taskUse
 			result := tx.Clauses(clause.OnConflict{
 				Columns: []clause.Column{{Name: "user_productivity_id"}},
 				DoUpdates: clause.AssignmentColumns([]string{
-					"user_name", "task_ids", "task_diff_lines",
+					"user_name", "task_diff_lines",
 					"upstream_tokens", "downstream_tokens", "cost",
 					"task_real_minutes", "task_ancient_minutes", "task_efficiency_ratio",
-					"commit_ids", "commit_diff_lines", "commit_ancient_minutes",
+					"commit_diff_lines", "commit_ancient_minutes",
 					"commit_real_ai_minutes", "commit_real_ancient_minutes", "commit_real_minutes",
 					"commit_efficiency_ratio", "updated_at",
 				}),
