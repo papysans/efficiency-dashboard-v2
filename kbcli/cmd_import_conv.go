@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,40 +225,42 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 	}
 }
 
-// importSingleTask 导入单个任务到数据库。
-// 功能：读取 ss 和 conversation 文件，解析并计算任务记录，生成 silica 文件后写入数据库。
-// 参数：
-//   - db: GORM 数据库连接，用于写入 tasks 和 task_conversations 表。
-//   - summaryPath: ss JSON 文件路径。
-//   - conversationPath: conversation JSONL 文件路径。
-//   - silicaPath: 输出 silica 文件的路径。
-//
-// 返回值：导入过程中发生的错误。
-// 关键技术原理：使用 GORM 的 clause.OnConflict 实现 UPSERT（冲突时更新指定列），保证多次导入幂等。
-func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath string) error {
-	// 读取并解析 ss JSON 文件
+// preparedImportTask 是一个 session 解析完成、待写库的中间结果。
+// 解析（读文件 / JSON / 对话）在事务外完成，写库阶段只做 upsert，从而支持批量提交。
+type preparedImportTask struct {
+	ss               *taskSession
+	conversations    []taskConversation
+	sessionDate      string
+	conversationDate string
+	conversationPath string
+	silicaPath       string
+}
+
+// prepareImportTask 读取并解析单个任务的 summary 与 conversation 文件，算好待写入的记录。
+// 仅做文件 IO 与解析、不触库；这样所有易失败的解析步骤都在事务外，不会污染批量事务。
+func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*preparedImportTask, error) {
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
-		return fmt.Errorf("读取summary文件失败: %w", err)
+		return nil, fmt.Errorf("读取summary文件失败: %w", err)
 	}
 
 	var ss taskSession
 	if err := json.Unmarshal(data, &ss); err != nil {
-		return fmt.Errorf("解析summary JSON失败: %w", err)
+		return nil, fmt.Errorf("解析summary JSON失败: %w", err)
 	}
 
 	// 校验关键字段，防止写入无效数据
 	if ss.SessionId == "" {
-		return fmt.Errorf("session_id为空")
+		return nil, fmt.Errorf("session_id为空")
 	}
 	if ss.UserId == "" {
-		return fmt.Errorf("user_id为空")
+		return nil, fmt.Errorf("user_id为空")
 	}
 
 	// 解析对话文件，得到该任务下的所有对话列表
 	conversations, err := parseConversationFile(conversationPath)
 	if err != nil {
-		return fmt.Errorf("解析conversation文件失败: %w", err)
+		return nil, fmt.Errorf("解析conversation文件失败: %w", err)
 	}
 
 	// 根据 ss 和 conversations 计算完整的 Task 记录
@@ -267,24 +270,73 @@ func importSingleTask(db *gorm.DB, summaryPath, conversationPath, silicaPath str
 	conversationDir := filepath.Dir(filepath.Dir(conversationPath))
 	conversationDir = filepath.Dir(filepath.Dir(conversationDir))
 	conversationDate := extractDateFromPath(conversationDir, conversationPath)
-	if err := saveSession(db, &ss, sessionDate, conversationDate); err != nil {
-		return err
-	}
 
+	// 解析对话内的时间/指标；saveConversations 依赖此处填充的 startTime/endTime
 	correctConversations(&ss, conversations)
 
-	// 保存到 conversations 表
-	if err := saveConversations(db, conversations); err != nil {
+	return &preparedImportTask{
+		ss:               &ss,
+		conversations:    conversations,
+		sessionDate:      sessionDate,
+		conversationDate: conversationDate,
+		conversationPath: conversationPath,
+		silicaPath:       silicaPath,
+	}, nil
+}
+
+// writeImportTask 在给定（事务）连接上写入一个已解析任务：session + 其全部 conversation。
+// 用 clause.OnConflict 保证幂等。供批量事务与逐条回退共用。
+func writeImportTask(tx *gorm.DB, p *preparedImportTask) error {
+	if err := saveSession(tx, p.ss, p.sessionDate, p.conversationDate); err != nil {
+		return err
+	}
+	if err := saveConversations(tx, p.conversations); err != nil {
 		return fmt.Errorf("保存conversations失败: %w", err)
 	}
+	return nil
+}
 
-	// 生成 task silica 文件用于后续增量检测；失败仅记录警告，不阻断主流程
-	if err := generateTaskSilicaFile(&ss, conversations, conversationPath, silicaPath); err != nil {
-		logWarnf("生成task silica文件失败 [%s]: %v", ss.SessionId, err)
+// finalizeImportTaskSilica 写库成功后生成 task silica 文件（用于下次增量检测）；失败仅告警，不阻断。
+func finalizeImportTaskSilica(p *preparedImportTask) {
+	if err := generateTaskSilicaFile(p.ss, p.conversations, p.conversationPath, p.silicaPath); err != nil {
+		logWarnf("生成task silica文件失败 [%s]: %v", p.ss.SessionId, err)
+	}
+}
+
+// flushImportConvBatch 把一批已解析任务在单个事务内写入：将「每 session 一次提交(一次 fsync)」
+// 摊薄成「每批一次」，大幅提升大批量导入吞吐。整批事务失败时回退为逐条单事务，
+// 隔离坏记录、保留其余成功项。返回本批成功/失败计数。
+func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fail int) {
+	if len(batch) == 0 {
+		return 0, 0
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		for _, p := range batch {
+			if err := writeImportTask(tx, p); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		for _, p := range batch {
+			finalizeImportTaskSilica(p)
+		}
+		return len(batch), 0
 	}
 
-	logDebugf("导入成功: %s", ss.SessionId)
-	return nil
+	// 整批失败（多为 DB/schema 级错误）：逐条单事务重试，定位并隔离坏记录
+	logWarnf("批量写入失败，回退逐条重试: %v", err)
+	for _, p := range batch {
+		if e := db.Transaction(func(tx *gorm.DB) error { return writeImportTask(tx, p) }); e != nil {
+			logWarnf("导入失败 [%s]: %v", p.ss.SessionId, e)
+			fail++
+			continue
+		}
+		finalizeImportTaskSilica(p)
+		success++
+	}
+	return success, fail
 }
 
 // saveConversations 将任务对话列表批量保存到数据库，使用事务保证原子性。
@@ -466,40 +518,41 @@ func parseConversationFile(path string) ([]taskConversation, error) {
 	defer f.Close()
 
 	var convs []taskConversation
-	// 显式设置 scanner 缓冲区：初始 64KB，最大 10MB，以支持超长 JSON 行
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	// 用 bufio.Reader 逐行读取，对单行长度不设硬上限：
+	// 避免个别超长 JSON 行（>10MB，如内嵌大段 base64/上下文）触发 bufio.Scanner 的
+	// token too long，进而导致整个 conversation 文件被判失败、对应 session 整条丢失。
+	reader := bufio.NewReader(f)
 	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-		// 跳过空行
-		if line == "" {
-			continue
+	for {
+		lineStr, readErr := reader.ReadString('\n')
+		if len(lineStr) > 0 {
+			lineNum++
 		}
-		// 先尝试将整行作为一个 JSON 对象解析；ignoreUnmarshalWarning=true 减少冗余日志
-		if c, err := parseConversation(path, lineNum, []byte(line), true); err == nil {
-			if c != nil {
-				convs = append(convs, *c)
-			}
-			continue
-		}
-		// 容错：尝试将单行按独立的 JSON 对象拆分解析
-		// 处理上游写入时缺少换行符的情况: {"a":1}{"a":2}
-		parts, splitErr := splitConversations(line)
-		if splitErr == nil && len(parts) > 0 {
-			for _, part := range parts {
-				if c, err := parseConversation(path, lineNum, []byte(part), false); err == nil && c != nil {
+		line := strings.TrimSpace(lineStr)
+		if line != "" {
+			// 先尝试将整行作为一个 JSON 对象解析；ignoreUnmarshalWarning=true 减少冗余日志
+			c, parseErr := parseConversation(path, lineNum, []byte(line), true)
+			if parseErr == nil {
+				if c != nil {
 					convs = append(convs, *c)
 				}
+			} else if parts, splitErr := splitConversations(line); splitErr == nil && len(parts) > 0 {
+				// 容错：处理上游缺少换行符把多个对象拼到一行的情况 {"a":1}{"a":2}
+				for _, part := range parts {
+					if pc, e := parseConversation(path, lineNum, []byte(part), false); e == nil && pc != nil {
+						convs = append(convs, *pc)
+					}
+				}
+			} else {
+				return nil, fmt.Errorf("第%d行JSON解析失败: %w, 内容: %s", lineNum, parseErr, line)
 			}
-			continue
 		}
-
-		return nil, fmt.Errorf("第%d行JSON解析失败: %w, 内容: %s", lineNum, err, line)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("读取文件失败: %w", err)
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("读取文件失败: %w", readErr)
+		}
 	}
 	return convs, nil
 }
@@ -830,6 +883,16 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	// 遍历所有 conversation 文件，匹配 summary 并执行导入
 	totalConv := len(convMap)
 	processed := 0
+	// 累积成批写入：每 importConvBatchSize 个 session 合并到一个事务提交，
+	// 把「单 session 一次 fsync」摊薄成「每批一次」，显著提速大批量导入。
+	const importConvBatchSize = 200
+	batch := make([]*preparedImportTask, 0, importConvBatchSize)
+	flush := func() {
+		s, f := flushImportConvBatch(db, batch)
+		successCount += s
+		failCount += f
+		batch = batch[:0]
+	}
 	for sessionId, conversationPath := range convMap {
 		processed++
 		logProgress("[import-conv] 导入对话", processed, totalConv, 50)
@@ -848,8 +911,9 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 			continue
 		}
 
-		// 执行单任务导入
-		if err := importSingleTask(db, summaryPath, conversationPath, silicaPath); err != nil {
+		// 解析放在事务外：解析失败（如缺字段）只跳过当前 session，不污染批量事务
+		p, err := prepareImportTask(summaryPath, conversationPath, silicaPath)
+		if err != nil {
 			if errors.Is(err, errSkipTask) {
 				logDebugf("跳过(日期范围过滤): %s", sessionId)
 				skipCount++
@@ -857,10 +921,14 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 			}
 			logWarnf("导入失败 [%s]: %v", sessionId, err)
 			failCount++
-		} else {
-			successCount++
+			continue
+		}
+		batch = append(batch, p)
+		if len(batch) >= importConvBatchSize {
+			flush()
 		}
 	}
+	flush() // 写入尾批
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
 
