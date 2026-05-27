@@ -138,7 +138,10 @@ func executeImport(params map[string]interface{}) error {
 	date := getStringParam(params, "date", "")
 	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
 	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
-	startDate = resolveStartDateByDays(params, startDate, date) // cron 增量：days→最近N天
+	// 增量 days 窗【只用于取数】(import-conv/repo)：仅增量加行、安全。
+	// efficiency 重算仍用原始 startDate（cron 的 days 不传时=空=全量），避免跨窗 need 被
+	// 窗内 commit 部分覆盖（commit_ids 是覆盖更新，会永久丢掉窗外老 commit）。
+	ingestStart := resolveStartDateByDays(params, startDate, date)
 	mode := strings.ToLower(strings.TrimSpace(getStringParam(params, "efficiency_mode", cfg.EfficiencyMode)))
 	if mode == "" {
 		mode = "legacy"
@@ -149,10 +152,10 @@ func executeImport(params map[string]interface{}) error {
 		fn   func() error
 	}{
 		{"import-conv", func() error {
-			return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+			return runImportConv(taskDir, analysedDir, force, ingestStart, endDate, date, createPseudo)
 		}},
 		{"import-repo", func() error {
-			return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
+			return runImportRepo(repoDir, analysedDir, force, maxDays, ingestStart, endDate, date)
 		}},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
 	}
@@ -192,10 +195,11 @@ func executeImport(params map[string]interface{}) error {
 }
 
 func executeEfficiencyV2(params map[string]interface{}) error {
+	// 注意：efficiency-v2 不应用 days 增量窗——窗内 commit 重解析会覆盖跨窗 need 的 commit_ids、
+	// 丢掉窗外老 commit。只接受显式 start_date/end_date/date（调用方明确窗内 need 完整时才用）。
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	startDate = resolveStartDateByDays(params, startDate, date) // cron 增量：days→最近N天
 	return runEfficiencyV2(startDate, endDate, date)
 }
 

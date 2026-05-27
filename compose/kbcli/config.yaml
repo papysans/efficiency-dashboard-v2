@@ -134,8 +134,9 @@ serve:
     params:
       force: true
   crontab:
-    # 每 12 小时增量：days=2 → 运行时只处理最近 2 天的数据（非全量重拉/重算）。
-    # efficiency_mode=new 时 import 已含 efficiency-v2，同一日期窗一起增量，无需单独条目。
+    # 每 12 小时跑一次 import（mode=new 时含 efficiency-v2）。
+    # days=2：【取数】只扫最近2天的 mnt 文件（不全量重拉历史）；
+    # efficiency-v2 仍全量重算（days 不传给它），保证跨天 need 的 commit 不被窗内数据覆盖丢失。
     - schedule: "0 0 */12 * * *"
       command: import
       params:
