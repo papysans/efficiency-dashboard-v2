@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"kanban/core/models"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -172,6 +173,85 @@ func loadUserOrgsFromDB(fromDSN string) ([]models.UserOrg, error) {
 	return userOrgs, nil
 }
 
+func loadDefaultUserOrgsFromLocalData(db *gorm.DB) ([]models.UserOrg, error) {
+	type userRow struct {
+		UserId       string
+		UserName     string
+		GitUserName  string
+		GitUserEmail string
+	}
+
+	rowsByUser := make(map[string]userRow)
+	merge := func(rows []userRow) {
+		for _, row := range rows {
+			row.UserId = strings.TrimSpace(row.UserId)
+			if row.UserId == "" {
+				continue
+			}
+			existing := rowsByUser[row.UserId]
+			if existing.UserName == "" {
+				existing.UserName = strings.TrimSpace(row.UserName)
+			}
+			if existing.GitUserName == "" {
+				existing.GitUserName = strings.TrimSpace(row.GitUserName)
+			}
+			if existing.GitUserEmail == "" {
+				existing.GitUserEmail = strings.TrimSpace(row.GitUserEmail)
+			}
+			rowsByUser[row.UserId] = existing
+		}
+	}
+
+	var taskRows []userRow
+	if err := db.Raw(`
+		SELECT DISTINCT user_id, user_name, '' AS git_user_name, '' AS git_user_email
+		FROM tasks
+		WHERE user_id IS NOT NULL AND user_id != ''
+	`).Scan(&taskRows).Error; err != nil {
+		return nil, fmt.Errorf("从 tasks 收集用户失败: %w", err)
+	}
+	merge(taskRows)
+
+	var commitRows []userRow
+	if err := db.Raw(`
+		SELECT DISTINCT user_id, user_name, git_user_name, git_user_email
+		FROM commits
+		WHERE user_id IS NOT NULL AND user_id != ''
+	`).Scan(&commitRows).Error; err != nil {
+		return nil, fmt.Errorf("从 commits 收集用户失败: %w", err)
+	}
+	merge(commitRows)
+
+	var sessionRows []userRow
+	if err := db.Raw(`
+		SELECT DISTINCT user_id, user_name, '' AS git_user_name, '' AS git_user_email
+		FROM sessions
+		WHERE user_id IS NOT NULL AND user_id != ''
+	`).Scan(&sessionRows).Error; err != nil {
+		return nil, fmt.Errorf("从 sessions 收集用户失败: %w", err)
+	}
+	merge(sessionRows)
+
+	userIDs := make([]string, 0, len(rowsByUser))
+	for userID := range rowsByUser {
+		userIDs = append(userIDs, userID)
+	}
+	sort.Strings(userIDs)
+
+	userOrgs := make([]models.UserOrg, 0, len(userIDs))
+	for _, userID := range userIDs {
+		row := rowsByUser[userID]
+		userOrgs = append(userOrgs, models.UserOrg{
+			UserId:       userID,
+			UserName:     row.UserName,
+			Org1:         "临时组织",
+			GitUserName:  row.GitUserName,
+			GitUserEmail: row.GitUserEmail,
+		})
+	}
+	return userOrgs, nil
+}
+
 func writeOrgCSV(path string, rows []models.UserOrg) error {
 	f, err := os.Create(path)
 	if err != nil {
@@ -217,6 +297,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	startTime := time.Now()
 	var userOrgs []models.UserOrg
 	var err error
+	var gormDB *gorm.DB
 
 	if fromCSV != "" {
 		userOrgs, err = loadUserOrgsFromCSV(fromCSV)
@@ -227,9 +308,26 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	} else {
 		userOrgs, err = loadUserOrgsFromDB(fromDSN)
 		if err != nil {
+			logWarnf("从 auth/quota 导入组织失败，改用本地已导入用户生成临时组织: %v", err)
+		}
+	}
+
+	gormDB, err = models.OpenGormDB(cfg.StatDatabase.DSN())
+	if err != nil {
+		recordCommandRun("import-org", startTime, 0, 0, 0, err)
+		return fmt.Errorf("连接目标数据库失败: %w", err)
+	}
+	sqlDB, _ := gormDB.DB()
+	defer sqlDB.Close()
+	logInfo("目标数据库连接成功")
+
+	if userOrgs == nil {
+		userOrgs, err = loadDefaultUserOrgsFromLocalData(gormDB)
+		if err != nil {
 			recordCommandRun("import-org", startTime, 0, 0, 0, err)
 			return err
 		}
+		logWarnf("已生成 %d 条临时 user_org 记录，全部归入 org1=临时组织", len(userOrgs))
 	}
 
 	if toCSV != "" {
@@ -239,15 +337,6 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		}
 		logInfof("CSV 文件已写入: %s", toCSV)
 	}
-
-	gormDB, err := models.OpenGormDB(cfg.StatDatabase.DSN())
-	if err != nil {
-		recordCommandRun("import-org", startTime, 0, 0, 0, err)
-		return fmt.Errorf("连接目标数据库失败: %w", err)
-	}
-	sqlDB, _ := gormDB.DB()
-	defer sqlDB.Close()
-	logInfo("目标数据库连接成功")
 
 	if err := saveUserOrgs(gormDB, userOrgs); err != nil {
 		recordCommandRun("import-org", startTime, 0, 0, 0, err)
