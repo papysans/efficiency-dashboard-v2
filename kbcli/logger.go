@@ -169,3 +169,25 @@ func logPromptProgress(cnt, linecnt int) {
 		fmt.Print("\r\033[K")
 	}
 }
+
+// logProgress 在同一行刷新 "label done/total (pct%)"，done>=total 时换行收尾。
+// 仅 console >= info 输出；step 控制刷新频率（每 step 个刷一次，最后一个必刷）。
+func logProgress(label string, done, total, step int) {
+	if logger.consoleLevel < LogInfo {
+		return
+	}
+	if step < 1 {
+		step = 1
+	}
+	if done != total && done%step != 0 {
+		return
+	}
+	pct := 0
+	if total > 0 {
+		pct = done * 100 / total
+	}
+	fmt.Printf("\r\033[K%s %d/%d (%d%%)", label, done, total, pct)
+	if done >= total {
+		fmt.Println()
+	}
+}

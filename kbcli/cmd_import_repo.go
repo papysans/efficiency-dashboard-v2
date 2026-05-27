@@ -478,14 +478,15 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	successCount := 0
 	failCount := 0
 
-	for _, fileMeta := range files {
+	totalFiles := len(files)
+	for i, fileMeta := range files {
 		if err := importCommitFile(db, fileMeta, idx, maxDays); err != nil {
 			logWarnf("导入失败 [%s]: %v", fileMeta.Path, err)
 			failCount++
 		} else {
 			successCount++
-			logPromptProgress(successCount, 50)
 		}
+		logProgress("[import-repo] 导入commit", i+1, totalFiles, 50)
 	}
 
 	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)

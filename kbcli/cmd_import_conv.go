@@ -828,7 +828,11 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	skipCount := 0
 
 	// 遍历所有 conversation 文件，匹配 summary 并执行导入
+	totalConv := len(convMap)
+	processed := 0
 	for sessionId, conversationPath := range convMap {
+		processed++
+		logProgress("[import-conv] 导入对话", processed, totalConv, 50)
 		summaryPath, ok := sessionMap[sessionId]
 		if !ok {
 			logDebugf("跳过(无对应summary): %s", sessionId)
@@ -855,7 +859,6 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 			failCount++
 		} else {
 			successCount++
-			logPromptProgress(successCount, 50)
 		}
 	}
 

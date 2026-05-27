@@ -249,6 +249,7 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 	}
 
 	for i := range needs {
+		logProgress("[efficiency-v2] 基线融合(含LLM)", i+1, len(needs), 1)
 		need := &needs[i]
 		sessionIDs := efficiencyV2StringsFromJSON(need.SessionIds)
 		commitIDs := efficiencyV2StringsFromJSON(need.CommitIds)
