@@ -335,7 +335,7 @@ func runDiagnose(UserId, dateStr string) error {
 			COALESCE(SUM(diff_lines), 0) as commit_diff_lines,
 			COALESCE(SUM(COALESCE(commit_ancient_minutes_manual, commit_ancient_minutes)), 0) as commit_ancient_minutes,
 			COALESCE(SUM(commit_real_ai_minutes), 0) as commit_real_ai_minutes,
-			COALESCE(SUM(commit_real_ancient_minutes), 0) as commit_real_ancient_minutes,
+			COALESCE(SUM(commit_real_non_ai_minutes), 0) as commit_real_ancient_minutes,
 			COALESCE(SUM(COALESCE(commit_real_minutes_manual, commit_real_minutes)), 0) as commit_real_minutes
 		FROM commits
 		WHERE user_id = $1 AND DATE(commit_time) = $2

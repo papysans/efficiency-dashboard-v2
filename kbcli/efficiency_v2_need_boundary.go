@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -428,11 +430,12 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		evidence["max_need_span_days"] = cfg.MaxNeedSpanDays
 	}
 
+	needKey := efficiencyV2ClampNeedKey(bucket.key)
 	need := models.Need{
-		NeedId:             bucket.key,
+		NeedId:             needKey,
 		BoundarySource:     bucket.source,
 		BoundaryConfidence: bucket.confidence,
-		BoundaryKey:        bucket.key,
+		BoundaryKey:        needKey,
 		BoundaryEvidence:   efficiencyV2NeedObjectJSON(evidence),
 		Status:             status,
 		RepoAddr:           repoAddr,
@@ -500,6 +503,21 @@ func efficiencyV2ConfidenceForBoundarySource(source string) string {
 func efficiencyV2IsMainlineBranch(branch string) bool {
 	branch = strings.TrimSpace(strings.ToLower(branch))
 	return branch == "main" || branch == "master" || branch == "develop" || branch == "release" || strings.HasPrefix(branch, "release/")
+}
+
+// efficiencyV2ClampNeedKey 把 need 边界 key 截断到 100 字符以内，用作 need_id / boundary_key。
+// 超长（如 file-cluster 把大量顶层目录拼接）时，保留可读前缀 + 全量 key 的短哈希后缀，
+// 避免不同长 key 截断成同一前缀后发生主键碰撞、把不同 need 错误合并。
+func efficiencyV2ClampNeedKey(key string) string {
+	const maxRunes = 100
+	runes := []rune(key)
+	if len(runes) <= maxRunes {
+		return key
+	}
+	sum := sha1.Sum([]byte(key))
+	hash := hex.EncodeToString(sum[:])[:12]
+	prefix := string(runes[:maxRunes-1-len(hash)]) // 87 runes + "~" + 12 hash = 100
+	return prefix + "~" + hash
 }
 
 func efficiencyV2FileClusterKey(userID string, start time.Time, files []string) string {
