@@ -3,7 +3,18 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 )
+
+// resolveStartDateByDays 支持 cron 增量：params 指定 days>0 且未显式给 start_date/date 时，
+// 运行时把起始日设为 today-days（YYYYMMDD），只处理最近 N 天而非全量重拉/重算。
+func resolveStartDateByDays(params map[string]interface{}, startDate, date string) string {
+	days := getIntParam(params, "days", 0)
+	if days > 0 && startDate == "" && date == "" {
+		return time.Now().AddDate(0, 0, -days).Format("20060102")
+	}
+	return startDate
+}
 
 // createTaskExecutor 根据任务类型创建对应的执行回调函数
 func createTaskExecutor(taskType string, params map[string]interface{}) (func() error, error) {
@@ -127,6 +138,7 @@ func executeImport(params map[string]interface{}) error {
 	date := getStringParam(params, "date", "")
 	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
 	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
+	startDate = resolveStartDateByDays(params, startDate, date) // cron 增量：days→最近N天
 	mode := strings.ToLower(strings.TrimSpace(getStringParam(params, "efficiency_mode", cfg.EfficiencyMode)))
 	if mode == "" {
 		mode = "legacy"
@@ -183,6 +195,7 @@ func executeEfficiencyV2(params map[string]interface{}) error {
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
+	startDate = resolveStartDateByDays(params, startDate, date) // cron 增量：days→最近N天
 	return runEfficiencyV2(startDate, endDate, date)
 }
 
