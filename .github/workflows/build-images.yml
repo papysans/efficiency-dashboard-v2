@@ -46,7 +46,9 @@ jobs:
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then RAW="$INPUT_VERSION"; else RAW="$GITHUB_REF_NAME"; fi
           OWNER_LC="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          IMG="${REGISTRY}/${OWNER_LC}/efficiency-dashboard-${NAME}"
+          # 镜像嵌套到仓库路径下（efficiency-dashboard/<组件>），避开老 publish.yaml 占用的
+          # 扁平名 efficiency-dashboard-kbcli/-backend；配合下方 source 标签链接到本仓库 packages。
+          IMG="${REGISTRY}/${OWNER_LC}/efficiency-dashboard/${NAME}"
           TAG="beta-${RAW}"
           echo "==> $IMG:$TAG  (linux/amd64,linux/arm64)"
           docker run --privileged --rm tonistiigi/binfmt --install arm64
@@ -58,5 +60,6 @@ jobs:
             --platform "linux/amd64,linux/arm64" \
             --build-arg VERSION="beta-${RAW}" \
             --provenance=false \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             -t "$IMG:$TAG" \
             --push .
