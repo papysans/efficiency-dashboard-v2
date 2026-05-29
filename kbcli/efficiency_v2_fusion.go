@@ -187,7 +187,13 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 	}
 	result.TeamDensityUsed = &density
 
-	calendar := fused / density
+	// 基线日历标定：仅缩放"基线日历"这一估计量，把偏大的日历口径拉下来。
+	// 实际时间跨度(need.TotalCalendarMin)与 density 语义均不受影响。
+	calib := cfg.BaselineCalendarCalibration
+	if calib <= 0 {
+		calib = 1.0
+	}
+	calendar := (fused / density) * calib
 	result.CalendarMin = &calendar
 
 	if need.TotalCalendarMin > 0 && calendar > 0 {
@@ -197,8 +203,8 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 		if result.SpreadWorkMin != nil && *result.SpreadWorkMin > 0 {
 			// 设计 §Step 6：下界 = baseline 偏低时的 eff = (baseline-spread/2 - actual) / actual
 			//              上界 = baseline 偏高时的 eff = (baseline+spread/2 - actual) / actual
-			baselineCalendarLow := (fused - *result.SpreadWorkMin/2) / density
-			baselineCalendarHigh := (fused + *result.SpreadWorkMin/2) / density
+			baselineCalendarLow := (fused - *result.SpreadWorkMin/2) / density * calib
+			baselineCalendarHigh := (fused + *result.SpreadWorkMin/2) / density * calib
 			if baselineCalendarLow > 0 {
 				low := (baselineCalendarLow - need.TotalCalendarMin) / need.TotalCalendarMin
 				result.EfficiencyLow = &low
@@ -228,9 +234,9 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 		}
 	}
 
-	// 设计 §10.2.5：calendar 提效比落在极端区间（>0.9 或 <-0.5）必须可发现。
-	// 不 clip（§2.3.10），只打 outlier_flag + reason，业务方看聚合数字、UI 标红。
-	if result.EfficiencyRatio != nil && (*result.EfficiencyRatio > 0.9 || *result.EfficiencyRatio < -0.5) {
+	// 设计 §10.2.5：calendar 提效比落在极端区间必须可发现（阈值可配，默认 >2.0 或 <-0.8）。
+	// 不 clip（§2.3.10），只打 outlier_flag + reason，业务方看聚合数字、UI 标 tag。
+	if result.EfficiencyRatio != nil && (*result.EfficiencyRatio > thresh.OutlierEfficiencyRatioMax || *result.EfficiencyRatio < thresh.OutlierEfficiencyRatioMin) {
 		if !result.OutlierFlag {
 			result.OutlierFlag = true
 		}

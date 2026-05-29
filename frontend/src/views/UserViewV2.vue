@@ -65,8 +65,9 @@
                 <td class="kn-num">{{ formatNumber(row.commit_diff_lines, 0) }}</td>
                 <td class="kn-num">{{ row.week_count }}</td>
                 <td>
-                  <span v-if="row.confidence_limited" class="kn-tag kn-tag--warning">受限</span>
+                  <span v-if="row.confidence_limited" class="kn-tag kn-tag--warning" :title="confidenceReasonText(row.confidence_reason)">受限</span>
                   <span v-else class="kn-tag kn-tag--success">正常</span>
+                  <div v-if="row.confidence_limited" class="kn-ellipsis kn-reason-hint" :title="confidenceReasonText(row.confidence_reason)">{{ confidenceReasonText(row.confidence_reason) }}</div>
                 </td>
               </tr>
             </tbody>
@@ -185,6 +186,26 @@ function shortName(row) {
   return name.length > 20 ? `${name.slice(0, 20)}…` : name
 }
 
+// 把 user_productivity_v2 的受限原因码翻译成可读文案，供"受限"tag 展示/悬浮。
+function confidenceReasonText(reason) {
+  if (!reason) return '受限：数据置信度不足'
+  const rules = [
+    [/no_eligible_baseline/, () => '无可计入需求（没有 merged + 高/中置信 + 可测日历 的需求）'],
+    [/high_confidence_ratio=([0-9.]+)/, m => `高置信需求工作量占比过低（${(Number(m[1]) * 100).toFixed(1)}%）`],
+    [/low_unreported_ratio=([0-9.]+)/, m => `低/未上报需求工作量占比过高（${(Number(m[1]) * 100).toFixed(1)}%）`],
+  ]
+  const parts = []
+  reason.split(';').map(s => s.trim()).filter(Boolean).forEach(tok => {
+    let hit = false
+    for (const [re, label] of rules) {
+      const m = tok.match(re)
+      if (m) { parts.push(label(m)); hit = true; break }
+    }
+    if (!hit) parts.push(tok)
+  })
+  return '受限原因：' + parts.join('；')
+}
+
 watch(() => keyword.value, () => { page.value = 1 })
 
 onMounted(() => {
@@ -192,3 +213,13 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+.kn-reason-hint {
+  max-width: 200px;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--native-muted);
+}
+</style>

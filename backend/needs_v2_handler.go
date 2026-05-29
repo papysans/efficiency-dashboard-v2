@@ -103,6 +103,7 @@ func listNeedsV2(c *gin.Context) {
 		BoundaryConfidence: c.Query("boundaryConfidence"),
 		ConfidenceLevel:    c.Query("confidenceLevel"),
 		OutlierOnly:        c.Query("outlierOnly") == "true",
+		IncludeAll:         c.Query("includeAll") == "true",
 		Page:               parsePage(c.Query("page")),
 		PageSize:           parsePageSize(c.Query("pageSize")),
 	})
@@ -172,6 +173,7 @@ type NeedsV2Filter struct {
 	BoundaryConfidence string
 	ConfidenceLevel    string
 	OutlierOnly        bool
+	IncludeAll         bool
 	Page               int
 	PageSize           int
 }
@@ -203,7 +205,10 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 		q = q.Where("primary_user_id = ?", strings.TrimSpace(filter.UserId))
 	}
 	// 看板口径：非 active(已交付) + 非主干分支。详见 applyNeedCaliberFilter。
-	q = applyNeedCaliberFilter(q)
+	// includeAll=true 时放开口径，显示 active + 主干分支 + 全部需求，便于排查异常。
+	if !filter.IncludeAll {
+		q = applyNeedCaliberFilter(q)
+	}
 	if filter.Status != "" && strings.TrimSpace(filter.Status) != "active" {
 		q = q.Where("status = ?", strings.TrimSpace(filter.Status))
 	}

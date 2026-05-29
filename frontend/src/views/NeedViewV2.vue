@@ -35,6 +35,7 @@
             <el-option label="low" value="low" />
           </el-select>
           <el-checkbox v-model="filters.outlierOnly">仅异常</el-checkbox>
+          <el-checkbox v-model="filters.includeAll" title="放开看板口径：显示 active 未交付 + 主干分支 + 全部需求">显示全部</el-checkbox>
           <el-button type="primary" :icon="Search" :loading="loading" @click="applyFilters">查询</el-button>
           <el-button :icon="Refresh" @click="resetFilters">重置</el-button>
         </div>
@@ -61,6 +62,8 @@
             <thead>
               <tr>
                 <th>Need ID</th>
+                <th>日历提效</th>
+                <th>工作量提效</th>
                 <th>状态</th>
                 <th>边界来源</th>
                 <th>边界置信</th>
@@ -69,11 +72,9 @@
                 <th>主用户</th>
                 <th class="kn-num">实际日历</th>
                 <th class="kn-num">基线日历</th>
-                <th>日历提效</th>
                 <th>日历区间</th>
                 <th class="kn-num">实际工作量</th>
                 <th class="kn-num">基线工作量</th>
-                <th>工作量提效</th>
                 <th class="kn-num">思考</th>
                 <th class="kn-num">执行</th>
                 <th class="kn-num">验证</th>
@@ -89,12 +90,14 @@
               <tr
                 v-for="row in tableData"
                 :key="row.need_id"
-                :class="['is-clickable', { 'is-outlier': row.outlier_flag }]"
+                :class="'is-clickable'"
                 @click="goToDetail(row)"
               >
                 <td>
                   <button class="kn-link" @click.stop="goToDetail(row)">{{ shortNeedId(row.need_id) }}</button>
                 </td>
+                <td><RatioPill :value="row.efficiency_ratio" /></td>
+                <td><RatioPill :value="row.work_efficiency_ratio" /></td>
                 <td><span class="kn-tag" :class="statusTagClass(row.status)">{{ row.status || '-' }}</span></td>
                 <td>{{ row.boundary_source || '-' }}</td>
                 <td><span class="kn-tag" :class="confidenceTagClass(row.boundary_confidence)">{{ row.boundary_confidence || '-' }}</span></td>
@@ -103,11 +106,9 @@
                 <td><div class="kn-ellipsis" :title="row.primary_user_id">{{ row.primary_user_id || '-' }}</div></td>
                 <td class="kn-num">{{ formatDuration(row.total_calendar_min) }}</td>
                 <td class="kn-num">{{ formatDuration(row.baseline_calendar_min) }}</td>
-                <td><RatioPill :value="row.efficiency_ratio" /></td>
                 <td class="kn-num">{{ formatBand(row) }}</td>
                 <td class="kn-num">{{ formatDuration(row.total_active_work_corrected_min) }}</td>
                 <td class="kn-num">{{ formatDuration(row.baseline_fused_work_min) }}</td>
-                <td><RatioPill :value="row.work_efficiency_ratio" /></td>
                 <td class="kn-num">{{ formatDuration(row.total_think_min) }}</td>
                 <td class="kn-num">{{ formatDuration(row.total_exec_min) }}</td>
                 <td class="kn-num">{{ formatDuration(row.total_verify_min) }}</td>
@@ -171,6 +172,7 @@ const filters = reactive({
   boundaryConfidence: '',
   confidenceLevel: '',
   outlierOnly: false,
+  includeAll: false,
 })
 
 let ignoreRouteWatch = false
@@ -212,6 +214,7 @@ function syncFromRoute() {
   filters.boundaryConfidence = q.boundaryConfidence ? String(q.boundaryConfidence).trim() : ''
   filters.confidenceLevel = q.confidenceLevel ? String(q.confidenceLevel).trim() : ''
   filters.outlierOnly = q.outlierOnly === 'true'
+  filters.includeAll = q.includeAll === 'true'
 }
 
 function buildQuery() {
@@ -223,8 +226,8 @@ function buildQuery() {
   if (page.value !== 1) query.page = String(page.value)
   if (pageSize.value !== 20) query.pageSize = String(pageSize.value)
   Object.entries(filters).forEach(([key, value]) => {
-    if (key === 'outlierOnly') {
-      if (value) query.outlierOnly = 'true'
+    if (key === 'outlierOnly' || key === 'includeAll') {
+      if (value) query[key] = 'true'
       return
     }
     const trimmed = String(value || '').trim()
@@ -271,7 +274,7 @@ async function resetFilters() {
   page.value = 1
   pageSize.value = 20
   Object.keys(filters).forEach(key => {
-    filters[key] = key === 'outlierOnly' ? false : ''
+    filters[key] = (key === 'outlierOnly' || key === 'includeAll') ? false : ''
   })
   await updateUrl()
   fetchData()

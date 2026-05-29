@@ -81,6 +81,8 @@ type EfficiencyV2ConfidenceThresholds struct {
 	DuplicationRatioMax          float64 `yaml:"duplication_ratio_max"`
 	OutlierActualToBaselineMax   float64 `yaml:"outlier_actual_to_baseline_max"`
 	OutlierActualToBaselineMin   float64 `yaml:"outlier_actual_to_baseline_min"`
+	OutlierEfficiencyRatioMax    float64 `yaml:"outlier_efficiency_ratio_max"`
+	OutlierEfficiencyRatioMin    float64 `yaml:"outlier_efficiency_ratio_min"`
 }
 
 type EfficiencyV2BaselineDefaults struct {
@@ -90,15 +92,27 @@ type EfficiencyV2BaselineDefaults struct {
 	TeamWorkDensity float64 `yaml:"team_work_density"`
 }
 
+// EfficiencyV2BaselineAlgoOverrides 覆盖算法基线(古法估时)系数；>0 时生效，0=用内置默认。
+// 这些是把古法基线撑大的主因：think 段每对话轮、exec 段每文件协调。AI 工作轮次/文件多，
+// 古法默认(5min/轮、30min/文件)会高估。注意：算法基线只占融合 30%(kNN 45%/LLM 25%)。
+type EfficiencyV2BaselineAlgoOverrides struct {
+	ThinkTurnMin     float64 `yaml:"think_turn_min"`      // 古法每对话轮思考分钟数，默认 5
+	ExecFileCoordMin float64 `yaml:"exec_file_coord_min"` // 古法每文件协调分钟数，默认 30
+}
+
 type EfficiencyV2Config struct {
 	TeamProfile                 string                            `yaml:"team_profile"`
 	IdleThresholdDays           int                               `yaml:"idle_threshold_days"`
 	MaxNeedSpanDays             int                               `yaml:"max_need_span_days"`
+	// BaselineCalendarCalibration 缩放基线日历(=融合工作量/团队密度)，仅作用于日历口径提效比，
+	// 不动实际时间跨度、不动 density 的"6h/天"语义。<1 把偏大的基线日历整体拉下来。默认 1.0。
+	BaselineCalendarCalibration float64                           `yaml:"baseline_calendar_calibration"`
 	VerificationCommandPatterns []string                          `yaml:"verification_command_patterns"`
 	Stage                       EfficiencyV2StageConfig           `yaml:"stage"`
 	UncoveredCommit             EfficiencyV2UncoveredCommitConfig `yaml:"uncovered_commit"`
 	ConfidenceThresholds        EfficiencyV2ConfidenceThresholds  `yaml:"confidence_thresholds"`
 	BaselineDefaults            EfficiencyV2BaselineDefaults      `yaml:"baseline_defaults"`
+	BaselineAlgo                EfficiencyV2BaselineAlgoOverrides `yaml:"baseline_algo"`
 }
 
 // CrontabConfig 定时任务配置
@@ -387,6 +401,15 @@ func applyEfficiencyV2Defaults(c *Config) {
 	}
 	if c.EfficiencyV2.ConfidenceThresholds.OutlierActualToBaselineMin == 0 {
 		c.EfficiencyV2.ConfidenceThresholds.OutlierActualToBaselineMin = 0.10
+	}
+	if c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMax == 0 {
+		c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMax = 2.0
+	}
+	if c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMin == 0 {
+		c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMin = -0.8
+	}
+	if c.EfficiencyV2.BaselineCalendarCalibration <= 0 {
+		c.EfficiencyV2.BaselineCalendarCalibration = 1.0
 	}
 	if c.EfficiencyV2.BaselineDefaults.WeightAlgo == 0 {
 		c.EfficiencyV2.BaselineDefaults.WeightAlgo = 0.30

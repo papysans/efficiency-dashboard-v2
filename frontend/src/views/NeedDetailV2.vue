@@ -136,6 +136,17 @@
         </div>
       </section>
 
+      <!-- 改动文件 -->
+      <section class="kn-panel">
+        <div class="kn-panel-head"><span>改动文件</span><span class="kn-panel-hint">{{ needFiles.length }} 个</span></div>
+        <div class="kn-panel-body">
+          <div v-if="!needFiles.length" class="kn-empty">暂无改动文件</div>
+          <div v-else class="kn-pills">
+            <span v-for="f in needFiles" :key="f" class="kn-tag kn-tag--neutral is-mono" :title="f">{{ f }}</span>
+          </div>
+        </div>
+      </section>
+
       <!-- 关联 Sessions -->
       <section class="kn-panel">
         <div class="kn-panel-head"><span>关联 Sessions</span><span class="kn-panel-hint">{{ sessions.length }} 个</span></div>
@@ -173,10 +184,10 @@
         <div class="kn-table-wrap">
           <table class="kn-table">
             <thead>
-              <tr><th>Commit</th><th>提交时间</th><th>用户</th><th class="kn-num">代码行</th><th class="kn-num">硅含量</th><th>提交说明</th></tr>
+              <tr><th>Commit</th><th>提交时间</th><th>用户</th><th class="kn-num">代码行</th><th class="kn-num">硅含量</th><th>提交说明</th><th>改动文件</th></tr>
             </thead>
             <tbody>
-              <tr v-if="!commits.length"><td colspan="6"><div class="kn-empty">暂无 Commit</div></td></tr>
+              <tr v-if="!commits.length"><td colspan="7"><div class="kn-empty">暂无 Commit</div></td></tr>
               <tr v-for="c in commits" :key="c.commit_id">
                 <td><button class="kn-link" @click="router.push('/commit/' + encodeURIComponent(c.commit_id))">{{ shortId(c.commit_id, 10) }}</button></td>
                 <td>{{ formatLocalTime(c.commit_time) }}</td>
@@ -184,6 +195,12 @@
                 <td class="kn-num">{{ fmtInt(c.diff_lines) }}</td>
                 <td class="kn-num">{{ fmtPct(c.silica) }}</td>
                 <td><div class="kn-ellipsis" :title="c.comment">{{ c.comment || '-' }}</div></td>
+                <td>
+                  <div v-if="commitFiles(c).length" class="kn-ellipsis is-mono" style="max-width: 360px" :title="commitFiles(c).join('\n')">
+                    <strong>{{ commitFiles(c).length }}</strong> · {{ commitFiles(c).join('  ·  ') }}
+                  </div>
+                  <span v-else class="is-muted">-</span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -231,6 +248,27 @@ const contributorCount = computed(() => {
 const qualityReason = computed(() => qualitySignals.value?.reason || '')
 
 const reasonItems = computed(() => parseReason(need.value.reason))
+
+// touched_files 经后端 StringJSON.MarshalJSON 已是数组；个别情况下可能是 JSON 字符串，统一归一。
+function asFileList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean)
+  if (typeof value === 'string') {
+    const s = value.trim()
+    if (!s || s === '[]' || s === 'null') return []
+    try {
+      const arr = JSON.parse(s)
+      return Array.isArray(arr) ? arr.filter(Boolean) : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+const needFiles = computed(() => asFileList(need.value.touched_files))
+function commitFiles(c) {
+  return asFileList(c?.touched_files)
+}
 
 function reasonTagClass(tone) {
   if (tone === 'error') return 'kn-tag--error'

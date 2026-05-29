@@ -31,6 +31,7 @@ type UserV2Row struct {
 	Cost                float64  `json:"cost"`
 	Tokens              int64    `json:"tokens"`
 	ConfidenceLimited   bool     `json:"confidence_limited"`
+	ConfidenceReason    string   `json:"confidence_reason"`
 }
 
 type UsersV2NativeResponse struct {
@@ -97,6 +98,17 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 		r.Tokens += w.UpstreamTokens + w.DownstreamTokens
 		if w.ConfidenceLimited {
 			r.ConfidenceLimited = true
+			// 合并各周的受限原因（去重），供前端在"受限"tag 上展示。
+			for _, tok := range strings.Split(w.ConfidenceReason, ";") {
+				tok = strings.TrimSpace(tok)
+				if tok == "" || strings.Contains(r.ConfidenceReason, tok) {
+					continue
+				}
+				if r.ConfidenceReason != "" {
+					r.ConfidenceReason += "; "
+				}
+				r.ConfidenceReason += tok
+			}
 		}
 	}
 	rows := make([]UserV2Row, 0, len(order))
@@ -106,8 +118,11 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 		r.WorkRatio = efficiencyV2Ratio(r.BaselineWorkMin, r.ActualWorkMin)
 		rows = append(rows, *r)
 	}
-	// 默认按合并需求数、其次实际工作量降序，让活跃用户在前。
+	// 正常(非受限)上提、受限下沉；同组内按合并需求数、其次实际工作量降序，让活跃用户在前。
 	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].ConfidenceLimited != rows[j].ConfidenceLimited {
+			return !rows[i].ConfidenceLimited
+		}
 		if rows[i].MergedNeedCount != rows[j].MergedNeedCount {
 			return rows[i].MergedNeedCount > rows[j].MergedNeedCount
 		}

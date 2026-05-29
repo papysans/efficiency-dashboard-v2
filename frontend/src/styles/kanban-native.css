@@ -188,8 +188,6 @@
 .kn-table tbody tr:last-child td { border-bottom: 0; }
 .kn-table tbody tr.is-clickable { cursor: pointer; }
 .kn-table tbody tr:hover td { background: color-mix(in oklab, var(--native-primary) 4%, transparent); }
-.kn-table tbody tr.is-outlier td { background: color-mix(in oklab, var(--native-error) 7%, transparent); }
-.kn-table tbody tr.is-outlier:hover td { background: color-mix(in oklab, var(--native-error) 12%, transparent); }
 .kn-num { text-align: right; font-variant-numeric: tabular-nums; }
 .kn-empty { padding: 2.5rem 1rem; text-align: center; color: var(--native-muted); font-size: 0.875rem; }
 .kn-ellipsis { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

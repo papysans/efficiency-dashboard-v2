@@ -239,6 +239,13 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 	if args.AlgoEstimation.CommitLinePerMinutes > 0 {
 		coefs.ExecLinesPerMin = args.AlgoEstimation.CommitLinePerMinutes
 	}
+	// yaml efficiency_v2.baseline_algo 覆盖古法基线主系数（think 每轮 / exec 每文件协调）。
+	if v := args.EfficiencyV2.BaselineAlgo.ThinkTurnMin; v > 0 {
+		coefs.ThinkTurnMin = v
+	}
+	if v := args.EfficiencyV2.BaselineAlgo.ExecFileCoordMin; v > 0 {
+		coefs.ExecFileCoordMin = v
+	}
 	anchors, err := LoadEfficiencyV2KNNAnchors(db)
 	if err != nil {
 		return err
