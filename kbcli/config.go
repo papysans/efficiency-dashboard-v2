@@ -113,6 +113,9 @@ type EfficiencyV2Config struct {
 	ConfidenceThresholds        EfficiencyV2ConfidenceThresholds  `yaml:"confidence_thresholds"`
 	BaselineDefaults            EfficiencyV2BaselineDefaults      `yaml:"baseline_defaults"`
 	BaselineAlgo                EfficiencyV2BaselineAlgoOverrides `yaml:"baseline_algo"`
+	// AnchorSetCSV kNN 锚点母表 CSV 路径，供 import-anchor 命令灌入 anchor_set。
+	// 可配，默认 docs/data/efficiency_v2_anchor_set.csv；prod 可指向挂载路径。
+	AnchorSetCSV string `yaml:"anchor_set_csv"`
 }
 
 // CrontabConfig 定时任务配置
@@ -410,6 +413,9 @@ func applyEfficiencyV2Defaults(c *Config) {
 	}
 	if c.EfficiencyV2.BaselineCalendarCalibration <= 0 {
 		c.EfficiencyV2.BaselineCalendarCalibration = 1.0
+	}
+	if strings.TrimSpace(c.EfficiencyV2.AnchorSetCSV) == "" {
+		c.EfficiencyV2.AnchorSetCSV = "docs/data/efficiency_v2_anchor_set.csv"
 	}
 	if c.EfficiencyV2.BaselineDefaults.WeightAlgo == 0 {
 		c.EfficiencyV2.BaselineDefaults.WeightAlgo = 0.30
