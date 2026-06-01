@@ -322,12 +322,27 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	logInfo("目标数据库连接成功")
 
 	if userOrgs == nil {
-		userOrgs, err = loadDefaultUserOrgsFromLocalData(gormDB)
-		if err != nil {
-			recordCommandRun("import-org", startTime, 0, 0, 0, err)
-			return err
+		// 先尝试用配置的 org_csv_file 加载完整 org1~9 映射
+		if cfg.OrgCSVFile != "" {
+			csvOrgs, csvErr := loadUserOrgsFromCSV(cfg.OrgCSVFile)
+			if csvErr == nil && len(csvOrgs) > 0 {
+				logInfof("DB 不可用，已从配置 org_csv_file(%s)加载 %d 条完整组织记录", cfg.OrgCSVFile, len(csvOrgs))
+				userOrgs = csvOrgs
+			} else if csvErr != nil {
+				logWarnf("org_csv_file(%s) 读取失败，继续回落到本地任务数据: %v", cfg.OrgCSVFile, csvErr)
+			}
 		}
-		logWarnf("已生成 %d 条临时 user_org 记录，全部归入 org1=临时组织", len(userOrgs))
+	}
+
+	if userOrgs == nil {
+		// 最终兜底：从本地 tasks/commits/sessions 生成临时组织
+		localOrgs, localErr := loadDefaultUserOrgsFromLocalData(gormDB)
+		if localErr != nil {
+			recordCommandRun("import-org", startTime, 0, 0, 0, localErr)
+			return localErr
+		}
+		userOrgs = localOrgs
+		logWarnf("已生成 %d 条临时 user_org 记录，全部归入 org1=临时组织（org_csv_file 不可用或为空）", len(userOrgs))
 	}
 
 	if toCSV != "" {
