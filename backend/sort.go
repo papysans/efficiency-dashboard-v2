@@ -5,6 +5,27 @@ import (
 	"strings"
 )
 
+// ===================== Needs =====================
+
+var needSortFields = []string{"devEndTs", "efficiencyRatio", "workEfficiencyRatio", "totalCalendarMin", "baselineCalendarMin"}
+
+func buildNeedOrder(field, dir string) string {
+	switch field {
+	case "devEndTs":
+		return "dev_end_ts " + dir + " NULLS LAST"
+	case "efficiencyRatio":
+		return "efficiency_ratio " + dir + " NULLS LAST"
+	case "workEfficiencyRatio":
+		return "work_efficiency_ratio " + dir + " NULLS LAST"
+	case "totalCalendarMin":
+		return "total_calendar_min " + dir + " NULLS LAST"
+	case "baselineCalendarMin":
+		return "baseline_calendar_min " + dir + " NULLS LAST"
+	default:
+		return "dev_end_ts DESC NULLS LAST"
+	}
+}
+
 // ===================== Sessions =====================
 
 var sessionSortFields = []string{

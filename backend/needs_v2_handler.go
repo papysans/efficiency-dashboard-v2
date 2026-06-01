@@ -92,6 +92,11 @@ func listNeedsV2(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
 		return
 	}
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, needSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
 	resp, err := QueryNeedsV2(statDB, NeedsV2Filter{
 		StartDate:          c.Query("startDate"),
 		EndDate:            c.Query("endDate"),
@@ -106,6 +111,8 @@ func listNeedsV2(c *gin.Context) {
 		IncludeAll:         c.Query("includeAll") == "true",
 		Page:               parsePage(c.Query("page")),
 		PageSize:           parsePageSize(c.Query("pageSize")),
+		OrderField:         orderField,
+		OrderDir:           orderDir,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -176,6 +183,8 @@ type NeedsV2Filter struct {
 	IncludeAll         bool
 	Page               int
 	PageSize           int
+	OrderField         string
+	OrderDir           string
 }
 
 // QueryNeedsV2 lists v2 Needs with filters; returns persisted summary fields
@@ -230,8 +239,10 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 	}
 	offset := (resp.Page - 1) * resp.PageSize
 	var rows []models.Need
-	// 低价值需求（孤儿边界 lv5_orphan 或 very_low 置信）排到最后，正常需求仍按 dev_end 倒序。
-	if err := q.Order("CASE WHEN boundary_source = 'lv5_orphan' OR boundary_confidence = 'very_low' THEN 1 ELSE 0 END ASC").Order("dev_end_ts DESC NULLS LAST").Order("need_id ASC").Limit(resp.PageSize).Offset(offset).Find(&rows).Error; err != nil {
+	// 低价值需求（孤儿边界 lv5_orphan 或 very_low 置信）排到最后，中间排序由 buildNeedOrder 决定（默认 dev_end_ts DESC）。
+	if err := q.Order("CASE WHEN boundary_source = 'lv5_orphan' OR boundary_confidence = 'very_low' THEN 1 ELSE 0 END ASC").
+		Order(buildNeedOrder(filter.OrderField, filter.OrderDir)).
+		Order("need_id ASC").Limit(resp.PageSize).Offset(offset).Find(&rows).Error; err != nil {
 		return resp, err
 	}
 	for _, n := range rows {
