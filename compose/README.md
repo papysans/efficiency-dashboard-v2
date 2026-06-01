@@ -64,6 +64,22 @@ docker compose exec kbcli /app/bin/kbcli efficiency-v2 --config /app/config.yaml
 ```
 > `import` 只到 v1；**v2 看板必须 `efficiency-v2`**。`-f` 强制重扫（否则 analysed 的 silica 缓存会跳过已扫的）。
 
+## 发包与内网拉取（papysans/efficiency-dashboard-v2 → ghcr）
+
+镜像统一为 `ghcr.io/papysans/efficiency-dashboard-v2/<server|kbcli|portal>`，tag = `beta-<git tag>`。
+
+### 一、外网发包（GitHub Actions）
+1. 在仓库 papysans/efficiency-dashboard-v2 打 tag 并推送：`git tag v1.1.4 && git push origin v1.1.4`（或 Actions 页手动跑 `build-and-push-images`，version 填 v1.1.4）。
+2. CI 构建多架构(amd64+arm64)并推到 `ghcr.io/papysans/efficiency-dashboard-v2/{server,kbcli,portal}:beta-v1.1.4`。
+3. ghcr 包默认 private；内网要拉，需在 GitHub 把这三个 package 设为 public（或内网用 PAT `docker login ghcr.io`）。
+
+### 二、内网部署（二选一）
+- A 内网可直连 ghcr：`cd compose && docker compose --env-file .env pull && docker compose --env-file .env up -d`（.env 已指向上述镜像）。
+- B 离线：外网 `cd compose && bash save.sh` 导出 tar.gz → 把 tar.gz 与整个 compose/ 拷到内网 → `docker load -i efficiency-dashboard-images-*.tar.gz && cd compose && docker compose up -d`。
+
+### 三、升级新版本
+改 compose/.env 的 `VERSION` 与 `IMAGE_*` tag（如 beta-v1.1.5）→ 重新 pull/save → `docker compose up -d`。
+
 ## 备注
 
 - postgres：`POSTGRES_DB=postgres`（默认库），`initdb.d/10-create-db.sql` 建 `costrict_stat`、`20-*.sql` 装 pgcrypto，**仅数据卷为空的首次**执行。库表由后端 GORM AutoMigrate 自动建。
