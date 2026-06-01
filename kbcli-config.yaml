@@ -130,8 +130,8 @@ ai_estimation:
 algo_estimation:
   # === v2 常用调参 ===
   # 古法每写 1 行代码需要多少分钟。数值越大，古法基线越高，工作量提效越容易为正。
-  # 例如 2.0 表示古法约 30 行/小时；如果同时配置 commit_line_per_minutes，优先使用本字段。
-  commit_minutes_per_line: 2.0
+  # 例如 1.8 表示古法约 33 行/小时；如果同时配置 commit_line_per_minutes，优先使用本字段。
+  commit_minutes_per_line: 1.8  # 每行代码古法时间，2.0→1.8 轻微压低基线
   max_input_chars: 300000    # 最大输入字符数
   max_ratio: 50              # 工作量的最大倍数
   max_factor: 1.0            # 最大的加权系数

@@ -161,10 +161,10 @@ efficiency_v2:
     team_work_density: 0.35
   # 日历提效比标定：仅缩放基线日历(=融合工作量/密度)，1.0=不动。保留作为可选旋钮(本期未启用)。
   baseline_calendar_calibration: 1.0
-  # 古法基线主系数(0=用内置默认 5/30)：调小→算法基线↓→日历提效比↓。本模板 weight_algo=0.60，算法占比高，效果明显。
+  # 古法基线主系数：恢复内置默认 5/30（撤回此前的 2/10 压低）。
   baseline_algo:
-    think_turn_min: 2          # 古法每对话轮思考分钟，默认 5
-    exec_file_coord_min: 10    # 古法每文件协调分钟，默认 30
+    think_turn_min: 5          # 古法每对话轮思考分钟，内置默认 5
+    exec_file_coord_min: 30    # 古法每文件协调分钟，内置默认 30
   # 提效"异常"判定阈值(日历提效比口径)；超出才标 outlier/异常 tag。
   confidence_thresholds:
     outlier_efficiency_ratio_max: 2.0    # 原硬编码 0.9 → 2.0(>200% 才算异常)
@@ -188,7 +188,7 @@ efficiency_v2:
 algo_estimation:
   # 古法每写 1 行代码需要多少分钟。数值越大，古法基线越高，工作量提效越容易为正。
   # 如果同时配置 commit_line_per_minutes，优先使用本字段。
-  commit_minutes_per_line: 2.0
+  commit_minutes_per_line: 1.8  # 每行代码古法时间，2.0→1.8 轻微压低基线
   max_input_chars: 300000    # 最大输入字符数
   max_ratio: 10              # 工作量的最大倍数
   max_factor: 1.0            # 最大的加权系数
