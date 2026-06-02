@@ -18,26 +18,26 @@ const (
 )
 
 type EfficiencyV2FusionInputs struct {
-	AlgoMin   *float64
-	KNNMin    *float64
-	LLMMin    *float64
-	Weights   EfficiencyV2BaselineDefaults
+	AlgoMin     *float64
+	KNNMin      *float64
+	LLMMin      *float64
+	Weights     EfficiencyV2BaselineDefaults
 	TeamDensity float64
 }
 
 type EfficiencyV2FusionResult struct {
-	FusedWorkMin     *float64
-	SpreadWorkMin    *float64
-	CalendarMin      *float64
-	EfficiencyRatio  *float64
-	EfficiencyLow    *float64
-	EfficiencyHigh   *float64
-	WorkEfficiency   *float64
-	ConfidenceLevel  string
-	OutlierFlag      bool
-	Reasons          []string
-	TeamDensityUsed  *float64
-	BaselineSources  []string
+	FusedWorkMin    *float64
+	SpreadWorkMin   *float64
+	CalendarMin     *float64
+	EfficiencyRatio *float64
+	EfficiencyLow   *float64
+	EfficiencyHigh  *float64
+	WorkEfficiency  *float64
+	ConfidenceLevel string
+	OutlierFlag     bool
+	Reasons         []string
+	TeamDensityUsed *float64
+	BaselineSources []string
 }
 
 // EnsureEfficiencyV2FusionWeightSnapshot creates a cold-start fusion weight
@@ -121,8 +121,8 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 	result := EfficiencyV2FusionResult{}
 
 	type baseline struct {
-		name  string
-		value float64
+		name   string
+		value  float64
 		weight float64
 	}
 	available := make([]baseline, 0, 3)
@@ -241,6 +241,18 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 			result.OutlierFlag = true
 		}
 		result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:efficiency_ratio=%.3f", *result.EfficiencyRatio))
+	}
+
+	// LOC 速率物理不可能：实际日历内净写入行数过多(>~7行/分≈一天1w行)，多为机器生成/vendored/锁文件。
+	// 仅打 outlier_flag(从聚合统计剔除)，不 clip efficiency_ratio、不影响单任务展示。
+	if thresh.OutlierLocPerCalendarMinMax > 0 && need.TotalCalendarMin > 0 && need.ChangedLoc > 0 {
+		locRate := float64(need.ChangedLoc) / need.TotalCalendarMin
+		if locRate > thresh.OutlierLocPerCalendarMinMax {
+			if !result.OutlierFlag {
+				result.OutlierFlag = true
+			}
+			result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:impossible_loc_rate=%.1f", locRate))
+		}
 	}
 
 	result.ConfidenceLevel = classifyEfficiencyV2Confidence(need, result, len(available), cfg)

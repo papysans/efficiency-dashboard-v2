@@ -147,6 +147,8 @@ func main() {
 		v2.GET("/config", getConfigV2)
 
 		v2.GET("/needs", listNeedsV2)
+		// /needs/*needId 是 catch-all 路由；gin 不允许同级再注册静态 /needs/distribution（会 panic），
+		// 故 /needs/distribution 在 getNeedV2 内按 needId=="distribution" 分发到 getNeedsDistributionV2。
 		v2.GET("/needs/*needId", getNeedV2)
 		v2.GET("/efficiency", getEfficiencyV2Aggregate)
 	}

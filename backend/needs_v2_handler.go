@@ -134,6 +134,12 @@ func getNeedV2(c *gin.Context) {
 		return
 	}
 	needID := strings.TrimPrefix(c.Param("needId"), "/")
+	// /needs 用 catch-all 路由 *needId（gin 不允许同级再注册静态 /needs/distribution，会 panic），
+	// 故 distribution 子路径在此分发，复用同一通配入口。
+	if needID == "distribution" {
+		getNeedsDistributionV2(c)
+		return
+	}
 	resp, err := QueryNeedV2Detail(statDB, needID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -165,6 +171,113 @@ func getEfficiencyV2Aggregate(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// NeedsDistributionHistogramBucket 提效比直方图单桶：同一区间内计入(kept)与剔除(excluded)分别计数。
+type NeedsDistributionHistogramBucket struct {
+	Label    string `json:"label"`
+	Kept     int64  `json:"kept"`
+	Excluded int64  `json:"excluded"`
+}
+
+// NeedsDistributionExclusionReason 剔除原因计数(reason 文本含子串，原因可能重叠)。
+type NeedsDistributionExclusionReason struct {
+	Reason string `json:"reason"`
+	Label  string `json:"label"`
+	Count  int64  `json:"count"`
+}
+
+// NeedsDistributionLocBand LOC 速率分档计数(eligible 且 calendar>0)。
+type NeedsDistributionLocBand struct {
+	Label string `json:"label"`
+	Count int64  `json:"count"`
+}
+
+type NeedsDistributionWindow struct {
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+}
+
+// NeedsDistributionResponse 提效分布面板响应：计数 + 分位数 + 直方图 + 剔除原因 + LOC 速率分档。
+type NeedsDistributionResponse struct {
+	Window           NeedsDistributionWindow            `json:"window"`
+	KeptCount        int64                              `json:"kept_count"`
+	ExcludedCount    int64                              `json:"excluded_count"`
+	CalendarMedian   *float64                           `json:"calendar_median"`
+	CalendarP25      *float64                           `json:"calendar_p25"`
+	CalendarP75      *float64                           `json:"calendar_p75"`
+	WorkMedian       *float64                           `json:"work_median"`
+	Histogram        []NeedsDistributionHistogramBucket `json:"histogram"`
+	ExclusionReasons []NeedsDistributionExclusionReason `json:"exclusion_reasons"`
+	LocRateBands     []NeedsDistributionLocBand         `json:"loc_rate_bands"`
+}
+
+// getNeedsDistributionV2 GET /api/v2/needs/distribution
+// @Summary v2 提效分布聚合(供前端"提效分布"面板)
+// @Tags NeedsV2
+// @Produce json
+// @Param startDate query string false "开始日期 YYYYMMDD 或 YYYY-MM-DD"
+// @Param endDate query string false "结束日期 YYYYMMDD 或 YYYY-MM-DD"
+// @Success 200 {object} NeedsDistributionResponse
+// @Router /api/v2/needs/distribution [get]
+func getNeedsDistributionV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	startDate := c.Query("startDate")
+	endDate := c.Query("endDate")
+
+	// 复用本文件 parseStartDate/parseEndDate：窗口为 dev_end_ts ∈ [startDate, endDate+24h)。
+	var startTime, endTime string
+	if start, err := parseStartDate(startDate); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
+		return
+	} else if start != nil {
+		startTime = start.Format(time.RFC3339)
+	}
+	if end, err := parseEndDate(endDate); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
+		return
+	} else if end != nil {
+		endTime = end.Format(time.RFC3339)
+	}
+
+	agg, err := queryNeedsDistributionAgg(statDB, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	resp := NeedsDistributionResponse{
+		Window:         NeedsDistributionWindow{StartDate: startDate, EndDate: endDate},
+		KeptCount:      agg.KeptCount,
+		ExcludedCount:  agg.ExcludedCount,
+		CalendarMedian: agg.CalendarMedian,
+		CalendarP25:    agg.CalendarP25,
+		CalendarP75:    agg.CalendarP75,
+		WorkMedian:     agg.WorkMedian,
+		Histogram: []NeedsDistributionHistogramBucket{
+			{Label: "负提效", Kept: agg.H0Kept, Excluded: agg.H0Excl},
+			{Label: "0-50%", Kept: agg.H1Kept, Excluded: agg.H1Excl},
+			{Label: "50-100%", Kept: agg.H2Kept, Excluded: agg.H2Excl},
+			{Label: "100-200%", Kept: agg.H3Kept, Excluded: agg.H3Excl},
+			{Label: "200-500%", Kept: agg.H4Kept, Excluded: agg.H4Excl},
+			{Label: ">500%", Kept: agg.H5Kept, Excluded: agg.H5Excl},
+		},
+		ExclusionReasons: []NeedsDistributionExclusionReason{
+			{Reason: "impossible_loc_rate", Label: "物理不可能(>1w行/日)", Count: agg.ReasonLoc},
+			{Reason: "efficiency_ratio", Label: "极端提效(>200%)", Count: agg.ReasonEff},
+			{Reason: "actual_to_baseline", Label: "工作量异常", Count: agg.ReasonAtb},
+		},
+		LocRateBands: []NeedsDistributionLocBand{
+			{Label: "≤7 人力可达", Count: agg.Lb1},
+			{Label: "7-21", Count: agg.Lb2},
+			{Label: "21-50", Count: agg.Lb3},
+			{Label: ">50 bulk", Count: agg.Lb4},
+		},
 	}
 	c.JSON(http.StatusOK, resp)
 }

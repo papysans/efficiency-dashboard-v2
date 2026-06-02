@@ -169,6 +169,9 @@ efficiency_v2:
   confidence_thresholds:
     outlier_efficiency_ratio_max: 2.0    # 原硬编码 0.9 → 2.0(>200% 才算异常)
     outlier_efficiency_ratio_min: -0.8   # 原硬编码 -0.5 → -0.8
+    # LOC 速率物理不可能阈值：total_loc_net/total_calendar_min > 此值 → 打 outlier(仅从聚合统计剔除，不封顶、单任务页仍显真实值)。
+    # 7 ≈ 一个日历日(24h)写 1w 行；设为负数可关闭。
+    outlier_loc_per_calendar_min_max: 7
   # kNN 锚点母表 CSV 路径，供 `kbcli import-anchor` 灌入 anchor_set。可被 --csv 覆盖。
   # 注意：CSV 默认不在镜像里——prod 需把 CSV 挂到此路径，或在 kbcli 镜像 COPY docs/data。
   anchor_set_csv: /app/docs/data/efficiency_v2_anchor_set.csv

@@ -83,6 +83,7 @@ type EfficiencyV2ConfidenceThresholds struct {
 	OutlierActualToBaselineMin   float64 `yaml:"outlier_actual_to_baseline_min"`
 	OutlierEfficiencyRatioMax    float64 `yaml:"outlier_efficiency_ratio_max"`
 	OutlierEfficiencyRatioMin    float64 `yaml:"outlier_efficiency_ratio_min"`
+	OutlierLocPerCalendarMinMax  float64 `yaml:"outlier_loc_per_calendar_min_max"`
 }
 
 type EfficiencyV2BaselineDefaults struct {
@@ -101,9 +102,9 @@ type EfficiencyV2BaselineAlgoOverrides struct {
 }
 
 type EfficiencyV2Config struct {
-	TeamProfile                 string                            `yaml:"team_profile"`
-	IdleThresholdDays           int                               `yaml:"idle_threshold_days"`
-	MaxNeedSpanDays             int                               `yaml:"max_need_span_days"`
+	TeamProfile       string `yaml:"team_profile"`
+	IdleThresholdDays int    `yaml:"idle_threshold_days"`
+	MaxNeedSpanDays   int    `yaml:"max_need_span_days"`
 	// BaselineCalendarCalibration 缩放基线日历(=融合工作量/团队密度)，仅作用于日历口径提效比，
 	// 不动实际时间跨度、不动 density 的"6h/天"语义。<1 把偏大的基线日历整体拉下来。默认 1.0。
 	BaselineCalendarCalibration float64                           `yaml:"baseline_calendar_calibration"`
@@ -410,6 +411,9 @@ func applyEfficiencyV2Defaults(c *Config) {
 	}
 	if c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMin == 0 {
 		c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMin = -0.8
+	}
+	if c.EfficiencyV2.ConfidenceThresholds.OutlierLocPerCalendarMinMax == 0 {
+		c.EfficiencyV2.ConfidenceThresholds.OutlierLocPerCalendarMinMax = 7.0
 	}
 	if c.EfficiencyV2.BaselineCalendarCalibration <= 0 {
 		c.EfficiencyV2.BaselineCalendarCalibration = 1.0

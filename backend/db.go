@@ -1503,6 +1503,81 @@ func queryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNe
 	return &agg, nil
 }
 
+// needsDistributionAgg 一次 SQL 取出"提效分布"面板所需的全部标量：
+// 计入/剔除计数、calendar/work 提效比分位数、提效比直方图(6桶×kept/excluded)、
+// 剔除原因计数、LOC 速率分档。供 GET /api/v2/needs/distribution 直接组装返回。
+// 全部按看板口径(applyNeedCaliberFilter)+ 日期窗口(dev_end_ts ∈ [start, end))统计。
+type needsDistributionAgg struct {
+	KeptCount      int64    `gorm:"column:kept_count"`
+	ExcludedCount  int64    `gorm:"column:excluded_count"`
+	CalendarMedian *float64 `gorm:"column:calendar_median"`
+	CalendarP25    *float64 `gorm:"column:calendar_p25"`
+	CalendarP75    *float64 `gorm:"column:calendar_p75"`
+	WorkMedian     *float64 `gorm:"column:work_median"`
+
+	H0Kept int64 `gorm:"column:h0_kept"`
+	H0Excl int64 `gorm:"column:h0_excl"`
+	H1Kept int64 `gorm:"column:h1_kept"`
+	H1Excl int64 `gorm:"column:h1_excl"`
+	H2Kept int64 `gorm:"column:h2_kept"`
+	H2Excl int64 `gorm:"column:h2_excl"`
+	H3Kept int64 `gorm:"column:h3_kept"`
+	H3Excl int64 `gorm:"column:h3_excl"`
+	H4Kept int64 `gorm:"column:h4_kept"`
+	H4Excl int64 `gorm:"column:h4_excl"`
+	H5Kept int64 `gorm:"column:h5_kept"`
+	H5Excl int64 `gorm:"column:h5_excl"`
+
+	ReasonLoc int64 `gorm:"column:reason_loc"`
+	ReasonEff int64 `gorm:"column:reason_eff"`
+	ReasonAtb int64 `gorm:"column:reason_atb"`
+
+	Lb1 int64 `gorm:"column:lb1"`
+	Lb2 int64 `gorm:"column:lb2"`
+	Lb3 int64 `gorm:"column:lb3"`
+	Lb4 int64 `gorm:"column:lb4"`
+}
+
+func queryNeedsDistributionAgg(db *gorm.DB, startTime, endTime string) (*needsDistributionAgg, error) {
+	var agg needsDistributionAgg
+	q := applyNeedCaliberFilter(db.Model(&models.Need{})).Select(`
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS kept_count,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag)     AS excluded_count,
+		PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS calendar_median,
+		PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS calendar_p25,
+		PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS calendar_p75,
+		PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY work_efficiency_ratio) FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS work_median,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio < 0)               AS h0_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio < 0)               AS h0_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 0 AND efficiency_ratio < 0.5) AS h1_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 0 AND efficiency_ratio < 0.5) AS h1_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 0.5 AND efficiency_ratio < 1) AS h2_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 0.5 AND efficiency_ratio < 1) AS h2_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 1 AND efficiency_ratio < 2)   AS h3_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 1 AND efficiency_ratio < 2)   AS h3_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 2 AND efficiency_ratio < 5)   AS h4_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 2 AND efficiency_ratio < 5)   AS h4_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 5)              AS h5_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 5)              AS h5_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%impossible_loc_rate%') AS reason_loc,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%efficiency_ratio%')     AS reason_eff,
+		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%actual_to_baseline%')   AS reason_atb,
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min <= 7)  AS lb1,
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min > 7  AND total_loc_net::float/total_calendar_min <= 21) AS lb2,
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min > 21 AND total_loc_net::float/total_calendar_min <= 50) AS lb3,
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min > 50) AS lb4`)
+	if startTime != "" {
+		q = q.Where("dev_end_ts >= ?", startTime)
+	}
+	if endTime != "" {
+		q = q.Where("dev_end_ts <= ?", endTime)
+	}
+	if err := q.Scan(&agg).Error; err != nil {
+		return nil, fmt.Errorf("查询 needs 提效分布聚合失败: %w", err)
+	}
+	return &agg, nil
+}
+
 // ============================================================
 // user_productivity 聚合查询 (用于 user list / org list)
 // ============================================================
