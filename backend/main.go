@@ -153,6 +153,14 @@ func main() {
 		v2.GET("/efficiency", getEfficiencyV2Aggregate)
 	}
 
+	// 内网 portal(opencode) 的 2b auth shim：无 casdoor 时让 AuthGuard 通过。详见 auth_shim_handler.go。
+	auth := api.Group("/auth")
+	{
+		auth.GET("/me", authShimMe)
+		auth.GET("/permissions", authShimPermissions)
+		auth.POST("/logout", authShimLogout)
+	}
+
 	port := appConfig.Server.Port
 	if port == 0 {
 		port = 9990
