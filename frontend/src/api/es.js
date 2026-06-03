@@ -134,7 +134,7 @@ export function estimateAncientMinutes(params) {
 
 // === Project V2 API ===
 export const createProject = (data) => request({ url: '/v2/projects', method: 'post', data })
-export const getProjects = () => request({ url: '/v2/projects', method: 'get' })
+export const getProjects = (params) => request({ url: '/v2/projects', method: 'get', params })
 export const getProjectDetail = (projectId) => request({ url: `/v2/projects/${projectId}`, method: 'get' })
 export const updateProject = (projectId, data) => request({ url: `/v2/projects/${projectId}`, method: 'put', data })
 export const deleteProject = (projectId) => request({ url: `/v2/projects/${projectId}`, method: 'delete' })

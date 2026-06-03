@@ -109,15 +109,17 @@
     <!-- 表格 -->
     <el-table
       ref="tableRef"
-      :data="filteredData"
+      :data="displayData"
       v-loading="loading"
       style="width: 100%"
       class="kb-table"
       :row-class-name="rowClassName"
       :highlight-current-row="highlightCurrentRow"
       :empty-text="emptyText"
+      :default-sort="elDefaultSort"
       @row-click="(row, col, e) => $emit('row-click', row, col, e)"
       @selection-change="handleSelectionChange"
+      @sort-change="onElSort"
     >
       <el-table-column v-if="showSelection" type="selection" width="55" />
       <el-table-column
@@ -128,7 +130,7 @@
         :width="col.width"
         :min-width="col.minWidth"
         :align="col.align"
-        :sortable="col.sortable !== false"
+        :sortable="getColSortable(col)"
         :sort-method="col.sortMethod"
         :show-overflow-tooltip="col.showOverflowTooltip || false"
         :formatter="col.formatter"
@@ -310,6 +312,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Filter } from '@element-plus/icons-vue'
 import DateRangePicker from './DateRangePicker.vue'
 import { getOrgV2 } from '@/api/es'
+import { parseOrder, toOrder, sortRows } from '@/utils/sort'
 
 const props = defineProps({
   columns: { type: Array, required: true },
@@ -324,13 +327,76 @@ const props = defineProps({
   emptyText: { type: String, default: '暂无数据' },
   showSelection: { type: Boolean, default: false },
   bare: { type: Boolean, default: false },
+  // 受控排序 order（'field' 升 / '-field' 降 / 空 无）；不传则不启用服务端排序。
+  order: { type: String, default: '' },
 })
 
-const emit = defineEmits(['row-click', 'page-change', 'size-change', 'update:page', 'update:pageSize', 'filter-change', 'selection-change'])
+const emit = defineEmits(['row-click', 'page-change', 'size-change', 'update:page', 'update:pageSize', 'filter-change', 'selection-change', 'sort-change'])
 
 function handleSelectionChange(val) {
   emit('selection-change', val)
 }
+
+// ===== 排序：双模式（服务端 sortField / 客户端 clientSort+sortValue）=====
+//
+// 列可声明两种排序方式（互斥）：
+//   - col.sortField（后端白名单字段名）→ 服务端排序：emit sort-change，view 透传 order 给后端。
+//   - col.clientSort:true + col.sortValue(row)→值 → 客户端排序：本组件用 sortValue 在
+//     filteredData 上 sortRows（null 沉底+稳定），不发请求。sortValue 返回的值应与单元格
+//     显示值一致（所见即所排），数值列返回 number、空返回 null/undefined 以便沉底。
+//
+// 两者都走 el-table 的 'custom'（caret 可见、不本地排序）。
+
+/**
+ * 列可排序性：
+ *   - 显式 sortable:false → 不可排序
+ *   - 声明了 sortField（服务端）或 clientSort（客户端）→ 'custom'（emit sort-change，不本地排序）
+ *   - 否则 false（避免 el-table 在服务端分页下误排当前页）
+ */
+function getColSortable(col) {
+  if (col.sortable === false) return false
+  if (col.sortField) return 'custom'
+  if (col.clientSort) return 'custom'
+  return false
+}
+
+// 由受控 order 派生 el-table :default-sort，刷新后 caret 回到 URL 指定列/向。
+// 服务端列按 sortField===field 找 prop；客户端列按 prop===field 找。
+const elDefaultSort = computed(() => {
+  const p = parseOrder(props.order)
+  if (!p) return {}
+  const col = props.columns.find(c => c.sortField === p.field)
+    || props.columns.find(c => c.clientSort && c.prop === p.field)
+  if (!col) return {}
+  return { prop: col.prop, order: p.desc ? 'descending' : 'ascending' }
+})
+
+// el-table 排序事件 → emit { order, server }。
+//   服务端列：field=col.sortField，server=true。
+//   客户端列：field=col.prop，server=false。
+//   三态清除（order=null）→ { order: undefined, server: false }。
+function onElSort({ prop, order }) {
+  if (!order) {
+    emit('sort-change', { order: undefined, server: false })
+    return
+  }
+  const col = props.columns.find(c => c.prop === prop)
+  if (!col) return
+  const server = !!col.sortField
+  const field = col.sortField || col.prop
+  emit('sort-change', { order: toOrder(field, order === 'descending'), server })
+}
+
+// 客户端排序后用于渲染的数据：
+//   当前 order 命中某 clientSort 列（order.field === col.prop）→ sortRows(filteredData, col.sortValue, desc)。
+//   否则原样返回 filteredData（服务端已排序 / 无排序）。
+const displayData = computed(() => {
+  const p = parseOrder(props.order)
+  if (!p) return filteredData.value
+  const col = props.columns.find(c => c.clientSort && c.prop === p.field)
+  if (!col || typeof col.sortValue !== 'function') return filteredData.value
+  return sortRows(filteredData.value, col.sortValue, p.desc)
+})
 
 const tableRef = ref(null)
 
@@ -821,9 +887,11 @@ defineExpose({ filteredData, clearAllFilters, setFilter, getFilter, tableRef })
   white-space: nowrap;
 }
 
-/* 隐藏排序箭头，保留点击表头文字排序能力 */
-:deep(.caret-wrapper) {
-  display: none;
+/* 服务端 'custom' 排序需要可见的排序箭头（caret）。
+   el-table 会把 caret-wrapper 紧跟在表头单元格内容右侧，
+   这里给 filter 图标留出与 caret 的间距，避免两者挤压。 */
+:deep(.cell .kb-col-header) {
+  margin-right: 2px;
 }
 .kb-filter-icon {
   cursor: pointer;

@@ -33,20 +33,20 @@
           <table class="kn-table">
             <thead>
               <tr>
-                <th>组织</th>
-                <th class="kn-num">用户数</th>
-                <th class="kn-num">合并需求</th>
-                <th class="kn-num">实际日历</th>
-                <th class="kn-num">基线日历</th>
-                <th>日历提效</th>
-                <th>工作量提效</th>
-                <th class="kn-num">Commit</th>
-                <th class="kn-num">代码行</th>
+                <th><SortableTh field="org_name" label="组织" :active="sortField === 'org_name'" :desc="sortDesc" @sort="onSort('org_name')" /></th>
+                <th class="kn-num"><SortableTh field="user_count" label="用户数" numeric :active="sortField === 'user_count'" :desc="sortDesc" @sort="onSort('user_count')" /></th>
+                <th class="kn-num"><SortableTh field="merged_need_count" label="合并需求" numeric :active="sortField === 'merged_need_count'" :desc="sortDesc" @sort="onSort('merged_need_count')" /></th>
+                <th class="kn-num"><SortableTh field="actual_calendar_min" label="实际日历" numeric :active="sortField === 'actual_calendar_min'" :desc="sortDesc" @sort="onSort('actual_calendar_min')" /></th>
+                <th class="kn-num"><SortableTh field="baseline_calendar_min" label="基线日历" numeric :active="sortField === 'baseline_calendar_min'" :desc="sortDesc" @sort="onSort('baseline_calendar_min')" /></th>
+                <th><SortableTh field="calendar_ratio" label="日历提效" :active="sortField === 'calendar_ratio'" :desc="sortDesc" @sort="onSort('calendar_ratio')" /></th>
+                <th><SortableTh field="work_ratio" label="工作量提效" :active="sortField === 'work_ratio'" :desc="sortDesc" @sort="onSort('work_ratio')" /></th>
+                <th class="kn-num"><SortableTh field="commit_count" label="Commit" numeric :active="sortField === 'commit_count'" :desc="sortDesc" @sort="onSort('commit_count')" /></th>
+                <th class="kn-num"><SortableTh field="commit_diff_lines" label="代码行" numeric :active="sortField === 'commit_diff_lines'" :desc="sortDesc" @sort="onSort('commit_diff_lines')" /></th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="!rows.length && !loading"><td colspan="9"><div class="kn-empty">暂无组织数据</div></td></tr>
-              <tr v-for="row in rows" :key="row.org_name">
+              <tr v-for="row in sortedRows" :key="row.org_name">
                 <td>{{ row.org_name }}</td>
                 <td class="kn-num">{{ row.user_count }}</td>
                 <td class="kn-num">{{ row.merged_need_count }}</td>
@@ -74,9 +74,11 @@ import { ElMessage } from 'element-plus'
 import DateRangePicker from '@/components/DateRangePicker.vue'
 import MetricCard from '@/components/native/MetricCard.vue'
 import RatioPill from '@/components/native/RatioPill.vue'
+import SortableTh from '@/components/native/SortableTh.vue'
 import { getOrgV2 } from '@/api/es'
 import { formatDuration, formatNumber } from '@/utils/formatters'
 import { formatDateParam, getDefaultDateRangeWide } from '@/utils/date'
+import { parseOrder, toOrder, sortRows } from '@/utils/sort'
 
 const route = useRoute()
 const router = useRouter()
@@ -85,6 +87,52 @@ const loading = ref(false)
 const rows = ref([])
 const noOrgMapping = ref(false)
 const dateRange = ref(getDefaultDateRangeWide())
+
+// 客户端排序：org native handler 不消费 order，全量数据已在前端，就地排序。
+const order = ref('')
+const parsedOrder = computed(() => parseOrder(order.value))
+const sortField = computed(() => parsedOrder.value?.field || '')
+const sortDesc = computed(() => parsedOrder.value?.desc || false)
+
+// field → 行取值函数；数值列返回 number，文本列返回字符串。sortRows 保证 null/缺值恒沉底 + 稳定。
+const NUMERIC_FIELDS = new Set([
+  'user_count', 'merged_need_count', 'actual_calendar_min', 'baseline_calendar_min',
+  'calendar_ratio', 'work_ratio', 'commit_count', 'commit_diff_lines',
+])
+function getterFor(field) {
+  if (NUMERIC_FIELDS.has(field)) {
+    return (row) => {
+      const v = row[field]
+      if (v == null || v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
+  }
+  return (row) => {
+    const v = row[field]
+    return v == null || v === '' ? null : String(v)
+  }
+}
+
+const sortedRows = computed(() => {
+  const p = parsedOrder.value
+  if (!p) return rows.value
+  return sortRows(rows.value, getterFor(p.field), p.desc)
+})
+
+// 列头三态循环：无→升→降→无。把 order 合并进 URL。
+function onSort(field) {
+  const p = parsedOrder.value
+  let next
+  if (!p || p.field !== field) next = toOrder(field, false)
+  else if (!p.desc) next = toOrder(field, true)
+  else next = undefined
+  order.value = next || ''
+  const q = { ...route.query }
+  if (order.value) q.order = order.value
+  else delete q.order
+  router.replace({ query: q })
+}
 
 const stats = computed(() => {
   const actual = rows.value.reduce((s, r) => s + (r.actual_calendar_min || 0), 0)
@@ -121,7 +169,9 @@ async function fetchData() {
 
 async function applyFilters() {
   const [start, end] = dateRange.value
-  await router.replace({ query: { startDate: formatDateParam(start), endDate: formatDateParam(end) } })
+  const query = { startDate: formatDateParam(start), endDate: formatDateParam(end) }
+  if (order.value) query.order = order.value
+  await router.replace({ query })
   fetchData()
 }
 
@@ -129,6 +179,7 @@ onMounted(() => {
   const start = normalizeDateQuery(route.query.startDate)
   const end = normalizeDateQuery(route.query.endDate)
   dateRange.value = start && end ? [start, end] : getDefaultDateRangeWide()
+  order.value = typeof route.query.order === 'string' ? route.query.order : ''
   fetchData()
 })
 </script>

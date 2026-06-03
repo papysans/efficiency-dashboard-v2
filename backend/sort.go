@@ -51,21 +51,21 @@ var commitSortFields = []string{
 func buildCommitOrder(field, dir string) string {
 	switch field {
 	case "commitTime":
-		return "commit_time " + dir
+		return "commit_time " + dir + " NULLS LAST"
 	case "diffLines":
-		return "diff_lines " + dir
+		return "diff_lines " + dir + " NULLS LAST"
 	case "cost":
-		return "cost " + dir
+		return "cost " + dir + " NULLS LAST"
 	case "silica":
-		return "silica " + dir
+		return "silica " + dir + " NULLS LAST"
 	case "commitAncientMinutes":
-		return "commit_ancient_minutes " + dir
+		return "commit_ancient_minutes " + dir + " NULLS LAST"
 	case "commitRealMinutes":
-		return "commit_real_minutes " + dir
+		return "commit_real_minutes " + dir + " NULLS LAST"
 	case "efficiencyRatio":
-		return "commit_ancient_minutes / NULLIF(commit_real_minutes, 0) " + dir
+		return "commit_ancient_minutes / NULLIF(commit_real_minutes, 0) " + dir + " NULLS LAST"
 	default:
-		return "commit_time DESC"
+		return "commit_time DESC NULLS LAST"
 	}
 }
 
@@ -79,21 +79,21 @@ var taskSortFields = []string{
 func buildTaskOrder(field, dir string) string {
 	switch field {
 	case "startTime":
-		return "start_time " + dir
+		return "start_time " + dir + " NULLS LAST"
 	case "endTime":
-		return "end_time " + dir
+		return "end_time " + dir + " NULLS LAST"
 	case "cost":
-		return "cost " + dir
+		return "cost " + dir + " NULLS LAST"
 	case "diffLines":
-		return "diff_lines " + dir
+		return "diff_lines " + dir + " NULLS LAST"
 	case "taskAncientMinutes":
-		return "task_ancient_minutes " + dir
+		return "task_ancient_minutes " + dir + " NULLS LAST"
 	case "taskRealMinutes":
-		return "task_real_minutes " + dir
+		return "task_real_minutes " + dir + " NULLS LAST"
 	case "efficiencyRatio":
-		return "task_ancient_minutes / NULLIF(task_real_minutes, 0) " + dir
+		return "task_ancient_minutes / NULLIF(task_real_minutes, 0) " + dir + " NULLS LAST"
 	default:
-		return "start_time DESC"
+		return "start_time DESC NULLS LAST"
 	}
 }
 
@@ -191,6 +191,52 @@ func sortOrgData(data []OrgDataItem, field, dir string) {
 	})
 }
 
+// ===================== Sort helpers (nil/missing sinks to bottom) =====================
+
+// lessFloatSink reports whether the i-th item should sort before the j-th when
+// comparing a *float64 key. Missing (nil) values always sink to the bottom,
+// regardless of sort direction; equal/both-missing values fall back to tiebreak.
+// The bool return value is the sort.Slice "less" result; the second bool
+// reports whether the comparison was decisive (false → callers should fall
+// through to their tiebreak comparison).
+func lessFloatSink(a, b *float64, asc bool) (less bool, decided bool) {
+	am, bm := a == nil, b == nil
+	if am || bm {
+		if am && bm {
+			return false, false // both missing → undecided, fall back to tiebreak
+		}
+		// exactly one missing → missing one sorts last (independent of direction)
+		return bm, true // bm==true means b is missing → a(=i) comes first
+	}
+	if *a == *b {
+		return false, false // equal → fall back to tiebreak
+	}
+	if asc {
+		return *a < *b, true
+	}
+	return *a > *b, true
+}
+
+// lessStringSink compares string keys where empty string is treated as missing
+// and sinks to the bottom regardless of direction. Returns (less, decided).
+func lessStringSink(a, b string, asc bool) (less bool, decided bool) {
+	am, bm := a == "", b == ""
+	if am || bm {
+		if am && bm {
+			return false, false // both missing → fall back to tiebreak
+		}
+		return bm, true // missing one sorts last
+	}
+	cmp := strings.Compare(a, b)
+	if cmp == 0 {
+		return false, false
+	}
+	if asc {
+		return cmp < 0, true
+	}
+	return cmp > 0, true
+}
+
 // ===================== Projects =====================
 
 var projectSortFields = []string{
@@ -208,50 +254,20 @@ func sortProjectData(data []ProjectListItem, field, dir string) {
 		a, b := &data[i], &data[j]
 		switch field {
 		case "cost":
-			va, vb := 0.0, 0.0
-			if a.Cost != nil {
-				va = *a.Cost
+			if less, decided := lessFloatSink(a.Cost, b.Cost, asc); decided {
+				return less
 			}
-			if b.Cost != nil {
-				vb = *b.Cost
-			}
-			if va == vb {
-				return strings.Compare(a.Name, b.Name) < 0
-			}
-			if asc {
-				return va < vb
-			}
-			return va > vb
+			return strings.Compare(a.Name, b.Name) < 0
 		case "projectAncientMinutes":
-			va, vb := 0.0, 0.0
-			if a.ProjectAncientMinutes != nil {
-				va = *a.ProjectAncientMinutes
+			if less, decided := lessFloatSink(a.ProjectAncientMinutes, b.ProjectAncientMinutes, asc); decided {
+				return less
 			}
-			if b.ProjectAncientMinutes != nil {
-				vb = *b.ProjectAncientMinutes
-			}
-			if va == vb {
-				return strings.Compare(a.Name, b.Name) < 0
-			}
-			if asc {
-				return va < vb
-			}
-			return va > vb
+			return strings.Compare(a.Name, b.Name) < 0
 		case "projectRealProcessMinutes":
-			va, vb := 0.0, 0.0
-			if a.ProjectRealProcessMinutes != nil {
-				va = *a.ProjectRealProcessMinutes
+			if less, decided := lessFloatSink(a.ProjectRealProcessMinutes, b.ProjectRealProcessMinutes, asc); decided {
+				return less
 			}
-			if b.ProjectRealProcessMinutes != nil {
-				vb = *b.ProjectRealProcessMinutes
-			}
-			if va == vb {
-				return strings.Compare(a.Name, b.Name) < 0
-			}
-			if asc {
-				return va < vb
-			}
-			return va > vb
+			return strings.Compare(a.Name, b.Name) < 0
 		case "repoCount":
 			if a.RepoCount == b.RepoCount {
 				return strings.Compare(a.Name, b.Name) < 0
@@ -285,35 +301,15 @@ func sortProjectData(data []ProjectListItem, field, dir string) {
 			}
 			return a.TotalCodeLines > b.TotalCodeLines
 		case "actualLinesPerDay":
-			va, vb := 0.0, 0.0
-			if a.ActualLinesPerDay != nil {
-				va = *a.ActualLinesPerDay
+			if less, decided := lessFloatSink(a.ActualLinesPerDay, b.ActualLinesPerDay, asc); decided {
+				return less
 			}
-			if b.ActualLinesPerDay != nil {
-				vb = *b.ActualLinesPerDay
-			}
-			if va == vb {
-				return strings.Compare(a.Name, b.Name) < 0
-			}
-			if asc {
-				return va < vb
-			}
-			return va > vb
+			return strings.Compare(a.Name, b.Name) < 0
 		case "efficiencyRatio":
-			va, vb := 0.0, 0.0
-			if a.EfficiencyRatio != nil {
-				va = *a.EfficiencyRatio
+			if less, decided := lessFloatSink(a.EfficiencyRatio, b.EfficiencyRatio, asc); decided {
+				return less
 			}
-			if b.EfficiencyRatio != nil {
-				vb = *b.EfficiencyRatio
-			}
-			if va == vb {
-				return strings.Compare(a.Name, b.Name) < 0
-			}
-			if asc {
-				return va < vb
-			}
-			return va > vb
+			return strings.Compare(a.Name, b.Name) < 0
 		default:
 			return strings.Compare(a.Name, b.Name) < 0
 		}
@@ -344,23 +340,15 @@ func sortRepoData(data []RepoListItem, field, dir string) {
 			}
 			return a.CommitCount > b.CommitCount
 		case "startTime":
-			cmp := strings.Compare(a.StartTime, b.StartTime)
-			if cmp == 0 {
-				return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
+			if less, decided := lessStringSink(a.StartTime, b.StartTime, asc); decided {
+				return less
 			}
-			if asc {
-				return cmp < 0
-			}
-			return cmp > 0
+			return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
 		case "endTime":
-			cmp := strings.Compare(a.EndTime, b.EndTime)
-			if cmp == 0 {
-				return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
+			if less, decided := lessStringSink(a.EndTime, b.EndTime, asc); decided {
+				return less
 			}
-			if asc {
-				return cmp < 0
-			}
-			return cmp > 0
+			return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
 		case "sumAncientMinutes":
 			va, vb := 0.0, 0.0
 			va = a.SumAncientMinutes

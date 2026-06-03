@@ -35,17 +35,17 @@
             <thead>
               <tr>
                 <th>用户</th>
-                <th class="kn-num">合并需求</th>
-                <th class="kn-num">活跃</th>
-                <th class="kn-num">废弃</th>
-                <th class="kn-num">实际日历</th>
-                <th class="kn-num">基线日历</th>
-                <th>日历提效</th>
-                <th class="kn-num">实际工作量</th>
-                <th>工作量提效</th>
-                <th class="kn-num">Commit</th>
-                <th class="kn-num">代码行</th>
-                <th class="kn-num">活跃周</th>
+                <th class="kn-num"><SortableTh field="merged_need_count" label="合并需求" numeric :active="sortField === 'merged_need_count'" :desc="sortDesc" @sort="onSort('merged_need_count')" /></th>
+                <th class="kn-num"><SortableTh field="active_need_count" label="活跃" numeric :active="sortField === 'active_need_count'" :desc="sortDesc" @sort="onSort('active_need_count')" /></th>
+                <th class="kn-num"><SortableTh field="abandoned_need_count" label="废弃" numeric :active="sortField === 'abandoned_need_count'" :desc="sortDesc" @sort="onSort('abandoned_need_count')" /></th>
+                <th class="kn-num"><SortableTh field="actual_calendar_min" label="实际日历" numeric :active="sortField === 'actual_calendar_min'" :desc="sortDesc" @sort="onSort('actual_calendar_min')" /></th>
+                <th class="kn-num"><SortableTh field="baseline_calendar_min" label="基线日历" numeric :active="sortField === 'baseline_calendar_min'" :desc="sortDesc" @sort="onSort('baseline_calendar_min')" /></th>
+                <th><SortableTh field="calendar_ratio" label="日历提效" :active="sortField === 'calendar_ratio'" :desc="sortDesc" @sort="onSort('calendar_ratio')" /></th>
+                <th class="kn-num"><SortableTh field="actual_work_min" label="实际工作量" numeric :active="sortField === 'actual_work_min'" :desc="sortDesc" @sort="onSort('actual_work_min')" /></th>
+                <th><SortableTh field="work_ratio" label="工作量提效" :active="sortField === 'work_ratio'" :desc="sortDesc" @sort="onSort('work_ratio')" /></th>
+                <th class="kn-num"><SortableTh field="commit_count" label="Commit" numeric :active="sortField === 'commit_count'" :desc="sortDesc" @sort="onSort('commit_count')" /></th>
+                <th class="kn-num"><SortableTh field="commit_diff_lines" label="代码行" numeric :active="sortField === 'commit_diff_lines'" :desc="sortDesc" @sort="onSort('commit_diff_lines')" /></th>
+                <th class="kn-num"><SortableTh field="week_count" label="活跃周" numeric :active="sortField === 'week_count'" :desc="sortDesc" @sort="onSort('week_count')" /></th>
                 <th>置信</th>
               </tr>
             </thead>
@@ -97,9 +97,11 @@ import { ElMessage } from 'element-plus'
 import DateRangePicker from '@/components/DateRangePicker.vue'
 import MetricCard from '@/components/native/MetricCard.vue'
 import RatioPill from '@/components/native/RatioPill.vue'
+import SortableTh from '@/components/native/SortableTh.vue'
 import { getUsersV2 } from '@/api/es'
 import { formatDuration, formatNumber } from '@/utils/formatters'
 import { formatDateParam, getDefaultDateRangeWide } from '@/utils/date'
+import { parseOrder, toOrder, sortRows } from '@/utils/sort'
 
 const route = useRoute()
 const router = useRouter()
@@ -118,10 +120,62 @@ const filteredRows = computed(() => {
   return rows.value.filter(r => `${r.user_name || ''}${r.user_id || ''}`.toLowerCase().includes(kw))
 })
 
+// 客户端排序：order 走 URL（'field' 升 / '-field' 降 / 空 无），后端 native handler 不消费 order。
+const order = ref('')
+const parsedOrder = computed(() => parseOrder(order.value))
+const sortField = computed(() => parsedOrder.value?.field || '')
+const sortDesc = computed(() => parsedOrder.value?.desc || false)
+
+// field → 行取值函数；数值列返回 number，文本列返回字符串。sortRows 保证 null/缺值恒沉底 + 稳定。
+const NUMERIC_FIELDS = new Set([
+  'merged_need_count', 'active_need_count', 'abandoned_need_count',
+  'actual_calendar_min', 'baseline_calendar_min', 'calendar_ratio',
+  'actual_work_min', 'work_ratio', 'commit_count', 'commit_diff_lines', 'week_count',
+])
+function getterFor(field) {
+  if (NUMERIC_FIELDS.has(field)) {
+    return (row) => {
+      const v = row[field]
+      if (v == null || v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
+  }
+  return (row) => {
+    const v = row[field]
+    return v == null || v === '' ? null : String(v)
+  }
+}
+
+const sortedRows = computed(() => {
+  const p = parsedOrder.value
+  if (!p) return filteredRows.value
+  return sortRows(filteredRows.value, getterFor(p.field), p.desc)
+})
+
 const pagedRows = computed(() => {
   const start = (page.value - 1) * pageSize.value
-  return filteredRows.value.slice(start, start + pageSize.value)
+  return sortedRows.value.slice(start, start + pageSize.value)
 })
+
+// 列头三态循环：无→升→降→无。排序时回到第一页，并把 order 合并进 URL。
+function onSort(field) {
+  const p = parsedOrder.value
+  let next
+  if (!p || p.field !== field) next = toOrder(field, false)
+  else if (!p.desc) next = toOrder(field, true)
+  else next = undefined
+  order.value = next || ''
+  page.value = 1
+  router.replace({ query: buildQuery() })
+}
+
+function buildQuery() {
+  const q = { ...route.query }
+  if (order.value) q.order = order.value
+  else delete q.order
+  return q
+}
 
 const stats = computed(() => {
   const data = filteredRows.value
@@ -145,6 +199,7 @@ function syncFromRoute() {
   const start = normalizeDateQuery(route.query.startDate)
   const end = normalizeDateQuery(route.query.endDate)
   dateRange.value = start && end ? [start, end] : getDefaultDateRangeWide()
+  order.value = typeof route.query.order === 'string' ? route.query.order : ''
 }
 
 async function fetchData() {
@@ -165,13 +220,17 @@ async function fetchData() {
 
 async function applyFilters() {
   const [start, end] = dateRange.value
-  await router.replace({ query: { startDate: formatDateParam(start), endDate: formatDateParam(end) } })
+  const query = { startDate: formatDateParam(start), endDate: formatDateParam(end) }
+  if (order.value) query.order = order.value
+  await router.replace({ query })
   fetchData()
 }
 
 function resetFilters() {
   dateRange.value = getDefaultDateRangeWide()
   keyword.value = ''
+  order.value = ''
+  router.replace({ query: { ...route.query, order: undefined } })
   fetchData()
 }
 

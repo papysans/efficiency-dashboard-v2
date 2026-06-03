@@ -52,9 +52,11 @@
         :data="filteredData"
         :loading="loading"
         :total="filteredData.length"
+        :order="order"
         :page-sizes="[250, 500, 1000]"
         row-class-name="kb-clickable-row"
         @row-click="handleRowClick"
+        @sort-change="onSortChange"
       >
         <template #cell-end_time_display="{ row }">
           <span v-if="row._ongoing" style="color:#67c23a;font-weight:500">尚未结束</span>
@@ -119,6 +121,7 @@ import { useChart } from '@/composables/useChart'
 import { useCollapse } from '@/composables/useCollapse'
 import { getProjects, createProject, deleteProject } from '@/api/es'
 import { fmtCost, formatLocalTime, formatDuration } from '@/utils/formatters'
+import { parseOrder } from '@/utils/sort'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
@@ -137,6 +140,7 @@ const filterName = ref('')
 const filterStartRange = ref(null)
 const filterEndRange = ref(null)
 const filterOngoing = ref(false)
+const order = ref(typeof route.query.order === 'string' ? route.query.order : undefined)
 
 // 创建对话框
 const showCreateDialog = ref(false)
@@ -166,28 +170,28 @@ const columns = [
     label: '人数',
     minWidth: 80,
     align: 'right',
-    sortable: true,
+    sortField: 'userCount',
   },
   {
     prop: 'repo_count',
     label: 'Repo数',
     minWidth: 90,
     align: 'right',
-    sortable: true,
+    sortField: 'repoCount',
   },
   {
     prop: 'task_count',
     label: 'Task数',
     minWidth: 90,
     align: 'right',
-    sortable: true,
+    sortField: 'taskCount',
   },
   {
     prop: 'total_code_lines',
     label: '生成代码量',
     minWidth: 110,
     align: 'right',
-    sortable: true,
+    sortField: 'totalCodeLines',
     formatter: (row, col, val) => val > 0 ? val.toLocaleString() + ' 行' : '-',
   },
   {
@@ -195,7 +199,7 @@ const columns = [
     label: '实际人天代码量',
     minWidth: 130,
     align: 'right',
-    sortable: true,
+    sortField: 'actualLinesPerDay',
     formatter: (row, col, val) => val != null ? Math.round(val).toLocaleString() + ' 行/人天' : '-',
   },
   {
@@ -203,7 +207,7 @@ const columns = [
     label: '费用',
     minWidth: 100,
     align: 'right',
-    sortable: true,
+    sortField: 'cost',
     formatter: fmtCost,
   },
   {
@@ -211,7 +215,7 @@ const columns = [
     label: '项目周期',
     minWidth: 120,
     align: 'right',
-    sortable: true,
+    sortable: false,
     formatter: (row) => formatDuration(row.project_real_lead_minutes_manual ?? row.project_real_lead_minutes),
   },
   {
@@ -219,7 +223,9 @@ const columns = [
     label: '传统开发预估',
     minWidth: 130,
     align: 'right',
-    sortable: true,
+    // 显示走 manual 覆盖值 → 客户端按显示值排
+    clientSort: true,
+    sortValue: (row) => row.project_ancient_minutes_manual ?? row.project_ancient_minutes ?? null,
     formatter: (row) => formatDuration(row.project_ancient_minutes_manual ?? row.project_ancient_minutes),
   },
   {
@@ -227,7 +233,8 @@ const columns = [
     label: '实际耗时',
     minWidth: 120,
     align: 'right',
-    sortable: true,
+    clientSort: true,
+    sortValue: (row) => row.project_real_process_minutes_manual ?? row.project_real_process_minutes ?? null,
     formatter: (row) => formatDuration(row.project_real_process_minutes_manual ?? row.project_real_process_minutes),
   },
   {
@@ -235,7 +242,9 @@ const columns = [
     label: '提效比',
     minWidth: 110,
     align: 'center',
-    sortable: true,
+    // 显示走封顶后的 efficiency_ratio，与后端裸 SQL 排序口径不同 → 客户端按显示值排
+    clientSort: true,
+    sortValue: (row) => row.efficiency_ratio,
     slotName: 'efficiency_ratio',
   },
   {
@@ -272,6 +281,7 @@ function syncUrlToControls() {
   const q = route.query
   filterName.value = q.name ? String(q.name).trim() : ''
   filterOngoing.value = q.ongoing === '1'
+  order.value = typeof q.order === 'string' ? q.order : undefined
   filterStartRange.value = (q.startFrom && q.startTo)
     ? [parseDateStr(q.startFrom), parseDateStr(q.startTo)]
     : null
@@ -292,6 +302,7 @@ function updateUrl() {
     query.endFrom = filterEndRange.value[0].replace(/-/g, '')
     query.endTo = filterEndRange.value[1].replace(/-/g, '')
   }
+  if (order.value) query.order = order.value
   _ignoreRouteWatch = true
   router.replace({ query }).finally(() => { _ignoreRouteWatch = false })
 }
@@ -340,10 +351,19 @@ const filteredData = computed(() => {
   return data
 })
 
+// 仅当 order 命中服务端列（声明了 sortField）时才把 order 下发给后端。
+function serverOrderParam() {
+  const f = parseOrder(order.value)
+  if (!f) return null
+  const serverFields = columns.filter(c => c.sortField).map(c => c.sortField)
+  return serverFields.includes(f.field) ? order.value : null
+}
+
 async function fetchData() {
   loading.value = true
   try {
-    const result = await getProjects()
+    const serverOrder = serverOrderParam()
+    const result = await getProjects(serverOrder ? { order: serverOrder } : undefined)
     const data = result.data || result
     tableData.value = enrichData(data.data || data || [])
     await nextTick()
@@ -352,6 +372,15 @@ async function fetchData() {
     tableData.value = []
   } finally {
     loading.value = false
+  }
+}
+
+function onSortChange(payload) {
+  order.value = payload.order
+  updateUrl()
+  // 仅服务端列需要重新取数；客户端列本地排序，无需请求。
+  if (payload.server) {
+    fetchData()
   }
 }
 
@@ -496,7 +525,12 @@ async function handleDelete(row) {
 
 watch(() => route.query, async () => {
   if (_ignoreRouteWatch) return
+  const prevOrder = order.value
   syncUrlToControls()
+  if (order.value !== prevOrder) {
+    await fetchData()
+    return
+  }
   await nextTick()
   updateCharts()
 }, { deep: true })

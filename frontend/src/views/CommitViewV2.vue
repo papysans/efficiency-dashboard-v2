@@ -6,11 +6,13 @@
       :data="tableData"
       :loading="loading"
       :total="total"
+      :order="order"
       v-model:page="page"
       v-model:pageSize="pageSize"
       @size-change="handleSizeChange"
       @page-change="handlePageChange"
       @filter-change="handleFilterChange"
+      @sort-change="onSortChange"
     >
       <template #cell-commit_id="{ row }">
         <el-link type="primary" @click.stop="router.push('/commit/' + row.commit_id)">{{ (row.commit_id || '').substring(0, 8) }}</el-link>
@@ -52,6 +54,7 @@ import { getCommitsV2 } from '@/api/es'
 import { fmtCost, formatDuration, formatLocalTime } from '@/utils/formatters'
 import { getDefaultDateRangeWide } from '@/utils/date'
 import { getEffectiveAncient, getEffectiveReal } from '@/utils/commit-helpers'
+import { parseOrder } from '@/utils/sort'
 
 const router = useRouter()
 const route = useRoute()
@@ -66,8 +69,9 @@ function parseDateRange(startDate, endDate) {
 }
 
 function syncUrlToControls() {
-  const { startDate, endDate, userName, org1, org2, org3, org4 } = route.query
+  const { startDate, endDate, userName, org1, org2, org3, org4, order: orderQuery } = route.query
   serverDateRange = parseDateRange(startDate, endDate)
+  order.value = typeof orderQuery === 'string' ? orderQuery : undefined
   filterTableRef.value?.setFilter('commit_time', serverDateRange)
   filterTableRef.value?.setFilter('user_name', userName ? String(userName).trim() : '')
   const orgVal = { org1: org1 || '', org2: org2 || '', org3: org3 || '', org4: org4 || '' }
@@ -93,6 +97,7 @@ function updateUrl() {
   if (orgFilter.org2) query.org2 = orgFilter.org2
   if (orgFilter.org3) query.org3 = orgFilter.org3
   if (orgFilter.org4) query.org4 = orgFilter.org4
+  if (order.value) query.order = order.value
   _ignoreRouteWatch = true
   router.replace({ query }).finally(() => { _ignoreRouteWatch = false })
 }
@@ -110,6 +115,7 @@ const columns = [
     prop: 'commit_time',
     label: '时间',
     minWidth: 170,
+    sortField: 'commitTime',
     formatter: (row, col, val) => formatLocalTime(val),
     filter: { type: 'date', serverSide: true },
   },
@@ -148,6 +154,7 @@ const columns = [
     label: '代码量',
     minWidth: 80,
     align: 'right',
+    sortField: 'diffLines',
     filter: { type: 'number', shortcuts: [
       { label: '> 0', value: { min: 1 } },
       { label: '> 50', value: { min: 50 } },
@@ -159,7 +166,9 @@ const columns = [
     label: '实际耗时',
     minWidth: 95,
     align: 'right',
-    sortMethod: (a, b) => (getEffectiveReal(a) || 0) - (getEffectiveReal(b) || 0),
+    // 显示走 getEffectiveReal（manual 覆盖），与后端裸列排序口径不同 → 客户端按显示值排
+    clientSort: true,
+    sortValue: getEffectiveReal,
     formatter: (row) => formatDuration(getEffectiveReal(row)),
     filter: { type: 'number', valueGetter: getEffectiveReal, shortcuts: [
       { label: '> 0', value: { min: 0.1 } },
@@ -172,7 +181,9 @@ const columns = [
     label: '传统耗时预估',
     minWidth: 110,
     align: 'right',
-    sortMethod: (a, b) => (getEffectiveAncient(a) || 0) - (getEffectiveAncient(b) || 0),
+    // 显示走 getEffectiveAncient（manual 覆盖）→ 客户端按显示值排
+    clientSort: true,
+    sortValue: getEffectiveAncient,
     formatter: (row) => formatDuration(getEffectiveAncient(row)),
     filter: { type: 'number', valueGetter: getEffectiveAncient, shortcuts: [
       { label: '> 0', value: { min: 0.1 } },
@@ -185,7 +196,9 @@ const columns = [
     label: '提效比',
     minWidth: 85,
     align: 'center',
-    sortMethod: (a, b) => (a.efficiency_ratio || 0) - (b.efficiency_ratio || 0),
+    // 显示走 CalcEfficiencyRatioManual（封顶/覆盖），与后端裸 SQL 排序口径不同 → 客户端按显示值排
+    clientSort: true,
+    sortValue: (row) => row.efficiency_ratio,
     slotName: 'efficiency_ratio',
     filter: { type: 'number', shortcuts: [
       { label: '> 100%', value: { min: 100 } },
@@ -213,6 +226,7 @@ const columns = [
     label: '费用',
     minWidth: 75,
     align: 'right',
+    sortField: 'cost',
     formatter: fmtCost,
     filter: { type: 'number', shortcuts: [
       { label: '> 0', value: { min: 0.001 } },
@@ -227,18 +241,30 @@ const tableData = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(250)
+const order = ref(typeof route.query.order === 'string' ? route.query.order : undefined)
 
 let serverDateRange = getDefaultDateRangeWide()
+
+// 仅当 order 命中服务端列（声明了 sortField）时才把 order 下发给后端。
+// 客户端列（clientSort）的 order 不下发，避免后端 400 或错误口径。
+function serverOrderParam() {
+  const f = parseOrder(order.value)
+  if (!f) return null
+  const serverFields = columns.filter(c => c.sortField).map(c => c.sortField)
+  return serverFields.includes(f.field) ? order.value : null
+}
 
 async function fetchData() {
   if (!serverDateRange || serverDateRange.length !== 2) return
   loading.value = true
   try {
+    const serverOrder = serverOrderParam()
     const params = {
       startDate: serverDateRange[0].replace(/-/g, ''),
       endDate: serverDateRange[1].replace(/-/g, ''),
       page: page.value,
       pageSize: pageSize.value,
+      ...(serverOrder ? { order: serverOrder } : {}),
     }
     // 将 cascade-org filter 值传给后端
     const orgFilter = filterTableRef.value?.getFilter('org_display') || {}
@@ -306,6 +332,16 @@ function handleFilterChange(allFilters) {
   page.value = 1
   updateUrl()
   fetchData()
+}
+
+function onSortChange(payload) {
+  order.value = payload.order
+  updateUrl()
+  // 仅服务端列需要重新取数（回到第 1 页全局排序）；客户端列本地排序，无需请求。
+  if (payload.server) {
+    page.value = 1
+    fetchData()
+  }
 }
 
 function handleSizeChange() {

@@ -6,6 +6,7 @@
       :data="tableData"
       :loading="loading"
       :total="total"
+      :order="order"
       v-model:page="page"
       v-model:pageSize="pageSize"
       row-class-name="kb-clickable-row"
@@ -13,6 +14,7 @@
       @size-change="handleSizeChange"
       @page-change="handlePageChange"
       @filter-change="handleFilterChange"
+      @sort-change="onSortChange"
     >
       <template #cell-efficiency_ratio="{ row }">
         <el-tag
@@ -35,6 +37,7 @@ import KbFilterTable from '@/components/KbFilterTable.vue'
 import { getReposV2 } from '@/api/es'
 import { formatDuration, formatLocalTime } from '@/utils/formatters'
 import { getDefaultDateRangeWide } from '@/utils/date'
+import { parseOrder } from '@/utils/sort'
 
 const router = useRouter()
 const route = useRoute()
@@ -60,6 +63,7 @@ const columns = [
     label: 'Commit数',
     minWidth: 100,
     align: 'right',
+    sortField: 'commitCount',
     filter: { type: 'number' },
   },
   {
@@ -67,6 +71,7 @@ const columns = [
     label: 'Task数',
     minWidth: 100,
     align: 'right',
+    sortField: 'taskCount',
     filter: { type: 'number' },
   },
   {
@@ -74,6 +79,9 @@ const columns = [
     label: '传统开发时长预估',
     minWidth: 120,
     align: 'right',
+    // 单元格显示即 row.sum_ancient_minutes → 客户端按显示值排（与提效比/实际耗时口径统一，所见即所排）
+    clientSort: true,
+    sortValue: (row) => row.sum_ancient_minutes,
     formatter: (row, col, val) => formatDuration(val),
     filter: { type: 'number' },
   },
@@ -82,6 +90,8 @@ const columns = [
     label: '实际耗时',
     minWidth: 120,
     align: 'right',
+    clientSort: true,
+    sortValue: (row) => row.sum_real_minutes,
     formatter: (row, col, val) => formatDuration(val),
     filter: { type: 'number' },
   },
@@ -90,6 +100,9 @@ const columns = [
     label: '提效比',
     minWidth: 110,
     align: 'center',
+    // 显示走封顶后的 efficiency_ratio，与后端裸 SQL 排序口径不同 → 客户端按显示值排
+    clientSort: true,
+    sortValue: (row) => row.efficiency_ratio,
     slotName: 'efficiency_ratio',
     filter: { type: 'number', shortcuts: [
       { label: '> 100%', value: { min: 100 } },
@@ -101,6 +114,7 @@ const columns = [
     prop: 'start_time',
     label: '开始时间',
     minWidth: 150,
+    sortField: 'startTime',
     formatter: (row, col, val) => formatLocalTime(val),
     filter: { type: 'date', serverSide: true },
   },
@@ -111,6 +125,7 @@ const tableData = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(250)
+const order = ref(typeof route.query.order === 'string' ? route.query.order : undefined)
 
 let serverDateRange = getDefaultDateRangeWide()
 let _ignoreRouteWatch = false
@@ -124,8 +139,9 @@ function parseDateRange(startDate, endDate) {
 }
 
 function syncUrlToControls() {
-  const { startDate, endDate } = route.query
+  const { startDate, endDate, order: orderQuery } = route.query
   serverDateRange = parseDateRange(startDate, endDate)
+  order.value = typeof orderQuery === 'string' ? orderQuery : undefined
   filterTableRef.value?.setFilter('start_time', serverDateRange)
 }
 
@@ -135,19 +151,30 @@ function updateUrl() {
     startDate: start.replace(/-/g, ''),
     endDate: end.replace(/-/g, ''),
   }
+  if (order.value) query.order = order.value
   _ignoreRouteWatch = true
   router.replace({ query }).finally(() => { _ignoreRouteWatch = false })
+}
+
+// 仅当 order 命中服务端列（声明了 sortField）时才把 order 下发给后端。
+function serverOrderParam() {
+  const f = parseOrder(order.value)
+  if (!f) return null
+  const serverFields = columns.filter(c => c.sortField).map(c => c.sortField)
+  return serverFields.includes(f.field) ? order.value : null
 }
 
 async function fetchData() {
   if (!serverDateRange || serverDateRange.length !== 2) return
   loading.value = true
   try {
+    const serverOrder = serverOrderParam()
     const params = {
       startDate: serverDateRange[0].replace(/-/g, ''),
       endDate: serverDateRange[1].replace(/-/g, ''),
       page: page.value,
       pageSize: pageSize.value,
+      ...(serverOrder ? { order: serverOrder } : {}),
     }
     const result = await getReposV2(params)
     const data = result.data || result
@@ -175,6 +202,16 @@ function handleFilterChange(allFilters) {
   page.value = 1
   updateUrl()
   fetchData()
+}
+
+function onSortChange(payload) {
+  order.value = payload.order
+  updateUrl()
+  // 仅服务端列需要重新取数；客户端列本地排序，无需请求。
+  if (payload.server) {
+    page.value = 1
+    fetchData()
+  }
 }
 
 function handleSizeChange() {
