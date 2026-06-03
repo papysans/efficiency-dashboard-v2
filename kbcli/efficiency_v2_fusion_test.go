@@ -123,6 +123,57 @@ func TestComputeEfficiencyV2Fusion_OutlierLowFlag(t *testing.T) {
 	}
 }
 
+func TestComputeEfficiencyV2Fusion_EmptyScopeNeverFlags(t *testing.T) {
+	algo := 100.0
+	knn := 100.0
+	need := models.Need{TotalCalendarMin: 60, TotalActiveWorkCorrectedMin: 600} // 6x baseline → would flag by default
+	emptyScope := []string{}
+	cfg := EfficiencyV2Config{Exclusion: EfficiencyV2ExclusionConfig{RawScope: &emptyScope}}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin: &algo,
+		KNNMin:  &knn,
+		Weights: EfficiencyV2BaselineDefaults{WeightAlgo: 0.5, WeightKNN: 0.5, TeamWorkDensity: 0.25},
+	}, cfg)
+	if result.OutlierFlag {
+		t.Fatalf("empty scope should never set outlier_flag")
+	}
+	// reason 文本仍应记录撞线类别(诊断保留)。
+	if !reasonsContainPrefix(result.Reasons, "outlier:actual_to_baseline=") {
+		t.Fatalf("reason text should still record actual_to_baseline, got %#v", result.Reasons)
+	}
+}
+
+func TestComputeEfficiencyV2Fusion_ScopeSelectsCategory(t *testing.T) {
+	algo := 100.0
+	knn := 100.0
+	// fused=100, calendar=100/0.25=400. TotalCalendarMin=400 → efficiency_ratio=0 (in bounds).
+	// actualWork=600 → actual_to_baseline=6x → trips ONLY actual_to_baseline.
+	need := models.Need{TotalCalendarMin: 400, TotalActiveWorkCorrectedMin: 600}
+	// scope only includes efficiency_ratio → actual_to_baseline trip must NOT flag.
+	onlyEff := []string{"efficiency_ratio"}
+	cfg := EfficiencyV2Config{Exclusion: EfficiencyV2ExclusionConfig{RawScope: &onlyEff}}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin: &algo,
+		KNNMin:  &knn,
+		Weights: EfficiencyV2BaselineDefaults{WeightAlgo: 0.5, WeightKNN: 0.5, TeamWorkDensity: 0.25},
+	}, cfg)
+	if result.OutlierFlag {
+		t.Fatalf("actual_to_baseline trip should not flag when scope=[efficiency_ratio]")
+	}
+	if !reasonsContainPrefix(result.Reasons, "outlier:actual_to_baseline=") {
+		t.Fatalf("reason text should still record actual_to_baseline, got %#v", result.Reasons)
+	}
+}
+
+func reasonsContainPrefix(reasons []string, prefix string) bool {
+	for _, r := range reasons {
+		if strings.HasPrefix(r, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestClassifyEfficiencyV2Confidence_LowOnLowSilica(t *testing.T) {
 	silica := 0.10
 	need := models.Need{Silica: &silica}

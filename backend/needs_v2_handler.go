@@ -269,7 +269,7 @@ func getNeedsDistributionV2(c *gin.Context) {
 		},
 		ExclusionReasons: []NeedsDistributionExclusionReason{
 			{Reason: "impossible_loc_rate", Label: "物理不可能(>1w行/日)", Count: agg.ReasonLoc},
-			{Reason: "efficiency_ratio", Label: "极端提效(>200%)", Count: agg.ReasonEff},
+			{Reason: "efficiency_ratio", Label: "极端提效(>1000%)", Count: agg.ReasonEff},
 			{Reason: "actual_to_baseline", Label: "工作量异常", Count: agg.ReasonAtb},
 		},
 		LocRateBands: []NeedsDistributionLocBand{
@@ -343,8 +343,12 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 	if filter.ConfidenceLevel != "" {
 		q = q.Where("confidence_level = ?", strings.TrimSpace(filter.ConfidenceLevel))
 	}
+	// outlier_flag = "撞了 exclusion.scope 内的异常类别"(写侧 ComputeEfficiencyV2Fusion 标记)。
+	// 默认隐藏被排除项，与首页/分布/用户周聚合口径一致；OutlierOnly=true 反查作为排查 escape hatch，二者互斥。
 	if filter.OutlierOnly {
 		q = q.Where("outlier_flag = TRUE")
+	} else {
+		q = q.Where("NOT outlier_flag")
 	}
 
 	if err := q.Count(&resp.Total).Error; err != nil {

@@ -225,19 +225,24 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 		result.WorkEfficiency = &wer
 	}
 
+	// 异常探测：reason 文本始终 append（诊断保留），但 outlier_flag 仅当该类别 ∈ exclusion.scope
+	// 时才置 true。outlier_flag 语义 = "撞了配置范围内的异常类别" = "应隐藏/不计入聚合"。
+	// 空 scope ⇒ 永不置 flag（全部计入，含极端值）。
 	thresh := cfg.ConfidenceThresholds
 	if fused > 0 && need.TotalActiveWorkCorrectedMin > 0 {
 		actualRatio := need.TotalActiveWorkCorrectedMin / fused
 		if actualRatio > thresh.OutlierActualToBaselineMax || (actualRatio > 0 && actualRatio < thresh.OutlierActualToBaselineMin) {
-			result.OutlierFlag = true
+			if efficiencyV2ScopeExcludes(cfg, efficiencyV2ExclusionActualToBaseline) {
+				result.OutlierFlag = true
+			}
 			result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:actual_to_baseline=%.3f", actualRatio))
 		}
 	}
 
-	// 设计 §10.2.5：calendar 提效比落在极端区间必须可发现（阈值可配，默认 >2.0 或 <-0.8）。
+	// 设计 §10.2.5：calendar 提效比落在极端区间必须可发现（阈值可配，默认 >10.0 或 <-2.0）。
 	// 不 clip（§2.3.10），只打 outlier_flag + reason，业务方看聚合数字、UI 标 tag。
 	if result.EfficiencyRatio != nil && (*result.EfficiencyRatio > thresh.OutlierEfficiencyRatioMax || *result.EfficiencyRatio < thresh.OutlierEfficiencyRatioMin) {
-		if !result.OutlierFlag {
+		if efficiencyV2ScopeExcludes(cfg, efficiencyV2ExclusionEfficiencyRatio) {
 			result.OutlierFlag = true
 		}
 		result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:efficiency_ratio=%.3f", *result.EfficiencyRatio))
@@ -248,7 +253,7 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 	if thresh.OutlierLocPerCalendarMinMax > 0 && need.TotalCalendarMin > 0 && need.ChangedLoc > 0 {
 		locRate := float64(need.ChangedLoc) / need.TotalCalendarMin
 		if locRate > thresh.OutlierLocPerCalendarMinMax {
-			if !result.OutlierFlag {
+			if efficiencyV2ScopeExcludes(cfg, efficiencyV2ExclusionLocRate) {
 				result.OutlierFlag = true
 			}
 			result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:impossible_loc_rate=%.1f", locRate))
@@ -355,6 +360,17 @@ func stripEfficiencyV2FusionReasons(existing string) string {
 		}
 	}
 	return strings.Join(kept, "; ")
+}
+
+// efficiencyV2ScopeExcludes 判断给定异常类别是否在配置的排除范围内（=该类别撞线时应置 outlier_flag）。
+// cfg 须已 normalize（Exclusion.Scope 已解析）；空 scope ⇒ 任何类别都不排。
+func efficiencyV2ScopeExcludes(cfg EfficiencyV2Config, category string) bool {
+	for _, c := range cfg.Exclusion.Scope {
+		if c == category {
+			return true
+		}
+	}
+	return false
 }
 
 func efficiencyV2MaxMinSpread(values []float64) float64 {

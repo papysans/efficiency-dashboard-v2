@@ -251,6 +251,18 @@ model_prices: {}
 	if thresholds.OutlierActualToBaselineMin != 0.10 {
 		t.Errorf("OutlierActualToBaselineMin: want 0.10, got %f", thresholds.OutlierActualToBaselineMin)
 	}
+	if thresholds.OutlierEfficiencyRatioMax != 10.0 {
+		t.Errorf("OutlierEfficiencyRatioMax: want 10.0, got %f", thresholds.OutlierEfficiencyRatioMax)
+	}
+	if thresholds.OutlierEfficiencyRatioMin != -2.0 {
+		t.Errorf("OutlierEfficiencyRatioMin: want -2.0, got %f", thresholds.OutlierEfficiencyRatioMin)
+	}
+
+	// 未配 exclusion 段 ⇒ 默认三类全排（保持历史行为）。
+	wantScope := []string{"efficiency_ratio", "loc_rate", "actual_to_baseline"}
+	if !reflect.DeepEqual(cfg.EfficiencyV2.Exclusion.Scope, wantScope) {
+		t.Errorf("Exclusion.Scope: want %#v, got %#v", wantScope, cfg.EfficiencyV2.Exclusion.Scope)
+	}
 
 	baseline := cfg.EfficiencyV2.BaselineDefaults
 	if baseline.WeightAlgo != 0.30 {
@@ -318,6 +330,58 @@ model_prices: {}
 	}
 	if !reflect.DeepEqual(cfg.EfficiencyV2.VerificationCommandPatterns, expectedPatterns) {
 		t.Errorf("VerificationCommandPatterns mismatch:\nwant %#v\ngot  %#v", expectedPatterns, cfg.EfficiencyV2.VerificationCommandPatterns)
+	}
+}
+
+func TestLoadConfig_ExclusionScope(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		want []string
+	}{
+		{
+			name: "未配 exclusion 段 → 默认三类全排",
+			yaml: "model_prices: {}\n",
+			want: []string{"efficiency_ratio", "loc_rate", "actual_to_baseline"},
+		},
+		{
+			name: "显式 scope: [] → none(真不排)",
+			yaml: "model_prices: {}\nefficiency_v2:\n  exclusion:\n    scope: []\n",
+			want: []string{},
+		},
+		{
+			name: "显式单类别 → 只排该类",
+			yaml: "model_prices: {}\nefficiency_v2:\n  exclusion:\n    scope: [efficiency_ratio]\n",
+			want: []string{"efficiency_ratio"},
+		},
+		{
+			name: "非法值忽略 + 去重",
+			yaml: "model_prices: {}\nefficiency_v2:\n  exclusion:\n    scope: [loc_rate, bogus, loc_rate, actual_to_baseline]\n",
+			want: []string{"loc_rate", "actual_to_baseline"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := os.CreateTemp("", "config-*.yaml")
+			if err != nil {
+				t.Fatalf("创建临时文件失败: %v", err)
+			}
+			defer os.Remove(f.Name())
+			f.WriteString(tc.yaml)
+			f.Close()
+
+			cfg, err := LoadConfig(f.Name())
+			if err != nil {
+				t.Fatalf("LoadConfig 返回错误: %v", err)
+			}
+			got := cfg.EfficiencyV2.Exclusion.Scope
+			if len(got) != len(tc.want) || !reflect.DeepEqual(got, tc.want) {
+				// reflect.DeepEqual 把 nil 与 []string{} 视为不等，这里只看内容长度+元素，故先归一空切片。
+				if !(len(got) == 0 && len(tc.want) == 0) {
+					t.Errorf("Exclusion.Scope: want %#v, got %#v", tc.want, got)
+				}
+			}
+		})
 	}
 }
 

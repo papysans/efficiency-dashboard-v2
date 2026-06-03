@@ -86,6 +86,28 @@ type EfficiencyV2ConfidenceThresholds struct {
 	OutlierLocPerCalendarMinMax  float64 `yaml:"outlier_loc_per_calendar_min_max"`
 }
 
+// 极端值排除类别枚举：哪些异常类别会被 outlier_flag 标记（=隐藏+不计入聚合）。
+const (
+	efficiencyV2ExclusionEfficiencyRatio  = "efficiency_ratio"
+	efficiencyV2ExclusionLocRate          = "loc_rate"
+	efficiencyV2ExclusionActualToBaseline = "actual_to_baseline"
+)
+
+// efficiencyV2DefaultExclusionScope 未显式配置 exclusion 时的默认范围：三类全排（=保持历史行为）。
+var efficiencyV2DefaultExclusionScope = []string{
+	efficiencyV2ExclusionEfficiencyRatio,
+	efficiencyV2ExclusionLocRate,
+	efficiencyV2ExclusionActualToBaseline,
+}
+
+// EfficiencyV2ExclusionConfig 配置哪些异常类别真正"隐藏+不计入聚合"。
+// RawScope 用 *[]string 区分"yaml 未配 scope"(nil → 给默认全开) 与"显式 scope: []"(非 nil 空切片 → none)。
+// Scope 是 applyEfficiencyV2Defaults 解析(去非法值/去重/补默认)后的实际生效集合，供运行时读取。
+type EfficiencyV2ExclusionConfig struct {
+	RawScope *[]string `yaml:"scope"`
+	Scope    []string  `yaml:"-"`
+}
+
 type EfficiencyV2BaselineDefaults struct {
 	WeightAlgo      float64 `yaml:"weight_algo"`
 	WeightKNN       float64 `yaml:"weight_knn"`
@@ -112,6 +134,7 @@ type EfficiencyV2Config struct {
 	Stage                       EfficiencyV2StageConfig           `yaml:"stage"`
 	UncoveredCommit             EfficiencyV2UncoveredCommitConfig `yaml:"uncovered_commit"`
 	ConfidenceThresholds        EfficiencyV2ConfidenceThresholds  `yaml:"confidence_thresholds"`
+	Exclusion                   EfficiencyV2ExclusionConfig       `yaml:"exclusion"`
 	BaselineDefaults            EfficiencyV2BaselineDefaults      `yaml:"baseline_defaults"`
 	BaselineAlgo                EfficiencyV2BaselineAlgoOverrides `yaml:"baseline_algo"`
 	// AnchorSetCSV kNN 锚点母表 CSV 路径，供 import-anchor 命令灌入 anchor_set。
@@ -407,14 +430,15 @@ func applyEfficiencyV2Defaults(c *Config) {
 		c.EfficiencyV2.ConfidenceThresholds.OutlierActualToBaselineMin = 0.10
 	}
 	if c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMax == 0 {
-		c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMax = 2.0
+		c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMax = 10.0
 	}
 	if c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMin == 0 {
-		c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMin = -0.8
+		c.EfficiencyV2.ConfidenceThresholds.OutlierEfficiencyRatioMin = -2.0
 	}
 	if c.EfficiencyV2.ConfidenceThresholds.OutlierLocPerCalendarMinMax == 0 {
 		c.EfficiencyV2.ConfidenceThresholds.OutlierLocPerCalendarMinMax = 7.0
 	}
+	c.EfficiencyV2.Exclusion.Scope = resolveEfficiencyV2ExclusionScope(c.EfficiencyV2.Exclusion.RawScope)
 	if c.EfficiencyV2.BaselineCalendarCalibration <= 0 {
 		c.EfficiencyV2.BaselineCalendarCalibration = 1.0
 	}
@@ -433,4 +457,30 @@ func applyEfficiencyV2Defaults(c *Config) {
 	if c.EfficiencyV2.BaselineDefaults.TeamWorkDensity == 0 {
 		c.EfficiencyV2.BaselineDefaults.TeamWorkDensity = 0.25
 	}
+}
+
+// resolveEfficiencyV2ExclusionScope 把 yaml 原始 scope 解析为生效集合：
+//   - raw == nil（未配 exclusion 段或未配 scope key）→ 默认三类全开（保持历史行为）
+//   - raw != nil（含显式 scope: []）→ 尊重其值；空切片即 none（全不排）
+//
+// 非法枚举值忽略并 logWarnf；重复值去重，顺序保持稳定。
+func resolveEfficiencyV2ExclusionScope(raw *[]string) []string {
+	if raw == nil {
+		return append([]string(nil), efficiencyV2DefaultExclusionScope...)
+	}
+	seen := make(map[string]bool, len(*raw))
+	out := make([]string, 0, len(*raw))
+	for _, v := range *raw {
+		cat := strings.TrimSpace(v)
+		switch cat {
+		case efficiencyV2ExclusionEfficiencyRatio, efficiencyV2ExclusionLocRate, efficiencyV2ExclusionActualToBaseline:
+			if !seen[cat] {
+				seen[cat] = true
+				out = append(out, cat)
+			}
+		default:
+			logWarnf("efficiency_v2.exclusion.scope ignores invalid category %q (allowed: efficiency_ratio, loc_rate, actual_to_baseline)\n", v)
+		}
+	}
+	return out
 }

@@ -167,11 +167,16 @@ efficiency_v2:
     exec_file_coord_min: 30    # 古法每文件协调分钟，内置默认 30
   # 提效"异常"判定阈值(日历提效比口径)；超出才标 outlier/异常 tag。
   confidence_thresholds:
-    outlier_efficiency_ratio_max: 2.0    # 原硬编码 0.9 → 2.0(>200% 才算异常)
-    outlier_efficiency_ratio_min: -0.8   # 原硬编码 -0.5 → -0.8
+    outlier_efficiency_ratio_max: 10.0   # >1000% 才算异常上限(此前 2.0=>200%；放宽以保留高提效真值)
+    outlier_efficiency_ratio_min: -2.0   # 下限 -200%(此前 -0.8)；提效比数学下界为 -1.0，故等于关闭下限侧 outlier(负提效全部计入)
     # LOC 速率物理不可能阈值：total_loc_net/total_calendar_min > 此值 → 打 outlier(仅从聚合统计剔除，不封顶、单任务页仍显真实值)。
     # 7 ≈ 一个日历日(24h)写 1w 行；设为负数可关闭。
     outlier_loc_per_calendar_min_max: 7
+  # 极端值排除范围：哪些异常类别真正"隐藏+不计入聚合"(置 outlier_flag)。可选: efficiency_ratio, loc_rate, actual_to_baseline。
+  # 撞线但不在 scope 内的类别：reason 文本仍记录(诊断/前端 tag)，但 outlier_flag=false → 照常计入。
+  # 留空 scope: [] = none(全部计入，含极端值)。整段不写 = 默认三类全排(保持历史行为)。改这里要重算 efficiency-v2 才生效。
+  exclusion:
+    scope: [efficiency_ratio, loc_rate, actual_to_baseline]
   # kNN 锚点母表 CSV 路径，供 `kbcli import-anchor` 灌入 anchor_set。可被 --csv 覆盖。
   # 注意：CSV 默认不在镜像里——prod 需把 CSV 挂到此路径，或在 kbcli 镜像 COPY docs/data。
   anchor_set_csv: /app/docs/data/efficiency_v2_anchor_set.csv
