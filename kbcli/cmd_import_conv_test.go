@@ -413,6 +413,76 @@ func TestFlexString_UnmarshalJSON_EmptyString(t *testing.T) {
 }
 
 // ============================================================
+// 测试点: flexInt64.UnmarshalJSON
+// ============================================================
+
+// 5b.1 浮点 18.848 → 19（四舍五入）
+func TestFlexInt64_UnmarshalJSON_Float(t *testing.T) {
+	var f flexInt64
+	err := f.UnmarshalJSON([]byte("18.848"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f != 19 {
+		t.Errorf("got %d, want 19", int64(f))
+	}
+}
+
+// 5b.2 整数 120000 → 120000（保持原值）
+func TestFlexInt64_UnmarshalJSON_Int(t *testing.T) {
+	var f flexInt64
+	err := f.UnmarshalJSON([]byte("120000"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f != 120000 {
+		t.Errorf("got %d, want 120000", int64(f))
+	}
+}
+
+// 5b.3 null → 0（容错）
+func TestFlexInt64_UnmarshalJSON_Null(t *testing.T) {
+	var f flexInt64
+	err := f.UnmarshalJSON([]byte("null"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f != 0 {
+		t.Errorf("got %d, want 0", int64(f))
+	}
+}
+
+// 5b.4 负浮点 -5.6 → -6（保留负值承载，cmd_check 仍可检出负值）
+func TestFlexInt64_UnmarshalJSON_NegativeFloat(t *testing.T) {
+	var f flexInt64
+	err := f.UnmarshalJSON([]byte("-5.6"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f != -6 {
+		t.Errorf("got %d, want -6", int64(f))
+	}
+}
+
+// 5b.5 整行 conversation 含浮点 process_time，应成功解析、不被丢弃
+func TestTaskConversation_FloatProcessTime_NotDropped(t *testing.T) {
+	line := `{"request_id":"r1","start_time":"2026-05-18T10:00:00Z","end_time":"2026-05-18T10:01:00Z","process_time":18.848,"process_ttft":534.975}`
+	var conv taskConversation
+	if err := json.Unmarshal([]byte(line), &conv); err != nil {
+		t.Fatalf("整行解析失败（浮点 process_time 不应导致丢弃）: %v", err)
+	}
+	if conv.RequestId != "r1" {
+		t.Errorf("request_id 丢失: got %q", conv.RequestId)
+	}
+	if int64(conv.ProcessTime) != 19 {
+		t.Errorf("process_time got %d, want 19", int64(conv.ProcessTime))
+	}
+	if int64(conv.ProcessTtft) != 535 {
+		t.Errorf("process_ttft got %d, want 535", int64(conv.ProcessTtft))
+	}
+}
+
+// ============================================================
 // 测试点: needUpdateConversations
 // ============================================================
 

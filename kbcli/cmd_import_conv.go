@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,8 +52,8 @@ type taskConversation struct {
 	Model            string     `json:"model"`
 	StartTime        string     `json:"start_time"`
 	EndTime          string     `json:"end_time"`
-	ProcessTime      int64      `json:"process_time"`
-	ProcessTtft      int64      `json:"process_ttft"`
+	ProcessTime      flexInt64  `json:"process_time"`
+	ProcessTtft      flexInt64  `json:"process_ttft"`
 	UpstreamTokens   int64      `json:"upstream_tokens"`
 	DownstreamTokens int64      `json:"downstream_tokens"`
 	Cost             float64    `json:"cost"`
@@ -101,6 +103,37 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	return fmt.Errorf("flexString: cannot unmarshal %s", string(data))
+}
+
+// flexInt64 是一个灵活的整数类型，用于兼容 JSON number 为整数或浮点的场景。
+// 背景：上游某次起把 process_time / process_ttft 写成小数（如 18.848），
+// 而 Go encoding/json 无法把浮点直接解进 int64，会导致整行 conversation 解析失败被跳过，
+// 进而丢失该对话的全部字段。改用本类型后，整数与浮点都能解析，按四舍五入存为 int64。
+type flexInt64 int64
+
+// UnmarshalJSON 实现 json.Unmarshaler 接口。
+// 功能：把 JSON number（整数或浮点）按 math.Round 四舍五入转为 int64；
+//
+//	空值 / null 容错为 0；负值原样承载（cmd_check 仍可检出负值）。
+//
+// 参数：
+//   - data: JSON 字节的原始内容。
+//
+// 返回值：反序列化过程中发生的错误。
+func (f *flexInt64) UnmarshalJSON(data []byte) error {
+	s := strings.TrimSpace(string(data))
+	// 空值或 null 容错为 0
+	if s == "" || s == "null" {
+		*f = 0
+		return nil
+	}
+	// 统一按浮点解析，再四舍五入；这样整数与小数都能正确承载
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+	*f = flexInt64(math.Round(v))
+	return nil
 }
 
 // correctConversations 根据任务摘要和对话列表计算完整的 Task 模型记录。
@@ -365,8 +398,8 @@ func saveConversations(db *gorm.DB, conversations []taskConversation) error {
 				Model:            conv.Model,
 				StartTime:        conv.startTime,
 				EndTime:          conv.endTime,
-				ProcessTime:      conv.ProcessTime,
-				ProcessTtft:      conv.ProcessTtft,
+				ProcessTime:      int64(conv.ProcessTime),
+				ProcessTtft:      int64(conv.ProcessTtft),
 				UpstreamTokens:   conv.UpstreamTokens,
 				DownstreamTokens: conv.DownstreamTokens,
 				Cost:             conv.Cost,
