@@ -69,8 +69,8 @@ docker compose exec kbcli /app/bin/kbcli efficiency-v2 --config /app/config.yaml
 镜像统一为 `ghcr.io/papysans/efficiency-dashboard-v2/<server|kbcli|portal>`，tag = `beta-<git tag>`。
 
 ### 一、外网发包（GitHub Actions）
-1. 在仓库 papysans/efficiency-dashboard-v2 打 tag 并推送：`git tag v1.1.12 && git push origin v1.1.12`（或 Actions 页手动跑 `build-and-push-images`，version 填 v1.1.12）。
-2. CI 构建多架构(amd64+arm64)并推到 `ghcr.io/papysans/efficiency-dashboard-v2/{server,kbcli,portal}:beta-v1.1.12`。
+1. 在仓库 papysans/efficiency-dashboard-v2 打 tag 并推送：`git tag v1.1.13 && git push origin v1.1.13`（或 Actions 页手动跑 `build-and-push-images`，version 填 v1.1.13）。
+2. CI 构建多架构(amd64+arm64)并推到 `ghcr.io/papysans/efficiency-dashboard-v2/{server,kbcli,portal}:beta-v1.1.13`。
 3. ghcr 包默认 private；内网要拉，需在 GitHub 把这三个 package 设为 public（或内网用 PAT `docker login ghcr.io`）。
 
 ### 二、内网部署（二选一）
