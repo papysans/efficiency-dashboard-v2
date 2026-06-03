@@ -1562,10 +1562,10 @@ func queryNeedsDistributionAgg(db *gorm.DB, startTime, endTime string) (*needsDi
 		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%impossible_loc_rate%') AS reason_loc,
 		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%efficiency_ratio%')     AS reason_eff,
 		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%actual_to_baseline%')   AS reason_atb,
-		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min <= 7)  AS lb1,
-		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min > 7  AND total_loc_net::float/total_calendar_min <= 21) AS lb2,
-		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min > 21 AND total_loc_net::float/total_calendar_min <= 50) AS lb3,
-		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float/total_calendar_min > 50) AS lb4`)
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float / NULLIF(total_calendar_min,0) <= 7)  AS lb1,
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float / NULLIF(total_calendar_min,0) > 7  AND total_loc_net::float / NULLIF(total_calendar_min,0) <= 21) AS lb2,
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float / NULLIF(total_calendar_min,0) > 21 AND total_loc_net::float / NULLIF(total_calendar_min,0) <= 50) AS lb3,
+		COUNT(*) FILTER (WHERE coverage_eligible AND total_calendar_min > 0 AND total_loc_net::float / NULLIF(total_calendar_min,0) > 50) AS lb4`)
 	if startTime != "" {
 		q = q.Where("dev_end_ts >= ?", startTime)
 	}
