@@ -242,3 +242,100 @@ export interface ListParams {
   order?: string
   [k: string]: unknown
 }
+
+/**
+ * /v2/tasks 列表项 & 详情 task 对象（§6，backend db.go TaskListItem）。
+ * ⚠️ efficiency_ratio 是**百分比口径**（300=300%），后端 ((ancient-real)/real)*100 算出，含 manual 覆盖。
+ * 与 Need 小数口径相反，前端展示**不 ×100**，绝不用 formatV2Ratio/RatioPill。
+ */
+export interface TaskListItem {
+  task_id: string
+  session_id?: string
+  commit_id?: string
+  title?: string
+  user_id?: string
+  user_name?: string
+  client_id?: string
+  client_ide?: string
+  client_version?: string
+  client_os?: string
+  client_os_version?: string
+  caller?: string
+  repo_addr?: string
+  repo_branch?: string
+  work_dir?: string
+  work_dir_id?: string
+  start_time?: string | null
+  end_time?: string | null
+  upstream_tokens?: number
+  downstream_tokens?: number
+  cost?: number
+  silica?: number
+  accept_ratio?: number
+  diff_lines?: number
+  task_ancient_minutes?: number | null
+  task_ancient_minutes_reason?: string
+  task_ancient_minutes_manual?: number | null
+  task_ancient_minutes_reason_manual?: string
+  task_real_minutes?: number | null
+  task_real_minutes_reason?: string
+  task_real_minutes_manual?: number | null
+  task_real_minutes_reason_manual?: string
+  efficiency_ratio?: number | null // 百分比口径
+  org1?: string
+  org2?: string
+  org3?: string
+  org4?: string
+  org5?: string
+  org6?: string
+  org7?: string
+  org8?: string
+  org9?: string
+  org_display?: string
+  [k: string]: unknown
+}
+
+/** Conversation（§7.5，core/models/models.go Conversation，详情对话历史用） */
+export interface Conversation {
+  id?: number
+  session_id?: string
+  request_id?: string
+  task_id?: string
+  sender?: string
+  prompt_mode?: string
+  mode?: string
+  model?: string
+  start_time?: string | null
+  end_time?: string | null
+  process_time?: number | null
+  process_ttft?: number | null
+  upstream_tokens?: number | null
+  downstream_tokens?: number | null
+  cost?: number | null
+  diff_lines?: number | null
+  user_input?: string
+  error_code?: string
+  error_reason?: string
+  [k: string]: unknown
+}
+
+/** /v2/tasks/{id} 顶层响应（§7.1，无 time_segments，那是死代码） */
+export interface TaskDetailResponse {
+  task: TaskListItem
+  conversations?: Conversation[]
+  efficiency_ratio?: number | null // 顶层再给一份，百分比口径
+}
+
+/** PUT /v2/tasks/{id}/manual 请求体（§7.6） */
+export interface UpdateTaskManualRequest {
+  task_real_minutes_manual: number | null
+  task_real_minutes_reason_manual: string
+  task_ancient_minutes_manual: number | null
+  task_ancient_minutes_reason_manual: string
+}
+
+/** POST /v2/tasks/estimate-ancient 响应（§5.2，前端只读这两个字段） */
+export interface EstimateAncientResponse {
+  success: number
+  total: number
+}

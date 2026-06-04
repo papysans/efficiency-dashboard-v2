@@ -1,6 +1,14 @@
 // TanStack Query hooks —— 统一 loading/error/缓存。PR0 先做高管大屏/Need 用到的；其余随页面加。
 import { useQuery } from '@tanstack/react-query'
-import { getAllNeedsV2, getDashboardSummary, getGlobalConfig, getNeedDetailV2, getNeedsV2, getUsersV2 } from './endpoints'
+import {
+  getAllNeedsV2,
+  getDashboardSummary,
+  getGlobalConfig,
+  getNeedDetailV2,
+  getNeedsV2,
+  getTaskDetailV2,
+  getUsersV2,
+} from './endpoints'
 import type { ListParams } from './types'
 
 export function useDashboardSummary(params: { startDate?: string; endDate?: string }) {
@@ -46,5 +54,14 @@ export function useUsers(params: { startDate?: string; endDate?: string }) {
   return useQuery({
     queryKey: ['users', params],
     queryFn: () => getUsersV2(params),
+  })
+}
+
+/** Task 详情（taskId 由 endpoints 内部 encodeURIComponent）。 */
+export function useTaskDetail(taskId: string | undefined) {
+  return useQuery({
+    queryKey: ['task-detail', taskId],
+    queryFn: () => getTaskDetailV2(taskId as string),
+    enabled: !!taskId,
   })
 }
