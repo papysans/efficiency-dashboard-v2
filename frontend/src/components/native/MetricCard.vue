@@ -1,6 +1,6 @@
 <template>
   <article class="kn-metric" :style="{ '--metric-accent': accent }">
-    <p class="kn-metric-label">{{ label }}</p>
+    <p class="kn-metric-label">{{ label }}<el-tooltip v-if="tip" :content="tip" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip></p>
     <p class="kn-metric-value" :class="{ 'is-pos': tone === 'pos', 'is-neg': tone === 'neg' }">
       <slot>{{ value }}</slot>
     </p>
@@ -13,6 +13,8 @@ defineProps({
   label: { type: String, default: '' },
   value: { type: [String, Number], default: '-' },
   hint: { type: String, default: '' },
+  // tip: 可选的 label 旁「?」悬浮说明（口径文案）。不传则不渲染，向后兼容。
+  tip: { type: String, default: '' },
   accent: { type: String, default: 'var(--native-primary)' },
   // tone: 'pos' | 'neg' | '' —— 用于给数值上色（提效正/负）
   tone: { type: String, default: '' },

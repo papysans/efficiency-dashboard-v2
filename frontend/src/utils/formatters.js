@@ -80,3 +80,25 @@ export function formatDuration(minutes) {
   }
   return (m / 480).toFixed(1) + '人天'
 }
+
+/**
+ * 验证时长采集缺失提示文案。
+ * 上游 rawdata 只记录用户↔AI 一问一答文本，不记录工具调用 / bash 命令执行，
+ * 后端按命令白名单判定验证阶段 → verify 恒为 0。值为 0/空时显示「—」并以此文案说明。
+ */
+export const VERIFY_UNAVAILABLE_TIP = '当前采集口径未记录命令执行（bash / 测试 / 编译），验证时长不可用'
+
+/**
+ * 思考 / 执行阶段的粗略口径提示文案。
+ */
+export const STAGE_ESTIMATE_TIP = '思考 / 执行为粗略口径：基于对话轮与代码 diff 推断，含时长估算'
+
+/**
+ * 实际采集维度的验证时长格式化：0/空显示「—」（采集未覆盖），非 0 时正常显示。
+ * 注意：仅用于实际采集的验证时长（total_verify_min / verify_active_min），
+ * 不适用于基线估算维度（baselineRows 里的理论验证段）。
+ */
+export function formatVerifyMin(minutes) {
+  if (Number(minutes || 0) === 0) return '—'
+  return formatDuration(minutes)
+}

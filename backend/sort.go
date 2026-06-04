@@ -7,10 +7,12 @@ import (
 
 // ===================== Needs =====================
 
-var needSortFields = []string{"devEndTs", "efficiencyRatio", "workEfficiencyRatio", "totalCalendarMin", "baselineCalendarMin"}
+var needSortFields = []string{"devStartTs", "devEndTs", "efficiencyRatio", "workEfficiencyRatio", "totalCalendarMin", "baselineCalendarMin"}
 
 func buildNeedOrder(field, dir string) string {
 	switch field {
+	case "devStartTs":
+		return "dev_start_ts " + dir + " NULLS LAST"
 	case "devEndTs":
 		return "dev_end_ts " + dir + " NULLS LAST"
 	case "efficiencyRatio":

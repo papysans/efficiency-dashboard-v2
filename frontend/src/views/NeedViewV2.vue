@@ -14,25 +14,11 @@
           <el-input v-model="filters.repoAddr" clearable placeholder="仓库地址" style="width: 200px" @keyup.enter="applyFilters" />
           <el-input v-model="filters.repoBranch" clearable placeholder="分支" style="width: 160px" @keyup.enter="applyFilters" />
           <el-input v-model="filters.userId" clearable placeholder="用户 ID" style="width: 150px" @keyup.enter="applyFilters" />
-          <el-select v-model="filters.status" clearable placeholder="状态" style="width: 120px">
-            <el-option label="merged" value="merged" />
-          </el-select>
           <el-select v-model="filters.boundarySource" clearable placeholder="边界来源" style="width: 140px">
             <el-option label="commit" value="commit" />
             <el-option label="branch" value="branch" />
             <el-option label="session" value="session" />
             <el-option label="manual" value="manual" />
-          </el-select>
-          <el-select v-model="filters.boundaryConfidence" clearable placeholder="边界置信" style="width: 130px">
-            <el-option label="high" value="high" />
-            <el-option label="medium" value="medium" />
-            <el-option label="low" value="low" />
-            <el-option label="very_low" value="very_low" />
-          </el-select>
-          <el-select v-model="filters.confidenceLevel" clearable placeholder="效率置信" style="width: 130px">
-            <el-option label="high" value="high" />
-            <el-option label="medium" value="medium" />
-            <el-option label="low" value="low" />
           </el-select>
           <el-checkbox v-model="filters.outlierOnly">仅异常</el-checkbox>
           <el-checkbox v-model="filters.includeAll" title="放开看板口径：显示 active 未交付 + 主干分支 + 全部需求">显示全部</el-checkbox>
@@ -40,16 +26,6 @@
           <el-button :icon="Refresh" @click="resetFilters">重置</el-button>
         </div>
       </header>
-
-      <!-- summary metrics (当前结果集) -->
-      <section class="kn-metrics kn-metrics-4">
-        <MetricCard label="Need 总数" :value="total" accent="var(--native-primary)" />
-        <MetricCard label="本页可计入" :value="pageStats.eligible" accent="var(--native-success)" />
-        <MetricCard label="本页异常" :value="pageStats.outliers" accent="var(--native-error)" />
-        <MetricCard label="本页日历提效中位" accent="var(--native-info)">
-          <RatioPill :value="pageStats.medianRatio" />
-        </MetricCard>
-      </section>
 
       <!-- table -->
       <section class="kn-panel">
@@ -62,30 +38,38 @@
             <thead>
               <tr>
                 <th>Need ID</th>
-                <th>日历提效</th>
-                <th>工作量提效</th>
-                <th>状态</th>
+                <th>
+                  <SortableTh field="devStartTs" label="记录时间" :active="isSortActive('devStartTs')" :desc="isSortDesc('devStartTs')" @sort="onSortChange('devStartTs')" />
+                </th>
+                <th>
+                  <SortableTh field="efficiencyRatio" label="日历提效" :active="isSortActive('efficiencyRatio')" :desc="isSortDesc('efficiencyRatio')" @sort="onSortChange('efficiencyRatio')" /><el-tooltip :content="CALENDAR_RATIO_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip>
+                </th>
+                <th>
+                  <SortableTh field="workEfficiencyRatio" label="工作量提效" :active="isSortActive('workEfficiencyRatio')" :desc="isSortDesc('workEfficiencyRatio')" @sort="onSortChange('workEfficiencyRatio')" /><el-tooltip :content="WORK_RATIO_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip>
+                </th>
                 <th>边界来源</th>
-                <th>边界置信</th>
                 <th>仓库</th>
                 <th>分支</th>
                 <th>主用户</th>
-                <th class="kn-num">实际日历</th>
-                <th class="kn-num">基线日历</th>
+                <th class="kn-num">
+                  <SortableTh field="totalCalendarMin" label="实际日历" numeric :active="isSortActive('totalCalendarMin')" :desc="isSortDesc('totalCalendarMin')" @sort="onSortChange('totalCalendarMin')" /><el-tooltip :content="ACTUAL_CALENDAR_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip>
+                </th>
+                <th class="kn-num">
+                  <SortableTh field="baselineCalendarMin" label="基线日历" numeric :active="isSortActive('baselineCalendarMin')" :desc="isSortDesc('baselineCalendarMin')" @sort="onSortChange('baselineCalendarMin')" /><el-tooltip :content="BASELINE_CALENDAR_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip>
+                </th>
                 <th>日历区间</th>
-                <th class="kn-num">实际工作量</th>
-                <th class="kn-num">基线工作量</th>
+                <th class="kn-num">实际工作量 <el-tooltip :content="ACTUAL_WORK_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip></th>
+                <th class="kn-num">基线工作量 <el-tooltip :content="FUSED_BASELINE_WORK_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip></th>
                 <th class="kn-num">思考</th>
                 <th class="kn-num">执行</th>
-                <th class="kn-num">验证</th>
-                <th>效率置信</th>
+                <th class="kn-num">验证 <el-tooltip :content="VERIFY_UNAVAILABLE_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip></th>
                 <th>质量</th>
                 <th>说明</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="!tableData.length && !loading">
-                <td colspan="20"><div class="kn-empty">暂无 Need 数据</div></td>
+                <td colspan="18"><div class="kn-empty">暂无 Need 数据</div></td>
               </tr>
               <tr
                 v-for="row in tableData"
@@ -96,11 +80,10 @@
                 <td>
                   <button class="kn-link" @click.stop="goToDetail(row)">{{ shortNeedId(row.need_id) }}</button>
                 </td>
+                <td>{{ formatLocalTime(row.dev_start_ts) }}</td>
                 <td><RatioPill :value="row.efficiency_ratio" /></td>
                 <td><RatioPill :value="row.work_efficiency_ratio" /></td>
-                <td><span class="kn-tag" :class="statusTagClass(row.status)">{{ row.status || '-' }}</span></td>
-                <td>{{ row.boundary_source || '-' }}</td>
-                <td><span class="kn-tag" :class="confidenceTagClass(row.boundary_confidence)">{{ row.boundary_confidence || '-' }}</span></td>
+                <td>{{ boundarySourceLabel(row.boundary_source) }}</td>
                 <td><div class="kn-ellipsis" :title="row.repo_addr">{{ row.repo_addr || '-' }}</div></td>
                 <td><div class="kn-ellipsis" :title="row.repo_branch">{{ row.repo_branch || '-' }}</div></td>
                 <td><div class="kn-ellipsis" :title="row.primary_user_id">{{ row.primary_user_id || '-' }}</div></td>
@@ -111,8 +94,7 @@
                 <td class="kn-num">{{ formatDuration(row.baseline_fused_work_min) }}</td>
                 <td class="kn-num">{{ formatDuration(row.total_think_min) }}</td>
                 <td class="kn-num">{{ formatDuration(row.total_exec_min) }}</td>
-                <td class="kn-num">{{ formatDuration(row.total_verify_min) }}</td>
-                <td><span class="kn-tag" :class="confidenceTagClass(row.confidence_level)">{{ row.confidence_level || '-' }}</span></td>
+                <td class="kn-num" :title="VERIFY_UNAVAILABLE_TIP">{{ formatVerifyMin(row.total_verify_min) }}</td>
                 <td>
                   <span v-if="row.outlier_flag" class="kn-tag kn-tag--error">异常</span>
                   <span v-else-if="row.coverage_eligible" class="kn-tag kn-tag--success">可计入</span>
@@ -142,17 +124,27 @@
 
 <script setup>
 defineOptions({ name: 'NeedViewV2' })
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import DateRangePicker from '@/components/DateRangePicker.vue'
-import MetricCard from '@/components/native/MetricCard.vue'
 import RatioPill from '@/components/native/RatioPill.vue'
+import SortableTh from '@/components/native/SortableTh.vue'
 import { getNeedsV2 } from '@/api/es'
-import { formatDuration, formatV2Ratio } from '@/utils/formatters'
+import { formatDuration, formatLocalTime, formatV2Ratio, formatVerifyMin, VERIFY_UNAVAILABLE_TIP } from '@/utils/formatters'
 import { reasonSummary, reasonHints } from '@/utils/reasonText'
 import { formatDateParam, getDefaultDateRangeWide } from '@/utils/date'
+import { useSortOrder } from '@/composables/useSortOrder'
+import { toOrder } from '@/utils/sort'
+import {
+  CALENDAR_RATIO_TIP,
+  WORK_RATIO_TIP,
+  ACTUAL_CALENDAR_TIP,
+  BASELINE_CALENDAR_TIP,
+  ACTUAL_WORK_TIP,
+  FUSED_BASELINE_WORK_TIP,
+} from '@/utils/needMetricTips'
 
 const route = useRoute()
 const router = useRouter()
@@ -167,29 +159,16 @@ const filters = reactive({
   repoAddr: '',
   repoBranch: '',
   userId: '',
-  status: '',
   boundarySource: '',
-  boundaryConfidence: '',
-  confidenceLevel: '',
   outlierOnly: false,
   includeAll: false,
 })
 
 let ignoreRouteWatch = false
 
-const pageStats = computed(() => {
-  const rows = tableData.value
-  const ratios = rows
-    .map(r => Number(r.efficiency_ratio))
-    .filter(n => Number.isFinite(n))
-    .sort((a, b) => a - b)
-  const median = ratios.length ? ratios[Math.floor((ratios.length - 1) / 2)] : null
-  return {
-    eligible: rows.filter(r => r.coverage_eligible).length,
-    outliers: rows.filter(r => r.outlier_flag).length,
-    medianRatio: median,
-  }
-})
+// 服务端排序：order 走 URL（buildQuery 已把 order 合并进 date/page/filters query）。
+// useSortOrder 只持有 order 状态 + 从 route 回填；写 URL 仍由本页 updateUrl 负责。
+const { order, parsed, syncFromRoute: syncOrderFromRoute } = useSortOrder(route)
 
 function normalizeDateQuery(value) {
   if (!value) return ''
@@ -209,12 +188,10 @@ function syncFromRoute() {
   filters.repoAddr = q.repoAddr ? String(q.repoAddr).trim() : ''
   filters.repoBranch = q.repoBranch ? String(q.repoBranch).trim() : ''
   filters.userId = q.userId ? String(q.userId).trim() : ''
-  filters.status = q.status ? String(q.status).trim() : ''
   filters.boundarySource = q.boundarySource ? String(q.boundarySource).trim() : ''
-  filters.boundaryConfidence = q.boundaryConfidence ? String(q.boundaryConfidence).trim() : ''
-  filters.confidenceLevel = q.confidenceLevel ? String(q.confidenceLevel).trim() : ''
   filters.outlierOnly = q.outlierOnly === 'true'
   filters.includeAll = q.includeAll === 'true'
+  syncOrderFromRoute()
 }
 
 function buildQuery() {
@@ -233,11 +210,14 @@ function buildQuery() {
     const trimmed = String(value || '').trim()
     if (trimmed) query[key] = trimmed
   })
+  if (order.value) query.order = order.value
   return query
 }
 
 function buildParams() {
-  return { ...buildQuery(), page: page.value, pageSize: pageSize.value }
+  const params = { ...buildQuery(), page: page.value, pageSize: pageSize.value }
+  if (!order.value) delete params.order
+  return params
 }
 
 async function updateUrl() {
@@ -291,6 +271,31 @@ async function handlePageChange() {
   fetchData()
 }
 
+// 三态循环：无→升→降→无。同列推进，换列从升序开始。
+async function onSortChange(field) {
+  const cur = parsed.value
+  let nextOrder
+  if (!cur || cur.field !== field) {
+    nextOrder = toOrder(field, false) // 升
+  } else if (!cur.desc) {
+    nextOrder = toOrder(field, true) // 降
+  } else {
+    nextOrder = undefined // 清除
+  }
+  order.value = nextOrder || ''
+  page.value = 1
+  await updateUrl()
+  fetchData()
+}
+
+function isSortActive(field) {
+  return parsed.value?.field === field
+}
+
+function isSortDesc(field) {
+  return parsed.value?.field === field && parsed.value?.desc === true
+}
+
 function goToDetail(row) {
   if (!row?.need_id) return
   router.push({ path: `/needs/${encodeURIComponent(row.need_id)}`, query: buildQuery() })
@@ -302,18 +307,19 @@ function shortNeedId(value) {
   return s.length > 18 ? `${s.slice(0, 18)}…` : s
 }
 
-function statusTagClass(status) {
-  if (status === 'merged') return 'kn-tag--success'
-  if (status === 'active') return 'kn-tag--primary'
-  return 'kn-tag--neutral'
+// 边界来源人话标签：lv*/commit/session/manual 映射为中文，兜底原值。
+const BOUNDARY_SOURCE_LABELS = {
+  lv1_pr: 'PR',
+  lv2_branch: '分支',
+  lv5_orphan: '孤儿',
+  branch: '分支',
+  commit: '提交',
+  session: '会话',
+  manual: '手动',
 }
-
-function confidenceTagClass(level) {
-  if (level === 'high') return 'kn-tag--success'
-  if (level === 'medium') return 'kn-tag--warning'
-  if (level === 'low') return 'kn-tag--info'
-  if (level === 'very_low') return 'kn-tag--error'
-  return 'kn-tag--neutral'
+function boundarySourceLabel(src) {
+  if (!src) return '-'
+  return BOUNDARY_SOURCE_LABELS[src] || src
 }
 
 function formatBand(row) {

@@ -145,6 +145,14 @@
 .kn-grid-2 { display: grid; gap: 1rem; grid-template-columns: 1fr; }
 @media (min-width: 1024px) { .kn-grid-2 { grid-template-columns: 1fr 1fr; } }
 
+/* 口径脚注（采集未覆盖 / 粗略估算等说明，弱化展示） */
+.kn-footnote { margin: 0.5rem 0 0; font-size: 0.75rem; line-height: 1.4; color: var(--native-muted); }
+.kn-stage-chart { display: flex; flex-direction: column; min-width: 0; }
+.kn-stage-chart .kn-footnote { margin-top: 0.25rem; }
+/* 表头说明标记（鼠标悬停看 title） */
+.kn-th-mark { font-size: 0.625rem; color: var(--native-dim); cursor: help; }
+.kn-tip { max-width: 360px; line-height: 1.5; }
+
 /* key-value 信息网格（替代裸 el-descriptions / JSON） */
 .kn-kv {
   display: grid;

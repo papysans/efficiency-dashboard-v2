@@ -20,16 +20,16 @@
 
       <!-- metric cards -->
       <section class="kn-metrics">
-        <MetricCard label="日历提效" accent="var(--native-success)" :hint="formatBand">
+        <MetricCard label="日历提效" accent="var(--native-success)" :hint="formatBand" :tip="CALENDAR_RATIO_TIP">
           <RatioPill :value="need.efficiency_ratio" />
         </MetricCard>
-        <MetricCard label="工作量提效" accent="var(--native-info)">
+        <MetricCard label="工作量提效" accent="var(--native-info)" :tip="WORK_RATIO_TIP">
           <RatioPill :value="need.work_efficiency_ratio" />
         </MetricCard>
-        <MetricCard label="实际日历" :value="formatDuration(need.total_calendar_min)" accent="var(--native-primary)" />
-        <MetricCard label="基线日历" :value="formatDuration(need.baseline_calendar_min)" accent="var(--native-primary)" />
-        <MetricCard label="实际工作量" :value="formatDuration(need.total_active_work_corrected_min)" accent="var(--native-warning)" />
-        <MetricCard label="融合基线工作量" :value="formatDuration(need.baseline_fused_work_min)" accent="var(--native-warning)" />
+        <MetricCard label="实际日历" :value="formatDuration(need.total_calendar_min)" accent="var(--native-primary)" :tip="ACTUAL_CALENDAR_TIP" />
+        <MetricCard label="基线日历" :value="formatDuration(need.baseline_calendar_min)" accent="var(--native-primary)" :tip="BASELINE_CALENDAR_TIP" />
+        <MetricCard label="实际工作量" :value="formatDuration(need.total_active_work_corrected_min)" accent="var(--native-warning)" :tip="ACTUAL_WORK_TIP" />
+        <MetricCard label="融合基线工作量" :value="formatDuration(need.baseline_fused_work_min)" accent="var(--native-warning)" :tip="FUSED_BASELINE_WORK_TIP" />
       </section>
 
       <!-- 基础信息 -->
@@ -94,16 +94,20 @@
           <div class="kn-panel-head"><span>阶段工作量</span></div>
           <div class="kn-panel-body">
             <div class="kn-kv">
-              <div class="kn-kv-item"><span class="kn-kv-label">思考</span><span class="kn-kv-value">{{ formatDuration(need.total_think_min) }}</span></div>
-              <div class="kn-kv-item"><span class="kn-kv-label">执行</span><span class="kn-kv-value">{{ formatDuration(need.total_exec_min) }}</span></div>
-              <div class="kn-kv-item"><span class="kn-kv-label">验证</span><span class="kn-kv-value">{{ formatDuration(need.total_verify_min) }}</span></div>
+              <div class="kn-kv-item"><span class="kn-kv-label">思考</span><span class="kn-kv-value" :title="STAGE_ESTIMATE_TIP">{{ formatDuration(need.total_think_min) }}</span></div>
+              <div class="kn-kv-item"><span class="kn-kv-label">执行</span><span class="kn-kv-value" :title="STAGE_ESTIMATE_TIP">{{ formatDuration(need.total_exec_min) }}</span></div>
+              <div class="kn-kv-item"><span class="kn-kv-label">验证</span><span class="kn-kv-value" :title="VERIFY_UNAVAILABLE_TIP">{{ formatVerifyMin(need.total_verify_min) }}</span></div>
               <div class="kn-kv-item"><span class="kn-kv-label">其他</span><span class="kn-kv-value">{{ formatDuration(need.total_other_min) }}</span></div>
               <div class="kn-kv-item"><span class="kn-kv-label">会话活跃人工</span><span class="kn-kv-value">{{ formatDuration(need.total_session_active_person_min) }}</span></div>
               <div class="kn-kv-item"><span class="kn-kv-label">未覆盖人工估算</span><span class="kn-kv-value">{{ formatDuration(need.estimate_uncovered_human_min) }}</span></div>
             </div>
+            <p class="kn-footnote">验证：采集未覆盖（{{ VERIFY_UNAVAILABLE_TIP }}）。思考 / 执行为粗略估算口径。</p>
           </div>
         </section>
-        <NativeChart :option="stageChart" empty="暂无阶段数据" />
+        <div class="kn-stage-chart">
+          <NativeChart :option="stageChart" empty="暂无阶段数据" />
+          <p class="kn-footnote">验证：采集未覆盖，图中“验证 0”非真实结论。</p>
+        </div>
       </div>
 
       <!-- 代码与质量信号 -->
@@ -141,9 +145,14 @@
         <div class="kn-panel-head"><span>改动文件</span><span class="kn-panel-hint">{{ needFiles.length }} 个</span></div>
         <div class="kn-panel-body">
           <div v-if="!needFiles.length" class="kn-empty">暂无改动文件</div>
-          <div v-else class="kn-pills">
-            <span v-for="f in needFiles" :key="f" class="kn-tag kn-tag--neutral is-mono" :title="f">{{ f }}</span>
-          </div>
+          <template v-else>
+            <div class="kn-pills">
+              <span v-for="f in visibleNeedFiles" :key="f" class="kn-tag kn-tag--neutral is-mono" :title="f">{{ f }}</span>
+            </div>
+            <button v-if="needFiles.length > FILE_PREVIEW_N" class="kn-link" style="margin-top: 0.5rem" @click="needFilesExpanded = !needFilesExpanded">
+              {{ needFilesExpanded ? '收起' : `展开全部（${needFiles.length}）` }}
+            </button>
+          </template>
         </div>
       </section>
 
@@ -155,7 +164,7 @@
             <thead>
               <tr>
                 <th>Session</th><th>用户</th><th>开始</th><th>结束</th>
-                <th class="kn-num">活跃工作量</th><th class="kn-num">思考</th><th class="kn-num">执行</th><th class="kn-num">验证</th>
+                <th class="kn-num">活跃工作量</th><th class="kn-num" :title="STAGE_ESTIMATE_TIP">思考</th><th class="kn-num" :title="STAGE_ESTIMATE_TIP">执行</th><th class="kn-num">验证 <el-tooltip :content="VERIFY_UNAVAILABLE_TIP" placement="top" :show-after="60" popper-class="kn-tip"><sup class="kn-th-mark">?</sup></el-tooltip></th>
                 <th>阶段置信</th><th>摘要</th>
               </tr>
             </thead>
@@ -169,7 +178,7 @@
                 <td class="kn-num">{{ formatDuration(s.total_active_min) }}</td>
                 <td class="kn-num">{{ formatDuration(s.think_active_min) }}</td>
                 <td class="kn-num">{{ formatDuration(s.exec_active_min) }}</td>
-                <td class="kn-num">{{ formatDuration(s.verify_active_min) }}</td>
+                <td class="kn-num" :title="VERIFY_UNAVAILABLE_TIP">{{ formatVerifyMin(s.verify_active_min) }}</td>
                 <td><span class="kn-tag" :class="confidenceTagClass(s.stage_confidence)">{{ s.stage_confidence || '-' }}</span></td>
                 <td><div class="kn-ellipsis" :title="s.summary">{{ s.summary || '-' }}</div></td>
               </tr>
@@ -188,20 +197,29 @@
             </thead>
             <tbody>
               <tr v-if="!commits.length"><td colspan="7"><div class="kn-empty">暂无 Commit</div></td></tr>
-              <tr v-for="c in commits" :key="c.commit_id">
-                <td><button class="kn-link" @click="router.push('/commit/' + encodeURIComponent(c.commit_id))">{{ shortId(c.commit_id, 10) }}</button></td>
-                <td>{{ formatLocalTime(c.commit_time) }}</td>
-                <td><div class="kn-ellipsis" :title="c.user_name">{{ c.user_name || '-' }}</div></td>
-                <td class="kn-num">{{ fmtInt(c.diff_lines) }}</td>
-                <td class="kn-num">{{ fmtPct(c.silica) }}</td>
-                <td><div class="kn-ellipsis" :title="c.comment">{{ c.comment || '-' }}</div></td>
-                <td>
-                  <div v-if="commitFiles(c).length" class="kn-ellipsis is-mono" style="max-width: 360px" :title="commitFiles(c).join('\n')">
-                    <strong>{{ commitFiles(c).length }}</strong> · {{ commitFiles(c).join('  ·  ') }}
-                  </div>
-                  <span v-else class="is-muted">-</span>
-                </td>
-              </tr>
+              <template v-for="c in commits" :key="c.commit_id">
+                <tr>
+                  <td><button class="kn-link" @click="router.push('/commit/' + encodeURIComponent(c.commit_id))">{{ shortId(c.commit_id, 10) }}</button></td>
+                  <td>{{ formatLocalTime(c.commit_time) }}</td>
+                  <td><div class="kn-ellipsis" :title="c.user_name">{{ c.user_name || '-' }}</div></td>
+                  <td class="kn-num">{{ fmtInt(c.diff_lines) }}</td>
+                  <td class="kn-num">{{ fmtPct(c.silica) }}</td>
+                  <td><div class="kn-ellipsis" :title="c.comment">{{ c.comment || '-' }}</div></td>
+                  <td>
+                    <button v-if="commitFiles(c).length" class="kn-link" @click="toggleCommitFiles(c.commit_id)">
+                      {{ isCommitExpanded(c.commit_id) ? '收起' : `${commitFiles(c).length} 个文件` }}
+                    </button>
+                    <span v-else class="is-muted">-</span>
+                  </td>
+                </tr>
+                <tr v-if="commitFiles(c).length && isCommitExpanded(c.commit_id)">
+                  <td colspan="7">
+                    <div class="kn-pills">
+                      <span v-for="f in commitFiles(c)" :key="f" class="kn-tag kn-tag--neutral is-mono" :title="f">{{ f }}</span>
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
@@ -212,16 +230,24 @@
 
 <script setup>
 defineOptions({ name: 'NeedDetailV2' })
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import MetricCard from '@/components/native/MetricCard.vue'
 import RatioPill from '@/components/native/RatioPill.vue'
 import NativeChart from '@/components/native/NativeChart.vue'
 import { getNeedDetailV2 } from '@/api/es'
-import { formatDuration, formatLocalTime, formatV2Ratio, formatNumber } from '@/utils/formatters'
+import { formatDuration, formatLocalTime, formatV2Ratio, formatNumber, formatVerifyMin, VERIFY_UNAVAILABLE_TIP, STAGE_ESTIMATE_TIP } from '@/utils/formatters'
 import { parseReason, reasonSummary, reasonHints } from '@/utils/reasonText'
 import { kanbanChart } from '@/utils/kanbanChart'
+import {
+  CALENDAR_RATIO_TIP,
+  WORK_RATIO_TIP,
+  ACTUAL_CALENDAR_TIP,
+  BASELINE_CALENDAR_TIP,
+  ACTUAL_WORK_TIP,
+  FUSED_BASELINE_WORK_TIP,
+} from '@/utils/needMetricTips'
 
 const route = useRoute()
 const router = useRouter()
@@ -268,6 +294,23 @@ function asFileList(value) {
 const needFiles = computed(() => asFileList(need.value.touched_files))
 function commitFiles(c) {
   return asFileList(c?.touched_files)
+}
+
+// 改动文件折叠：默认显示前 N 个 pills，超出折叠。
+const FILE_PREVIEW_N = 24
+const needFilesExpanded = ref(false)
+const visibleNeedFiles = computed(() =>
+  needFilesExpanded.value ? needFiles.value : needFiles.value.slice(0, FILE_PREVIEW_N),
+)
+
+// 关联 Commit 改动文件逐行展开：用 reactive set 记录已展开的 commit_id。
+const expandedCommits = reactive(new Set())
+function isCommitExpanded(id) {
+  return expandedCommits.has(id)
+}
+function toggleCommitFiles(id) {
+  if (expandedCommits.has(id)) expandedCommits.delete(id)
+  else expandedCommits.add(id)
 }
 
 function reasonTagClass(tone) {
@@ -321,6 +364,8 @@ async function loadData() {
   const needId = route.params.needId
   if (!needId) return
   loading.value = true
+  needFilesExpanded.value = false
+  expandedCommits.clear()
   try {
     const res = await getNeedDetailV2(needId)
     const data = res.data || res
