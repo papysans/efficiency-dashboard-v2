@@ -6,10 +6,10 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { getNeedsV2 } from '@/api/endpoints'
 import type { NeedsV2Summary } from '@/api/types'
 import {
-  formatDateTimeShort,
+  formatDateTimeNoYear,
   formatDuration,
 } from '@/lib/formatters'
-import { reasonHints, reasonSummary } from '@/lib/reasonText'
+import { useUsers } from '@/api/queries'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, toOrder } from '@/lib/sort'
 import {
@@ -157,6 +157,17 @@ export default function NeedList() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [errMsg, setErrMsg] = useState('')
+
+  // 主用户列显示 user_name（needs 列表只有 primary_user_id=UUID）。拉用户列表建 user_id→user_name 映射；
+  // 优先 user_name，缺失时回退 UUID。当前数据集 user_name 字段填的就是 UUID，故现在仍显示 UUID。
+  const usersQuery = useUsers({ pageSize: 1000 })
+  const userMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const u of usersQuery.data?.data || []) {
+      if (u.user_id && u.user_name) map[u.user_id] = u.user_name
+    }
+    return map
+  }, [usersQuery.data])
 
   // 把当前草稿同步到 URL（写 = setSearchParams replace）。
   // 防回环：setSearchParams(replace) 仅在结果 search 串真变时才会触发下方 effect 重拉，
@@ -367,7 +378,6 @@ export default function NeedList() {
                     <InfoMark tip={WORK_RATIO_TIP} />
                   </span>
                 </th>
-                <th className={TH}>边界来源</th>
                 <th className={TH}>仓库</th>
                 <th className={TH}>分支</th>
                 <th className={TH}>主用户</th>
@@ -390,24 +400,24 @@ export default function NeedList() {
                   <span className="inline-flex items-center gap-1 justify-end">基线工作量 <InfoMark tip={FUSED_BASELINE_WORK_TIP} /></span>
                 </th>
                 <th className={TH}>质量</th>
+                <th className={TH}>边界来源</th>
                 <th className={TH}>
                   <SortableTh field="devStartTs" label="记录时间" active={isSortActive('devStartTs')} desc={isSortDesc('devStartTs')} onSort={onSortChange} />
                 </th>
-                <th className={TH}>说明</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={14}>
+                    <td className={TD} colSpan={13}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={14}>
+                  <td colSpan={13}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无 Need 数据</div>
                   </td>
                 </tr>
@@ -432,10 +442,9 @@ export default function NeedList() {
                     </td>
                     <td className={TD}><RatioPill value={row.efficiency_ratio} /></td>
                     <td className={TD}><RatioPill value={row.work_efficiency_ratio} /></td>
-                    <td className={TD}>{boundarySourceLabel(row.boundary_source)}</td>
                     <td className={TD}><Ellipsis text={row.repo_addr} /></td>
                     <td className={TD}><Ellipsis text={row.repo_branch} /></td>
-                    <td className={TD}><Ellipsis text={row.primary_user_id} /></td>
+                    <td className={TD}><Ellipsis text={row.primary_user_id ? userMap[row.primary_user_id] ?? row.primary_user_id : '-'} /></td>
                     <td className={TD_NUM}>{formatDuration(row.total_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.baseline_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.total_active_work_corrected_min)}</td>
@@ -449,10 +458,8 @@ export default function NeedList() {
                         <Tag tone="neutral">未计入</Tag>
                       )}
                     </td>
-                    <td className={TD}>{formatDateTimeShort(row.dev_start_ts)}</td>
-                    <td className={TD}>
-                      <Ellipsis text={reasonSummary(row.reason)} title={reasonHints(row.reason)} />
-                    </td>
+                    <td className={TD}>{boundarySourceLabel(row.boundary_source)}</td>
+                    <td className={TD}>{formatDateTimeNoYear(row.dev_start_ts)}</td>
                   </tr>
                 ))
               )}

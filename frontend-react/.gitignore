@@ -5,3 +5,7 @@ dist-ssr
 .DS_Store
 .vite
 *.tsbuildinfo
+
+# 根 .gitignore 的 `lib/`（Python 模板）会误伤本目录的 src/lib（formatters/reasonText 等口径核心），显式取消忽略
+!src/lib/
+!src/lib/**
