@@ -9,7 +9,7 @@ import {
   formatDateTimeNoYear,
   formatDuration,
 } from '@/lib/formatters'
-import { useUsers } from '@/api/queries'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, toOrder } from '@/lib/sort'
 import {
@@ -158,16 +158,9 @@ export default function NeedList() {
   const [loading, setLoading] = useState(false)
   const [errMsg, setErrMsg] = useState('')
 
-  // 主用户列显示 user_name（needs 列表只有 primary_user_id=UUID）。拉用户列表建 user_id→user_name 映射；
-  // 优先 user_name，缺失时回退 UUID。当前数据集 user_name 字段填的就是 UUID，故现在仍显示 UUID。
-  const usersQuery = useUsers({ pageSize: 1000 })
-  const userMap = useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const u of usersQuery.data?.data || []) {
-      if (u.user_id && u.user_name) map[u.user_id] = u.user_name
-    }
-    return map
-  }, [usersQuery.data])
+  // 主用户列显示真实用户名（needs 列表只有 primary_user_id=UUID）。
+  // 从 commits 的 git_user_name 建映射（最真实），见 useUserNameMap。
+  const { resolveName } = useUserNameMap()
 
   // 把当前草稿同步到 URL（写 = setSearchParams replace）。
   // 防回环：setSearchParams(replace) 仅在结果 search 串真变时才会触发下方 effect 重拉，
@@ -444,7 +437,7 @@ export default function NeedList() {
                     <td className={TD}><RatioPill value={row.work_efficiency_ratio} /></td>
                     <td className={TD}><Ellipsis text={row.repo_addr} /></td>
                     <td className={TD}><Ellipsis text={row.repo_branch} /></td>
-                    <td className={TD}><Ellipsis text={row.primary_user_id ? userMap[row.primary_user_id] ?? row.primary_user_id : '-'} /></td>
+                    <td className={TD}><Ellipsis text={resolveName(row.primary_user_id)} /></td>
                     <td className={TD_NUM}>{formatDuration(row.total_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.baseline_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.total_active_work_corrected_min)}</td>
