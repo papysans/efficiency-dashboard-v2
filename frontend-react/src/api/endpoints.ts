@@ -9,6 +9,7 @@ import type {
   DashboardSummary,
   GlobalConfig,
   ListParams,
+  NeedsV2DetailResponse,
   NeedsV2Summary,
   OrgV2Row,
   UserV2Row,
@@ -29,7 +30,7 @@ export function getNeedsV2(params: ListParams) {
 }
 
 export function getNeedDetailV2(needId: string) {
-  return apiGet<Record<string, unknown>>(`/v2/needs/${encodeURIComponent(needId)}`)
+  return apiGet<NeedsV2DetailResponse>(`/v2/needs/${encodeURIComponent(needId)}`)
 }
 
 /**

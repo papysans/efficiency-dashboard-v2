@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 interface MetricCardProps {
   label: string
@@ -7,6 +7,8 @@ interface MetricCardProps {
   /** 口径说明，悬浮在 info 图标上 */
   tip?: string
   tone?: 'pos' | 'neg' | 'neutral'
+  /** 左侧强调色条（CSS 颜色值，如 '#0071e3'）。Need 详情 6 张卡用。 */
+  accent?: string
 }
 
 const VALUE_TONE: Record<string, string> = {
@@ -15,10 +17,11 @@ const VALUE_TONE: Record<string, string> = {
   neutral: 'text-gray-900 dark:text-white',
 }
 
-/** 玻璃指标卡：标签 + 大数值 + 可选 hint/口径 tip */
-export function MetricCard({ label, value, hint, tip, tone = 'neutral' }: MetricCardProps) {
+/** 玻璃指标卡：标签 + 大数值 + 可选 hint/口径 tip / 左侧 accent 色条 */
+export function MetricCard({ label, value, hint, tip, tone = 'neutral', accent }: MetricCardProps) {
+  const style: CSSProperties | undefined = accent ? { borderLeft: `3px solid ${accent}` } : undefined
   return (
-    <div className="glass rounded-2xl p-4 hover:scale-[1.02] transition-transform">
+    <div className="glass rounded-2xl p-4 hover:scale-[1.02] transition-transform" style={style}>
       <div className="flex items-center gap-1 mb-1">
         <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
         {tip && (

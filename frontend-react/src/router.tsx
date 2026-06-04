@@ -2,6 +2,8 @@ import { createBrowserRouter, Navigate } from 'react-router'
 import AppShell from '@/components/layout/AppShell'
 import Overview from '@/pages/Overview'
 import Placeholder from '@/pages/Placeholder'
+import NeedList from '@/pages/needs/NeedList'
+import NeedDetail from '@/pages/needs/NeedDetail'
 
 // 路由表对齐 Vue frontend/src/router/index.js（见 research/api-contract.md §6）。
 // PR0：总览页真实落地，其余 24 路由先用 Placeholder 占位（可点不 404），后续 PR 替换。
@@ -13,8 +15,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Overview /> },
 
-      { path: 'needs-v2', element: <Placeholder title="需求列表" /> },
-      { path: 'needs/:needId', element: <Placeholder title="需求详情" /> },
+      { path: 'needs-v2', element: <NeedList /> },
+      { path: 'needs/:needId', element: <NeedDetail /> },
       { path: 'task-v2', element: <Placeholder title="任务列表" /> },
       { path: 'task/:taskId', element: <Placeholder title="任务详情" /> },
       { path: 'user-v2', element: <Placeholder title="用户列表" /> },
