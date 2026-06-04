@@ -318,6 +318,142 @@ export interface OrgV2Row {
   cost: number
 }
 
+/** /v2/repos 列表项（§Repo-4，⚠️ 百分比口径 efficiency_ratio = CalcEfficiencyRatio(ancient,real)）。 */
+export interface RepoListItem {
+  repo_addr: string
+  repo_branch: string
+  commit_count: number
+  start_time: string
+  end_time: string
+  sum_ancient_minutes: number
+  sum_real_minutes: number
+  task_count: number
+  efficiency_ratio: number // 百分比口径
+}
+
+/** /v2/repos/detail 的 efficiency 块（百分比口径）。 */
+export interface RepoEfficiency {
+  repo_ancient_minutes: number
+  repo_real_minutes: number
+  efficiency_ratio: number // 百分比口径
+  repo_ancient_minutes_reason?: string
+  repo_real_minutes_reason?: string
+}
+
+/** /v2/repos/detail 的 commits 项（§Repo-5，commit_*_manual 优先；silica 后端已 *100 即百分数）。 */
+export interface RepoCommitItem {
+  commit_id: string
+  commit_time?: string | null
+  git_user_name?: string
+  comment?: string
+  diff_lines?: number | null
+  commit_real_minutes?: number | null
+  commit_real_minutes_manual?: number | null
+  commit_ancient_minutes?: number | null
+  commit_ancient_minutes_manual?: number | null
+  silica?: number | null
+  cost?: number | null
+  upstream_tokens?: number | null
+  downstream_tokens?: number | null
+  efficiency_ratio?: number | null // 百分比口径
+  [k: string]: unknown
+}
+
+/** /v2/repos/detail 顶层响应（§Repo-5）。 */
+export interface RepoDetailResponse {
+  repo_addr: string
+  repo_branch: string
+  branches: string[]
+  commits: RepoCommitItem[]
+  tasks: TaskListItem[]
+  efficiency: RepoEfficiency
+  summary?: { commit_count?: number; task_count?: number }
+}
+
+/** /v2/repos/branches 响应。 */
+export interface RepoBranchesResponse {
+  branches: string[]
+}
+
+/** /v2/orgs/detail 汇总块（§Org-7，⚠️ 百分比口径）。 */
+export interface OrgSummary {
+  user_count: number
+  task_diff_lines: number
+  task_real_minutes: number
+  task_ancient_minutes: number
+  task_efficiency_ratio: number // 百分比口径
+  commit_diff_lines: number
+  commit_real_minutes: number
+  commit_ancient_minutes: number
+  commit_efficiency_ratio: number // 百分比口径
+  upstream_tokens: number
+  downstream_tokens: number
+  cost: number
+}
+
+/** /v2/orgs/detail commits 时序项（§Org-7，百分比口径）。 */
+export interface CommitTimeSeriesItem {
+  period_key: string
+  period_label: string
+  commit_count: number
+  commit_diff_lines: number
+  commit_real_minutes: number
+  commit_ancient_minutes: number
+  commit_efficiency_ratio: number // 百分比口径
+  upstream_tokens: number
+  downstream_tokens: number
+  cost: number
+  [k: string]: unknown
+}
+
+/** /v2/orgs/detail tasks 时序项（§Org-7，百分比口径）。 */
+export interface TaskTimeSeriesItem {
+  period_key: string
+  period_label: string
+  task_count: number
+  task_diff_lines: number
+  task_real_minutes: number
+  task_ancient_minutes: number
+  task_efficiency_ratio: number // 百分比口径
+  upstream_tokens: number
+  downstream_tokens: number
+  cost: number
+  [k: string]: unknown
+}
+
+/** /v2/orgs/detail members 项（UserDetail，§Org-7，百分比口径）。 */
+export interface OrgMember {
+  user_id: string
+  user_name: string
+  org1?: string
+  org2?: string
+  org3?: string
+  org4?: string
+  org_display?: string
+  task_diff_lines: number
+  task_real_minutes: number
+  task_ancient_minutes: number
+  task_efficiency_ratio: number // 百分比口径
+  commit_diff_lines: number
+  commit_real_minutes: number
+  commit_ancient_minutes: number
+  commit_efficiency_ratio: number // 百分比口径
+  upstream_tokens: number
+  downstream_tokens: number
+  cost: number
+  [k: string]: unknown
+}
+
+/** /v2/orgs/detail 顶层响应（§Org-7）。 */
+export interface OrgDetailResponse {
+  org_path: string
+  summary: OrgSummary | null
+  commits: CommitTimeSeriesItem[] | null
+  tasks: TaskTimeSeriesItem[] | null
+  members: OrgMember[] | null
+  granularity: string
+}
+
 /** 通用列表 query 参数 */
 export interface ListParams {
   startDate?: string

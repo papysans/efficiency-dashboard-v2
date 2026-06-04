@@ -12,7 +12,11 @@ import type {
   ListParams,
   NeedsV2DetailResponse,
   NeedsV2Summary,
+  OrgDetailResponse,
   OrgV2Row,
+  RepoBranchesResponse,
+  RepoDetailResponse,
+  RepoListItem,
   TaskDetailResponse,
   TaskListItem,
   UpdateTaskManualRequest,
@@ -81,8 +85,10 @@ export function getOrgV2(params: { startDate?: string; endDate?: string }) {
   return apiGet<ApiData<OrgV2Row> & { no_org_mapping?: boolean }>('/v2/orgs', params)
 }
 
-export function getOrgDetailV2(params: { orgPath: string; startDate?: string; endDate?: string }) {
-  return apiGet<Record<string, unknown>>('/v2/orgs/detail', params)
+// ⚠️ 后端读取的是 org_path（snake_case），传 orgPath 会报「org_path 不能为空」。对齐 Vue OrgDetailV2。
+export function getOrgDetailV2(params: { orgPath: string; startDate?: string; endDate?: string; granularity?: string }) {
+  const { orgPath, ...rest } = params
+  return apiGet<OrgDetailResponse>('/v2/orgs/detail', { org_path: orgPath, ...rest })
 }
 
 // ---- Commits（百分比口径） ----
@@ -94,17 +100,17 @@ export function getCommitDetailV2(commitId: string) {
   return apiGet<Record<string, unknown>>(`/v2/commits/${encodeURIComponent(commitId)}`)
 }
 
-// ---- Repos（百分比口径） ----
+// ---- Repos（⚠️ 百分比口径：efficiency_ratio = CalcEfficiencyRatio(ancient,real)，不 ×100） ----
 export function getReposV2(params: ListParams) {
-  return apiGet<ApiList<Record<string, unknown>>>('/v2/repos', params)
+  return apiGet<ApiList<RepoListItem>>('/v2/repos', params)
 }
 
 export function getRepoDetailV2(params: { repoAddr: string; repoBranch?: string; startDate?: string; endDate?: string }) {
-  return apiGet<Record<string, unknown>>('/v2/repos/detail', params)
+  return apiGet<RepoDetailResponse>('/v2/repos/detail', params)
 }
 
 export function getRepoBranches(repoAddr: string) {
-  return apiGet<{ branches?: string[] } | string[]>('/v2/repos/branches', { repoAddr })
+  return apiGet<RepoBranchesResponse>('/v2/repos/branches', { repoAddr })
 }
 
 // ---- Tasks（⚠️ 百分比口径：efficiency_ratio 300=300%，不 ×100） ----

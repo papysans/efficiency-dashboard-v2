@@ -6,6 +6,9 @@ import {
   getGlobalConfig,
   getNeedDetailV2,
   getNeedsV2,
+  getOrgDetailV2,
+  getRepoBranches,
+  getRepoDetailV2,
   getTaskDetailV2,
   getUserDetailV2,
   getUserGroupDetail,
@@ -83,5 +86,32 @@ export function useTaskDetail(taskId: string | undefined) {
     queryKey: ['task-detail', taskId],
     queryFn: () => getTaskDetailV2(taskId as string),
     enabled: !!taskId,
+  })
+}
+
+/** 仓库详情（百分比口径）。repoAddr/repoBranch 调用方已 decode；endpoints 走 query 传参。 */
+export function useRepoDetail(params: { repoAddr: string; repoBranch?: string; startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['repo-detail', params],
+    queryFn: () => getRepoDetailV2(params),
+    enabled: !!params.repoAddr,
+  })
+}
+
+/** 仓库分支列表（分支切换下拉用）。 */
+export function useRepoBranches(repoAddr: string | undefined) {
+  return useQuery({
+    queryKey: ['repo-branches', repoAddr],
+    queryFn: () => getRepoBranches(repoAddr as string),
+    enabled: !!repoAddr,
+  })
+}
+
+/** 组织详情（百分比口径；org_path 由 endpoints 转 snake_case）。orgPath 空时不请求。 */
+export function useOrgDetail(params: { orgPath: string; startDate?: string; endDate?: string; granularity?: string }) {
+  return useQuery({
+    queryKey: ['org-detail', params],
+    queryFn: () => getOrgDetailV2(params),
+    enabled: !!params.orgPath,
   })
 }
