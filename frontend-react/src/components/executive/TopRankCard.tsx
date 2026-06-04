@@ -32,7 +32,9 @@ function shortNeedId(id: string): string {
 export function TopRankCard({ startDate, endDate }: TopRankCardProps) {
   const [tab, setTab] = useState<Tab>('need')
   const needsQ = useAllNeeds({ startDate, endDate })
-  const usersQ = useUsers({ startDate, endDate })
+  // pageSize:1000 一次性全量（对齐 UserList）：/v2/users 默认 pageSize=50 会服务端截断，
+  // 人榜需全量再客户端 sortRows 取 top6，否则只在前 50 名里排。
+  const usersQ = useUsers({ startDate, endDate, pageSize: 1000 })
 
   const topNeeds = useMemo<NeedsV2Summary[]>(() => {
     const rows = (needsQ.data ?? []).filter((r) => r.coverage_eligible && r.efficiency_ratio != null)

@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router'
+import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-router'
 import AppShell from '@/components/layout/AppShell'
 import Overview from '@/pages/Overview'
 import Placeholder from '@/pages/Placeholder'
@@ -21,7 +21,20 @@ import ProjectDetail from '@/pages/projects/ProjectDetail'
 
 // 路由表对齐 Vue frontend/src/router/index.js（见 research/api-contract.md §6）。
 // PR0：总览页真实落地，其余 24 路由先用 Placeholder 占位（可点不 404），后续 PR 替换。
-// 旧路由重定向：PR4 完善为「保留 query + /kanban/need/:needId」三条精确重定向。
+// 旧路由重定向：PR4c 完善为「保留 query/search + /kanban/need/:needId」三条精确重定向。
+
+/**
+ * 旧路由重定向（保留 query/search，兼容旧 opencode 链接）。
+ * 对齐 Vue redirect: to => ({ path, query: to.query })（api-contract.md §6）。
+ * needId 走 path 时按 encodeURIComponent（need_id 可能含斜杠/特殊字符）。
+ */
+function RedirectWithQuery({ to }: { to: string }) {
+  const { search } = useLocation()
+  const { needId } = useParams<{ needId?: string }>()
+  const target = needId != null ? `/needs/${encodeURIComponent(needId)}` : to
+  return <Navigate to={`${target}${search}`} replace />
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -46,9 +59,10 @@ export const router = createBrowserRouter([
       { path: 'commit/:commitId', element: <CommitDetail /> },
       { path: 'workdir/:workDirId', element: <WorkDirDetail /> },
 
-      // 旧路由重定向（PR4 完善 query 保留）
-      { path: 'cloud/kanban', element: <Navigate to="/needs-v2" replace /> },
-      { path: 'kanban/need', element: <Navigate to="/needs-v2" replace /> },
+      // 旧路由重定向（保留 query/search，兼容旧 opencode 链接，api-contract.md §6）
+      { path: 'cloud/kanban', element: <RedirectWithQuery to="/needs-v2" /> },
+      { path: 'kanban/need', element: <RedirectWithQuery to="/needs-v2" /> },
+      { path: 'kanban/need/:needId', element: <RedirectWithQuery to="/needs-v2" /> },
 
       { path: '*', element: <Placeholder title="页面不存在" /> },
     ],

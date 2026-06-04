@@ -58,7 +58,7 @@ export function useAllNeeds(params: ListParams) {
   })
 }
 
-export function useUsers(params: { startDate?: string; endDate?: string }) {
+export function useUsers(params: { startDate?: string; endDate?: string; pageSize?: number }) {
   return useQuery({
     queryKey: ['users', params],
     queryFn: () => getUsersV2(params),

@@ -1,14 +1,16 @@
 // 仓库详情页（RepoDetailV2 的 React + 玻璃拟态迁移）。
 // 分区/列/口径 1:1 按 research/pr3-user-repo-org.md §Repo-5；⚠️ 百分比口径 → PercentPill（不 ×100）。
-// 「添加到 Project」弹窗为复杂二级功能（getProjects/createProject/addRepoToProject/checkProjectConflicts），
-// 本 PR 先做只读详情（research 明确可分期）。
+// 「添加到 Project」（PR4c §4.2）：选 Project（或新建）→ 两段式冲突检测（checkProjectConflicts，
+// 有冲突展示让用户确认）→ addRepoToProject（加 repo filter，可选白名单 commits）。
 //
 // 提效比计算：commitEffRatio/taskEffRatio = (ancientₘ / realₘ) * 100（manual 优先，both>0 才算，否则 0，>0 才显示）。
 // 表格客户端排序（manual 优先 / 计算值），null/0 沉底。
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRepoBranches, useRepoDetail } from '@/api/queries'
-import type { RepoCommitItem, TaskListItem } from '@/api/types'
+import { addRepoToProject, checkProjectConflicts, createProject, getProjects } from '@/api/endpoints'
+import type { ProjectConflict, ProjectListItem, RepoCommitItem, TaskListItem } from '@/api/types'
 import { formatDuration, formatLocalTime, formatNumber } from '@/lib/formatters'
 import { getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
@@ -16,6 +18,7 @@ import { PercentPill, percentTextClass } from '@/components/ui/PercentPill'
 import { Tag } from '@/components/ui/Tag'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
+import { Modal } from '@/components/ui/Modal'
 
 // manual 优先口径（commit/task 提效比 = ancient/real*100，both>0 才算）。
 function commitEffRatio(row: RepoCommitItem): number {
@@ -109,6 +112,9 @@ export default function RepoDetail() {
   const commits: RepoCommitItem[] = useMemo(() => data?.commits || [], [data?.commits])
   const tasks: TaskListItem[] = useMemo(() => data?.tasks || [], [data?.tasks])
   const efficiency = data?.efficiency
+
+  // 「添加到 Project」对话框
+  const [addOpen, setAddOpen] = useState(false)
 
   // 客户端排序（commits / tasks 各自维护 order）
   const [commitOrder, setCommitOrder] = useState('')
@@ -241,6 +247,16 @@ export default function RepoDetail() {
             </select>
           )}
           <DateRangePicker value={dateRange} onChange={onDateChange} />
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            添加到 Project
+          </button>
         </div>
       </header>
 
@@ -460,7 +476,320 @@ export default function RepoDetail() {
           </div>
         </section>
       )}
+
+      <AddRepoToProjectModal
+        open={addOpen}
+        repoAddr={repoAddr}
+        repoBranch={currentBranch}
+        commits={commits}
+        startDate={params.startDate}
+        endDate={params.endDate}
+        onClose={() => setAddOpen(false)}
+      />
     </div>
+  )
+}
+
+const NEW_PROJECT = '__new__'
+
+/**
+ * RepoDetail「添加到 Project」（§4.2，加 repo filter）。
+ * 两段式：先 checkProjectConflicts(目标 commit_ids)；有冲突则展示 conflicts 让用户「仍然添加」确认；
+ * 无冲突直接 addRepoToProject。可选白名单（仅包含勾选的 commits），否则按日期范围过滤目标 commits。
+ */
+function AddRepoToProjectModal({
+  open,
+  repoAddr,
+  repoBranch,
+  commits,
+  startDate,
+  endDate,
+  onClose,
+}: {
+  open: boolean
+  repoAddr: string
+  repoBranch: string
+  commits: RepoCommitItem[]
+  startDate: string
+  endDate: string
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [projects, setProjects] = useState<ProjectListItem[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [whitelistMode, setWhitelistMode] = useState(false)
+  const [whitelist, setWhitelist] = useState<Set<string>>(new Set())
+  const [conflicts, setConflicts] = useState<ProjectConflict[]>([])
+  const [conflictsChecked, setConflictsChecked] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setSelectedProjectId('')
+    setNewName('')
+    setNewDesc('')
+    setWhitelistMode(false)
+    setWhitelist(new Set())
+    setConflicts([])
+    setConflictsChecked(false)
+    setErr('')
+    getProjects()
+      .then((res) => setProjects(res.data || []))
+      .catch(() => setProjects([]))
+  }, [open])
+
+  // 改了目标范围/白名单则需重新检测冲突
+  function resetConflictCheck() {
+    setConflicts([])
+    setConflictsChecked(false)
+  }
+
+  function toggleWhitelist(id: string) {
+    setWhitelist((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    resetConflictCheck()
+  }
+
+  // 目标 commit_ids：白名单模式取勾选；否则按日期范围过滤（commit_time 前 10 位在 [start,end]）。
+  function getTargetCommitIds(): string[] {
+    if (whitelistMode) return commits.filter((c) => whitelist.has(c.commit_id)).map((c) => c.commit_id)
+    const s = startDate ? `${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6, 8)}` : ''
+    const e = endDate ? `${endDate.slice(0, 4)}-${endDate.slice(4, 6)}-${endDate.slice(6, 8)}` : ''
+    return commits
+      .filter((c) => {
+        const d = (c.commit_time || '').slice(0, 10)
+        if (!d) return false
+        if (s && d < s) return false
+        if (e && d > e) return false
+        return true
+      })
+      .map((c) => c.commit_id)
+  }
+
+  async function doAdd() {
+    setSubmitting(true)
+    setErr('')
+    try {
+      let projectId = selectedProjectId
+      if (selectedProjectId === NEW_PROJECT) {
+        if (!newName.trim()) {
+          setErr('请输入新项目名称')
+          setSubmitting(false)
+          return
+        }
+        const created = await createProject({ name: newName.trim(), description: newDesc.trim() })
+        projectId = created.project_id
+      }
+      await addRepoToProject(projectId, {
+        repo_addr: repoAddr,
+        repo_branch: repoBranch,
+        start_time: null,
+        end_time: null,
+        include_only_commits: whitelistMode ? getTargetCommitIds() : [],
+        exclude_commits: [],
+      })
+      // 加 Repo filter 改变了 Project 构成 → 失效项目列表/该项目详情缓存。
+      await queryClient.invalidateQueries({ queryKey: ['project-list'] })
+      await queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] })
+      onClose()
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : '添加失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleConfirm() {
+    if (!selectedProjectId) {
+      setErr('请选择目标 Project')
+      return
+    }
+    if (selectedProjectId === NEW_PROJECT && !newName.trim()) {
+      setErr('请输入新项目名称')
+      return
+    }
+    // 第一段：先检测冲突
+    if (!conflictsChecked) {
+      const targets = getTargetCommitIds()
+      if (targets.length === 0) {
+        setErr('没有可添加的 Commits')
+        return
+      }
+      setSubmitting(true)
+      setErr('')
+      try {
+        const res = await checkProjectConflicts({ commit_ids: targets })
+        const found = res.conflicts || []
+        setConflicts(found)
+        setConflictsChecked(true)
+        if (found.length > 0) {
+          // 有冲突 → 停下等用户「仍然添加」
+          setSubmitting(false)
+          return
+        }
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : '冲突检测失败')
+        setSubmitting(false)
+        return
+      }
+      setSubmitting(false)
+    }
+    // 第二段：无冲突（或已确认）→ 添加
+    await doAdd()
+  }
+
+  const inputCls =
+    'glass rounded-lg px-3 py-1.5 text-sm w-full bg-transparent text-gray-900 dark:text-white ' +
+    'focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue'
+  const hasConflict = conflictsChecked && conflicts.length > 0
+
+  return (
+    <Modal
+      open={open}
+      title="添加到 Project"
+      maxWidth={750}
+      onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="glass rounded-lg px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+          >
+            取消
+          </button>
+          {hasConflict ? (
+            <button
+              type="button"
+              onClick={doAdd}
+              disabled={submitting}
+              className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              {submitting ? '添加中...' : '仍然添加'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={submitting}
+              className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+            >
+              {submitting ? '处理中...' : '确认'}
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
+        <RepoModalField label="目标 Project">
+          <select
+            value={selectedProjectId}
+            onChange={(e) => {
+              setSelectedProjectId(e.target.value)
+              resetConflictCheck()
+            }}
+            className={`${inputCls} cursor-pointer`}
+          >
+            <option value="">请选择…</option>
+            <option value={NEW_PROJECT}>+ 新建 Project</option>
+            {projects.map((p) => (
+              <option key={p.project_id} value={p.project_id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </RepoModalField>
+        {selectedProjectId === NEW_PROJECT && (
+          <>
+            <RepoModalField label="名称">
+              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className={inputCls} />
+            </RepoModalField>
+            <RepoModalField label="描述">
+              <input type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} className={inputCls} />
+            </RepoModalField>
+          </>
+        )}
+        <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={whitelistMode}
+            onChange={(e) => {
+              setWhitelistMode(e.target.checked)
+              resetConflictCheck()
+            }}
+            className="accent-apple-blue cursor-pointer"
+          />
+          仅包含指定 Commits（白名单）
+        </label>
+
+        {whitelistMode && (
+          <div className="glass rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0">
+                <tr className="border-b border-gray-200/50 dark:border-white/10 bg-white/60 dark:bg-white/5">
+                  <th className="px-3 py-2 w-10"></th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">Commit ID</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">说明</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">用户</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">时间</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">代码行数</th>
+                </tr>
+              </thead>
+              <tbody>
+                {commits.map((c) => (
+                  <tr key={c.commit_id} className="border-b border-gray-100/50 dark:border-white/5">
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={whitelist.has(c.commit_id)}
+                        onChange={() => toggleWhitelist(c.commit_id)}
+                        aria-label={`选择 ${c.commit_id}`}
+                        className="accent-apple-blue cursor-pointer align-middle"
+                      />
+                    </td>
+                    <td className="px-3 py-2 font-mono text-gray-700 dark:text-gray-200">{(c.commit_id || '').substring(0, 8)}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200"><div className="max-w-[200px] truncate" title={c.comment}>{c.comment || '-'}</div></td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{c.git_user_name || '-'}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatLocalTime(c.commit_time)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{c.diff_lines ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {hasConflict && (
+          <div className="rounded-xl border border-amber-400/60 bg-amber-50/60 dark:bg-amber-900/20 p-3 text-sm">
+            <div className="font-medium text-amber-700 dark:text-amber-300 mb-1">以下 Commits 已属于其他 Project：</div>
+            <ul className="space-y-0.5 text-amber-700 dark:text-amber-300">
+              {conflicts.map((c) => (
+                <li key={c.commit_id} className="font-mono text-xs">
+                  {(c.commit_id || '').substring(0, 8)} → {c.project_name}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function RepoModalField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</span>
+      {children}
+    </label>
   )
 }
 

@@ -5,10 +5,11 @@
 // 双模式排序：服务端列 startTime/diffLines/cost（order camelCase）；客户端列 实际耗时/传统预估/提效比
 // （sortRows，manual 优先值 manual ?? original，null 沉底）。
 // manual 优先：列表显示/排序三处一致用 manual ?? original。
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { estimateAncientMinutes, getTasksV2 } from '@/api/endpoints'
-import type { TaskListItem } from '@/api/types'
+import { useQueryClient } from '@tanstack/react-query'
+import { addTasksToProject, createProject, estimateAncientMinutes, getProjects, getTasksV2 } from '@/api/endpoints'
+import type { ProjectListItem, TaskListItem } from '@/api/types'
 import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
@@ -16,6 +17,7 @@ import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { PercentPill } from '@/components/ui/PercentPill'
+import { Modal } from '@/components/ui/Modal'
 
 // ---- manual 优先口径（§3.2，显示/排序一致）----
 function getEffectiveReal(row: TaskListItem): number | null {
@@ -121,6 +123,7 @@ const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dar
 
 export default function TaskList() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const state = useMemo(() => stateFromParams(searchParams), [searchParams])
@@ -136,6 +139,10 @@ export default function TaskList() {
   const [errMsg, setErrMsg] = useState('')
   const [estimating, setEstimating] = useState(false)
 
+  // 批量「添加到 Project」（§4.1，Task 入口无冲突检测）
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [addOpen, setAddOpen] = useState(false)
+
   const commit = useCallback(
     (next: PageState) => {
       setSearchParams(buildQuery(next), { replace: true })
@@ -143,10 +150,11 @@ export default function TaskList() {
     [setSearchParams],
   )
 
-  // URL 变化重新拉数据
+  // URL 变化重新拉数据（同时清空选择，避免跨页/跨筛选残留选中项）
   useEffect(() => {
     let aborted = false
     const s = stateFromParams(searchParams)
+    setSelectedIds(new Set())
     setLoading(true)
     setErrMsg('')
     getTasksV2(buildParams(s))
@@ -206,6 +214,48 @@ export default function TaskList() {
     () => rows.filter((t) => t.task_ancient_minutes == null && t.task_ancient_minutes_manual == null).length,
     [rows],
   )
+
+  // 选中的 Task（保持在当前显示行集合内）
+  const selectedTasks = useMemo(
+    () => displayRows.filter((r) => r.task_id && selectedIds.has(r.task_id)),
+    [displayRows, selectedIds],
+  )
+  const allVisibleSelected = displayRows.length > 0 && displayRows.every((r) => r.task_id && selectedIds.has(r.task_id))
+
+  function toggleSelect(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev)
+        displayRows.forEach((r) => r.task_id && next.delete(r.task_id))
+        return next
+      }
+      const next = new Set(prev)
+      displayRows.forEach((r) => r.task_id && next.add(r.task_id))
+      return next
+    })
+  }
+  async function handleAddToProject(projectId: string, silicaWeight: number) {
+    const ids = selectedTasks.map((t) => t.task_id)
+    await addTasksToProject(projectId, {
+      task_ids: ids,
+      task_ids_silica: ids.map(() => silicaWeight),
+    })
+    // 加 Task 改变了 Project 的构成 → 失效项目列表/该项目详情缓存，避免回到项目页看到旧数据。
+    await queryClient.invalidateQueries({ queryKey: ['project-list'] })
+    await queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] })
+    setAddOpen(false)
+    setSelectedIds(new Set())
+    setErrMsg(`已添加 ${ids.length} 个 Task 到 Project`)
+  }
 
   function applyFilters() {
     commit({ ...state, dateRange: draftRange, userName: draftUserName.trim(), page: 1 })
@@ -357,9 +407,23 @@ export default function TaskList() {
       )}
 
       <section className="glass rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Task 列表</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">提效比为百分比口径（不 ×100，300=300%）</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400 dark:text-gray-500">已选 {selectedTasks.length} 个 Task</span>
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              disabled={selectedTasks.length === 0}
+              className="inline-flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              添加到 Project
+            </button>
+            <span className="text-xs text-gray-400 dark:text-gray-500">提效比为百分比口径（不 ×100，300=300%）</span>
+          </div>
         </div>
 
         {errMsg && (
@@ -370,6 +434,15 @@ export default function TaskList() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
+                <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAll}
+                    aria-label="全选当前行"
+                    className="accent-apple-blue cursor-pointer align-middle"
+                  />
+                </th>
                 <th className={TH}>Task ID</th>
                 <th className={TH}>
                   <SortableTh field="startTime" label="时间" active={isSortActive('startTime')} desc={isSortDesc('startTime')} onSort={onSortChange} />
@@ -399,14 +472,14 @@ export default function TaskList() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={11}>
+                    <td className={TD} colSpan={12}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11}>
+                  <td colSpan={12}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无数据</div>
                   </td>
                 </tr>
@@ -414,12 +487,23 @@ export default function TaskList() {
                 displayRows.map((row) => {
                   const tokens = tokenSum(row)
                   const hasOrg = !!row.org1
+                  const checked = !!row.task_id && selectedIds.has(row.task_id)
                   return (
                     <tr
                       key={row.task_id}
                       onClick={() => goToTask(row)}
                       className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                     >
+                      <td className="px-3 py-2 align-middle text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => undefined}
+                          onClick={(e) => row.task_id && toggleSelect(row.task_id, e)}
+                          aria-label={`选择 ${row.task_id}`}
+                          className="accent-apple-blue cursor-pointer align-middle"
+                        />
+                      </td>
                       <td className={TD}>
                         <button
                           type="button"
@@ -490,6 +574,159 @@ export default function TaskList() {
           />
         </div>
       </section>
+
+      <AddTasksToProjectModal
+        open={addOpen}
+        count={selectedTasks.length}
+        onClose={() => setAddOpen(false)}
+        onSubmit={handleAddToProject}
+      />
     </div>
+  )
+}
+
+const NEW_PROJECT = '__new__'
+
+/**
+ * 批量「添加到 Project」对话框（§4.1）：选已有 Project 或新建（createProject）+ silica 权重。
+ * Task 入口无冲突检测，直接 addTasksToProject。
+ */
+function AddTasksToProjectModal({
+  open,
+  count,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean
+  count: number
+  onClose: () => void
+  onSubmit: (projectId: string, silicaWeight: number) => Promise<void>
+}) {
+  const [projects, setProjects] = useState<ProjectListItem[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [silica, setSilica] = useState(1)
+  const [submitting, setSubmitting] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setSelectedProjectId('')
+    setNewName('')
+    setNewDesc('')
+    setSilica(1)
+    setErr('')
+    getProjects()
+      .then((res) => setProjects(res.data || []))
+      .catch(() => setProjects([]))
+  }, [open])
+
+  async function handleSubmit() {
+    if (!selectedProjectId) {
+      setErr('请选择目标项目')
+      return
+    }
+    setSubmitting(true)
+    setErr('')
+    try {
+      let projectId = selectedProjectId
+      if (selectedProjectId === NEW_PROJECT) {
+        if (!newName.trim()) {
+          setErr('请输入新项目名称')
+          setSubmitting(false)
+          return
+        }
+        const created = await createProject({ name: newName.trim(), description: newDesc.trim() })
+        projectId = created.project_id
+      }
+      await onSubmit(projectId, silica)
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : '添加失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const inputCls =
+    'glass rounded-lg px-3 py-1.5 text-sm w-full bg-transparent text-gray-900 dark:text-white ' +
+    'focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue'
+
+  return (
+    <Modal
+      open={open}
+      title="添加到 Project"
+      maxWidth={500}
+      onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="glass rounded-lg px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+          >
+            {submitting ? '添加中...' : '确认'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
+        <ModalField label="目标项目">
+          <select
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className={`${inputCls} cursor-pointer`}
+          >
+            <option value="">请选择…</option>
+            {projects.map((p) => (
+              <option key={p.project_id} value={p.project_id}>
+                {p.name}
+              </option>
+            ))}
+            <option value={NEW_PROJECT}>+ 创建新 Project</option>
+          </select>
+        </ModalField>
+        {selectedProjectId === NEW_PROJECT && (
+          <>
+            <ModalField label="项目名称">
+              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className={inputCls} />
+            </ModalField>
+            <ModalField label="项目描述">
+              <textarea rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} className={`${inputCls} resize-y`} />
+            </ModalField>
+          </>
+        )}
+        <ModalField label="Silica 权重">
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.1}
+            value={silica}
+            onChange={(e) => setSilica(Number(e.target.value))}
+            className={inputCls}
+          />
+        </ModalField>
+        <p className="text-xs text-gray-500 dark:text-gray-400">已选 {count} 个 Task</p>
+      </div>
+    </Modal>
+  )
+}
+
+function ModalField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</span>
+      {children}
+    </label>
   )
 }
