@@ -34,6 +34,8 @@ import { Tag } from '@/components/ui/Tag'
 const BOUNDARY_SOURCE_LABELS: Record<string, string> = {
   lv1_pr: 'PR',
   lv2_branch: '分支',
+  lv3_issue: '议题',
+  lv4_cluster: '聚类',
   lv5_orphan: '孤儿',
   branch: '分支',
   commit: '提交',
@@ -44,6 +46,10 @@ function boundarySourceLabel(src?: string): string {
   if (!src) return '-'
   return BOUNDARY_SOURCE_LABELS[src] || src
 }
+
+// 边界来源下拉真实值（对齐后端 boundary_source：lv1_pr/lv2_branch/lv3_issue/lv4_cluster/lv5_orphan）。
+// ⚠️ Codex P2 修复：旧值 commit/branch/session/manual 筛不出任何行（后端无此值）→ 列表空。
+const BOUNDARY_SOURCE_OPTIONS = ['lv1_pr', 'lv2_branch', 'lv3_issue', 'lv4_cluster', 'lv5_orphan'] as const
 
 function shortNeedId(value?: string): string {
   if (!value) return '-'
@@ -296,10 +302,11 @@ export default function NeedList() {
             className={`${inputCls} w-[140px] cursor-pointer`}
           >
             <option value="">边界来源</option>
-            <option value="commit">commit</option>
-            <option value="branch">branch</option>
-            <option value="session">session</option>
-            <option value="manual">manual</option>
+            {BOUNDARY_SOURCE_OPTIONS.map((src) => (
+              <option key={src} value={src}>
+                {boundarySourceLabel(src)}
+              </option>
+            ))}
           </select>
           <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
             <input
