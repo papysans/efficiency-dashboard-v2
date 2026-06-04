@@ -5,6 +5,7 @@ import { useMemo, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { useUserDetail } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import type { NeedCommit, NeedsV2Summary, UserProductivityV2 } from '@/api/types'
 import { formatDuration, formatLocalTime, formatNumber } from '@/lib/formatters'
 import { getDefaultDateRangeWide } from '@/lib/date'
@@ -58,6 +59,8 @@ export default function UserDetail() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { theme } = useTheme()
+  // 用 commits 的 git_user_name 把 user_id(UUID) 解析为真实名。
+  const { resolveName } = useUserNameMap()
 
   // 日期取 URL（YYYYMMDD/YYYY-MM-DD）→ ISO；缺则近 90 天。
   const dateRange = useMemo<[string, string]>(() => {
@@ -123,7 +126,7 @@ export default function UserDetail() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户详情</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono break-all">
-            {summary?.user_name || summary?.user_id || userId || '-'}
+            {resolveName(summary?.user_id || userId)}
           </p>
         </div>
       </header>

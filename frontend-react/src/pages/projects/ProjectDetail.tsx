@@ -36,6 +36,7 @@ import type {
   TaskListItem,
 } from '@/api/types'
 import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Tag } from '@/components/ui/Tag'
 import { PercentPill, percentTextClass } from '@/components/ui/PercentPill'
 import { Modal } from '@/components/ui/Modal'
@@ -67,7 +68,7 @@ function commitRealMin(c: ProjectCommitItem): number | null {
 }
 
 interface UserStat {
-  user_name: string
+  user_id: string
   task_count: number
   commit_count: number
   commit_diff_lines: number
@@ -86,6 +87,8 @@ export default function ProjectDetail() {
   const queryClient = useQueryClient()
   const { data, isLoading, error } = useProjectDetail(projectId)
   const { data: globalConfig } = useGlobalConfig()
+  // task/commit 的 user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
+  const { resolveName } = useUserNameMap()
 
   const project = data?.project
   const tasks = useMemo<ProjectTaskItem[]>(() => data?.tasks || [], [data])
@@ -122,11 +125,11 @@ export default function ProjectDetail() {
   // ---- userStats（用户视角聚合）----
   const userStats = useMemo<UserStat[]>(() => {
     const map = new Map<string, UserStat>()
-    const ensure = (name: string): UserStat => {
-      let s = map.get(name)
+    const ensure = (userId: string): UserStat => {
+      let s = map.get(userId)
       if (!s) {
         s = {
-          user_name: name,
+          user_id: userId,
           task_count: 0,
           commit_count: 0,
           commit_diff_lines: 0,
@@ -138,20 +141,20 @@ export default function ProjectDetail() {
           task_efficiency_ratio: 0,
           commit_efficiency_ratio: 0,
         }
-        map.set(name, s)
+        map.set(userId, s)
       }
       return s
     }
-    // 分组键对齐 Vue：tasks/commits 均按 user_name（空 → '未知'），cost 同时累加 task+commit。
+    // 分组键改为 user_id（user_name 多为 UUID，不宜当分组 key/显示）；空 → '未知'。显示走 resolveName。
     for (const t of tasks) {
-      const s = ensure(t.user_name || '未知')
+      const s = ensure(t.user_id || '未知')
       s.task_count += 1
       s.task_ancient_minutes += taskEff(t) || 0
       s.task_real_minutes += taskReal(t) || 0
       s.cost += t.cost || 0
     }
     for (const c of commits) {
-      const s = ensure(c.user_name || '未知')
+      const s = ensure(c.user_id || '未知')
       s.commit_count += 1
       s.commit_diff_lines += c.diff_lines || 0
       s.commit_ancient_minutes += commitEffMin(c) || 0
@@ -329,8 +332,8 @@ export default function ProjectDetail() {
             </thead>
             <tbody>
               {userStats.map((s) => (
-                <tr key={s.user_name} className="border-b border-gray-100/50 dark:border-white/5 hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors">
-                  <td className={TD}>{s.user_name}</td>
+                <tr key={s.user_id} className="border-b border-gray-100/50 dark:border-white/5 hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors">
+                  <td className={TD} title={resolveName(s.user_id)}>{resolveName(s.user_id)}</td>
                   <td className={TD_NUM}>{s.task_count}</td>
                   <td className={TD_NUM}>{s.commit_count}</td>
                   <td className={TD_NUM}>{s.commit_diff_lines.toLocaleString()}</td>
@@ -429,7 +432,7 @@ export default function ProjectDetail() {
                   <td className={TD}>
                     <span className="font-mono text-apple-blue">{t.task_id.substring(0, 8)}</span>
                   </td>
-                  <td className={TD}>{t.user_name || t.user_id || '-'}</td>
+                  <td className={TD}>{resolveName(t.user_id)}</td>
                   <td className={TD}>{formatLocalTime(t.start_time)}</td>
                   <td className={TD_NUM}>{formatDuration(taskEff(t))}</td>
                   <td className={TD_NUM}>{formatDuration(taskReal(t))}</td>
@@ -484,7 +487,7 @@ export default function ProjectDetail() {
                   className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                 >
                   <td className={TD}><span className="font-mono text-apple-blue">{c.commit_id.substring(0, 8)}</span></td>
-                  <td className={TD}>{c.user_name || c.git_user_name || '-'}</td>
+                  <td className={TD}>{commitUserName(c, resolveName)}</td>
                   <td className={TD}>{formatLocalTime(c.commit_time)}</td>
                   <td className={TD}><div className="max-w-[260px] truncate" title={c.comment}>{c.comment || '-'}</div></td>
                   <td className={TD_NUM}>{c.diff_lines ?? '-'}</td>
@@ -538,6 +541,18 @@ export default function ProjectDetail() {
       />
     </div>
   )
+}
+
+/**
+ * Commit 行用户名：优先按 user_id 解析真实名（resolveName）；
+ * 未命中（无 user_id 或映射缺失，resolveName 回退原 user_id）时退回 git_user_name（本就是真实名）。
+ */
+function commitUserName(c: ProjectCommitItem, resolveName: (id?: string) => string): string {
+  if (c.user_id) {
+    const resolved = resolveName(c.user_id)
+    if (resolved !== c.user_id) return resolved
+  }
+  return c.git_user_name || c.user_name || c.user_id || '-'
 }
 
 /** ProjectCommit 硅含量 tag tone（直接当百分比，不 ×100，阈值 80/50）。 */

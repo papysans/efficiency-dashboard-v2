@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useUserGroupDetail } from '@/api/queries'
 import { deleteUserGroup } from '@/api/endpoints'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import type { UserGroupMember } from '@/api/types'
 import { fmtCost, formatNumber } from '@/lib/formatters'
 import { getDefaultDateRangeWide } from '@/lib/date'
@@ -29,6 +30,8 @@ const TD_CENTER = 'px-3 py-2 align-middle text-center text-gray-700 dark:text-gr
 export default function UserGroupDetail() {
   const { groupId } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
+  // 成员 user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
+  const { resolveName } = useUserNameMap()
 
   const [dateRange, setDateRange] = useState<[string, string]>(getDefaultDateRangeWide())
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -148,7 +151,7 @@ export default function UserGroupDetail() {
                         className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                       >
                         <td className={TD}>
-                          <div className="max-w-[260px] truncate" title={m.user_name}>{m.user_name || '-'}</div>
+                          <div className="max-w-[260px] truncate" title={resolveName(m.user_id)}>{resolveName(m.user_id)}</div>
                         </td>
                         <td className={TD_NUM}>{m.day_count}</td>
                         <td className={TD_NUM}>{m.task_count}</td>

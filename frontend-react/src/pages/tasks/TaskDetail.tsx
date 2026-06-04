@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useTaskDetail } from '@/api/queries'
 import { getTaskFileUrl, updateTaskManualV2 } from '@/api/endpoints'
 import type { Conversation, TaskListItem, UpdateTaskManualRequest } from '@/api/types'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
 import { Tag } from '@/components/ui/Tag'
 import { percentTextClass } from '@/components/ui/PercentPill'
@@ -22,6 +23,8 @@ export default function TaskDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data, isLoading, error } = useTaskDetail(taskId)
+  // task user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
+  const { resolveName } = useUserNameMap()
 
   // 合并：顶层 efficiency_ratio 覆盖进 task（§7.1）。
   const task: TaskListItem = useMemo(() => {
@@ -103,7 +106,7 @@ export default function TaskDetail() {
           <Kv label="用户">
             {task.user_id ? (
               <LinkBtn onClick={() => navigate(`/user/${encodeURIComponent(task.user_id as string)}`)}>
-                {task.user_name || task.user_id}
+                {resolveName(task.user_id)}
               </LinkBtn>
             ) : (
               task.user_name || '-'

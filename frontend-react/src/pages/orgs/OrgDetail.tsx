@@ -12,6 +12,7 @@ import type { EChartsOption } from 'echarts'
 import { getOrgV2 } from '@/api/endpoints'
 import { useOrgDetail } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import type { CommitTimeSeriesItem, OrgMember, TaskTimeSeriesItem } from '@/api/types'
 import { formatDuration, formatNumber } from '@/lib/formatters'
 import { getDefaultDateRangeWide } from '@/lib/date'
@@ -69,6 +70,8 @@ export default function OrgDetail() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { theme } = useTheme()
+  // members 的 user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
+  const { resolveName } = useUserNameMap()
 
   // 路由 param 由 React Router 已 decode；按 '/' 拆级。
   const parts = useMemo(() => (orgPathRaw || '').split('/').filter(Boolean), [orgPathRaw])
@@ -419,12 +422,13 @@ export default function OrgDetail() {
                         <button
                           type="button"
                           className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
+                          title={resolveName(m.user_id)}
                           onClick={(e) => {
                             e.stopPropagation()
                             goUser(m.user_id)
                           }}
                         >
-                          {m.user_name || m.user_id}
+                          {resolveName(m.user_id)}
                         </button>
                       </td>
                       <td className={TD_NUM}>{formatNumber(m.commit_diff_lines, 0)}</td>

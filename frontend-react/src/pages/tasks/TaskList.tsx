@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { addTasksToProject, createProject, estimateAncientMinutes, getProjects, getTasksV2 } from '@/api/endpoints'
 import type { ProjectListItem, TaskListItem } from '@/api/types'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
@@ -125,6 +126,8 @@ export default function TaskList() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
+  // task user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
+  const { resolveName } = useUserNameMap()
 
   const state = useMemo(() => stateFromParams(searchParams), [searchParams])
   const parsedOrder = useMemo(() => parseOrder(state.order), [state.order])
@@ -189,7 +192,8 @@ export default function TaskList() {
     let out = rows
     if (state.userName) {
       const kw = state.userName.toLowerCase()
-      out = out.filter((r) => (r.user_name || '').toLowerCase().includes(kw))
+      // 匹配真实名（resolveName）+ 原始 user_name。
+      out = out.filter((r) => `${resolveName(r.user_id)}${r.user_name || ''}`.toLowerCase().includes(kw))
     }
     const orgs = [state.org1, state.org2, state.org3, state.org4]
     if (orgs.some(Boolean)) {
@@ -199,7 +203,7 @@ export default function TaskList() {
       })
     }
     return out
-  }, [rows, state.userName, state.org1, state.org2, state.org3, state.org4])
+  }, [rows, state.userName, state.org1, state.org2, state.org3, state.org4, resolveName])
 
   // 客户端列排序（命中 CLIENT_GETTERS 才在前端排；服务端列后端已排，原样）。
   const displayRows = useMemo(() => {
@@ -532,13 +536,14 @@ export default function TaskList() {
                         )}
                       </td>
                       <td className={TD}>
-                        {row.user_name ? (
+                        {row.user_id || row.user_name ? (
                           <button
                             type="button"
                             className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
+                            title={resolveName(row.user_id)}
                             onClick={(e) => goToUser(row, e)}
                           >
-                            {row.user_name}
+                            {resolveName(row.user_id)}
                           </button>
                         ) : (
                           '-'

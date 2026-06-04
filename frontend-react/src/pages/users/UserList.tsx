@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { getUsersV2 } from '@/api/endpoints'
 import type { UserV2Row } from '@/api/types'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { formatDuration, formatNumber } from '@/lib/formatters'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
@@ -18,10 +19,10 @@ import { Tag } from '@/components/ui/Tag'
 
 // ---- 纯函数（移植 UserViewV2）----
 
-/** 用户显示名（user_name||user_id，>20 字截断加 …）。 */
-function shortName(row: UserV2Row): string {
-  const name = row.user_name || row.user_id || '-'
-  return name.length > 20 ? `${name.slice(0, 20)}…` : name
+/** 显示名截断（>20 字截断加 …）。入参为已解析的真实用户名。 */
+function shortName(name: string): string {
+  const n = name || '-'
+  return n.length > 20 ? `${n.slice(0, 20)}…` : n
 }
 
 // 受限原因码翻译（confidence_reason），供「受限」tag 展示/悬浮。
@@ -123,6 +124,9 @@ export default function UserList() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // user_name 字段多为 UUID（无用），用 commits 的 git_user_name 建映射解析真实名。
+  const { resolveName } = useUserNameMap()
+
   const state = useMemo(() => stateFromParams(searchParams), [searchParams])
   const parsedOrder = useMemo(() => parseOrder(state.order), [state.order])
 
@@ -181,8 +185,11 @@ export default function UserList() {
   const filteredRows = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
     if (!kw) return allRows
-    return allRows.filter((r) => `${r.user_name || ''}${r.user_id || ''}`.toLowerCase().includes(kw))
-  }, [allRows, keyword])
+    // 过滤同时匹配真实名（resolveName）、原始 user_name 与 user_id。
+    return allRows.filter((r) =>
+      `${resolveName(r.user_id)}${r.user_name || ''}${r.user_id || ''}`.toLowerCase().includes(kw),
+    )
+  }, [allRows, keyword, resolveName])
 
   const sortedRows = useMemo(() => {
     if (!parsedOrder) return filteredRows
@@ -386,13 +393,13 @@ export default function UserList() {
                       <button
                         type="button"
                         className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
-                        title={row.user_name || row.user_id}
+                        title={resolveName(row.user_id)}
                         onClick={(e) => {
                           e.stopPropagation()
                           goToDetail(row)
                         }}
                       >
-                        {shortName(row)}
+                        {shortName(resolveName(row.user_id))}
                       </button>
                     </td>
                     <td className={TD_NUM}>{row.merged_need_count}</td>
