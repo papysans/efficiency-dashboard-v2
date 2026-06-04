@@ -560,3 +560,282 @@ export interface EstimateAncientResponse {
   success: number
   total: number
 }
+
+/**
+ * /v2/commits 列表项（PR4 §1.1，backend db.go CommitListItem）。
+ * ⚠️ efficiency_ratio 是**百分比口径**（300=300%，直接 .toFixed(1)+'%'，不 ×100）。
+ */
+export interface CommitListItem {
+  commit_id: string
+  commit_time?: string | null
+  repo_addr?: string
+  repo_branch?: string
+  git_user_name?: string
+  git_user_email?: string
+  user_id?: string
+  user_name?: string
+  client_id?: string
+  work_dir?: string
+  diff_lines?: number | null
+  commit_ancient_minutes?: number | null
+  commit_ancient_minutes_manual?: number | null
+  commit_real_minutes?: number | null
+  commit_real_minutes_manual?: number | null
+  commit_real_ai_minutes?: number | null
+  commit_real_ancient_minutes?: number | null
+  comment?: string
+  cost?: number | null
+  upstream_tokens?: number | null
+  downstream_tokens?: number | null
+  silica?: number | null
+  efficiency_ratio?: number | null // 百分比口径
+  org1?: string
+  org2?: string
+  org3?: string
+  org4?: string
+  org5?: string
+  org6?: string
+  org7?: string
+  org8?: string
+  org9?: string
+  org_display?: string
+  [k: string]: unknown
+}
+
+/**
+ * /v2/commits/{id} 的 commit 对象（models.Commit，详情用到的字段；指针字段可 null）。
+ */
+export interface CommitDetail {
+  commit_id: string
+  commit_time?: string | null
+  repo_addr?: string
+  repo_branch?: string
+  git_user_name?: string
+  git_user_email?: string
+  user_id?: string
+  user_name?: string
+  comment?: string
+  diff_lines?: number | null
+  commit_ancient_minutes?: number | null
+  commit_ancient_minutes_reason?: string
+  commit_ancient_minutes_manual?: number | null
+  commit_ancient_minutes_reason_manual?: string
+  commit_real_minutes?: number | null
+  commit_real_minutes_reason?: string
+  commit_real_minutes_manual?: number | null
+  commit_real_minutes_reason_manual?: string
+  silica?: number | null
+  efficiency_ratio?: number | null // 百分比口径
+  [k: string]: unknown
+}
+
+/** /v2/commits/{id} 的 related_tasks 项（db.go RelatedTask，silica 0~1 要 ×100）。 */
+export interface RelatedTask {
+  task_id: string
+  user_name?: string
+  start_time?: string | null
+  task_real_minutes?: number | null
+  silica?: number | null // 0~1
+  cost?: number | null
+  diff_lines?: number | null
+  [k: string]: unknown
+}
+
+/** /v2/commits/{id} 顶层响应（PR4 §1.2）。 */
+export interface CommitDetailResponse {
+  commit: CommitDetail
+  related_tasks?: RelatedTask[]
+  efficiency_ratio?: number | null // 顶层，百分比口径
+  total_cost?: number | null
+  silica?: number | null
+  upstream_tokens?: number | null
+  downstream_tokens?: number | null
+}
+
+/** PUT /v2/commits/{id}/manual 请求体（PR4 §1.2，4 字段）。 */
+export interface UpdateCommitManualRequest {
+  commit_ancient_minutes_manual: number | null
+  commit_ancient_minutes_reason_manual: string
+  commit_real_minutes_manual: number | null
+  commit_real_minutes_reason_manual: string
+}
+
+// ============ Projects（PR4b，百分比口径；列表无分页） ============
+
+/** 项目内 repo filter 配置（project.repos JSON 数组项）。 */
+export interface ProjectRepo {
+  repo_addr: string
+  repo_branch: string
+  start_time?: string | null
+  end_time?: string | null
+  exclude_commits?: string[] | null
+  include_only_commits?: string[] | null
+  [k: string]: unknown
+}
+
+/**
+ * /v2/projects 列表项（PR4 §2.1 / §五，project_handler_v2.go ProjectListItem）。
+ * ⚠️ efficiency_ratio 是**百分比口径**（300=300%），用 PercentPill。
+ */
+export interface ProjectListItem {
+  project_id: string
+  name: string
+  description?: string
+  repos?: ProjectRepo[] | null
+  task_ids?: string[] | null
+  task_ids_silica?: number[] | null
+  start_time?: string | null
+  end_time?: string | null
+  start_time_manual?: string | null
+  end_time_manual?: string | null
+  upstream_tokens?: number | null
+  downstream_tokens?: number | null
+  cost?: number | null
+  project_ancient_minutes?: number | null
+  project_ancient_minutes_reason?: string
+  project_ancient_minutes_manual?: number | null
+  project_ancient_minutes_reason_manual?: string
+  project_real_process_minutes?: number | null
+  project_real_process_minutes_reason?: string
+  project_real_process_minutes_manual?: number | null
+  project_real_process_minutes_reason_manual?: string
+  project_real_lead_minutes?: number | null
+  project_real_lead_minutes_reason?: string
+  project_real_lead_minutes_manual?: number | null
+  project_real_lead_minutes_reason_manual?: string
+  created_at?: string
+  updated_at?: string
+  repo_count?: number
+  task_count?: number
+  user_count?: number
+  total_code_lines?: number
+  actual_lines_per_day?: number | null
+  efficiency_ratio?: number | null // 百分比口径
+  [k: string]: unknown
+}
+
+/** /v2/projects/{id} 的 project 对象（models.Project，含 repos/task_ids/task_ids_silica）。 */
+export interface ProjectModel extends ProjectListItem {
+  repos?: ProjectRepo[] | null
+  task_ids?: string[] | null
+  task_ids_silica?: number[] | null
+}
+
+/** /v2/projects/{id} commits 项（ProjectCommitItem，silica 直接当百分比，不 ×100）。 */
+export interface ProjectCommitItem {
+  commit_id: string
+  user_id?: string
+  commit_time?: string | null
+  repo_addr?: string
+  repo_branch?: string
+  user_name?: string
+  git_user_name?: string
+  diff_lines?: number | null
+  comment?: string
+  commit_ancient_minutes?: number | null
+  commit_ancient_minutes_manual?: number | null
+  commit_real_minutes?: number | null
+  commit_real_minutes_manual?: number | null
+  silica?: number | null
+  cost?: number | null // 当前后端 ProjectCommitItem 未返回（恒 undefined）；保留供 userStats 1:1 对齐 Vue
+  [k: string]: unknown
+}
+
+/** /v2/projects/{id} tasks 项（ProjectTaskItem）。 */
+export interface ProjectTaskItem {
+  task_id: string
+  user_id?: string
+  user_name?: string
+  start_time?: string | null
+  end_time?: string | null
+  upstream_tokens?: number | null
+  downstream_tokens?: number | null
+  cost?: number | null
+  task_ancient_minutes?: number | null
+  task_ancient_minutes_manual?: number | null
+  task_real_minutes?: number | null
+  task_real_minutes_manual?: number | null
+  title?: string
+  work_dir?: string
+  diff_lines?: number | null
+  silica?: number | null
+  accept_ratio?: number | null
+  [k: string]: unknown
+}
+
+/** /v2/projects/{id} 顶层响应（PR4 §2.2）。 */
+export interface ProjectDetailResponse {
+  project: ProjectModel
+  commits: ProjectCommitItem[] | null
+  tasks: ProjectTaskItem[] | null
+  members: OrgMember[] | null
+  efficiency_ratio?: number | null
+  user_count?: number
+}
+
+/** POST/PUT /v2/projects（创建/编辑） */
+export interface CreateProjectRequest {
+  name: string
+  description?: string
+}
+
+/** PUT /v2/projects/{id}（必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空）。 */
+export interface UpdateProjectRequest {
+  name: string
+  description?: string
+  repos: ProjectRepo[]
+  task_ids: string[]
+  task_ids_silica: number[]
+}
+
+/** PUT /v2/projects/{id}/manual（6 minutes/reason + start/end_time_manual）。 */
+export interface UpdateProjectManualRequest {
+  project_ancient_minutes_manual: number | null
+  project_ancient_minutes_reason_manual: string
+  project_real_process_minutes_manual: number | null
+  project_real_process_minutes_reason_manual: string
+  project_real_lead_minutes_manual: number | null
+  project_real_lead_minutes_reason_manual: string
+  start_time_manual: string | null
+  end_time_manual: string | null
+}
+
+/** POST /v2/projects/{id}/tasks（task_ids + 同长 silica 数组）。 */
+export interface AddTasksRequest {
+  task_ids: string[]
+  task_ids_silica: number[]
+}
+
+/** PUT /v2/projects/{id}/tasks/silica。 */
+export interface UpdateTaskSilicaRequest {
+  task_id: string
+  silica: number
+}
+
+/** POST /v2/projects/{id}/repos（end_time 白名单 now → null）。 */
+export interface AddRepoRequest {
+  repo_addr: string
+  repo_branch: string
+  start_time?: string | null
+  end_time?: string | null
+  exclude_commits: string[]
+  include_only_commits: string[]
+}
+
+/** POST /v2/projects/check-conflicts 响应项。 */
+export interface ProjectConflict {
+  commit_id: string
+  project_id: string
+  project_name: string
+}
+
+export interface CheckConflictsResponse {
+  conflicts: ProjectConflict[]
+}
+
+/** POST /v2/projects（创建）响应（含 project_id）。 */
+export interface CreateProjectResponse {
+  project_id: string
+  name?: string
+  [k: string]: unknown
+}

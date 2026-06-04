@@ -13,6 +13,11 @@ import RepoList from '@/pages/repos/RepoList'
 import RepoDetail from '@/pages/repos/RepoDetail'
 import OrgList from '@/pages/orgs/OrgList'
 import OrgDetail from '@/pages/orgs/OrgDetail'
+import CommitList from '@/pages/commits/CommitList'
+import CommitDetail from '@/pages/commits/CommitDetail'
+import WorkDirDetail from '@/pages/workdir/WorkDirDetail'
+import ProjectList from '@/pages/projects/ProjectList'
+import ProjectDetail from '@/pages/projects/ProjectDetail'
 
 // 路由表对齐 Vue frontend/src/router/index.js（见 research/api-contract.md §6）。
 // PR0：总览页真实落地，其余 24 路由先用 Placeholder 占位（可点不 404），后续 PR 替换。
@@ -35,11 +40,11 @@ export const router = createBrowserRouter([
       { path: 'repo/:repoAddr/:repoBranch?', element: <RepoDetail /> },
       { path: 'org-v2', element: <OrgList /> },
       { path: 'org/:orgPath', element: <OrgDetail /> },
-      { path: 'project-v2', element: <Placeholder title="项目列表" /> },
-      { path: 'project/:projectId', element: <Placeholder title="项目详情" /> },
-      { path: 'commit-v2', element: <Placeholder title="提交列表" /> },
-      { path: 'commit/:commitId', element: <Placeholder title="提交详情" /> },
-      { path: 'workdir/:workDirId', element: <Placeholder title="工作目录详情" /> },
+      { path: 'project-v2', element: <ProjectList /> },
+      { path: 'project/:projectId', element: <ProjectDetail /> },
+      { path: 'commit-v2', element: <CommitList /> },
+      { path: 'commit/:commitId', element: <CommitDetail /> },
+      { path: 'workdir/:workDirId', element: <WorkDirDetail /> },
 
       // 旧路由重定向（PR4 完善 query 保留）
       { path: 'cloud/kanban', element: <Navigate to="/needs-v2" replace /> },

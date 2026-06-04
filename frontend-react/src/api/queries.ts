@@ -2,11 +2,14 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   getAllNeedsV2,
+  getCommitDetailV2,
   getDashboardSummary,
   getGlobalConfig,
   getNeedDetailV2,
   getNeedsV2,
   getOrgDetailV2,
+  getProjectDetail,
+  getProjects,
   getRepoBranches,
   getRepoDetailV2,
   getTaskDetailV2,
@@ -89,6 +92,15 @@ export function useTaskDetail(taskId: string | undefined) {
   })
 }
 
+/** Commit 详情（百分比口径；commitId 由 endpoints 内部 encodeURIComponent）。 */
+export function useCommitDetail(commitId: string | undefined) {
+  return useQuery({
+    queryKey: ['commit-detail', commitId],
+    queryFn: () => getCommitDetailV2(commitId as string),
+    enabled: !!commitId,
+  })
+}
+
 /** 仓库详情（百分比口径）。repoAddr/repoBranch 调用方已 decode；endpoints 走 query 传参。 */
 export function useRepoDetail(params: { repoAddr: string; repoBranch?: string; startDate?: string; endDate?: string }) {
   return useQuery({
@@ -113,5 +125,22 @@ export function useOrgDetail(params: { orgPath: string; startDate?: string; endD
     queryKey: ['org-detail', params],
     queryFn: () => getOrgDetailV2(params),
     enabled: !!params.orgPath,
+  })
+}
+
+/** 项目列表（百分比口径；无分页，客户端筛选/排序）。 */
+export function useProjectList(params?: { order?: string }) {
+  return useQuery({
+    queryKey: ['project-list', params],
+    queryFn: () => getProjects(params),
+  })
+}
+
+/** 项目详情（百分比口径；含 commits/tasks/members + 8 管理操作）。 */
+export function useProjectDetail(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-detail', projectId],
+    queryFn: () => getProjectDetail(projectId as string),
+    enabled: !!projectId,
   })
 }

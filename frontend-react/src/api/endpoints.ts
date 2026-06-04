@@ -4,8 +4,15 @@
 
 import { apiDelete, apiGet, apiPost, apiPut } from './client'
 import type {
+  AddRepoRequest,
+  AddTasksRequest,
   ApiData,
   ApiList,
+  CheckConflictsResponse,
+  CommitDetailResponse,
+  CommitListItem,
+  CreateProjectRequest,
+  CreateProjectResponse,
   DashboardSummary,
   EstimateAncientResponse,
   GlobalConfig,
@@ -14,12 +21,18 @@ import type {
   NeedsV2Summary,
   OrgDetailResponse,
   OrgV2Row,
+  ProjectDetailResponse,
+  ProjectListItem,
   RepoBranchesResponse,
   RepoDetailResponse,
   RepoListItem,
   TaskDetailResponse,
   TaskListItem,
+  UpdateCommitManualRequest,
+  UpdateProjectManualRequest,
+  UpdateProjectRequest,
   UpdateTaskManualRequest,
+  UpdateTaskSilicaRequest,
   UserGroupDetailResponse,
   UserV2DetailResponse,
   UserV2Row,
@@ -91,13 +104,19 @@ export function getOrgDetailV2(params: { orgPath: string; startDate?: string; en
   return apiGet<OrgDetailResponse>('/v2/orgs/detail', { org_path: orgPath, ...rest })
 }
 
-// ---- Commits（百分比口径） ----
+// ---- Commits（⚠️ 百分比口径：efficiency_ratio 300=300%，不 ×100） ----
 export function getCommitsV2(params: ListParams) {
-  return apiGet<ApiList<Record<string, unknown>>>('/v2/commits', params)
+  return apiGet<ApiList<CommitListItem>>('/v2/commits', params)
 }
 
+// commit_id 是 hash 串（对齐 Vue：CommitViewV2 行内不 encode；这里 encode 更安全且不改变 hash）。
 export function getCommitDetailV2(commitId: string) {
-  return apiGet<Record<string, unknown>>(`/v2/commits/${encodeURIComponent(commitId)}`)
+  return apiGet<CommitDetailResponse>(`/v2/commits/${encodeURIComponent(commitId)}`)
+}
+
+/** 人工调整：PUT /v2/commits/{id}/manual（传统预估 / 实际耗时 各值+理由 4 字段）。 */
+export function updateCommitManualV2(commitId: string, body: UpdateCommitManualRequest) {
+  return apiPut<unknown>(`/v2/commits/${encodeURIComponent(commitId)}/manual`, body)
 }
 
 // ---- Repos（⚠️ 百分比口径：efficiency_ratio = CalcEfficiencyRatio(ancient,real)，不 ×100） ----
@@ -148,13 +167,63 @@ export function getTaskFileUrl(type: 'summary' | 'conversation', taskId: string,
   return `/api/v2/tasks/file?type=${type}&taskId=${encodeURIComponent(taskId)}&date=${date}`
 }
 
-// ---- Projects（百分比口径，列表无分页） ----
+// ---- Projects（⚠️ 百分比口径 efficiency_ratio；列表无分页 {data:[]}） ----
 export function getProjects(params?: ListParams) {
-  return apiGet<ApiList<Record<string, unknown>>>('/v2/projects', params)
+  return apiGet<ApiData<ProjectListItem>>('/v2/projects', params)
 }
 
 export function getProjectDetail(projectId: string) {
-  return apiGet<Record<string, unknown>>(`/v2/projects/${encodeURIComponent(projectId)}`)
+  return apiGet<ProjectDetailResponse>(`/v2/projects/${encodeURIComponent(projectId)}`)
+}
+
+/** 创建 Project：POST /v2/projects（返回含 project_id）。 */
+export function createProject(body: CreateProjectRequest) {
+  return apiPost<CreateProjectResponse>('/v2/projects', body)
+}
+
+/** 编辑 Project：PUT /v2/projects/{id}。⚠️ 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空。 */
+export function updateProject(projectId: string, body: UpdateProjectRequest) {
+  return apiPut<unknown>(`/v2/projects/${encodeURIComponent(projectId)}`, body)
+}
+
+/** 删除 Project：DELETE /v2/projects/{id}。 */
+export function deleteProject(projectId: string) {
+  return apiDelete<{ status?: string }>(`/v2/projects/${encodeURIComponent(projectId)}`)
+}
+
+/** 人工调整：PUT /v2/projects/{id}/manual（3 组 minutes/reason + start/end_time_manual）。 */
+export function updateProjectManual(projectId: string, body: UpdateProjectManualRequest) {
+  return apiPut<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/manual`, body)
+}
+
+/** 加 Task：POST /v2/projects/{id}/tasks（task_ids + 同长 silica 数组）。 */
+export function addTasksToProject(projectId: string, body: AddTasksRequest) {
+  return apiPost<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/tasks`, body)
+}
+
+/** 移 Task：DELETE /v2/projects/{id}/tasks（body 传 task_ids）。 */
+export function removeTasksFromProject(projectId: string, body: { task_ids: string[] }) {
+  return apiDelete<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/tasks`, { data: body })
+}
+
+/** 改 Task silica 权重：PUT /v2/projects/{id}/tasks/silica。 */
+export function updateTaskSilicaInProject(projectId: string, body: UpdateTaskSilicaRequest) {
+  return apiPut<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/tasks/silica`, body)
+}
+
+/** 加 Repo filter：POST /v2/projects/{id}/repos。 */
+export function addRepoToProject(projectId: string, body: AddRepoRequest) {
+  return apiPost<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/repos`, body)
+}
+
+/** 移 Repo filter：DELETE /v2/projects/{id}/repos/{index}（数组下标，删后会漂移需 reload）。 */
+export function removeRepoFromProject(projectId: string, index: number) {
+  return apiDelete<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/repos/${index}`)
+}
+
+/** 冲突检测：POST /v2/projects/check-conflicts → conflicts[{commit_id,project_id,project_name}]。 */
+export function checkProjectConflicts(body: { commit_ids: string[] }) {
+  return apiPost<CheckConflictsResponse>('/v2/projects/check-conflicts', body)
 }
 
 // ---- User Groups（⚠️ 百分比口径；后端无列表端点，只有 detail/delete） ----
