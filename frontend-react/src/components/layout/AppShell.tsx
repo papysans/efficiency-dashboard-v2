@@ -65,7 +65,7 @@ export default function AppShell() {
         </button>
       </nav>
 
-      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 py-8">
+      <main className="max-w-[90%] mx-auto px-4 sm:px-6 py-8">
         <Outlet />
       </main>
     </div>

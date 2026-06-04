@@ -6,11 +6,8 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { getNeedsV2 } from '@/api/endpoints'
 import type { NeedsV2Summary } from '@/api/types'
 import {
+  formatDateTimeShort,
   formatDuration,
-  formatLocalTime,
-  formatV2Ratio,
-  formatVerifyMin,
-  VERIFY_UNAVAILABLE_TIP,
 } from '@/lib/formatters'
 import { reasonHints, reasonSummary } from '@/lib/reasonText'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
@@ -55,11 +52,6 @@ function shortNeedId(value?: string): string {
   if (!value) return '-'
   const s = String(value)
   return s.length > 18 ? `${s.slice(0, 18)}…` : s
-}
-
-function formatBand(row: NeedsV2Summary): string {
-  if (row.efficiency_band_low == null && row.efficiency_band_high == null) return '-'
-  return `${formatV2Ratio(row.efficiency_band_low)} ~ ${formatV2Ratio(row.efficiency_band_high)}`
 }
 
 function normalizeDateQuery(value: string | null): string {
@@ -364,9 +356,6 @@ export default function NeedList() {
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={TH}>Need ID</th>
                 <th className={TH}>
-                  <SortableTh field="devStartTs" label="记录时间" active={isSortActive('devStartTs')} desc={isSortDesc('devStartTs')} onSort={onSortChange} />
-                </th>
-                <th className={TH}>
                   <span className="inline-flex items-center gap-1">
                     <SortableTh field="efficiencyRatio" label="日历提效" active={isSortActive('efficiencyRatio')} desc={isSortDesc('efficiencyRatio')} onSort={onSortChange} />
                     <InfoMark tip={CALENDAR_RATIO_TIP} />
@@ -394,19 +383,16 @@ export default function NeedList() {
                     <InfoMark tip={BASELINE_CALENDAR_TIP} />
                   </span>
                 </th>
-                <th className={TH_NUM}>日历区间</th>
                 <th className={TH_NUM}>
                   <span className="inline-flex items-center gap-1 justify-end">实际工作量 <InfoMark tip={ACTUAL_WORK_TIP} /></span>
                 </th>
                 <th className={TH_NUM}>
                   <span className="inline-flex items-center gap-1 justify-end">基线工作量 <InfoMark tip={FUSED_BASELINE_WORK_TIP} /></span>
                 </th>
-                <th className={TH_NUM}>思考</th>
-                <th className={TH_NUM}>执行</th>
-                <th className={TH_NUM}>
-                  <span className="inline-flex items-center gap-1 justify-end">验证 <InfoMark tip={VERIFY_UNAVAILABLE_TIP} /></span>
-                </th>
                 <th className={TH}>质量</th>
+                <th className={TH}>
+                  <SortableTh field="devStartTs" label="记录时间" active={isSortActive('devStartTs')} desc={isSortDesc('devStartTs')} onSort={onSortChange} />
+                </th>
                 <th className={TH}>说明</th>
               </tr>
             </thead>
@@ -414,14 +400,14 @@ export default function NeedList() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={18}>
+                    <td className={TD} colSpan={14}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={18}>
+                  <td colSpan={14}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无 Need 数据</div>
                   </td>
                 </tr>
@@ -444,7 +430,6 @@ export default function NeedList() {
                         {shortNeedId(row.need_id)}
                       </button>
                     </td>
-                    <td className={TD}>{formatLocalTime(row.dev_start_ts)}</td>
                     <td className={TD}><RatioPill value={row.efficiency_ratio} /></td>
                     <td className={TD}><RatioPill value={row.work_efficiency_ratio} /></td>
                     <td className={TD}>{boundarySourceLabel(row.boundary_source)}</td>
@@ -453,12 +438,8 @@ export default function NeedList() {
                     <td className={TD}><Ellipsis text={row.primary_user_id} /></td>
                     <td className={TD_NUM}>{formatDuration(row.total_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.baseline_calendar_min)}</td>
-                    <td className={TD_NUM}>{formatBand(row)}</td>
                     <td className={TD_NUM}>{formatDuration(row.total_active_work_corrected_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.baseline_fused_work_min)}</td>
-                    <td className={TD_NUM}>{formatDuration(row.total_think_min)}</td>
-                    <td className={TD_NUM}>{formatDuration(row.total_exec_min)}</td>
-                    <td className={TD_NUM} title={VERIFY_UNAVAILABLE_TIP}>{formatVerifyMin(row.total_verify_min)}</td>
                     <td className={TD}>
                       {row.outlier_flag ? (
                         <Tag tone="error">异常</Tag>
@@ -468,6 +449,7 @@ export default function NeedList() {
                         <Tag tone="neutral">未计入</Tag>
                       )}
                     </td>
+                    <td className={TD}>{formatDateTimeShort(row.dev_start_ts)}</td>
                     <td className={TD}>
                       <Ellipsis text={reasonSummary(row.reason)} title={reasonHints(row.reason)} />
                     </td>
