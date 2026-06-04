@@ -219,6 +219,91 @@ export interface UserV2Row {
   confidence_reason?: string
 }
 
+/**
+ * /v2/users/{id} 周明细项（models.UserProductivityV2，小数口径）。
+ * 仅声明 UserDetail 周表/趋势用到的字段；其余后端有但页面未消费，留 index 兜底。
+ */
+export interface UserProductivityV2 {
+  user_productivity_v2_id?: string
+  week_start: string
+  user_id?: string
+  user_name?: string
+  merged_need_count?: number
+  active_need_count?: number
+  abandoned_need_count?: number
+  efficiency_ratio?: number | null // 小数口径
+  work_efficiency_ratio?: number | null // 小数口径
+  commit_count?: number
+  commit_diff_lines?: number
+  confidence_limited?: boolean
+  confidence_reason?: string
+  cost?: number
+  upstream_tokens?: number
+  downstream_tokens?: number
+  [k: string]: unknown
+}
+
+/** /v2/users/{id} 顶层响应（§User-2，summary 小数口径） */
+export interface UserV2DetailResponse {
+  summary: UserV2Row
+  weeks: UserProductivityV2[]
+  needs: NeedsV2Summary[]
+  commits: NeedCommit[]
+}
+
+/** /v2/user-groups/{id} 成员/汇总项（§User-3，⚠️ 百分比口径） */
+export interface UserGroupMember {
+  user_id: string
+  user_name: string
+  day_count: number
+  task_count: number
+  commit_count: number
+  task_diff_lines: number
+  upstream_tokens: number
+  downstream_tokens: number
+  cost: number
+  task_real_minutes: number
+  task_ancient_minutes: number
+  task_efficiency_ratio: number | null // 百分比口径
+  commit_diff_lines: number
+  commit_ancient_minutes: number
+  commit_real_minutes: number
+  commit_efficiency_ratio: number | null // 百分比口径
+}
+
+export interface UserGroupSummary {
+  day_count: number
+  task_count: number
+  commit_count: number
+  task_diff_lines: number
+  upstream_tokens: number
+  downstream_tokens: number
+  cost: number
+  task_real_minutes: number
+  task_ancient_minutes: number
+  task_efficiency_ratio: number | null // 百分比口径
+  commit_diff_lines: number
+  commit_ancient_minutes: number
+  commit_real_minutes: number
+  commit_efficiency_ratio: number | null // 百分比口径
+}
+
+export interface UserGroup {
+  group_id: string
+  name: string
+  org_name?: string
+  user_ids?: unknown
+  created_at?: string
+  updated_at?: string
+}
+
+/** /v2/user-groups/{id} 顶层响应（§User-3） */
+export interface UserGroupDetailResponse {
+  group: UserGroup | null
+  summary: UserGroupSummary
+  members: UserGroupMember[]
+}
+
 /** /v2/orgs 列表项（§2.3，小数口径） */
 export interface OrgV2Row {
   org_name: string

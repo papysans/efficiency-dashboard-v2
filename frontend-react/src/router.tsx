@@ -6,6 +6,9 @@ import NeedList from '@/pages/needs/NeedList'
 import NeedDetail from '@/pages/needs/NeedDetail'
 import TaskList from '@/pages/tasks/TaskList'
 import TaskDetail from '@/pages/tasks/TaskDetail'
+import UserList from '@/pages/users/UserList'
+import UserDetail from '@/pages/users/UserDetail'
+import UserGroupDetail from '@/pages/users/UserGroupDetail'
 
 // 路由表对齐 Vue frontend/src/router/index.js（见 research/api-contract.md §6）。
 // PR0：总览页真实落地，其余 24 路由先用 Placeholder 占位（可点不 404），后续 PR 替换。
@@ -21,9 +24,9 @@ export const router = createBrowserRouter([
       { path: 'needs/:needId', element: <NeedDetail /> },
       { path: 'task-v2', element: <TaskList /> },
       { path: 'task/:taskId', element: <TaskDetail /> },
-      { path: 'user-v2', element: <Placeholder title="用户列表" /> },
-      { path: 'user/group/:groupId', element: <Placeholder title="用户组详情" /> },
-      { path: 'user/:userId', element: <Placeholder title="用户详情" /> },
+      { path: 'user-v2', element: <UserList /> },
+      { path: 'user/group/:groupId', element: <UserGroupDetail /> },
+      { path: 'user/:userId', element: <UserDetail /> },
       { path: 'repo-v2', element: <Placeholder title="仓库列表" /> },
       { path: 'repo/:repoAddr/:repoBranch?', element: <Placeholder title="仓库详情" /> },
       { path: 'org-v2', element: <Placeholder title="组织列表" /> },

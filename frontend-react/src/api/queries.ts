@@ -7,6 +7,8 @@ import {
   getNeedDetailV2,
   getNeedsV2,
   getTaskDetailV2,
+  getUserDetailV2,
+  getUserGroupDetail,
   getUsersV2,
 } from './endpoints'
 import type { ListParams } from './types'
@@ -54,6 +56,24 @@ export function useUsers(params: { startDate?: string; endDate?: string }) {
   return useQuery({
     queryKey: ['users', params],
     queryFn: () => getUsersV2(params),
+  })
+}
+
+/** 用户详情（userId 由 endpoints 内部 encodeURIComponent；小数口径）。 */
+export function useUserDetail(userId: string | undefined, params: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['user-detail', userId, params],
+    queryFn: () => getUserDetailV2(userId as string, params),
+    enabled: !!userId,
+  })
+}
+
+/** 用户组详情（百分比口径；后端无列表端点，仅 detail by groupId）。 */
+export function useUserGroupDetail(groupId: string | undefined, params: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['user-group-detail', groupId, params],
+    queryFn: () => getUserGroupDetail(groupId as string, params),
+    enabled: !!groupId,
   })
 }
 

@@ -2,7 +2,7 @@
 // 丢弃 es.js legacy 死端点（/requests、/aggregate*、/analysis/*、/favorites、/virtual-groups）。
 // PR0 覆盖 dashboard/config + 各维度 list/detail（GET）；mutation 在对应 PR 补。
 
-import { apiGet, apiPost, apiPut } from './client'
+import { apiDelete, apiGet, apiPost, apiPut } from './client'
 import type {
   ApiData,
   ApiList,
@@ -16,6 +16,8 @@ import type {
   TaskDetailResponse,
   TaskListItem,
   UpdateTaskManualRequest,
+  UserGroupDetailResponse,
+  UserV2DetailResponse,
   UserV2Row,
 } from './types'
 
@@ -65,12 +67,13 @@ export async function getAllNeedsV2(params: ListParams): Promise<NeedsV2Summary[
 }
 
 // ---- Users（小数口径） ----
-export function getUsersV2(params: { startDate?: string; endDate?: string }) {
-  return apiGet<ApiData<UserV2Row>>('/v2/users', params)
+// /v2/users 默认 pageSize=50 且服务端切片，列表页一次性拉全（pageSize:1000）再客户端分页/排序/过滤，对齐 Vue。
+export function getUsersV2(params: { startDate?: string; endDate?: string; page?: number; pageSize?: number }) {
+  return apiGet<ApiList<UserV2Row>>('/v2/users', params)
 }
 
 export function getUserDetailV2(userId: string, params: { startDate?: string; endDate?: string }) {
-  return apiGet<Record<string, unknown>>(`/v2/users/${encodeURIComponent(userId)}`, params)
+  return apiGet<UserV2DetailResponse>(`/v2/users/${encodeURIComponent(userId)}`, params)
 }
 
 // ---- Orgs（列表小数口径 / 详情百分比口径） ----
@@ -148,7 +151,12 @@ export function getProjectDetail(projectId: string) {
   return apiGet<Record<string, unknown>>(`/v2/projects/${encodeURIComponent(projectId)}`)
 }
 
-// ---- User Groups ----
+// ---- User Groups（⚠️ 百分比口径；后端无列表端点，只有 detail/delete） ----
 export function getUserGroupDetail(groupId: string, params: { startDate?: string; endDate?: string }) {
-  return apiGet<Record<string, unknown>>(`/v2/user-groups/${encodeURIComponent(groupId)}`, params)
+  return apiGet<UserGroupDetailResponse>(`/v2/user-groups/${encodeURIComponent(groupId)}`, params)
+}
+
+/** 删除用户组：DELETE /v2/user-groups/{groupId}（删除后跳回用户列表）。 */
+export function deleteUserGroup(groupId: string) {
+  return apiDelete<{ status?: string }>(`/v2/user-groups/${encodeURIComponent(groupId)}`)
 }
