@@ -20,6 +20,8 @@ import type {
   NeedsV2DetailResponse,
   NeedsV2Summary,
   OrgDetailResponse,
+  OrgTreeDetailResponse,
+  OrgTreeNode,
   OrgV2Row,
   ProjectDetailResponse,
   ProjectListItem,
@@ -98,10 +100,22 @@ export function getOrgV2(params: { startDate?: string; endDate?: string }) {
   return apiGet<ApiData<OrgV2Row> & { no_org_mapping?: boolean }>('/v2/orgs', params)
 }
 
+// 组织树（基于 user_org 有数据的层级；与日期无关，组织归属是快照）。
+export function getOrgTreeV2() {
+  return apiGet<OrgTreeNode[]>('/v2/orgs/tree')
+}
+
 // ⚠️ 后端读取的是 org_path（snake_case），传 orgPath 会报「org_path 不能为空」。对齐 Vue OrgDetailV2。
 export function getOrgDetailV2(params: { orgPath: string; startDate?: string; endDate?: string; granularity?: string }) {
   const { orgPath, ...rest } = params
   return apiGet<OrgDetailResponse>('/v2/orgs/detail', { org_path: orgPath, ...rest })
+}
+
+// 组织树右栏详情（V2 口径，小数提效比 → RatioPill；members 为 UserV2Row，含真实显示名）。
+// ⚠️ org_path（snake_case）；与 V1 /v2/orgs/detail 不同，本接口数据真实可用（复用 aggregateUsersV2）。
+export function getOrgTreeDetailV2(params: { orgPath: string; startDate?: string; endDate?: string }) {
+  const { orgPath, ...rest } = params
+  return apiGet<OrgTreeDetailResponse>('/v2/orgs/tree-detail', { org_path: orgPath, ...rest })
 }
 
 // ---- Commits（⚠️ 百分比口径：efficiency_ratio 300=300%，不 ×100） ----

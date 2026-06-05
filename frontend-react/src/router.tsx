@@ -13,6 +13,7 @@ import RepoList from '@/pages/repos/RepoList'
 import RepoDetail from '@/pages/repos/RepoDetail'
 import OrgList from '@/pages/orgs/OrgList'
 import OrgDetail from '@/pages/orgs/OrgDetail'
+import OrgTree from '@/pages/orgs/OrgTree'
 import CommitList from '@/pages/commits/CommitList'
 import CommitDetail from '@/pages/commits/CommitDetail'
 import WorkDirDetail from '@/pages/workdir/WorkDirDetail'
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
       { path: 'repo-v2', element: <RepoList /> },
       { path: 'repo/:repoAddr/:repoBranch?', element: <RepoDetail /> },
       { path: 'org-v2', element: <OrgList /> },
+      { path: 'org-tree-v2', element: <OrgTree /> },
       { path: 'org/:orgPath', element: <OrgDetail /> },
       { path: 'project-v2', element: <ProjectList /> },
       { path: 'project/:projectId', element: <ProjectDetail /> },

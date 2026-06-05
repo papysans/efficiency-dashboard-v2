@@ -123,6 +123,8 @@ func main() {
 		v2.GET("/repos/branches", listRepoBranchesV2)
 
 		v2.GET("/orgs", listOrgsV2Native)
+		v2.GET("/orgs/tree", getOrgTreeV2)
+		v2.GET("/orgs/tree-detail", getOrgTreeDetailV2)
 		v2.GET("/orgs/detail", getOrgDetailV2)
 		v2.POST("/orgs/refresh", refreshOrgMappingV2)
 		v2.GET("/group", getGroupDetailV2)

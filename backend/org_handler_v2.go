@@ -1033,6 +1033,107 @@ func getGroupDetailV2(c *gin.Context) {
 	})
 }
 
+// OrgTreeNode 组织树节点（递归）。org_path 与 getOrgDetailV2 的入参格式一致（"/" 分隔）。
+type OrgTreeNode struct {
+	Name      string         `json:"name"`
+	OrgPath   string         `json:"org_path"`
+	Level     int            `json:"level"`
+	UserCount int            `json:"user_count"`
+	Children  []*OrgTreeNode `json:"children"`
+}
+
+// getOrgTreeV2 GET /api/v2/orgs/tree
+// 从 user_org 中「有数据的组织层级」构树（org1..org9 去重路径），供组织树页左侧导航使用。
+// user_count = 该节点子树下 distinct user_id 数（含后代）。树与日期无关（组织归属是快照）。
+// @Summary 获取组织树
+// @Description 返回 user_org 中有数据的组织层级树，每个节点含 name/org_path/level/user_count/children
+// @Tags Orgs
+// @Produce json
+// @Success 200 {array} OrgTreeNode
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/orgs/tree [get]
+func getOrgTreeV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	if orgMappings == nil {
+		maps, err := LoadUserOrgs(statDB)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			return
+		}
+		orgMappings = maps
+	}
+
+	root := &OrgTreeNode{Children: []*OrgTreeNode{}}
+	// path key -> 节点；用于 distinct user_id 去重累加
+	nodeByPath := make(map[string]*OrgTreeNode)
+	userSetByPath := make(map[string]map[string]bool)
+
+	const unassigned = "未分组"
+
+	for _, m := range orgMappings {
+		if m == nil || m.UserId == "" {
+			continue
+		}
+		// 收集该用户的非空层级段（org1..org9，过滤空段）。org1 为空归入「未分组」。
+		segments := []string{}
+		for _, v := range []string{m.Org1, m.Org2, m.Org3, m.Org4, m.Org5, m.Org6, m.Org7, m.Org8, m.Org9} {
+			if v != "" {
+				segments = append(segments, v)
+			}
+		}
+		if len(segments) == 0 {
+			segments = []string{unassigned}
+		}
+
+		// 沿层级建节点，并把该 user_id 累加到从根到叶的每一级（含后代去重）。
+		cur := root
+		accPath := []string{}
+		for level, seg := range segments {
+			accPath = append(accPath, seg)
+			pathKey := strings.Join(accPath, "/")
+			child, ok := nodeByPath[pathKey]
+			if !ok {
+				child = &OrgTreeNode{
+					Name:     seg,
+					OrgPath:  pathKey,
+					Level:    level + 1,
+					Children: []*OrgTreeNode{},
+				}
+				nodeByPath[pathKey] = child
+				userSetByPath[pathKey] = make(map[string]bool)
+				cur.Children = append(cur.Children, child)
+			}
+			userSetByPath[pathKey][m.UserId] = true
+			cur = child
+		}
+	}
+
+	// 回填 user_count（distinct）。
+	for pathKey, node := range nodeByPath {
+		node.UserCount = len(userSetByPath[pathKey])
+	}
+
+	// 递归按 user_count 降序、name 升序排序，输出稳定。
+	var sortNode func(n *OrgTreeNode)
+	sortNode = func(n *OrgTreeNode) {
+		sort.SliceStable(n.Children, func(i, j int) bool {
+			if n.Children[i].UserCount != n.Children[j].UserCount {
+				return n.Children[i].UserCount > n.Children[j].UserCount
+			}
+			return n.Children[i].Name < n.Children[j].Name
+		})
+		for _, ch := range n.Children {
+			sortNode(ch)
+		}
+	}
+	sortNode(root)
+
+	c.JSON(http.StatusOK, root.Children)
+}
+
 type RefreshOrgMappingResponse struct {
 	Count int    `json:"count"`
 	Msg   string `json:"msg"`

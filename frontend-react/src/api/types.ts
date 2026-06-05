@@ -444,6 +444,35 @@ export interface OrgMember {
   [k: string]: unknown
 }
 
+/** /v2/orgs/tree 树节点（递归）。org_path 与 /v2/orgs/detail 入参格式一致（"/" 分隔）。 */
+export interface OrgTreeNode {
+  name: string
+  org_path: string
+  level: number
+  user_count: number
+  children: OrgTreeNode[]
+}
+
+/** /v2/orgs/tree-detail summary（V2 口径，小数提效比）。 */
+export interface OrgTreeDetailSummary {
+  org_path: string
+  user_count: number
+  merged_need_count: number
+  actual_calendar_min: number
+  baseline_calendar_min: number
+  calendar_ratio: number | null // 小数口径
+  work_ratio: number | null // 小数口径
+  commit_count: number
+  commit_diff_lines: number
+  cost: number
+}
+
+/** /v2/orgs/tree-detail 顶层响应（V2 口径，复用 aggregateUsersV2 → members 为 UserV2Row）。 */
+export interface OrgTreeDetailResponse {
+  summary: OrgTreeDetailSummary
+  members: UserV2Row[]
+}
+
 /** /v2/orgs/detail 顶层响应（§Org-7）。 */
 export interface OrgDetailResponse {
   org_path: string

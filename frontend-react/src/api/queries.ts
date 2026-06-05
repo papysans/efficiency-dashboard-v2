@@ -8,6 +8,7 @@ import {
   getNeedDetailV2,
   getNeedsV2,
   getOrgDetailV2,
+  getOrgTreeV2,
   getProjectDetail,
   getProjects,
   getRepoBranches,
@@ -125,6 +126,15 @@ export function useOrgDetail(params: { orgPath: string; startDate?: string; endD
     queryKey: ['org-detail', params],
     queryFn: () => getOrgDetailV2(params),
     enabled: !!params.orgPath,
+  })
+}
+
+/** 组织树（基于 user_org 有数据的层级；与日期无关，长缓存）。 */
+export function useOrgTree() {
+  return useQuery({
+    queryKey: ['org-tree'],
+    queryFn: () => getOrgTreeV2(),
+    staleTime: 5 * 60_000,
   })
 }
 

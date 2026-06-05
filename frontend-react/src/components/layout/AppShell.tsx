@@ -8,6 +8,7 @@ const navItems = [
   { to: '/user-v2', label: '用户' },
   { to: '/repo-v2', label: '仓库' },
   { to: '/org-v2', label: '组织' },
+  { to: '/org-tree-v2', label: '组织树' },
   { to: '/project-v2', label: '项目' },
   { to: '/commit-v2', label: '提交' },
 ]
