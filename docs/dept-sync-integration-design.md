@@ -61,6 +61,14 @@ dept-sync 是一个独立的离线部门同步服务（Go + 内置 SQLite，可�
 
 ## 2. 对接目标
 
+> ## ⚠️ 重大更正（2026-06-05 内网全量实测，覆盖本节及全文「工号锚点 / universal_id 0%」结论）
+>
+> **JOIN 主锚点 = `universal_id`（= 看板 `user_org.user_id`），不是工号。** 内网生产实测 `看板 user_id ∩ dept-sync user_department.universal_id = 1434/1455 = 98.6%`（二者是同一套 casdoor UUID）。
+> - 本文下方「JOIN 锚点 = 工号 / universal_id 0% 命中 / 严禁 user_id=universal_id」等表述，**仅基于早期本地 16 人 mnt 样本**（那批样本 user_id 是另一套老 ID，恰好与 universal_id 无交集），**已被内网全量数据推翻、作废**。
+> - **当前实现（v1.1.20 import-dept / dept-tree handler）口径**：① 主=`universal_id` 直连（== 看板 user_id）→ 取 dept-sync 权威 `username` 真名 + 部门；② 次选=工号经 `commits.git_user_email` 桥接；③ 兜底=`dept_sync.fallback_org_name`/未知部门。
+> - **最优取数**：`/department/tree` + 根部门 `/department/{49}/users?include_children=true`（一次拿全量 11154 人，带 username+universal_id+工号）= 2 次请求拿全量。
+> - 代码以 universal_id 为锚是**正确的**；下文工号叙述保留仅作历史记录（本地样本阶段的推导过程）。
+
 用 dept-sync 的权威部门树替换 / 增强看板现有 org 维度，具体：
 
 1. **真名**：用 dept-sync `user_department.username`（如 林凯、邓彬）替换 commit 反推的不稳定真名。

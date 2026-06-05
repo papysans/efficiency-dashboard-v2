@@ -169,6 +169,15 @@ func executeImport(params map[string]interface{}) error {
 			return runImportRepo(repoDir, analysedDir, force, maxDays, ingestStart, endDate, date)
 		}},
 		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
+		{"import-dept", func() error {
+			// 非致命：未配置 dept_sync.base_url 或 dept-sync 不可达时仅告警跳过，
+			// 不阻断后续 efficiency 步骤。import-dept 用真实部门刷新 org，配合
+			// import-org 的非破坏性占位，使 org 自动保持正确。
+			if err := runImportDept("", ""); err != nil {
+				logWarnf("import-dept 跳过(非致命): %v", err)
+			}
+			return nil
+		}},
 	}
 	switch mode {
 	case "new":
