@@ -123,11 +123,13 @@ func main() {
 		v2.GET("/repos/branches", listRepoBranchesV2)
 
 		v2.GET("/orgs", listOrgsV2Native)
-		v2.GET("/orgs/tree", getOrgTreeV2)
-		v2.GET("/orgs/tree-detail", getOrgTreeDetailV2)
 		v2.GET("/orgs/detail", getOrgDetailV2)
 		v2.POST("/orgs/refresh", refreshOrgMappingV2)
 		v2.GET("/group", getGroupDetailV2)
+
+		// 组织树（dept-sync 权威全量树 + API 懒加载，代理 dept-sync /department/*）
+		v2.GET("/dept-tree", getDeptTreeV2)
+		v2.GET("/dept-tree/members", getDeptTreeMembersV2)
 
 		v2.POST("/projects", createProjectV2)
 		v2.GET("/projects", listProjectsV2)

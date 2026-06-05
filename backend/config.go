@@ -22,7 +22,15 @@ type Config struct {
 	CORS         struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
-	TraditionalDevLinesPerDay int `yaml:"traditional_dev_lines_per_day"`
+	TraditionalDevLinesPerDay int            `yaml:"traditional_dev_lines_per_day"`
+	DeptSync                  DeptSyncConfig `yaml:"dept_sync"`
+}
+
+// DeptSyncConfig dept-sync 部门同步服务对接配置（组织树代理 handler 使用）。
+// 口径与 kbcli DeptSyncConfig 一致：base_url 不含路由前缀；query_key 走数据接口鉴权头 X-Query-Key。
+type DeptSyncConfig struct {
+	BaseURL  string `yaml:"base_url"`  // dept-sync 服务地址，如 http://127.0.0.1:8080
+	QueryKey string `yaml:"query_key"` // 数据接口鉴权头 X-Query-Key 的值
 }
 
 var appConfig Config

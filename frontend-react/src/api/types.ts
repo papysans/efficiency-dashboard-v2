@@ -444,19 +444,27 @@ export interface OrgMember {
   [k: string]: unknown
 }
 
-/** /v2/orgs/tree 树节点（递归）。org_path 与 /v2/orgs/detail 入参格式一致（"/" 分隔）。 */
-export interface OrgTreeNode {
-  name: string
-  org_path: string
-  level: number
-  user_count: number
-  children: OrgTreeNode[]
+/** /v2/dept-tree 节点（递归）。来自 dept-sync 权威全量部门树（透传）。 */
+export interface DeptTreeNode {
+  dept_id: string
+  dept_name: string
+  parent_dept_id: string
+  dept_path: string
+  dept_level: number
+  order_num: number
+  child_dept_count: number
+  status: number
+  children: DeptTreeNode[]
 }
 
-/** /v2/orgs/tree-detail summary（V2 口径，小数提效比）。 */
-export interface OrgTreeDetailSummary {
-  org_path: string
-  user_count: number
+/** /v2/dept-tree/members 一名成员：dept-sync 花名册 + 左连看板 V2 指标（按 universal_id）。 */
+export interface DeptMember {
+  universal_id: string
+  real_name: string
+  emp_no: string
+  position: string
+  is_main: number
+  has_kanban_data: boolean
   merged_need_count: number
   actual_calendar_min: number
   baseline_calendar_min: number
@@ -467,10 +475,25 @@ export interface OrgTreeDetailSummary {
   cost: number
 }
 
-/** /v2/orgs/tree-detail 顶层响应（V2 口径，复用 aggregateUsersV2 → members 为 UserV2Row）。 */
-export interface OrgTreeDetailResponse {
-  summary: OrgTreeDetailSummary
-  members: UserV2Row[]
+/** /v2/dept-tree/members summary（该部门直属成员合计，小数提效比）。 */
+export interface DeptMembersSummary {
+  dept_id: string
+  member_count: number
+  kanban_member_count: number
+  merged_need_count: number
+  actual_calendar_min: number
+  baseline_calendar_min: number
+  calendar_ratio: number | null // 小数口径
+  work_ratio: number | null // 小数口径
+  commit_count: number
+  commit_diff_lines: number
+  cost: number
+}
+
+/** /v2/dept-tree/members 顶层响应。 */
+export interface DeptMembersResponse {
+  summary: DeptMembersSummary
+  members: DeptMember[]
 }
 
 /** /v2/orgs/detail 顶层响应（§Org-7）。 */

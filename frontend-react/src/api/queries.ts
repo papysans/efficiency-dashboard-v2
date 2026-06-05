@@ -5,10 +5,10 @@ import {
   getCommitDetailV2,
   getDashboardSummary,
   getGlobalConfig,
+  getDeptTreeV2,
   getNeedDetailV2,
   getNeedsV2,
   getOrgDetailV2,
-  getOrgTreeV2,
   getProjectDetail,
   getProjects,
   getRepoBranches,
@@ -129,11 +129,11 @@ export function useOrgDetail(params: { orgPath: string; startDate?: string; endD
   })
 }
 
-/** 组织树（基于 user_org 有数据的层级；与日期无关，长缓存）。 */
-export function useOrgTree() {
+/** 组织树（dept-sync 权威全量树；与日期无关，长缓存）。 */
+export function useDeptTree() {
   return useQuery({
-    queryKey: ['org-tree'],
-    queryFn: () => getOrgTreeV2(),
+    queryKey: ['dept-tree'],
+    queryFn: () => getDeptTreeV2(),
     staleTime: 5 * 60_000,
   })
 }

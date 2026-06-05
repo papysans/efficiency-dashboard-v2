@@ -29,3 +29,8 @@ ai_estimation:
 task_real_minutes:
   gap_threshold_minutes: 30
   extension_minutes: 5
+
+# dept-sync 部门同步服务（组织树代理 handler 用）：填上内网 dept-sync 地址与下发的 query_key 即生效
+dept_sync:
+  base_url: ""
+  query_key: ""
