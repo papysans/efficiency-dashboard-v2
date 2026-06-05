@@ -6,12 +6,13 @@ import (
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "顺序执行完整的导入流程: import-conv → import-repo → import-org → efficiency",
+	Short: "顺序执行完整的导入流程: import-conv → import-repo → import-org → import-dept → efficiency",
 	Long: `顺序执行完整的导入流程:
   1. import-conv: 导入task数据
   2. import-repo: 导入repo/commit数据（含silica计算）
-  3. import-org: 导入用户组织信息
-  4. efficiency: 计算用户和组织效能数据
+  3. import-org: 导入用户组织信息（兜底"临时组织"占位为非破坏性，不覆盖已有真实 org）
+  4. import-dept: 从 dept-sync 刷新真实部门并投影回填 user_org（未配置/不可达时非致命跳过）
+  5. efficiency: 计算用户和组织效能数据
 
 所有子命令的参数均可在import命令中使用，参数含义与各子命令一致。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -74,6 +75,15 @@ var importCmd = &cobra.Command{
 				return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr)
 			}},
 			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
+			{"import-dept", func() error {
+				// 非致命：未配置 dept_sync.base_url 或 dept-sync 不可达时仅告警跳过，
+				// 不阻断后续 efficiency 步骤。import-dept 用真实部门刷新 org，配合
+				// import-org 的非破坏性占位，使 org 自动保持正确。
+				if err := runImportDept("", ""); err != nil {
+					logWarnf("import-dept 跳过(非致命): %v", err)
+				}
+				return nil
+			}},
 			{"efficiency", func() error { return runEfficiency(startDateStr, endDateStr, dateStr) }},
 		}
 

@@ -293,6 +293,24 @@ func saveUserOrgs(db *gorm.DB, rows []models.UserOrg) error {
 	})
 }
 
+// saveUserOrgsInsertOnly 只插入新用户、绝不更新已有行（ON CONFLICT DO NOTHING）。
+// 专供"临时组织"占位兜底路径使用：定时 import 再也不会把 import-dept / 人工 SQL
+// 写入的真实 org 覆盖成"临时组织"，但全新用户仍会得到"临时组织"占位。
+func saveUserOrgsInsertOnly(db *gorm.DB, rows []models.UserOrg) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, r := range rows {
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "user_id"}},
+				DoNothing: true,
+			}).Create(&r)
+			if result.Error != nil {
+				return fmt.Errorf("写入记录失败 [user_id=%s]: %w", r.UserId, result.Error)
+			}
+		}
+		return nil
+	})
+}
+
 func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	startTime := time.Now()
 	var userOrgs []models.UserOrg
@@ -334,6 +352,9 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		}
 	}
 
+	// fromLocalFallback 标记 userOrgs 来自"临时组织"占位兜底（本地任务数据），
+	// 此路径必须用非破坏性的 InsertOnly 写法，避免覆盖 import-dept/人工写入的真实 org。
+	fromLocalFallback := false
 	if userOrgs == nil {
 		// 最终兜底：从本地 tasks/commits/sessions 生成临时组织
 		localOrgs, localErr := loadDefaultUserOrgsFromLocalData(gormDB)
@@ -342,6 +363,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 			return localErr
 		}
 		userOrgs = localOrgs
+		fromLocalFallback = true
 		logWarnf("已生成 %d 条临时 user_org 记录，全部归入 org1=临时组织（org_csv_file 不可用或为空）", len(userOrgs))
 	}
 
@@ -353,7 +375,13 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		logInfof("CSV 文件已写入: %s", toCSV)
 	}
 
-	if err := saveUserOrgs(gormDB, userOrgs); err != nil {
+	// 兜底"临时组织"占位走 InsertOnly（只插新用户、不覆盖已有真实 org）；
+	// CSV / 真实 DB 路径仍用 saveUserOrgs（UPSERT）覆盖更新。
+	saveFn := saveUserOrgs
+	if fromLocalFallback {
+		saveFn = saveUserOrgsInsertOnly
+	}
+	if err := saveFn(gormDB, userOrgs); err != nil {
 		recordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("写入user_org表失败: %w", err)
 	}
