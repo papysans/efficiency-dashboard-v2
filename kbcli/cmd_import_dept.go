@@ -6,9 +6,7 @@ import (
 	"io"
 	"kanban/core/models"
 	"net/http"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -17,13 +15,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// deptUserDeptsConcurrency 是逐工号调 /user/{工号}/departments 的并发上限。
-const deptUserDeptsConcurrency = 12
-
 // dept-sync 数据接口路由前缀（前缀 /costrict-dept-info + /api/v1）
 const deptSyncAPIPrefix = "/costrict-dept-info/api/v1"
 
-// ---- dept-sync HTTP API 响应结构（实测契约见 task research/dept-sync-api.md）----
+// ---- dept-sync HTTP API 响应结构（实测契约见 task research/dept-sync-full-api.md）----
 
 type deptSyncTreeResp struct {
 	Code    string         `json:"code"`
@@ -45,23 +40,25 @@ type deptSyncNode struct {
 	Children       []deptSyncNode `json:"children"`
 }
 
-// deptSyncUserDeptsResp 是 GET /api/v1/user/{工号}/departments 的响应。
-// 注意：此接口无 username 字段（真名阶段1 从 commits.git_user_name 派生）。
-type deptSyncUserDeptsResp struct {
+// deptSyncDeptUsersResp 是 GET /api/v1/department/{dept_id}/users?include_children=true 的响应。
+// 对公司根部门调用一次即拿全量人员，字段最全（含 username 权威真名 + universal_id + 工号）。
+type deptSyncDeptUsersResp struct {
 	Code    string                 `json:"code"`
 	Success bool                   `json:"success"`
-	Data    []deptSyncUserDeptNode `json:"data"`
+	Data    []deptSyncDeptUserNode `json:"data"`
 }
 
-// deptSyncUserDeptNode 某工号的一条部门归属。UserId 是工号（JOIN 锚点）。
-type deptSyncUserDeptNode struct {
-	UserId      string `json:"user_id"`
+// deptSyncDeptUserNode 一名人员。UserId 是工号；Username 是权威真名；UniversalId 可能为空串。
+// 注意：此响应无 dept_path，org1..9 需用 DeptId 去 dept 表 deptPathByID 查。
+type deptSyncDeptUserNode struct {
+	UserId      string `json:"user_id"` // 工号
+	Username    string `json:"username"`
 	UniversalId string `json:"universal_id"`
 	DeptId      string `json:"dept_id"`
 	DeptName    string `json:"dept_name"`
-	DeptPath    string `json:"dept_path"`
-	Position    string `json:"position"`
 	IsMain      int    `json:"is_main"`
+	Position    string `json:"position"`
+	EntryTime   string `json:"entry_time"`
 	Status      int    `json:"status"`
 }
 
@@ -73,7 +70,7 @@ func deptSyncGet(baseURL, queryKey, path string, out interface{}) error {
 		return err
 	}
 	req.Header.Set("X-Query-Key", queryKey)
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("请求 dept-sync 失败 [%s]: %w", path, err)
@@ -109,6 +106,22 @@ func flattenDeptTree(nodes []deptSyncNode, out *[]models.Dept) {
 	}
 }
 
+// findRootDeptIDs 找根部门：parent_dept_id 为空，或 parent 不在所有 dept_id 集合里（悬挂父引用）。
+// 通常只有一个（深信服=49），为稳健支持多根。
+func findRootDeptIDs(depts []models.Dept) []string {
+	idSet := make(map[string]bool, len(depts))
+	for _, d := range depts {
+		idSet[d.DeptId] = true
+	}
+	var roots []string
+	for _, d := range depts {
+		if strings.TrimSpace(d.ParentDeptId) == "" || !idSet[d.ParentDeptId] {
+			roots = append(roots, d.DeptId)
+		}
+	}
+	return roots
+}
+
 // splitDeptPath 把物化路径 "/A/B/C" 拆成 ["A","B","C"]（去空段）。
 func splitDeptPath(path string) []string {
 	var segs []string
@@ -134,6 +147,7 @@ func assignOrgFields(uo *models.UserOrg, segs []string) {
 
 // deriveRealName 从 git_user_name 派生真名：去掉尾部连续工号数字（如 "林凯90331"→"林凯"），
 // 再 TrimSpace。若去掉数字后为空（纯数字名）或原本无尾部数字，则回退原值 trim。
+// 仅在工号次选且 dept-sync person 缺名时兜底（权威真名优先用 dept-sync username）。
 func deriveRealName(gitUserName string) string {
 	name := strings.TrimSpace(gitUserName)
 	trimmed := strings.TrimRight(name, "0123456789")
@@ -199,29 +213,6 @@ func saveUserOrgDeptProjection(db *gorm.DB, rows []models.UserOrg) error {
 	})
 }
 
-// projectDeptToUserOrg 工号桥接投影：用已构建的 uidsByEmp（工号 → 看板 user_id 列表，
-// 来自 commits.git_user_email 前缀）把 deptUsers 按其主部门 dept_path 拆 org1..org9 回填 user_org。
-// universal_id 不参与桥接。返回命中并写入的 user_org 行数。
-func projectDeptToUserOrg(db *gorm.DB, deptUsers []models.DeptUser, deptPathByID map[string]string, uidsByEmp map[string][]string) (int, error) {
-	var userOrgs []models.UserOrg
-	for _, du := range deptUsers {
-		uids := uidsByEmp[du.EmpNo]
-		if len(uids) == 0 {
-			continue // 该员工在看板无 sangfor commit，无法桥接，跳过
-		}
-		segs := splitDeptPath(deptPathByID[du.DeptId])
-		for _, uid := range uids {
-			uo := models.UserOrg{UserId: uid, UserName: du.RealName}
-			assignOrgFields(&uo, segs)
-			userOrgs = append(userOrgs, uo)
-		}
-	}
-	if len(userOrgs) == 0 {
-		return 0, nil
-	}
-	return len(userOrgs), saveUserOrgDeptProjection(db, userOrgs)
-}
-
 // triggerOrgRefresh 尽力触发 backend 重载 org 映射（失败仅告警，可手动重启 backend）。
 func triggerOrgRefresh(backendURL string) {
 	if backendURL == "" {
@@ -258,7 +249,7 @@ func runImportDept(baseURL, queryKey string) error {
 		return err
 	}
 
-	// 1. 拉全量嵌套部门树，拍平 → 全量落 dept（dept_path 供投影查）
+	// 1. 拉全量嵌套部门树，拍平 → 全量落 dept；构建 dept_id → dept_path 供投影查（include_children 响应无 dept_path）
 	var treeResp deptSyncTreeResp
 	if err := deptSyncGet(baseURL, queryKey, "/department/tree", &treeResp); err != nil {
 		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
@@ -273,7 +264,32 @@ func runImportDept(baseURL, queryKey string) error {
 		deptPathByID[d.DeptId] = d.DeptPath
 	}
 
-	// 2. 从看板 commits 取 distinct 工号 + 真名兜底，构建工号→user_id 桥接与工号→真名映射
+	// 2. 对每个根部门 include_children=true 批量取全量人员，按工号去重（通常仅 1 根）
+	roots := findRootDeptIDs(depts)
+	if len(roots) == 0 {
+		err := fmt.Errorf("部门树未找到根部门（无 parent_dept_id 为空或悬挂的节点）")
+		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+		return err
+	}
+	logInfof("识别到 %d 个根部门: %v", len(roots), roots)
+
+	peopleByEmp := make(map[string]deptSyncDeptUserNode) // 工号 → person（跨根去重）
+	for _, root := range roots {
+		var usersResp deptSyncDeptUsersResp
+		if err := deptSyncGet(baseURL, queryKey, "/department/"+root+"/users?include_children=true", &usersResp); err != nil {
+			recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+			return err
+		}
+		for _, p := range usersResp.Data {
+			if p.UserId == "" {
+				continue
+			}
+			peopleByEmp[p.UserId] = p // 同工号多部门：取主部门更稳妥，但 include_children 实测每人单条主部门
+		}
+	}
+	logInfof("从根部门 include_children 拿到全量人员 %d 名（按工号去重后）", len(peopleByEmp))
+
+	// 3. 落库：全量部门树 + 全量花名册（dept_user）
 	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
@@ -283,92 +299,19 @@ func runImportDept(baseURL, queryKey string) error {
 	defer sqlDB.Close()
 	logInfo("目标数据库连接成功")
 
-	type empCommit struct {
-		EmpNo       string
-		UserId      string
-		GitUserName string
+	deptUsers := make([]models.DeptUser, 0, len(peopleByEmp))
+	for _, p := range peopleByEmp {
+		deptUsers = append(deptUsers, models.DeptUser{
+			EmpNo:       p.UserId,
+			RealName:    p.Username,
+			UniversalId: p.UniversalId,
+			DeptId:      p.DeptId,
+			Position:    p.Position,
+			IsMain:      p.IsMain,
+			EntryTime:   p.EntryTime,
+			Status:      p.Status,
+		})
 	}
-	var rows []empCommit
-	if err := db.Raw(`
-		SELECT DISTINCT split_part(git_user_email, '@', 1) AS emp_no, user_id, git_user_name
-		FROM commits
-		WHERE git_user_email ILIKE '%@sangfor.com' AND user_id IS NOT NULL AND user_id <> ''
-	`).Scan(&rows).Error; err != nil {
-		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
-		return fmt.Errorf("从 commits 构建工号桥接失败: %w", err)
-	}
-	uidsByEmp := make(map[string][]string) // 工号 → 看板 user_id 列表（一人可多 UUID）
-	nameByEmp := make(map[string]string)   // 工号 → 派生真名
-	for _, r := range rows {
-		if r.EmpNo == "" {
-			continue
-		}
-		uidsByEmp[r.EmpNo] = append(uidsByEmp[r.EmpNo], r.UserId)
-		if _, ok := nameByEmp[r.EmpNo]; !ok {
-			if dn := deriveRealName(r.GitUserName); dn != "" {
-				nameByEmp[r.EmpNo] = dn
-			}
-		}
-	}
-	logInfof("看板 commits 中 distinct 工号 %d 个", len(uidsByEmp))
-
-	// 3. 工号驱动 + 并发：每工号调 /user/{工号}/departments，取主部门，容忍查无此人
-	emps := make([]string, 0, len(uidsByEmp))
-	for emp := range uidsByEmp {
-		emps = append(emps, emp)
-	}
-	sort.Strings(emps)
-
-	var (
-		mu        sync.Mutex
-		deptUsers []models.DeptUser
-		skipped   int // dept-sync 查无此人 / 请求失败 / data 为空
-		wg        sync.WaitGroup
-		sem       = make(chan struct{}, deptUserDeptsConcurrency)
-	)
-	for _, emp := range emps {
-		emp := emp
-		wg.Add(1)
-		sem <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			var resp deptSyncUserDeptsResp
-			if err := deptSyncGet(baseURL, queryKey, "/user/"+emp+"/departments", &resp); err != nil || len(resp.Data) == 0 {
-				mu.Lock()
-				skipped++
-				mu.Unlock()
-				return
-			}
-			// 取 is_main==1 那条；没有则取第一条
-			node := resp.Data[0]
-			for _, n := range resp.Data {
-				if n.IsMain == 1 {
-					node = n
-					break
-				}
-			}
-			du := models.DeptUser{
-				EmpNo:       emp,
-				RealName:    nameByEmp[emp],
-				UniversalId: node.UniversalId,
-				DeptId:      node.DeptId,
-				Position:    node.Position,
-				IsMain:      node.IsMain,
-				Status:      node.Status,
-			}
-			mu.Lock()
-			deptUsers = append(deptUsers, du)
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-
-	sort.Slice(deptUsers, func(i, j int) bool { return deptUsers[i].EmpNo < deptUsers[j].EmpNo })
-	logInfof("工号驱动查部门：命中 %d / 跳过 %d / 共 %d", len(deptUsers), skipped, len(emps))
-
-	// 4. 落库：全量部门树 + 仅命中的工号
 	if err := saveDepts(db, depts); err != nil {
 		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return err
@@ -377,17 +320,105 @@ func runImportDept(baseURL, queryKey string) error {
 		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return err
 	}
-	logInfof("已写入 %d 个部门到 dept、%d 名命中人员到 dept_user", len(depts), len(deptUsers))
+	logInfof("已写入 %d 个部门到 dept、%d 名人员到 dept_user", len(depts), len(deptUsers))
 
-	// 5. 投影回填 user_org（复用已构建的工号→user_id 桥接）
-	matched, err := projectDeptToUserOrg(db, deptUsers, deptPathByID, uidsByEmp)
-	if err != nil {
+	// 4. 投影回填 user_org（universal_id 直连为主，工号经 commits 桥接次选，未命中兜底）
+
+	// 4a. universal_id → person 映射（只收 universal_id 非空的；锚点 = 看板 user_org.user_id == universal_id）
+	personByUniversalID := make(map[string]deptSyncDeptUserNode)
+	for _, p := range peopleByEmp {
+		if uid := strings.TrimSpace(p.UniversalId); uid != "" {
+			personByUniversalID[uid] = p
+		}
+	}
+
+	// 4b. 工号次选桥接：commits.git_user_email 前缀 → 工号 → 看板 user_id
+	type empCommit struct {
+		EmpNo       string
+		UserId      string
+		GitUserName string
+	}
+	var commitRows []empCommit
+	if err := db.Raw(`
+		SELECT DISTINCT split_part(git_user_email, '@', 1) AS emp_no, user_id, git_user_name
+		FROM commits
+		WHERE git_user_email ILIKE '%@sangfor.com' AND user_id IS NOT NULL AND user_id <> ''
+	`).Scan(&commitRows).Error; err != nil {
+		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+		return fmt.Errorf("从 commits 构建工号桥接失败: %w", err)
+	}
+	empByUID := make(map[string]string)  // 看板 user_id → 工号
+	nameByEmp := make(map[string]string) // 工号 → git 派生真名（次选缺名兜底）
+	for _, r := range commitRows {
+		if r.EmpNo == "" {
+			continue
+		}
+		if _, ok := empByUID[r.UserId]; !ok {
+			empByUID[r.UserId] = r.EmpNo
+		}
+		if _, ok := nameByEmp[r.EmpNo]; !ok {
+			if dn := deriveRealName(r.GitUserName); dn != "" {
+				nameByEmp[r.EmpNo] = dn
+			}
+		}
+	}
+
+	// 4c. 读看板全部 user_org 行（看板用户全集），逐行回填
+	var boardUsers []models.UserOrg
+	if err := db.Find(&boardUsers).Error; err != nil {
+		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+		return fmt.Errorf("读取看板 user_org 失败: %w", err)
+	}
+
+	fallbackOrg := strings.TrimSpace(cfg.DeptSync.FallbackOrgName)
+	fallbackDept := strings.TrimSpace(cfg.DeptSync.FallbackDeptName)
+
+	var (
+		projections    []models.UserOrg
+		hitUniversal   int
+		hitEmpFallback int
+		hitFallbackOrg int
+		total          = len(boardUsers)
+	)
+	for _, bu := range boardUsers {
+		// a. 主：user_org.user_id == universal_id 直连
+		if p, ok := personByUniversalID[bu.UserId]; ok {
+			uo := models.UserOrg{UserId: bu.UserId, UserName: p.Username}
+			assignOrgFields(&uo, splitDeptPath(deptPathByID[p.DeptId]))
+			projections = append(projections, uo)
+			hitUniversal++
+			continue
+		}
+		// b. 次选：看板 user_id → 工号 → people 里的 person
+		if emp, ok := empByUID[bu.UserId]; ok {
+			if p, ok := peopleByEmp[emp]; ok {
+				name := p.Username
+				if strings.TrimSpace(name) == "" {
+					name = nameByEmp[emp] // person 缺名才用 git 派生真名兜底
+				}
+				uo := models.UserOrg{UserId: bu.UserId, UserName: name}
+				assignOrgFields(&uo, splitDeptPath(deptPathByID[p.DeptId]))
+				projections = append(projections, uo)
+				hitEmpFallback++
+				continue
+			}
+		}
+		// c. 兜底：a/b 都没命中。配置了 fallback_org_name 才回填 org1/org2（其余 org 空，user_name 不动）。
+		if fallbackOrg != "" {
+			uo := models.UserOrg{UserId: bu.UserId, UserName: bu.UserName, Org1: fallbackOrg, Org2: fallbackDept}
+			projections = append(projections, uo)
+			hitFallbackOrg++
+		}
+	}
+
+	if err := saveUserOrgDeptProjection(db, projections); err != nil {
 		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 		return err
 	}
-	logInfof("投影回填 user_org：经工号桥接命中并写入 %d 条 user_org 记录", matched)
+	logInfof("投影回填 user_org：universal_id 命中 %d / 工号次选命中 %d / 兜底 %d（共 %d 名看板用户，写入 %d 条）",
+		hitUniversal, hitEmpFallback, hitFallbackOrg, total, len(projections))
 
-	// 6. 刷新后端 org 映射（尽力而为）
+	// 5. 刷新后端 org 映射（尽力而为）
 	triggerOrgRefresh(cfg.BackendURL)
 
 	recordCommandRun("import-dept", startTime, len(depts)+len(deptUsers), 0, 0, nil)
@@ -396,13 +427,15 @@ func runImportDept(baseURL, queryKey string) error {
 
 var importDeptCmd = &cobra.Command{
 	Use:   "import-dept",
-	Short: "从 dept-sync 服务拉取部门树与人员，落库 dept/dept_user 并投影回填 user_org",
-	Long: `调用 dept-sync HTTP API（带 X-Query-Key）：先 /api/v1/department/tree 全量落 dept；
-再以看板 commits 中的 distinct 工号驱动，并发调 /api/v1/user/{工号}/departments 取主部门，
-落入 costrict_stat 的 dept / dept_user 表（仅命中的工号）。
-真名阶段1 从 commits.git_user_name 去尾部工号数字派生；
-并以工号经 commits.git_user_email 前缀桥接到看板 user_id，按 dept_path 拆 org1..org9 投影回填 user_org。
-universal_id 仅留存，不参与 JOIN。`,
+	Short: "从 dept-sync 服务拉取部门树与全量人员，落库 dept/dept_user 并投影回填 user_org",
+	Long: `调用 dept-sync HTTP API（带 X-Query-Key）：
+1. GET /api/v1/department/tree 全量落 dept，并构建 dept_id→dept_path 供投影查。
+2. 对公司根部门 GET /api/v1/department/{root}/users?include_children=true 一次拿全量人员
+   （工号 + 权威真名 username + universal_id + dept_id），落入全量花名册 dept_user。
+3. 投影回填 user_org：以 universal_id（== 看板 user_id）直连为主；未命中则经
+   commits.git_user_email 前缀的工号桥接为次选；仍未命中且配置了 dept_sync.fallback_org_name
+   时兜底到 org1=fallback_org_name / org2=fallback_dept_name。真名优先用 dept-sync username。
+4. 尽力触发 POST /api/v2/orgs/refresh 重载映射。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		baseURL, _ := cmd.Flags().GetString("base-url")
 		queryKey, _ := cmd.Flags().GetString("query-key")

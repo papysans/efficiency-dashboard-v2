@@ -180,9 +180,13 @@ org_csv_file: "./analysed/org_mapping.csv"
 org_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
 # dept-sync 部门同步服务（import-dept 用）：拉部门树+人员落库 dept/dept_user 并投影回填 user_org
 # base_url 填 dept-sync 服务地址（不含路由前缀）；query_key 由 dept-sync 管理员发放（X-Query-Key）
+# fallback_org_name：universal_id/工号都未命中 dept-sync 的看板用户兜底 org1（空=不兜底，保持原样）。
+# fallback_dept_name：兜底 org2（默认 "未知部门"），仅在 fallback_org_name 非空时生效。
 dept_sync:
   base_url: ""
   query_key: ""
+  fallback_org_name: ""
+  fallback_dept_name: "未知部门"
 # HTTP 代理（用于 git clone 等网络操作）
 http_proxy: "http://127.0.0.1:7890"
 

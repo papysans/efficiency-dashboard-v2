@@ -186,6 +186,11 @@ type Config struct {
 type DeptSyncConfig struct {
 	BaseURL  string `yaml:"base_url"`  // dept-sync 服务地址，如 http://127.0.0.1:8080（不含路由前缀）
 	QueryKey string `yaml:"query_key"` // 数据接口鉴权头 X-Query-Key 的值
+	// FallbackOrgName 投影时 universal_id/工号 都未命中 dept-sync 的看板用户的兜底 org1（默认空=不兜底，保持原样）。
+	// 内网建议填 "深信服科技股份有限公司"。
+	FallbackOrgName string `yaml:"fallback_org_name"`
+	// FallbackDeptName 兜底 org2（默认 "未知部门"），仅在 FallbackOrgName 非空时生效。
+	FallbackDeptName string `yaml:"fallback_dept_name"`
 }
 
 func LoadFirstConfig(files []string) (*Config, error) {
@@ -349,6 +354,9 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 	if c.TaskCreate.SilicaMaxDays == 0 {
 		c.TaskCreate.SilicaMaxDays = 7
+	}
+	if c.DeptSync.FallbackDeptName == "" {
+		c.DeptSync.FallbackDeptName = "未知部门"
 	}
 
 	return &c, nil

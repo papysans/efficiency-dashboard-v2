@@ -82,6 +82,31 @@ func TestDeriveRealName(t *testing.T) {
 	}
 }
 
+func TestFindRootDeptIDs(t *testing.T) {
+	t.Run("空parent_dept_id为根", func(t *testing.T) {
+		depts := []models.Dept{
+			{DeptId: "49", ParentDeptId: ""},
+			{DeptId: "1416", ParentDeptId: "49"},
+			{DeptId: "6560", ParentDeptId: "1416"},
+		}
+		roots := findRootDeptIDs(depts)
+		if len(roots) != 1 || roots[0] != "49" {
+			t.Fatalf("应识别单根 49, got %v", roots)
+		}
+	})
+	t.Run("悬挂父引用也算根", func(t *testing.T) {
+		depts := []models.Dept{
+			{DeptId: "49", ParentDeptId: ""},
+			{DeptId: "200", ParentDeptId: "999"}, // 父 999 不在集合里 → 也是根
+			{DeptId: "201", ParentDeptId: "200"},
+		}
+		roots := findRootDeptIDs(depts)
+		if len(roots) != 2 {
+			t.Fatalf("应识别两个根(49+200), got %v", roots)
+		}
+	})
+}
+
 func TestFlattenDeptTree(t *testing.T) {
 	tree := []deptSyncNode{
 		{DeptId: "49", DeptName: "深信服科技股份有限公司", DeptLevel: 1, Children: []deptSyncNode{
