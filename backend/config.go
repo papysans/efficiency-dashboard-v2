@@ -31,7 +31,14 @@ type Config struct {
 type DeptSyncConfig struct {
 	BaseURL  string `yaml:"base_url"`  // dept-sync 服务地址，如 http://127.0.0.1:8080
 	QueryKey string `yaml:"query_key"` // 数据接口鉴权头 X-Query-Key 的值
+	// RootDeptId 单根公司的 dept_id（优先级最高）。配置后组织树以该节点为唯一根，过滤掉 parent 链断裂的脏数据孤儿部门。
+	RootDeptId string `yaml:"root_dept_id"`
+	// RootDeptName 单根公司名（RootDeptId 未配置时按名字匹配根节点）。默认 "深信服科技股份有限公司"。
+	RootDeptName string `yaml:"root_dept_name"`
 }
+
+// DefaultRootDeptName 组织树单根公司默认名（dept-sync /department/tree 返回森林时据此找真正的公司根）。
+const DefaultRootDeptName = "深信服科技股份有限公司"
 
 var appConfig Config
 
@@ -50,6 +57,7 @@ func loadConfig(path string) (*Config, error) {
 	cfg.AnalysedDir = "../task"
 	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}
 	cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay
+	cfg.DeptSync.RootDeptName = DefaultRootDeptName
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -57,6 +65,10 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return &cfg, fmt.Errorf("解析 config.yaml 失败: %w", err)
+	}
+	// 配置未显式给 root_dept_name 时回落默认，避免 yaml 把空键覆成空串。
+	if strings.TrimSpace(cfg.DeptSync.RootDeptName) == "" {
+		cfg.DeptSync.RootDeptName = DefaultRootDeptName
 	}
 	return &cfg, nil
 }
