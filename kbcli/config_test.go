@@ -537,3 +537,44 @@ efficiency_v2:
 		t.Errorf("BaselineDefaults not loaded from explicit config: %+v", baseline)
 	}
 }
+
+// TestApplyAnalysisFloor 表驱动验证全局分析起始日下界逻辑。
+// 注意：applyAnalysisFloor 依赖全局 cfg；用例临时设置 cfg.AnalysisStartDate 后还原。
+func TestApplyAnalysisFloor(t *testing.T) {
+	// 命中下界分支会 logInfof，需确保 logger 已初始化，否则空指针 panic。
+	if logger == nil {
+		if err := InitLogger("error", "", "error"); err != nil {
+			t.Fatalf("InitLogger 失败: %v", err)
+		}
+	}
+	oldCfg := cfg
+	defer func() { cfg = oldCfg }()
+
+	tests := []struct {
+		name      string
+		floor     string
+		startDate string
+		want      string
+	}{
+		{name: "空startDate+有floor→返回floor", floor: "20260525", startDate: "", want: "20260525"},
+		{name: "显式startDate→原样返回(不被覆盖)", floor: "20260525", startDate: "20260601", want: "20260601"},
+		{name: "floor空→原样返回(空)", floor: "", startDate: "", want: ""},
+		{name: "floor空+显式startDate→原样返回", floor: "", startDate: "20260601", want: "20260601"},
+		{name: "floor为纯空白→视为未设, 原样返回", floor: "   ", startDate: "", want: ""},
+		{name: "startDate为纯空白+有floor→返回floor", floor: "20260525", startDate: "  ", want: "20260525"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg = &Config{AnalysisStartDate: tc.floor}
+			if got := applyAnalysisFloor(tc.startDate); got != tc.want {
+				t.Errorf("applyAnalysisFloor(%q) with floor %q = %q, want %q", tc.startDate, tc.floor, got, tc.want)
+			}
+		})
+	}
+
+	// cfg 为 nil 时不应 panic，原样返回。
+	cfg = nil
+	if got := applyAnalysisFloor(""); got != "" {
+		t.Errorf("applyAnalysisFloor with nil cfg = %q, want empty", got)
+	}
+}

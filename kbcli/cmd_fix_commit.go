@@ -30,6 +30,11 @@ var fixCommitCmd = &cobra.Command{
 			repoDir = cfg.RepoDir
 		}
 
+		// 未显式传 start-date 且非单日(date)/单提交(commit)模式时，套全局分析起始日下界。
+		if date == "" && commitID == "" {
+			startDate = applyAnalysisFloor(startDate)
+		}
+
 		return runFixCommit(repoDir, startDate, endDate, date, commitID, max)
 	},
 }

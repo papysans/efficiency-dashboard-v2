@@ -540,6 +540,10 @@ var importRepoCmd = &cobra.Command{
 		if maxDays <= 0 {
 			maxDays = cfg.TaskCreate.SilicaMaxDays
 		}
+		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
+		if date == "" {
+			startDate = applyAnalysisFloor(startDate)
+		}
 
 		// 执行本地导入流程
 		return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)

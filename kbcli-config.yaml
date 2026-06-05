@@ -190,10 +190,31 @@ dept_sync:
 # HTTP 代理（用于 git clone 等网络操作）
 http_proxy: "http://127.0.0.1:7890"
 
+# 分析起始日下界：所有取数/计算不处理此日期之前的数据（未显式传 --start-date 时自动套用）。
+# 开发模板默认 ""（不设下界，处理全部历史）；内网部署在 compose/kbcli/config.yaml 里设为 20260525。
+analysis_start_date: ""
+
 serve:
   port: 8080
+  init:
+    command: import
+    params:
+      force: false        # 启动只做增量补齐，不再 force 全量重算
   crontab:
-    - schedule: "0 0 * * * *"
+    # 每 4 小时增量 import（含 import-org 非破坏占位 + import-dept dept-sync 刷新真名/部门 + efficiency 重算）。
+    # 增量靠跳过已导入；下界由全局 analysis_start_date 控制，不碰起始日之前。
+    - schedule: "0 0 */4 * * *"
       command: import
       params:
         force: false
+    # 每日 04:30 LLM 估算新增 task（只补未估算的）
+    - schedule: "0 30 4 * * *"
+      command: fix-task
+    # 每日 05:00 LLM 估算新增 commit
+    - schedule: "0 0 5 * * *"
+      command: fix-commit
+    # 每周日 03:00 全量校正一次（force 重算 [起始日,今]，纠偏）
+    - schedule: "0 0 3 * * 0"
+      command: import
+      params:
+        force: true

@@ -63,6 +63,11 @@ var importCmd = &cobra.Command{
 		if maxDays <= 0 {
 			maxDays = cfg.TaskCreate.SilicaMaxDays
 		}
+		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
+		// 一处生效全流程：import-conv/import-repo/efficiency 都用这个 startDateStr。
+		if dateStr == "" {
+			startDateStr = applyAnalysisFloor(startDateStr)
+		}
 
 		steps := []struct {
 			name string

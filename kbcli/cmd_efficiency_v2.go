@@ -27,6 +27,10 @@ var efficiencyV2Cmd = &cobra.Command{
 				"end_date":   endDate,
 			})
 		}
+		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
+		if dateStr == "" {
+			startDate = applyAnalysisFloor(startDate)
+		}
 		return runEfficiencyV2(startDate, endDate, dateStr)
 	},
 }

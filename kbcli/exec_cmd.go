@@ -98,6 +98,9 @@ func executeImportConv(params map[string]interface{}) error {
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
 	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
+	if date == "" {
+		startDate = applyAnalysisFloor(startDate)
+	}
 	return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
 }
 
@@ -109,6 +112,9 @@ func executeImportRepo(params map[string]interface{}) error {
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
+	if date == "" {
+		startDate = applyAnalysisFloor(startDate)
+	}
 	return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
 }
 
@@ -138,6 +144,11 @@ func executeImport(params map[string]interface{}) error {
 	date := getStringParam(params, "date", "")
 	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
 	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
+	// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
+	// 一处生效全流程：import-conv/import-repo/efficiency(-v2) 都用这个 startDate。
+	if date == "" {
+		startDate = applyAnalysisFloor(startDate)
+	}
 	// 增量 days 窗【只用于取数】(import-conv/repo)：仅增量加行、安全。
 	// efficiency 重算仍用原始 startDate（cron 的 days 不传时=空=全量），避免跨窗 need 被
 	// 窗内 commit 部分覆盖（commit_ids 是覆盖更新，会永久丢掉窗外老 commit）。
@@ -200,6 +211,9 @@ func executeEfficiencyV2(params map[string]interface{}) error {
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
+	if date == "" {
+		startDate = applyAnalysisFloor(startDate)
+	}
 	return runEfficiencyV2(startDate, endDate, date)
 }
 
@@ -210,6 +224,9 @@ func executeFixTask(params map[string]interface{}) error {
 	date := getStringParam(params, "date", "")
 	specificTask := getStringParam(params, "task", "")
 	max := getIntParam(params, "max", 0)
+	if date == "" && specificTask == "" {
+		startDate = applyAnalysisFloor(startDate)
+	}
 	return runFixTask(taskDir, startDate, endDate, date, specificTask, max)
 }
 
@@ -220,5 +237,8 @@ func executeFixCommit(params map[string]interface{}) error {
 	date := getStringParam(params, "date", "")
 	commitID := getStringParam(params, "commit", "")
 	max := getIntParam(params, "max", 0)
+	if date == "" && commitID == "" {
+		startDate = applyAnalysisFloor(startDate)
+	}
 	return runFixCommit(repoDir, startDate, endDate, date, commitID, max)
 }

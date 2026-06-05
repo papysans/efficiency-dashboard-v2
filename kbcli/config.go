@@ -180,6 +180,10 @@ type Config struct {
 	TaskCreate     TaskCreateConfig      `yaml:"task_create"`
 	Serve          ServeConfig           `yaml:"serve"`
 	TaskStatistics TaskTimeStatistics    `yaml:"task_statistics"`
+	// AnalysisStartDate 全局分析起始日下界（YYYYMMDD，默认空=不设下界）。
+	// 未显式传 --start-date / start_date（且未传 date）时，按日期取数/计算的命令自动用它作为
+	// 起始下界，从而永不处理该日期之前的数据。显式传 start-date 时以显式为准，不被覆盖。
+	AnalysisStartDate string `yaml:"analysis_start_date"`
 }
 
 // DeptSyncConfig dept-sync 部门同步服务对接配置（import-dept 使用）
@@ -191,6 +195,17 @@ type DeptSyncConfig struct {
 	FallbackOrgName string `yaml:"fallback_org_name"`
 	// FallbackDeptName 兜底 org2（默认 "未知部门"），仅在 FallbackOrgName 非空时生效。
 	FallbackDeptName string `yaml:"fallback_dept_name"`
+}
+
+// applyAnalysisFloor 当未显式指定 start-date 时，用全局 analysis_start_date 作为起始下界。
+// 仅在 startDate 为空且 cfg.AnalysisStartDate 非空时生效；调用方需保证 date（单日）语义不被破坏
+// （date 与 start-date 互斥的命令应只在未传 date 时调用本函数）。
+func applyAnalysisFloor(startDate string) string {
+	if strings.TrimSpace(startDate) == "" && cfg != nil && strings.TrimSpace(cfg.AnalysisStartDate) != "" {
+		logInfof("应用分析起始日下界 analysis_start_date=%s", cfg.AnalysisStartDate)
+		return cfg.AnalysisStartDate
+	}
+	return startDate
 }
 
 func LoadFirstConfig(files []string) (*Config, error) {

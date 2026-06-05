@@ -28,6 +28,11 @@ var fixTaskCmd = &cobra.Command{
 
 		max, _ := cmd.Flags().GetInt("max")
 
+		// 未显式传 start-date 且非单日(date)/单任务(task)模式时，套全局分析起始日下界。
+		if date == "" && specificTask == "" {
+			startDate = applyAnalysisFloor(startDate)
+		}
+
 		return runFixTask(taskDir, startDate, endDate, date, specificTask, max)
 	},
 }

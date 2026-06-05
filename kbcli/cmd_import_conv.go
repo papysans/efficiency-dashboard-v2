@@ -1013,6 +1013,10 @@ var importConvCmd = &cobra.Command{
 		if analysedDir == "" {
 			analysedDir = cfg.AnalysedDir
 		}
+		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
+		if date == "" {
+			startDate = applyAnalysisFloor(startDate)
+		}
 
 		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
 	},
