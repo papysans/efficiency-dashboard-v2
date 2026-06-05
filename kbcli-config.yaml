@@ -178,6 +178,11 @@ repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
 analysed_dir: "./analysed"
 org_csv_file: "./analysed/org_mapping.csv"
 org_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
+# dept-sync 部门同步服务（import-dept 用）：拉部门树+人员落库 dept/dept_user 并投影回填 user_org
+# base_url 填 dept-sync 服务地址（不含路由前缀）；query_key 由 dept-sync 管理员发放（X-Query-Key）
+dept_sync:
+  base_url: ""
+  query_key: ""
 # HTTP 代理（用于 git clone 等网络操作）
 http_proxy: "http://127.0.0.1:7890"
 

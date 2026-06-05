@@ -175,10 +175,17 @@ type Config struct {
 	EfficiencyV2   EfficiencyV2Config    `yaml:"efficiency_v2"`
 	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
 	OrgDSN         string                `yaml:"org_dsn"`
+	DeptSync       DeptSyncConfig        `yaml:"dept_sync"`
 	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
 	TaskCreate     TaskCreateConfig      `yaml:"task_create"`
 	Serve          ServeConfig           `yaml:"serve"`
 	TaskStatistics TaskTimeStatistics    `yaml:"task_statistics"`
+}
+
+// DeptSyncConfig dept-sync 部门同步服务对接配置（import-dept 使用）
+type DeptSyncConfig struct {
+	BaseURL  string `yaml:"base_url"`  // dept-sync 服务地址，如 http://127.0.0.1:8080（不含路由前缀）
+	QueryKey string `yaml:"query_key"` // 数据接口鉴权头 X-Query-Key 的值
 }
 
 func LoadFirstConfig(files []string) (*Config, error) {

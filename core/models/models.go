@@ -257,6 +257,41 @@ type UserGroup struct {
 
 func (UserGroup) TableName() string { return "user_groups" }
 
+// Dept 部门树（来自 dept-sync 的 department，邻接表 parent_dept_id + 物化路径 dept_path）
+type Dept struct {
+	DeptId         string    `gorm:"primaryKey;type:varchar(64)" json:"dept_id"`
+	DeptName       string    `gorm:"type:varchar(128)" json:"dept_name"`
+	ParentDeptId   string    `gorm:"type:varchar(64);index" json:"parent_dept_id"`
+	DeptPath       string    `gorm:"type:varchar(1024);index" json:"dept_path"`
+	DeptLevel      int       `gorm:"type:int" json:"dept_level"`
+	OrderNum       int       `gorm:"type:int;default:0" json:"order_num"`
+	LeaderId       string    `gorm:"type:varchar(64)" json:"leader_id"` // 工号口径
+	ChildDeptCount int       `gorm:"type:int;default:0" json:"child_dept_count"`
+	Status         int       `gorm:"type:int;default:1" json:"status"`
+	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (Dept) TableName() string { return "dept" }
+
+// DeptUser 人员归属（来自 dept-sync 的 user_department）。
+// 主键 EmpNo（工号）= dept-sync.user_department.user_id，是与看板 commits.git_user_email 前缀对接的 JOIN 锚点。
+// UniversalId 仅留存，不参与 JOIN（实测与看板 user_id 0% 命中）。
+type DeptUser struct {
+	EmpNo       string    `gorm:"primaryKey;type:varchar(64)" json:"emp_no"`
+	RealName    string    `gorm:"type:varchar(128);index" json:"real_name"`
+	UniversalId string    `gorm:"type:varchar(64)" json:"universal_id"`
+	DeptId      string    `gorm:"type:varchar(64);index" json:"dept_id"`
+	Position    string    `gorm:"type:varchar(128)" json:"position"`
+	IsMain      int       `gorm:"type:int;default:1" json:"is_main"`
+	EntryTime   string    `gorm:"type:varchar(20)" json:"entry_time"`
+	Status      int       `gorm:"type:int;default:1" json:"status"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (DeptUser) TableName() string { return "dept_user" }
+
 func OpenGormDB(dsn string) (*gorm.DB, error) {
 	db, err := gorm.Open(postgresOpener(dsn), &gorm.Config{})
 	if err != nil {
@@ -301,6 +336,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&AnchorSet{},
 		&BaselineCoefficient{},
 		&BaselineFusionWeight{},
+		&Dept{},
+		&DeptUser{},
 	); err != nil {
 		return fmt.Errorf("AutoMigrate 失败: %w", err)
 	}
