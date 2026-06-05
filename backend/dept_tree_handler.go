@@ -332,5 +332,31 @@ func getDeptTreeMembersV2(c *gin.Context) {
 	summary.CalendarRatio = efficiencyV2Ratio(summary.BaselineCalendarMin, summary.ActualCalendarMin)
 	summary.WorkRatio = efficiencyV2Ratio(totalBaselineWork, totalActualWork)
 
+	// 有看板活动的成员上提、无活动的下沉；活跃组内按合并需求数→提交数→实际日历分钟降序（活跃在前，
+	// 与 aggregateUsersV2 的"活跃在前"口径一致）；无活动组内按真名升序（RealName 为空退用 EmpNo）。
+	sort.SliceStable(members, func(i, j int) bool {
+		if members[i].HasKanbanData != members[j].HasKanbanData {
+			return members[i].HasKanbanData
+		}
+		if members[i].HasKanbanData {
+			if members[i].MergedNeedCount != members[j].MergedNeedCount {
+				return members[i].MergedNeedCount > members[j].MergedNeedCount
+			}
+			if members[i].CommitCount != members[j].CommitCount {
+				return members[i].CommitCount > members[j].CommitCount
+			}
+			return members[i].ActualCalendarMin > members[j].ActualCalendarMin
+		}
+		ni := members[i].RealName
+		if ni == "" {
+			ni = members[i].EmpNo
+		}
+		nj := members[j].RealName
+		if nj == "" {
+			nj = members[j].EmpNo
+		}
+		return ni < nj
+	})
+
 	c.JSON(http.StatusOK, DeptMembersResponse{Summary: summary, Members: members})
 }
