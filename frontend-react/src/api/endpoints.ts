@@ -95,6 +95,36 @@ export function getUserDetailV2(userId: string, params: { startDate?: string; en
   return apiGet<UserV2DetailResponse>(`/v2/users/${encodeURIComponent(userId)}`, params)
 }
 
+/**
+ * 翻页拉全 users：/v2/users 服务端按 pageSize 切片，单次 pageSize:1000 在 total>1000 时静默截断
+ * （实测内网 1462 用户被截到 1000）。本页分页/排序/过滤全客户端做，必须先拉全量。
+ * 先拉第 1 页读 total，不足则继续翻页合并。MAX_PAGES 兜底防死循环。
+ */
+export async function getAllUsersV2(params: { startDate?: string; endDate?: string }): Promise<UserV2Row[]> {
+  const MAX_PAGES = 50
+  const PAGE_SIZE = 500
+  const all: UserV2Row[] = []
+  let total = Infinity
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const res = await getUsersV2({ ...params, page, pageSize: PAGE_SIZE })
+    const rows = res.data ?? []
+    all.push(...rows)
+    if (typeof res.total === 'number') total = res.total
+    if (rows.length === 0 || all.length >= total) break
+  }
+  return all
+}
+
+// 用户 user_id(==dept-sync universal_id) → 权威真名+工号（来自 dept_user）。供 useUserNameMap 解析「真名(工号)」。
+export interface UserNameRow {
+  user_id: string
+  real_name: string
+  emp_no: string
+}
+export function getUserNamesV2() {
+  return apiGet<UserNameRow[]>('/v2/user-names')
+}
+
 // ---- Orgs（列表小数口径 / 详情百分比口径） ----
 export function getOrgV2(params: { startDate?: string; endDate?: string }) {
   return apiGet<ApiData<OrgV2Row> & { no_org_mapping?: boolean }>('/v2/orgs', params)

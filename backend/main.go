@@ -117,6 +117,7 @@ func main() {
 
 		v2.GET("/users", listUsersV2Native)
 		v2.GET("/users/:userId", getUserV2DetailNative)
+		v2.GET("/user-names", getUserNamesV2)
 
 		v2.GET("/repos", listReposV2)
 		v2.GET("/repos/detail", getRepoDetailV2)

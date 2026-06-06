@@ -291,3 +291,30 @@ func listOrgsV2Native(c *gin.Context) {
 
 	c.JSON(http.StatusOK, OrgsV2NativeResponse{Data: data, NoOrgMapping: !mapped})
 }
+
+// UserNameRow 是 /api/v2/user-names 的一行：看板 user_id(==dept-sync universal_id) → 权威真名 + 工号。
+type UserNameRow struct {
+	UserId   string `json:"user_id"` // == dept-sync universal_id == 看板 user_id
+	RealName string `json:"real_name"`
+	EmpNo    string `json:"emp_no"`
+}
+
+// getUserNamesV2 GET /api/v2/user-names
+// 从 dept_user(dept-sync 同步落库)出 user_id→真名+工号映射，供前端把 UUID 解析成「真名(工号)」。
+// 看板 user_id 即 dept-sync universal_id，故按 universal_id 非空的行返回。
+func getUserNamesV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	var rows []models.DeptUser
+	if err := statDB.Where("universal_id <> ''").Find(&rows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 dept_user 失败: " + err.Error()})
+		return
+	}
+	out := make([]UserNameRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, UserNameRow{UserId: r.UniversalId, RealName: r.RealName, EmpNo: r.EmpNo})
+	}
+	c.JSON(http.StatusOK, out)
+}

@@ -4,7 +4,7 @@
 //       keyword 客户端过滤 + 客户端分页；URL 同步 startDate/endDate/order。
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { getUsersV2 } from '@/api/endpoints'
+import { getAllUsersV2 } from '@/api/endpoints'
 import type { UserV2Row } from '@/api/types'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { formatDuration, formatNumber } from '@/lib/formatters'
@@ -152,12 +152,12 @@ export default function UserList() {
     const s = stateFromParams(searchParams)
     setLoading(true)
     setErrMsg('')
-    // pageSize 1000 一次性全量（对齐 Vue UserViewV2）：/v2/users 默认 pageSize=50 会服务端截断，
-    // 而本页分页/排序/过滤全在客户端做，必须先把全量拉回来。
-    getUsersV2({ startDate: formatDateParam(s.dateRange[0]), endDate: formatDateParam(s.dateRange[1]), pageSize: 1000 })
-      .then((res) => {
+    // 翻页拉全（getAllUsersV2 内部循环到 total）：单次 pageSize:1000 会在 total>1000 时截断（内网 1462 被截到 1000）。
+    // 本页分页/排序/过滤全在客户端做，必须先把全量拉回来。
+    getAllUsersV2({ startDate: formatDateParam(s.dateRange[0]), endDate: formatDateParam(s.dateRange[1]) })
+      .then((rows) => {
         if (aborted) return
-        setAllRows(res.data || [])
+        setAllRows(rows || [])
       })
       .catch((err: unknown) => {
         if (aborted) return
