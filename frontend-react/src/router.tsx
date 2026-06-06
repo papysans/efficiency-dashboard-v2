@@ -11,8 +11,6 @@ import UserDetail from '@/pages/users/UserDetail'
 import UserGroupDetail from '@/pages/users/UserGroupDetail'
 import RepoList from '@/pages/repos/RepoList'
 import RepoDetail from '@/pages/repos/RepoDetail'
-import OrgList from '@/pages/orgs/OrgList'
-import OrgDetail from '@/pages/orgs/OrgDetail'
 import OrgTree from '@/pages/orgs/OrgTree'
 import CommitList from '@/pages/commits/CommitList'
 import CommitDetail from '@/pages/commits/CommitDetail'
@@ -52,9 +50,7 @@ export const router = createBrowserRouter([
       { path: 'user/:userId', element: <UserDetail /> },
       { path: 'repo-v2', element: <RepoList /> },
       { path: 'repo/:repoAddr/:repoBranch?', element: <RepoDetail /> },
-      { path: 'org-v2', element: <OrgList /> },
       { path: 'org-tree-v2', element: <OrgTree /> },
-      { path: 'org/:orgPath', element: <OrgDetail /> },
       { path: 'project-v2', element: <ProjectList /> },
       { path: 'project/:projectId', element: <ProjectDetail /> },
       { path: 'commit-v2', element: <CommitList /> },
@@ -69,4 +65,4 @@ export const router = createBrowserRouter([
       { path: '*', element: <Placeholder title="页面不存在" /> },
     ],
   },
-])
+], { basename: '/kanban' })

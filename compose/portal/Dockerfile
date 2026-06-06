@@ -12,4 +12,4 @@ FROM nginx:1.27-alpine AS runtime
 ENV TZ=Asia/Shanghai
 
 COPY compose/portal/nginx.conf /etc/nginx/nginx.conf
-COPY --from=builder /app/frontend-react/dist /var/www
+COPY --from=builder /app/frontend-react/dist /var/www/kanban

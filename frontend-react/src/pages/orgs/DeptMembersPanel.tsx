@@ -10,7 +10,12 @@ import { formatDuration, formatNumber } from '@/lib/formatters'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { Tag } from '@/components/ui/Tag'
-import { fmtCostVal } from './orgDetailShared'
+
+/** 费用单值（null → '-'，否则 2 位）。 */
+function fmtCostVal(value: number | null | undefined): string {
+  if (value == null) return '-'
+  return Number(value).toFixed(2)
+}
 
 interface DeptMembersPanelProps {
   /** 选中的 dept-sync 部门 ID。空 → 占位提示。 */

@@ -257,19 +257,6 @@ export default function CommitList() {
       search: `?startDate=${formatDateParam(state.dateRange[0])}&endDate=${formatDateParam(state.dateRange[1])}`,
     })
   }
-  function goToOrg(row: CommitListItem, e: React.MouseEvent) {
-    e.stopPropagation()
-    const path = orgPath(row)
-    if (!path) return
-    const q = new URLSearchParams({
-      startDate: formatDateParam(state.dateRange[0]),
-      endDate: formatDateParam(state.dateRange[1]),
-    })
-    ;[row.org1, row.org2, row.org3, row.org4].forEach((o, i) => {
-      if (o) q.set(`org${i + 1}`, o)
-    })
-    navigate({ pathname: `/org/${encodeURIComponent(path)}`, search: `?${q.toString()}` })
-  }
   function goToRepo(row: CommitListItem, e: React.MouseEvent) {
     e.stopPropagation()
     if (!row.repo_addr) return
@@ -401,14 +388,12 @@ export default function CommitList() {
                       <td className={TD}>{formatLocalTime(row.commit_time)}</td>
                       <td className={TD}>
                         {hasOrg ? (
-                          <button
-                            type="button"
-                            className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 max-w-[150px] truncate inline-block align-bottom focus:outline-none focus-visible:underline"
+                          <span
+                            className="max-w-[150px] truncate inline-block align-bottom"
                             title={orgPath(row)}
-                            onClick={(e) => goToOrg(row, e)}
                           >
                             {orgPath(row)}
-                          </button>
+                          </span>
                         ) : (
                           '-'
                         )}

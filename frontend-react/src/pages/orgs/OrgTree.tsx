@@ -176,7 +176,7 @@ export default function OrgTree() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">组织树</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">组织</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             左树为 dept-sync 权威部门树；点部门查看其直属成员花名册（按 universal_id 对到看板指标，无活动成员也列出）。
           </p>
