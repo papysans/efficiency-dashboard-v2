@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/estimator"
 	"kanban/kbcli/internal/llm"
 	"strings"
@@ -120,7 +121,7 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 type EfficiencyV2PipelineArgs struct {
 	StartDate      string
 	EndDate        string
-	EfficiencyV2   EfficiencyV2Config
+	EfficiencyV2   efficiencyv2.EfficiencyV2Config
 	AIEstimation   llm.AIEstimationConfig
 	AlgoEstimation estimator.EstimateConfig
 }
@@ -142,8 +143,8 @@ func RunEfficiencyV2Pipeline(db *gorm.DB, args EfficiencyV2PipelineArgs) error {
 
 func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArgs) (EfficiencyV2PipelineCounts, error) {
 	counts := EfficiencyV2PipelineCounts{}
-	args.EfficiencyV2 = normalizeEfficiencyV2Config(args.EfficiencyV2)
-	args.AlgoEstimation = normalizeEfficiencyV2AlgoConfig(args.AlgoEstimation)
+	args.EfficiencyV2 = efficiencyv2.NormalizeEfficiencyV2Config(args.EfficiencyV2)
+	args.AlgoEstimation = efficiencyv2.NormalizeEfficiencyV2AlgoConfig(args.AlgoEstimation)
 
 	if args.StartDate == "" || args.EndDate == "" {
 		convStart, convEnd, err := LookupEfficiencyV2ConversationDateRange(db)
@@ -159,14 +160,14 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 		logInfof("efficiency-v2: 日期窗自动夹紧到 conversation 范围 %s ~ %s", args.StartDate, args.EndDate)
 	}
 
-	if err := EnsureEfficiencyV2BaselineACoefficients(db, ""); err != nil {
+	if err := efficiencyv2.EnsureEfficiencyV2BaselineACoefficients(db, ""); err != nil {
 		return counts, fmt.Errorf("ensure baseline coefficients: %w", err)
 	}
-	if err := EnsureEfficiencyV2FusionWeightSnapshot(db, efficiencyV2DefaultTeamID, efficiencyV2MondayAnchor(time.Now().UTC()), args.EfficiencyV2.BaselineDefaults); err != nil {
+	if err := efficiencyv2.EnsureEfficiencyV2FusionWeightSnapshot(db, efficiencyv2.EfficiencyV2DefaultTeamID, efficiencyv2.EfficiencyV2MondayAnchor(time.Now().UTC()), args.EfficiencyV2.BaselineDefaults); err != nil {
 		return counts, fmt.Errorf("ensure fusion weights: %w", err)
 	}
 
-	events, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, efficiencyV2ConversationEventQuery{
+	events, err := efficiencyv2.NormalizeAndUpsertEfficiencyV2ConversationEvents(db, efficiencyv2.EfficiencyV2ConversationEventQuery{
 		StartDate: args.StartDate,
 		EndDate:   args.EndDate,
 	})
@@ -175,17 +176,17 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 	}
 	counts.Events = len(events)
 
-	metrics, err := BuildAndUpsertEfficiencyV2SessionStageMetrics(db, events, args.EfficiencyV2)
+	metrics, err := efficiencyv2.BuildAndUpsertEfficiencyV2SessionStageMetrics(db, events, args.EfficiencyV2)
 	if err != nil {
 		return counts, fmt.Errorf("build stage metrics: %w", err)
 	}
 	counts.StageMetrics = len(metrics)
 
-	needs, err := ResolveAndUpsertEfficiencyV2Needs(db, args.EfficiencyV2, args.StartDate, args.EndDate)
+	needs, err := efficiencyv2.ResolveAndUpsertEfficiencyV2Needs(db, args.EfficiencyV2, args.StartDate, args.EndDate)
 	if err != nil {
 		return counts, fmt.Errorf("resolve needs: %w", err)
 	}
-	if _, err := AggregateAndUpsertEfficiencyV2NeedActuals(db, needs, args.EfficiencyV2, args.AlgoEstimation); err != nil {
+	if _, err := efficiencyv2.AggregateAndUpsertEfficiencyV2NeedActuals(db, needs, args.EfficiencyV2, args.AlgoEstimation); err != nil {
 		return counts, fmt.Errorf("aggregate need actuals: %w", err)
 	}
 	needs, err = ReloadEfficiencyV2Needs(db, needs)
@@ -201,14 +202,14 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 	// self-bootstrap anchors. Per design §4.3 + line 798, the team's own merged
 	// high-confidence Needs become anchors for future kNN runs.
 	if needsReloaded, err := ReloadEfficiencyV2Needs(db, needs); err == nil {
-		if added, err := UpsertEfficiencyV2SelfBootstrapAnchors(db, needsReloaded); err != nil {
+		if added, err := efficiencyv2.UpsertEfficiencyV2SelfBootstrapAnchors(db, needsReloaded); err != nil {
 			logWarnf("self-bootstrap anchor 写入失败: %v", err)
 		} else if added > 0 {
 			logInfof("self-bootstrap 写入 %d 个 team anchor（下次跑 kNN 生效）", added)
 		}
 	}
 
-	weeklyCount, err := AggregateAndUpsertEfficiencyV2UserProductivity(db, args.EfficiencyV2, args.StartDate, args.EndDate)
+	weeklyCount, err := efficiencyv2.AggregateAndUpsertEfficiencyV2UserProductivity(db, args.EfficiencyV2, args.StartDate, args.EndDate)
 	if err != nil {
 		return counts, fmt.Errorf("user productivity v2: %w", err)
 	}
@@ -237,7 +238,7 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 	if len(needs) == 0 {
 		return nil
 	}
-	coefs := LoadEfficiencyV2BaselineACoefficients(db, "")
+	coefs := efficiencyv2.LoadEfficiencyV2BaselineACoefficients(db, "")
 	// Wire yaml algo_estimation.commit_line_per_minutes into baseline_algo exec.
 	// Per design (line 235-240, 731): baseline_exec and actual_uncovered MUST use
 	// the same "古法 lines_per_min" rate. Without this override the baseline uses
@@ -252,11 +253,11 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 	if v := args.EfficiencyV2.BaselineAlgo.ExecFileCoordMin; v > 0 {
 		coefs.ExecFileCoordMin = v
 	}
-	anchors, err := LoadEfficiencyV2KNNAnchors(db)
+	anchors, err := efficiencyv2.LoadEfficiencyV2KNNAnchors(db)
 	if err != nil {
 		return err
 	}
-	weights, density, _, err := LookupEfficiencyV2FusionWeights(db, efficiencyV2DefaultTeamID, args.EfficiencyV2.BaselineDefaults)
+	weights, density, _, err := efficiencyv2.LookupEfficiencyV2FusionWeights(db, efficiencyv2.EfficiencyV2DefaultTeamID, args.EfficiencyV2.BaselineDefaults)
 	if err != nil {
 		return err
 	}
@@ -264,8 +265,8 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 	for i := range needs {
 		logProgress("[efficiency-v2] 基线融合(含LLM)", i+1, len(needs), 1)
 		need := &needs[i]
-		sessionIDs := efficiencyV2StringsFromJSON(need.SessionIds)
-		commitIDs := efficiencyV2StringsFromJSON(need.CommitIds)
+		sessionIDs := efficiencyv2.EfficiencyV2StringsFromJSON(need.SessionIds)
+		commitIDs := efficiencyv2.EfficiencyV2StringsFromJSON(need.CommitIds)
 
 		var sessions []models.SessionStageMetric
 		if len(sessionIDs) > 0 {
@@ -286,23 +287,23 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 			}
 		}
 
-		algoResult := ComputeEfficiencyV2BaselineA(*need, sessions, nil, commits, coefs)
-		PersistEfficiencyV2BaselineAOnNeed(need, algoResult)
+		algoResult := efficiencyv2.ComputeEfficiencyV2BaselineA(*need, sessions, nil, commits, coefs)
+		efficiencyv2.PersistEfficiencyV2BaselineAOnNeed(need, algoResult)
 
-		knnResult := ComputeEfficiencyV2BaselineB(BuildEfficiencyV2NeedFeatureVector(*need, sessions), anchors, efficiencyV2KNNDefaultK)
-		PersistEfficiencyV2BaselineBOnNeed(need, knnResult)
+		knnResult := efficiencyv2.ComputeEfficiencyV2BaselineB(efficiencyv2.BuildEfficiencyV2NeedFeatureVector(*need, sessions), anchors, efficiencyv2.EfficiencyV2KNNDefaultK)
+		efficiencyv2.PersistEfficiencyV2BaselineBOnNeed(need, knnResult)
 
-		llmResult := CallAIForNeedEstimationV4(BuildEfficiencyV2NeedStructuredSummary(*need, sessions, commits, tasks), args.AIEstimation)
-		PersistEfficiencyV2BaselineCOnNeed(need, llmResult)
+		llmResult := efficiencyv2.CallAIForNeedEstimationV4(efficiencyv2.BuildEfficiencyV2NeedStructuredSummary(*need, sessions, commits, tasks), args.AIEstimation)
+		efficiencyv2.PersistEfficiencyV2BaselineCOnNeed(need, llmResult)
 
-		fusionResult := ComputeEfficiencyV2Fusion(*need, EfficiencyV2FusionInputs{
+		fusionResult := efficiencyv2.ComputeEfficiencyV2Fusion(*need, efficiencyv2.EfficiencyV2FusionInputs{
 			AlgoMin:     algoResult.TotalMin,
 			KNNMin:      knnResult.Estimate,
 			LLMMin:      llmResult.TotalMin,
 			Weights:     weights,
 			TeamDensity: density,
 		}, args.EfficiencyV2)
-		PersistEfficiencyV2FusionOnNeed(need, fusionResult, args.EfficiencyV2)
+		efficiencyv2.PersistEfficiencyV2FusionOnNeed(need, fusionResult, args.EfficiencyV2)
 	}
 	return persistEfficiencyV2NeedBaselineFusion(db, needs)
 }

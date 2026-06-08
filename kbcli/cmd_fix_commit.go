@@ -177,7 +177,7 @@ func callAIForCommitEstimation(comment, diff string, diffLines int) (float64, st
 		return 0, "", err
 	}
 
-	jsonText := extractJSON(content)
+	jsonText := llm.ExtractJSON(content)
 	var result struct {
 		Minutes float64 `json:"ancient_minutes"`
 		Reason  string  `json:"ancient_reason"`

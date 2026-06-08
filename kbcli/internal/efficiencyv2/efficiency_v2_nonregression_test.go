@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"go/parser"
@@ -106,7 +106,7 @@ func stripCommentsAndStrings(src string) string {
 // signature of `computeEfficiencyV2BaselineExec` operates on commit
 // DiffLines only.
 func TestEfficiencyV2BaselineAExecDoesNotReadCommitAncient(t *testing.T) {
-	need := models.Need{NeedId: "n-1", TouchedFiles: efficiencyV2StringJSON([]string{"src/app.go"})}
+	need := models.Need{NeedId: "n-1", TouchedFiles: EfficiencyV2StringJSON([]string{"src/app.go"})}
 	// CommitAncientMinutes set to a wildly large value; v2 exec must ignore it.
 	commit := models.Commit{CommitId: "c1", DiffLines: 100, CommitAncientMinutes: 99999}
 	coefs := DefaultEfficiencyV2BaselineACoefficients()
@@ -117,16 +117,5 @@ func TestEfficiencyV2BaselineAExecDoesNotReadCommitAncient(t *testing.T) {
 	// expected = 100 / (100/480) + 1*30 = 480 + 30 = 510, definitely << 99999
 	if *exec >= 99999 {
 		t.Fatalf("exec = %.2f looks like it absorbed CommitAncientMinutes", *exec)
-	}
-}
-
-// TestEfficiencyV2RegisteredLegacyRemoved confirms the v2 efficiency task type
-// is registered and the retired legacy `efficiency` task type is gone.
-func TestEfficiencyV2RegisteredLegacyRemoved(t *testing.T) {
-	if validTaskTypes["efficiency"] {
-		t.Fatalf("legacy `efficiency` task type should be removed")
-	}
-	if !validTaskTypes["efficiency-v2"] {
-		t.Fatalf("`efficiency-v2` task type should be registered")
 	}
 }

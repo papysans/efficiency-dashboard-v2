@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 
 const (
 	efficiencyV2ConfidenceUnknown = "unknown"
-	efficiencyV2DefaultTeamID     = "default"
+	EfficiencyV2DefaultTeamID     = "default"
 )
 
 type EfficiencyV2FusionInputs struct {
@@ -48,7 +48,7 @@ type EfficiencyV2FusionResult struct {
 // snapshot when no rows exist for the requested team and week.
 func EnsureEfficiencyV2FusionWeightSnapshot(db *gorm.DB, teamID string, weekStart time.Time, defaults EfficiencyV2BaselineDefaults) error {
 	if teamID == "" {
-		teamID = efficiencyV2DefaultTeamID
+		teamID = EfficiencyV2DefaultTeamID
 	}
 	// Find existing rows for this team+week. If any are learned (not cold_start),
 	// preserve them — those are real Bayesian updates. If they're all cold_start,
@@ -98,7 +98,7 @@ func EnsureEfficiencyV2FusionWeightSnapshot(db *gorm.DB, teamID string, weekStar
 // the team. Cold-start defaults are returned when no row exists.
 func LookupEfficiencyV2FusionWeights(db *gorm.DB, teamID string, defaults EfficiencyV2BaselineDefaults) (EfficiencyV2BaselineDefaults, float64, string, error) {
 	if teamID == "" {
-		teamID = efficiencyV2DefaultTeamID
+		teamID = EfficiencyV2DefaultTeamID
 	}
 	var row models.BaselineFusionWeight
 	err := db.Where("team_id = ?", teamID).Order("snapshot_ts DESC").First(&row).Error
@@ -121,7 +121,7 @@ func LookupEfficiencyV2FusionWeights(db *gorm.DB, teamID string, defaults Effici
 // ComputeEfficiencyV2Fusion fuses available baselines, derives the calendar
 // efficiency ratio, computes the confidence level, and flags outliers.
 func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs, cfg EfficiencyV2Config) EfficiencyV2FusionResult {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	result := EfficiencyV2FusionResult{}
 
 	type baseline struct {
@@ -279,7 +279,7 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 }
 
 func classifyEfficiencyV2Confidence(need models.Need, result EfficiencyV2FusionResult, baselineCount int, cfg EfficiencyV2Config) string {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	if baselineCount == 0 {
 		return efficiencyV2ConfidenceUnknown
 	}
@@ -320,7 +320,7 @@ func classifyEfficiencyV2Confidence(need models.Need, result EfficiencyV2FusionR
 }
 
 func PersistEfficiencyV2FusionOnNeed(need *models.Need, result EfficiencyV2FusionResult, cfg EfficiencyV2Config) {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	need.BaselineFusedWorkMin = result.FusedWorkMin
 	need.BaselineSpreadWorkMin = result.SpreadWorkMin
 	need.BaselineCalendarMin = result.CalendarMin

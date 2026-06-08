@@ -1,6 +1,6 @@
 //go:build integration
 
-package main
+package efficiencyv2
 
 import (
 	"testing"
@@ -17,7 +17,7 @@ func TestEfficiencyV2IngestionStages_PopulatesEventsAndStageMetrics(t *testing.T
 		t.Fatalf("seed fixture: %v", err)
 	}
 
-	events, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, efficiencyV2ConversationEventQuery{
+	events, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, EfficiencyV2ConversationEventQuery{
 		StartDate: "2026-05-18",
 		EndDate:   "2026-05-24",
 	})
@@ -64,7 +64,7 @@ func TestEfficiencyV2IngestionStages_PopulatesEventsAndStageMetrics(t *testing.T
 		}
 	})
 
-	eventsAgain, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, efficiencyV2ConversationEventQuery{
+	eventsAgain, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, EfficiencyV2ConversationEventQuery{
 		StartDate: "2026-05-18",
 		EndDate:   "2026-05-24",
 	})

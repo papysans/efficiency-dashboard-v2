@@ -174,7 +174,7 @@ func callAIForAncientEstimation(title string, diffLines int, totalChars int64) (
 		return 0, "", err
 	}
 
-	jsonText := extractJSON(content)
+	jsonText := llm.ExtractJSON(content)
 	var parsed struct {
 		Step3 struct {
 			FinalMinutes float64 `json:"final_minutes"`

@@ -10,20 +10,20 @@ import (
 // 自动化测评/客户端占位/API 错误占位等无信息行。
 //
 // 三层规则按优先级递进：
-//   1. 单条 conversation 规则（model / work_dir / user_input / error_response / zero_interaction）
-//   2. 重复阈值（同 work_dir + 同 user_input 高频重复 → 自动化探针）
-//   3. **Task signature 分类**（无需配 work_dir，靠 task 内多条行为特征自动识别 bench 噪音）
+//  1. 单条 conversation 规则（model / work_dir / user_input / error_response / zero_interaction）
+//  2. 重复阈值（同 work_dir + 同 user_input 高频重复 → 自动化探针）
+//  3. **Task signature 分类**（无需配 work_dir，靠 task 内多条行为特征自动识别 bench 噪音）
 //
 // 推荐：尽量用 task_signature，少用 blocked_work_dirs（避免误伤同目录的真实开发）。
 type NoiseFilterConfig struct {
-	Enabled                bool                  `yaml:"enabled"`
-	BlockedModels          []string              `yaml:"blocked_models"`
-	ErrorResponsePatterns  []string              `yaml:"error_response_patterns"`
-	BlockedWorkDirs        []string              `yaml:"blocked_work_dirs"`
-	BlockedUserInputExact  []string              `yaml:"blocked_user_input_exact"`
-	DropZeroInteraction    bool                  `yaml:"drop_zero_interaction"`
-	RepeatThreshold        RepeatThresholdConfig `yaml:"repeat_threshold"`
-	TaskSignature          TaskSignatureConfig   `yaml:"task_signature"`
+	Enabled               bool                  `yaml:"enabled"`
+	BlockedModels         []string              `yaml:"blocked_models"`
+	ErrorResponsePatterns []string              `yaml:"error_response_patterns"`
+	BlockedWorkDirs       []string              `yaml:"blocked_work_dirs"`
+	BlockedUserInputExact []string              `yaml:"blocked_user_input_exact"`
+	DropZeroInteraction   bool                  `yaml:"drop_zero_interaction"`
+	RepeatThreshold       RepeatThresholdConfig `yaml:"repeat_threshold"`
+	TaskSignature         TaskSignatureConfig   `yaml:"task_signature"`
 }
 
 type RepeatThresholdConfig struct {
@@ -34,13 +34,13 @@ type RepeatThresholdConfig struct {
 // TaskSignatureConfig 控制 task-level 自动识别。
 // 一个 task 同时满足「零代码产出」+ (「AI 大量被拒/澄清」 OR 「AI 几乎没说话」) 时被判为 bench 噪音。
 type TaskSignatureConfig struct {
-	Enabled                  bool     `yaml:"enabled"`
-	RefusalKeywords          []string `yaml:"refusal_keywords"`
-	RefusalRatioAbove        float64  `yaml:"refusal_ratio_above"`         // refusal 命中比例 > 此值
-	UselessResponseRatioAbove float64 `yaml:"useless_response_ratio_above"` // 空/极短 response 比例 > 此值
-	UselessResponseMaxChars  int      `yaml:"useless_response_max_chars"`   // response 短于此字符数算 "无信息"
-	RequireZeroDiff          bool     `yaml:"require_zero_diff"`            // 还要求 100% 零 diff
-	MinConversationRows      int      `yaml:"min_conversation_rows"`
+	Enabled                   bool     `yaml:"enabled"`
+	RefusalKeywords           []string `yaml:"refusal_keywords"`
+	RefusalRatioAbove         float64  `yaml:"refusal_ratio_above"`          // refusal 命中比例 > 此值
+	UselessResponseRatioAbove float64  `yaml:"useless_response_ratio_above"` // 空/极短 response 比例 > 此值
+	UselessResponseMaxChars   int      `yaml:"useless_response_max_chars"`   // response 短于此字符数算 "无信息"
+	RequireZeroDiff           bool     `yaml:"require_zero_diff"`            // 还要求 100% 零 diff
+	MinConversationRows       int      `yaml:"min_conversation_rows"`
 }
 
 // NoiseFilterDecision 单条 conversation 的过滤判定。Drop=true 时 Reason 给出原因。
@@ -268,9 +268,10 @@ type TaskNoiseDecision struct {
 // 返回 IsNoise=true 时，调用方应丢弃整个 task（包括它的 session）。
 //
 // 算法：
-//   noise = (RequireZeroDiff ? 100% 零 diff : true)
-//           AND (refusal_ratio > RefusalRatioAbove
-//                OR useless_response_ratio > UselessResponseRatioAbove)
+//
+//	noise = (RequireZeroDiff ? 100% 零 diff : true)
+//	        AND (refusal_ratio > RefusalRatioAbove
+//	             OR useless_response_ratio > UselessResponseRatioAbove)
 //
 // 真实开发的 task 即使 zero_diff（提问/解释类）也几乎不会触发：
 //   - 不会大量 AI 道歉（refusal_ratio 低）

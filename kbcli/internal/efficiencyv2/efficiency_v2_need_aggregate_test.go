@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -140,7 +140,7 @@ func TestAggregateEfficiencyV2NeedActuals_UncoveredCommitsByTemporal(t *testing.
 	if got.UncoveredLoc != 60 {
 		t.Fatalf("uncovered_loc = %d, want 60", got.UncoveredLoc)
 	}
-	uncoveredIDs := efficiencyV2StringsFromJSON(got.UncoveredCommitIds)
+	uncoveredIDs := EfficiencyV2StringsFromJSON(got.UncoveredCommitIds)
 	if len(uncoveredIDs) != 1 || uncoveredIDs[0] != "c-uncovered" {
 		t.Fatalf("uncovered_commit_ids = %v, want [c-uncovered]", uncoveredIDs)
 	}
@@ -372,7 +372,7 @@ func TestAggregateEfficiencyV2NeedActuals_AlwaysIncludesCoveredRuleReason(t *tes
 }
 
 func TestNormalizeEfficiencyV2AlgoConfigCommitMinutesPerLineOverridesLineRate(t *testing.T) {
-	algo := normalizeEfficiencyV2AlgoConfig(estimator.EstimateConfig{
+	algo := NormalizeEfficiencyV2AlgoConfig(estimator.EstimateConfig{
 		CommitLinePerMinutes: 0.2,
 		CommitMinutesPerLine: 2,
 	})
@@ -408,9 +408,9 @@ func efficiencyV2AggTestNeed(needID, source, confidence, primaryUser string, ses
 		BoundaryEvidence:   models.ObjectJSON("{}"),
 		Status:             "merged",
 		PrimaryUserId:      primaryUser,
-		ContributorUserIds: efficiencyV2StringJSON(contributors),
-		SessionIds:         efficiencyV2StringJSON(sessions),
-		CommitIds:          efficiencyV2StringJSON(commits),
+		ContributorUserIds: EfficiencyV2StringJSON(contributors),
+		SessionIds:         EfficiencyV2StringJSON(sessions),
+		CommitIds:          EfficiencyV2StringJSON(commits),
 		TouchedFiles:       models.StringJSON("[]"),
 		UncoveredCommitIds: models.StringJSON("[]"),
 		QualitySignals:     models.ObjectJSON("{}"),

@@ -1,4 +1,4 @@
-package main
+package llm
 
 import (
 	"encoding/json"
@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// extractJSON 从 AI 响应文本中提取 JSON 对象
-// 支持三种格式：纯 JSON / markdown 代码块 / 中文分析+JSON 混合
-func extractJSON(text string) string {
+// ExtractJSON 从 AI 响应文本中提取 JSON 对象（从 main 的 ai_estimator.go 迁入）。
+// 支持三种格式：纯 JSON / markdown 代码块 / 中文分析+JSON 混合。
+func ExtractJSON(text string) string {
 	text = strings.TrimSpace(text)
 
 	// 1. 直接尝试解析

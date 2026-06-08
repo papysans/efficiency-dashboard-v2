@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/kbcli/internal/llm"
 	"testing"
 )
 
@@ -214,9 +215,9 @@ func TestExtractJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractJSON(tt.input)
+			got := llm.ExtractJSON(tt.input)
 			if got != tt.expected {
-				t.Errorf("extractJSON(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("llm.ExtractJSON(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}

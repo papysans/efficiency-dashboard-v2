@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
+	"kanban/kbcli/internal/efficiencyv2"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -251,7 +252,7 @@ func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commit
 		WorkDirId:              utils.GenerateWorkDirID(commitData.ClientId, commitData.WorkDir),
 		Comment:                commitData.Comment,
 		DiffLines:              commitData.DiffLines,
-		TouchedFiles:           efficiencyV2StringJSON(efficiencyV2SortedUnique(commitData.Files)),
+		TouchedFiles:           efficiencyv2.EfficiencyV2StringJSON(efficiencyv2.EfficiencyV2SortedUnique(commitData.Files)),
 		Silica:                 p.totalSilica,
 		CommitRealAiMinutes:    p.aiMinutes,
 		CommitRealNonAiMinutes: p.nonAiMinutes,

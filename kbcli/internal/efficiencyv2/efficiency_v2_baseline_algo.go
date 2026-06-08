@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -196,7 +196,7 @@ func computeEfficiencyV2BaselineExec(need models.Need, commits []models.Commit, 
 		return nil, "exec:no_commits"
 	}
 
-	touched := efficiencyV2StringsFromJSON(need.TouchedFiles)
+	touched := EfficiencyV2StringsFromJSON(need.TouchedFiles)
 	filteredOut, kept := classifyEfficiencyV2ExecFiles(touched)
 	fileCount := int64(len(kept))
 

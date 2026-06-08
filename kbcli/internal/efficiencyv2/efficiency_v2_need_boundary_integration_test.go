@@ -1,6 +1,6 @@
 //go:build integration
 
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -22,7 +22,7 @@ func TestEfficiencyV2NeedBoundaryResolution_PersistsFixtureNeeds(t *testing.T) {
 	if err := SeedEfficiencyV2Fixture(db, fixture); err != nil {
 		t.Fatalf("seed fixture: %v", err)
 	}
-	events, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, efficiencyV2ConversationEventQuery{
+	events, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, EfficiencyV2ConversationEventQuery{
 		StartDate: "2026-05-18",
 		EndDate:   "2026-05-24",
 	})

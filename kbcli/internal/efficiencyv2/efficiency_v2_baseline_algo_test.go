@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"strings"
@@ -39,7 +39,7 @@ func TestComputeEfficiencyV2BaselineA_Think_MissingFeatureFloor(t *testing.T) {
 
 func TestComputeEfficiencyV2BaselineA_Exec_FilterLockFiles(t *testing.T) {
 	need := efficiencyV2AggTestNeed("need-exec-lock", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1"})
-	need.TouchedFiles = efficiencyV2StringJSON([]string{"package-lock.json", "yarn.lock"})
+	need.TouchedFiles = EfficiencyV2StringJSON([]string{"package-lock.json", "yarn.lock"})
 	session := models.SessionStageMetric{SessionId: "s-1"}
 	commit := models.Commit{CommitId: "c1", DiffLines: 5000, Comment: "chore: bump deps"}
 
@@ -58,7 +58,7 @@ func TestComputeEfficiencyV2BaselineA_Exec_FilterLockFiles(t *testing.T) {
 
 func TestComputeEfficiencyV2BaselineA_Exec_FilterGeneratedFiles(t *testing.T) {
 	need := efficiencyV2AggTestNeed("need-exec-gen", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1"})
-	need.TouchedFiles = efficiencyV2StringJSON([]string{"proto/api.pb.go", "service/types_generated.go"})
+	need.TouchedFiles = EfficiencyV2StringJSON([]string{"proto/api.pb.go", "service/types_generated.go"})
 	commit := models.Commit{CommitId: "c1", DiffLines: 8000, Comment: "regenerate proto"}
 
 	result := ComputeEfficiencyV2BaselineA(need, []models.SessionStageMetric{{SessionId: "s-1"}}, nil, []models.Commit{commit}, EfficiencyV2BaselineACoefficients{})
@@ -69,7 +69,7 @@ func TestComputeEfficiencyV2BaselineA_Exec_FilterGeneratedFiles(t *testing.T) {
 
 func TestComputeEfficiencyV2BaselineA_Exec_FormatterOnlyFlagged(t *testing.T) {
 	need := efficiencyV2AggTestNeed("need-exec-fmt", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1"})
-	need.TouchedFiles = efficiencyV2StringJSON([]string{"src/app.go", "src/auth.go"})
+	need.TouchedFiles = EfficiencyV2StringJSON([]string{"src/app.go", "src/auth.go"})
 	commits := []models.Commit{
 		{CommitId: "c1", DiffLines: 400, Comment: "style: gofmt"},
 		{CommitId: "c2", DiffLines: 200, Comment: "format: prettier"},
@@ -108,7 +108,7 @@ func TestComputeEfficiencyV2BaselineA_Verify_NoSignalsUsesFloor(t *testing.T) {
 
 func TestComputeEfficiencyV2BaselineA_TotalIsSumOfComponents(t *testing.T) {
 	need := efficiencyV2AggTestNeed("need-total", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1"})
-	need.TouchedFiles = efficiencyV2StringJSON([]string{"src/main.go"})
+	need.TouchedFiles = EfficiencyV2StringJSON([]string{"src/main.go"})
 	session := models.SessionStageMetric{SessionId: "s-1", VerifyEventCount: 2, MessageEventCount: 4, ReadEventCount: 3}
 	commit := models.Commit{CommitId: "c1", DiffLines: 200}
 	result := ComputeEfficiencyV2BaselineA(need, []models.SessionStageMetric{session}, nil, []models.Commit{commit}, EfficiencyV2BaselineACoefficients{})

@@ -1,6 +1,6 @@
 //go:build mockrun
 
-package main
+package efficiencyv2
 
 import (
 	"crypto/sha256"
@@ -109,7 +109,7 @@ func TestEfficiencyV2MockPipeline(t *testing.T) {
 		len(sessions), len(conversations), len(commits), len(users))
 
 	cfg := EfficiencyV2Config{}
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	algo := estimator.EstimateConfig{CommitLinePerMinutes: efficiencyV2DefaultLinesPerMinute, MinMinutes: 5}
 
 	// ---- Step 1: normalise conversation events ----
@@ -153,8 +153,8 @@ func TestEfficiencyV2MockPipeline(t *testing.T) {
 
 	for i := range needs {
 		need := &needs[i]
-		sessionIDs := efficiencyV2StringsFromJSON(need.SessionIds)
-		commitIDs := efficiencyV2StringsFromJSON(need.CommitIds)
+		sessionIDs := EfficiencyV2StringsFromJSON(need.SessionIds)
+		commitIDs := EfficiencyV2StringsFromJSON(need.CommitIds)
 		var needSessions []models.SessionStageMetric
 		for _, m := range metrics {
 			for _, id := range sessionIDs {
@@ -177,7 +177,7 @@ func TestEfficiencyV2MockPipeline(t *testing.T) {
 		algoResult := ComputeEfficiencyV2BaselineA(*need, needSessions, nil, needCommits, coefs)
 		PersistEfficiencyV2BaselineAOnNeed(need, algoResult)
 
-		knnResult := ComputeEfficiencyV2BaselineB(BuildEfficiencyV2NeedFeatureVector(*need, needSessions), anchors, efficiencyV2KNNDefaultK)
+		knnResult := ComputeEfficiencyV2BaselineB(BuildEfficiencyV2NeedFeatureVector(*need, needSessions), anchors, EfficiencyV2KNNDefaultK)
 		PersistEfficiencyV2BaselineBOnNeed(need, knnResult)
 
 		// LLM: disabled by config (no API key). The path produces reason="llm:disabled".

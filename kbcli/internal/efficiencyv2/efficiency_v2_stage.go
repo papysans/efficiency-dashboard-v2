@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -44,7 +44,7 @@ type efficiencyV2ClassifiedEvent struct {
 // ClassifyEfficiencyV2Event maps a normalized conversation event to the stage
 // splitter classes required by the v2 pipeline.
 func ClassifyEfficiencyV2Event(event models.ConversationEvent, cfg EfficiencyV2Config) string {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	tool := normalizeEfficiencyV2Identifier(event.ToolName)
 	kind := normalizeEfficiencyV2Identifier(event.EventKind)
 	source := normalizeEfficiencyV2Identifier(event.Source)
@@ -71,7 +71,7 @@ func ClassifyEfficiencyV2Event(event models.ConversationEvent, cfg EfficiencyV2C
 // InferEfficiencyV2EventDurationSec returns deterministic active seconds for an
 // event using explicit end timestamps, next-event inference, then class defaults.
 func InferEfficiencyV2EventDurationSec(event models.ConversationEvent, next *models.ConversationEvent, class string, cfg EfficiencyV2StageConfig) int64 {
-	cfg = normalizeEfficiencyV2Config(EfficiencyV2Config{Stage: cfg}).Stage
+	cfg = NormalizeEfficiencyV2Config(EfficiencyV2Config{Stage: cfg}).Stage
 	if event.EventEndTs != nil && event.EventEndTs.After(event.EventStartTs) {
 		return ceilEfficiencyV2DurationSeconds(event.EventEndTs.Sub(event.EventStartTs))
 	}
@@ -166,7 +166,7 @@ func BuildAndUpsertEfficiencyV2SessionStageMetrics(db *gorm.DB, events []models.
 // BuildEfficiencyV2SessionStageMetric computes the v2 stage metric for one
 // logical session from normalized events.
 func BuildEfficiencyV2SessionStageMetric(events []models.ConversationEvent, cfg EfficiencyV2Config) models.SessionStageMetric {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	if len(events) == 0 {
 		return models.SessionStageMetric{
 			EventKindCounts:  models.ObjectJSON("{}"),
@@ -294,10 +294,9 @@ func BuildEfficiencyV2SessionStageMetric(events []models.ConversationEvent, cfg 
 	return metric
 }
 
-func normalizeEfficiencyV2Config(cfg EfficiencyV2Config) EfficiencyV2Config {
-	wrapper := Config{EfficiencyV2: cfg}
-	applyEfficiencyV2Defaults(&wrapper)
-	return wrapper.EfficiencyV2
+func NormalizeEfficiencyV2Config(cfg EfficiencyV2Config) EfficiencyV2Config {
+	ApplyDefaults(&cfg)
+	return cfg
 }
 
 func classifyEfficiencyV2Events(events []models.ConversationEvent, cfg EfficiencyV2Config) []efficiencyV2ClassifiedEvent {

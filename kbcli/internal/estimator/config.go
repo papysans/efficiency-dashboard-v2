@@ -14,3 +14,6 @@ type EstimateConfig struct {
 	CommitLinePerMinutes float64 `yaml:"commit_line_per_minutes"` //传统开发人天代码量基准值（行/人天），默认值100行/人天
 	CommitMinutesPerLine float64 `yaml:"commit_minutes_per_line"` //传统开发每行代码耗时；优先级高于 commit_line_per_minutes
 }
+
+// DefaultTraditionalDevLinesPerDay 传统开发人天代码量基准值（行/人天）。
+const DefaultTraditionalDevLinesPerDay = 100

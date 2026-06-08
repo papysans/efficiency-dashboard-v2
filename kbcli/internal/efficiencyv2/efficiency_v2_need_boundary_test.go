@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -121,7 +121,7 @@ func TestResolveEfficiencyV2NeedMainlineBranchFiltering(t *testing.T) {
 func TestResolveEfficiencyV2NeedCommitTouchedFilesCreateFileCluster(t *testing.T) {
 	base := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	commit := efficiencyV2NeedTestCommit("c-files", "u-files", "git@example.com/acme/app.git", "main", base, "sync generated report")
-	commit.TouchedFiles = efficiencyV2StringJSON([]string{"reports/monthly.go", "reports/monthly_test.go"})
+	commit.TouchedFiles = EfficiencyV2StringJSON([]string{"reports/monthly.go", "reports/monthly_test.go"})
 
 	needs := ResolveEfficiencyV2Needs(nil, nil, []models.Commit{commit}, EfficiencyV2Config{})
 	if len(needs) != 1 {

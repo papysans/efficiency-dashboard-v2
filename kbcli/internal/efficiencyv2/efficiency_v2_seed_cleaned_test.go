@@ -1,6 +1,6 @@
 //go:build seedclean
 
-package main
+package efficiencyv2
 
 import (
 	"bufio"
@@ -69,13 +69,14 @@ func TestEfficiencyV2SeedCleanedData(t *testing.T) {
 		Branches     []string `json:"branches"`
 	}
 	commitRows := []models.Commit{}
-	userOrgMap := map[string]string{}        // user_id → user_name
-	workDirToUser := map[string]string{}     // work_dir → user_id（用来回推 conversation 的 user_id）
+	userOrgMap := map[string]string{}    // user_id → user_name
+	workDirToUser := map[string]string{} // work_dir → user_id（用来回推 conversation 的 user_id）
 
 	scanJSONL(t, filepath.Join(root, "cleaned_commits.jsonl"), func(line []byte) {
 		var rc rawCommit
 		if err := json.Unmarshal(line, &rc); err != nil {
-			t.Logf("bad commit: %v", err); return
+			t.Logf("bad commit: %v", err)
+			return
 		}
 		ct := parseSeedTime(rc.CommitTime)
 		workDir := rc.WorkDir
@@ -153,8 +154,18 @@ func TestEfficiencyV2SeedCleanedData(t *testing.T) {
 		RepoBranch       string   `json:"repo_branch"`
 		WorkDir          string   `json:"work_dir"`
 	}
-	deref := func(p *int64) int64 { if p == nil { return 0 }; return *p }
-	derefF := func(p *float64) float64 { if p == nil { return 0 }; return *p }
+	deref := func(p *int64) int64 {
+		if p == nil {
+			return 0
+		}
+		return *p
+	}
+	derefF := func(p *float64) float64 {
+		if p == nil {
+			return 0
+		}
+		return *p
+	}
 
 	convRows := []models.Conversation{}
 	sessionInfo := map[string]*models.Session{} // task_id → session
@@ -329,6 +340,11 @@ func sanitizePGString(s string) string {
 	return strings.ToValidUTF8(s, "")
 }
 
-func min(a, b int) int { if a < b { return a }; return b }
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 var _ = fmt.Sprintf

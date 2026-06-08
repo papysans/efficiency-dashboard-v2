@@ -1,6 +1,6 @@
 //go:build integration
 
-package main
+package efficiencyv2
 
 import (
 	"testing"
@@ -15,7 +15,7 @@ func TestEfficiencyV2NeedActualsAggregation_PopulatesActualSignalFields(t *testi
 	if err := SeedEfficiencyV2Fixture(db, fixture); err != nil {
 		t.Fatalf("seed fixture: %v", err)
 	}
-	events, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, efficiencyV2ConversationEventQuery{
+	events, err := NormalizeAndUpsertEfficiencyV2ConversationEvents(db, EfficiencyV2ConversationEventQuery{
 		StartDate: "2026-05-18",
 		EndDate:   "2026-05-24",
 	})
@@ -48,7 +48,7 @@ func TestEfficiencyV2NeedActualsAggregation_PopulatesActualSignalFields(t *testi
 	if branchNeed.UncoveredLoc <= 0 {
 		t.Fatalf("expected uncovered_loc > 0 for branch-low-ai-uncovered, got %d", branchNeed.UncoveredLoc)
 	}
-	uncoveredIDs := efficiencyV2StringsFromJSON(branchNeed.UncoveredCommitIds)
+	uncoveredIDs := EfficiencyV2StringsFromJSON(branchNeed.UncoveredCommitIds)
 	if len(uncoveredIDs) != 1 || uncoveredIDs[0] != "c-branch-201-uncovered" {
 		t.Fatalf("uncovered ids = %v, want [c-branch-201-uncovered]", uncoveredIDs)
 	}

@@ -20,7 +20,7 @@ func TestNoiseFilter_BlockedModel(t *testing.T) {
 func TestNoiseFilter_BlockedWorkDir_PrefixMatch(t *testing.T) {
 	f := NewNoiseFilter(NoiseFilterConfig{Enabled: true, BlockedWorkDirs: []string{"/internal/team-bench/runner"}})
 	cases := []struct {
-		wd      string
+		wd       string
 		wantDrop bool
 	}{
 		{"/internal/team-bench/runner", true},
@@ -231,7 +231,7 @@ func TestClassifyTaskNoise_QuestionTaskPreserved(t *testing.T) {
 			ResponseContent: "这个函数 recycle_environment 的作用是回收测试环境资源。具体逻辑：" +
 				"1. 检查环境状态；2. 释放资源；3. 更新数据库；它在测试结束时被调用..."},
 		{Model: "deepseek-v4-pro", UserInput: "那并发安全吗",
-			DiffLines: 0,
+			DiffLines:       0,
 			ResponseContent: "并发安全方面：用了 mutex 锁保护共享状态，但如果同一环境 ID 被多个调用..."},
 	}
 	d := ClassifyTaskNoise(rows, cfg)

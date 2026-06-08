@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"crypto/sha256"
@@ -22,7 +22,7 @@ import (
 // only Needs whose dev window overlaps the range are loaded, so reruns on a
 // narrow window do not touch other weeks.
 func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV2Config, startDate, endDate string) (int, error) {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	q := db.Model(&models.Need{}).Order("primary_user_id ASC")
 	if startDate != "" {
 		q = q.Where("dev_end_ts >= ? OR dev_start_ts >= ?", startDate, startDate)
@@ -79,7 +79,7 @@ func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV
 // AggregateEfficiencyV2UserProductivity buckets Needs by (user, week) and
 // produces deterministic user-week aggregate rows.
 func AggregateEfficiencyV2UserProductivity(needs []models.Need, cfg EfficiencyV2Config) []models.UserProductivityV2 {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	type bucketKey struct {
 		userID    string
 		weekStart time.Time
@@ -107,7 +107,7 @@ func AggregateEfficiencyV2UserProductivity(needs []models.Need, cfg EfficiencyV2
 			continue
 		}
 		row := buildEfficiencyV2UserWeekRow(key.userID, key.weekStart, b.needs, cfg)
-		row.NeedIds = efficiencyV2StringJSON(sortedStrings(b.needIDs))
+		row.NeedIds = EfficiencyV2StringJSON(sortedStrings(b.needIDs))
 		rows = append(rows, row)
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
@@ -126,12 +126,12 @@ func buildEfficiencyV2UserWeekRow(userID string, weekStart time.Time, needs []mo
 		WeekStart:            weekStart,
 	}
 	var (
-		merged, active, abandoned int64
-		actualCalSum, baseCalSum  float64
-		actualWorkSum, baseWorkSum float64
-		coverageActive, coverageAbandoned float64
+		merged, active, abandoned                           int64
+		actualCalSum, baseCalSum                            float64
+		actualWorkSum, baseWorkSum                          float64
+		coverageActive, coverageAbandoned                   float64
 		coverageLowUnreported, coverageHigh, coverageMedium float64
-		userName string
+		userName                                            string
 	)
 	for _, need := range needs {
 		if userName == "" && need.PrimaryUserId == userID {
@@ -239,10 +239,10 @@ func efficiencyV2WeekAnchorForNeed(need models.Need) time.Time {
 	if anchor.IsZero() {
 		anchor = time.Now().UTC()
 	}
-	return efficiencyV2MondayAnchor(anchor)
+	return EfficiencyV2MondayAnchor(anchor)
 }
 
-func efficiencyV2MondayAnchor(t time.Time) time.Time {
+func EfficiencyV2MondayAnchor(t time.Time) time.Time {
 	weekStart := t.UTC()
 	weekday := int(weekStart.Weekday())
 	if weekday == 0 {
@@ -290,10 +290,10 @@ func rollupEfficiencyV2UsageFromNeeds(db *gorm.DB, needs []models.Need) (map[eff
 	sessionSet := map[string]bool{}
 	commitSet := map[string]bool{}
 	for _, n := range needs {
-		for _, s := range efficiencyV2StringsFromJSON(n.SessionIds) {
+		for _, s := range EfficiencyV2StringsFromJSON(n.SessionIds) {
 			sessionSet[s] = true
 		}
-		for _, c := range efficiencyV2StringsFromJSON(n.CommitIds) {
+		for _, c := range EfficiencyV2StringsFromJSON(n.CommitIds) {
 			commitSet[c] = true
 		}
 	}
@@ -313,8 +313,8 @@ func rollupEfficiencyV2UsageFromNeeds(db *gorm.DB, needs []models.Need) (map[eff
 		}
 		var rows []convSum
 		if err := db.Model(&models.Conversation{}).
-			Select("session_id, COALESCE(SUM(upstream_tokens),0) AS upstream_tokens, " +
-				"COALESCE(SUM(downstream_tokens),0) AS downstream_tokens, " +
+			Select("session_id, COALESCE(SUM(upstream_tokens),0) AS upstream_tokens, "+
+				"COALESCE(SUM(downstream_tokens),0) AS downstream_tokens, "+
 				"COALESCE(SUM(cost),0) AS cost").
 			Where("session_id IN ?", sessionIDs).
 			Group("session_id").Find(&rows).Error; err != nil {
@@ -354,14 +354,14 @@ func rollupEfficiencyV2UsageFromNeeds(db *gorm.DB, needs []models.Need) (map[eff
 		}
 		key := efficiencyV2UserWeekKey{UserID: n.PrimaryUserId, WeekStart: efficiencyV2WeekAnchorForNeed(n)}
 		u := out[key]
-		for _, sid := range efficiencyV2StringsFromJSON(n.SessionIds) {
+		for _, sid := range EfficiencyV2StringsFromJSON(n.SessionIds) {
 			if cs, ok := convAgg[sid]; ok {
 				u.UpstreamTokens += cs.UpstreamTokens
 				u.DownstreamTokens += cs.DownstreamTokens
 				u.Cost += cs.Cost
 			}
 		}
-		for _, cid := range efficiencyV2StringsFromJSON(n.CommitIds) {
+		for _, cid := range EfficiencyV2StringsFromJSON(n.CommitIds) {
 			if dl, ok := commitAgg[cid]; ok {
 				u.CommitCount++
 				u.CommitDiffLines += dl

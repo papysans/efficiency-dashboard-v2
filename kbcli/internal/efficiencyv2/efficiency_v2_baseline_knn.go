@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	efficiencyV2KNNDefaultK = 5
+	EfficiencyV2KNNDefaultK = 5
 )
 
 type EfficiencyV2KNNAnchor struct {
@@ -27,9 +27,9 @@ type EfficiencyV2KNNAnchor struct {
 }
 
 type EfficiencyV2KNNResult struct {
-	Estimate   *float64
+	Estimate    *float64
 	NeighborIDs []string
-	Reason     string
+	Reason      string
 }
 
 // LoadEfficiencyV2KNNAnchors reads usable anchor records into a deterministic
@@ -227,7 +227,7 @@ func ComputeEfficiencyV2BaselineB(needFeatures map[string]float64, anchors []Eff
 		return EfficiencyV2KNNResult{Reason: "knn:no_anchors"}
 	}
 	if k <= 0 {
-		k = efficiencyV2KNNDefaultK
+		k = EfficiencyV2KNNDefaultK
 	}
 
 	type scored struct {

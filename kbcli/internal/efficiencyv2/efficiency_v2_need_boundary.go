@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"crypto/sha1"
@@ -122,7 +122,7 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 
 func updateEfficiencyV2StageMetricNeedIDs(db *gorm.DB, needs []models.Need) error {
 	for _, need := range needs {
-		sessionIDs := efficiencyV2StringsFromJSON(need.SessionIds)
+		sessionIDs := EfficiencyV2StringsFromJSON(need.SessionIds)
 		if len(sessionIDs) == 0 {
 			continue
 		}
@@ -136,7 +136,7 @@ func updateEfficiencyV2StageMetricNeedIDs(db *gorm.DB, needs []models.Need) erro
 }
 
 func ResolveEfficiencyV2Needs(stageMetrics []models.SessionStageMetric, events []models.ConversationEvent, commits []models.Commit, cfg EfficiencyV2Config) []models.Need {
-	cfg = normalizeEfficiencyV2Config(cfg)
+	cfg = NormalizeEfficiencyV2Config(cfg)
 	if cfg.MaxNeedSpanDays == 0 {
 		cfg.MaxNeedSpanDays = efficiencyV2DefaultMaxNeedSpanDays
 	}
@@ -276,7 +276,7 @@ func efficiencyV2CandidateFromStageMetric(metric models.SessionStageMetric, even
 			candidate.branch = strings.TrimSpace(evidence.BranchName)
 		}
 		candidate.files = append(candidate.files, evidence.FilePaths...)
-		candidate.files = append(candidate.files, efficiencyV2StringsFromJSON(event.TouchedFiles)...)
+		candidate.files = append(candidate.files, EfficiencyV2StringsFromJSON(event.TouchedFiles)...)
 	}
 
 	return candidate
@@ -291,7 +291,7 @@ func efficiencyV2CandidateFromCommit(commit models.Commit) efficiencyV2BoundaryC
 		start:    commit.CommitTime,
 		end:      commit.CommitTime,
 		comment:  commit.Comment,
-		files:    efficiencyV2StringsFromJSON(commit.TouchedFiles),
+		files:    EfficiencyV2StringsFromJSON(commit.TouchedFiles),
 	}
 	candidate.prID = efficiencyV2ExtractPRID(commit.Comment)
 	candidate.issueID = efficiencyV2ExtractIssueID(commit.Comment)
@@ -345,7 +345,7 @@ func efficiencyV2ResolveNaturalBoundary(candidate efficiencyV2BoundaryCandidate)
 	if issueID != "" {
 		return efficiencyV2BoundaryIssue, efficiencyV2ConfidenceMedium, "issue:" + issueID
 	}
-	files := efficiencyV2SortedUnique(candidate.files)
+	files := EfficiencyV2SortedUnique(candidate.files)
 	if len(files) >= 2 {
 		return efficiencyV2BoundaryFileCluster, efficiencyV2ConfidenceLow, efficiencyV2FileClusterKey(candidate.userID, candidate.start, files)
 	}
@@ -423,7 +423,7 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 	evidence := map[string]interface{}{
 		"source":          bucket.source,
 		"key":             bucket.key,
-		"commit_messages": efficiencyV2SortedUnique(commitMessages),
+		"commit_messages": EfficiencyV2SortedUnique(commitMessages),
 		"span_exceeded":   spanExceeded,
 	}
 	if spanExceeded {
@@ -441,10 +441,10 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		RepoAddr:           repoAddr,
 		RepoBranch:         branch,
 		PrimaryUserId:      primaryUser,
-		ContributorUserIds: efficiencyV2StringJSON(contributorIDs),
-		SessionIds:         efficiencyV2StringJSON(efficiencyV2SortedMapKeys(sessions)),
-		CommitIds:          efficiencyV2StringJSON(efficiencyV2SortedMapKeys(commits)),
-		TouchedFiles:       efficiencyV2StringJSON(efficiencyV2SortedMapKeys(files)),
+		ContributorUserIds: EfficiencyV2StringJSON(contributorIDs),
+		SessionIds:         EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(sessions)),
+		CommitIds:          EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(commits)),
+		TouchedFiles:       EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(files)),
 		MergeTs:            mergeTs,
 		CoverageEligible:   status == "merged" && (bucket.confidence == efficiencyV2ConfidenceHigh || bucket.confidence == efficiencyV2ConfidenceMedium),
 	}
@@ -537,7 +537,7 @@ func efficiencyV2WeekKey(ts time.Time) string {
 }
 
 func efficiencyV2ClusterSlug(files []string) string {
-	files = efficiencyV2SortedUnique(files)
+	files = EfficiencyV2SortedUnique(files)
 	if len(files) == 0 {
 		return "unknown"
 	}
@@ -558,14 +558,14 @@ func efficiencyV2ClusterSlug(files []string) string {
 			parts = append(parts, piece)
 		}
 	}
-	parts = efficiencyV2SortedUnique(parts)
+	parts = EfficiencyV2SortedUnique(parts)
 	if len(parts) == 0 {
 		return "unknown"
 	}
 	return strings.Join(parts, "-")
 }
 
-func efficiencyV2StringJSON(values []string) models.StringJSON {
+func EfficiencyV2StringJSON(values []string) models.StringJSON {
 	data, err := json.Marshal(values)
 	if err != nil {
 		return models.StringJSON("[]")
@@ -581,7 +581,7 @@ func efficiencyV2NeedObjectJSON(value interface{}) models.ObjectJSON {
 	return models.ObjectJSON(data)
 }
 
-func efficiencyV2StringsFromJSON(value models.StringJSON) []string {
+func EfficiencyV2StringsFromJSON(value models.StringJSON) []string {
 	if value == "" {
 		return nil
 	}
@@ -603,7 +603,7 @@ func efficiencyV2SortedMapKeys(values map[string]bool) []string {
 	return keys
 }
 
-func efficiencyV2SortedUnique(values []string) []string {
+func EfficiencyV2SortedUnique(values []string) []string {
 	seen := make(map[string]bool, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)

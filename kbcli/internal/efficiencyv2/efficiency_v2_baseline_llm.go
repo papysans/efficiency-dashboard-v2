@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -95,7 +95,7 @@ func BuildEfficiencyV2NeedStructuredSummary(need models.Need, sessions []models.
 		titleSeen[title] = true
 		summary.TaskTitles = append(summary.TaskTitles, truncateForPrompt(title, 200))
 	}
-	if files := efficiencyV2StringsFromJSON(need.TouchedFiles); len(files) > 0 {
+	if files := EfficiencyV2StringsFromJSON(need.TouchedFiles); len(files) > 0 {
 		if len(files) > 30 {
 			files = files[:30]
 		}
@@ -213,7 +213,7 @@ func CallAIForNeedEstimationV4(summary EfficiencyV2NeedStructuredSummary, aiCfg 
 }
 
 func parseEfficiencyV2LLMResponse(rawContent string) EfficiencyV2LLMResult {
-	jsonText := extractJSON(rawContent)
+	jsonText := llm.ExtractJSON(rawContent)
 	if strings.TrimSpace(jsonText) == "" {
 		return EfficiencyV2LLMResult{Confidence: efficiencyV2StageConfidenceLow, Reason: "llm:no_json", RawResponse: rawContent}
 	}

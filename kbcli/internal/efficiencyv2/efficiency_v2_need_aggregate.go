@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"encoding/json"
@@ -20,7 +20,7 @@ const (
 	efficiencyV2SignalUnknown = "unknown"
 )
 
-var efficiencyV2DefaultLinesPerMinute = float64(DefaultTraditionalDevLinesPerDay) / 480.0
+var efficiencyV2DefaultLinesPerMinute = float64(estimator.DefaultTraditionalDevLinesPerDay) / 480.0
 
 // AggregateAndUpsertEfficiencyV2NeedActuals computes and persists actual-time,
 // stage totals, uncovered-commit, and quality/confidence signal fields for the
@@ -33,10 +33,10 @@ func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need,
 	sessionIDs := make(map[string]bool)
 	commitIDs := make(map[string]bool)
 	for _, need := range needs {
-		for _, id := range efficiencyV2StringsFromJSON(need.SessionIds) {
+		for _, id := range EfficiencyV2StringsFromJSON(need.SessionIds) {
 			sessionIDs[id] = true
 		}
-		for _, id := range efficiencyV2StringsFromJSON(need.CommitIds) {
+		for _, id := range EfficiencyV2StringsFromJSON(need.CommitIds) {
 			commitIDs[id] = true
 		}
 	}
@@ -100,8 +100,8 @@ func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need,
 // session stage metrics and commit membership. It returns updated copies of
 // the input Needs.
 func AggregateEfficiencyV2NeedActuals(needs []models.Need, metrics []models.SessionStageMetric, commits []models.Commit, cfg EfficiencyV2Config, algo estimator.EstimateConfig) []models.Need {
-	cfg = normalizeEfficiencyV2Config(cfg)
-	algo = normalizeEfficiencyV2AlgoConfig(algo)
+	cfg = NormalizeEfficiencyV2Config(cfg)
+	algo = NormalizeEfficiencyV2AlgoConfig(algo)
 
 	metricsBySession := make(map[string]models.SessionStageMetric, len(metrics))
 	for _, m := range metrics {
@@ -120,8 +120,8 @@ func AggregateEfficiencyV2NeedActuals(needs []models.Need, metrics []models.Sess
 }
 
 func aggregateOneEfficiencyV2Need(need models.Need, metricsBySession map[string]models.SessionStageMetric, commitsByID map[string]models.Commit, cfg EfficiencyV2Config, algo estimator.EstimateConfig) models.Need {
-	sessionIDs := efficiencyV2StringsFromJSON(need.SessionIds)
-	commitIDs := efficiencyV2StringsFromJSON(need.CommitIds)
+	sessionIDs := EfficiencyV2StringsFromJSON(need.SessionIds)
+	commitIDs := EfficiencyV2StringsFromJSON(need.CommitIds)
 
 	sessions := make([]models.SessionStageMetric, 0, len(sessionIDs))
 	for _, id := range sessionIDs {
@@ -301,7 +301,7 @@ func aggregateEfficiencyV2NeedCommits(need *models.Need, sessions []models.Sessi
 	need.ChangedLoc = changedLoc
 	need.AICoveredLoc = aiCoveredLoc
 	need.UncoveredLoc = uncoveredLoc
-	need.UncoveredCommitIds = efficiencyV2StringJSON(uncoveredCommitIDs)
+	need.UncoveredCommitIds = EfficiencyV2StringJSON(uncoveredCommitIDs)
 
 	uncoveredMin := estimateEfficiencyV2UncoveredHumanMinutes(uncoveredLoc, algo)
 	need.UncoveredHumanMin = uncoveredMin
@@ -318,7 +318,7 @@ func aggregateEfficiencyV2NeedCommits(need *models.Need, sessions []models.Sessi
 
 	// FileCount mirrors len(need.TouchedFiles); the touched-files list itself is
 	// owned by Need boundary resolution (efficiency_v2_need_boundary.go).
-	files := efficiencyV2StringsFromJSON(need.TouchedFiles)
+	files := EfficiencyV2StringsFromJSON(need.TouchedFiles)
 	need.FileCount = int64(len(files))
 }
 
@@ -403,7 +403,7 @@ func aggregateEfficiencyV2NeedSignals(need *models.Need, commits []models.Commit
 		"revert_count":           need.RevertCount,
 		"revert_rate":            efficiencyV2FloatOrNil(need.RevertRate),
 		"commit_count":           need.CommitCount,
-		"uncovered_commit_count": len(efficiencyV2StringsFromJSON(need.UncoveredCommitIds)),
+		"uncovered_commit_count": len(EfficiencyV2StringsFromJSON(need.UncoveredCommitIds)),
 		"total_loc":              need.ChangedLoc,
 		"uncovered_loc":          need.UncoveredLoc,
 		"ai_covered_loc":         need.AICoveredLoc,
@@ -495,7 +495,7 @@ func mergeEfficiencyV2Intervals(intervals [][2]time.Time) [][2]time.Time {
 	return merged
 }
 
-func normalizeEfficiencyV2AlgoConfig(algo estimator.EstimateConfig) estimator.EstimateConfig {
+func NormalizeEfficiencyV2AlgoConfig(algo estimator.EstimateConfig) estimator.EstimateConfig {
 	if algo.CommitMinutesPerLine > 0 {
 		algo.CommitLinePerMinutes = 1 / algo.CommitMinutesPerLine
 	} else if algo.CommitLinePerMinutes <= 0 {

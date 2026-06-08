@@ -1,4 +1,4 @@
-package main
+package efficiencyv2
 
 import (
 	"crypto/sha256"
@@ -24,7 +24,7 @@ const (
 	efficiencyV2ParseQualityDegraded = "degraded"
 )
 
-type efficiencyV2ConversationEventQuery struct {
+type EfficiencyV2ConversationEventQuery struct {
 	Date      string
 	StartDate string
 	EndDate   string
@@ -192,7 +192,7 @@ func UpsertEfficiencyV2ConversationEvents(db *gorm.DB, events []models.Conversat
 	}).CreateInBatches(&events, 1000).Error
 }
 
-func NormalizeAndUpsertEfficiencyV2ConversationEvents(db *gorm.DB, query efficiencyV2ConversationEventQuery) ([]models.ConversationEvent, error) {
+func NormalizeAndUpsertEfficiencyV2ConversationEvents(db *gorm.DB, query EfficiencyV2ConversationEventQuery) ([]models.ConversationEvent, error) {
 	conversations, err := QueryEfficiencyV2Conversations(db, query)
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func NormalizeAndUpsertEfficiencyV2ConversationEvents(db *gorm.DB, query efficie
 	return events, nil
 }
 
-func QueryEfficiencyV2Conversations(db *gorm.DB, query efficiencyV2ConversationEventQuery) ([]models.Conversation, error) {
+func QueryEfficiencyV2Conversations(db *gorm.DB, query EfficiencyV2ConversationEventQuery) ([]models.Conversation, error) {
 	tx := db.Model(&models.Conversation{}).Order("session_id ASC").Order("start_time ASC").Order("request_id ASC")
 	if query.SessionID != "" {
 		tx = tx.Where("session_id = ?", query.SessionID)
