@@ -1,6 +1,10 @@
 package main
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+
+	"kanban/backend/internal/appconfig"
+)
 
 // ConfigResponse 全局配置响应结构
 type ConfigResponse struct {
@@ -17,6 +21,6 @@ type ConfigResponse struct {
 // @Router /api/v2/config [get]
 func getConfigV2(c *gin.Context) {
 	c.JSON(200, ConfigResponse{
-		TraditionalDevLinesPerDay: appConfig.TraditionalDevLinesPerDay,
+		TraditionalDevLinesPerDay: appconfig.Cfg.TraditionalDevLinesPerDay,
 	})
 }

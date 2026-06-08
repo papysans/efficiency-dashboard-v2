@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/backend/internal/appconfig"
 	"log"
 	"net/http"
 
@@ -50,13 +51,13 @@ func healthCheck(c *gin.Context) {
 
 func main() {
 	var err error
-	c, err := LoadFirstConfig([]string{"config.yaml", "configs/server-config.yaml", "server-config.yaml", "../server-config.yaml"})
+	c, err := appconfig.LoadFirstConfig([]string{"config.yaml", "configs/server-config.yaml", "server-config.yaml", "../server-config.yaml"})
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
-	appConfig = *c
+	appconfig.Cfg = *c
 
-	statDB, err = models.OpenGormDB(appConfig.StatDatabase.DSN())
+	statDB, err = models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		log.Fatalf("costrict_stat数据库初始化失败: %v", err)
 	}
@@ -85,7 +86,7 @@ func main() {
 
 	r.Use(MetricsMiddleware())
 
-	corsOrigins := appConfig.CORS.AllowOrigins
+	corsOrigins := appconfig.Cfg.CORS.AllowOrigins
 	if len(corsOrigins) == 0 {
 		corsOrigins = []string{"*"}
 	}
@@ -166,7 +167,7 @@ func main() {
 		auth.POST("/logout", authShimLogout)
 	}
 
-	port := appConfig.Server.Port
+	port := appconfig.Cfg.Server.Port
 	if port == 0 {
 		port = 9990
 	}

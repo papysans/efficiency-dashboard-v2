@@ -1,4 +1,4 @@
-package main
+package appconfig
 
 import (
 	"fmt"
@@ -40,7 +40,7 @@ type DeptSyncConfig struct {
 // DefaultRootDeptName 组织树单根公司默认名（dept-sync /department/tree 返回森林时据此找真正的公司根）。
 const DefaultRootDeptName = "深信服科技股份有限公司"
 
-var appConfig Config
+var Cfg Config
 
 func loadConfig(path string) (*Config, error) {
 	var cfg Config

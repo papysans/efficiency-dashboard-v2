@@ -1,4 +1,4 @@
-package main
+package appconfig
 
 const (
 	DefaultPageSize                  = 50

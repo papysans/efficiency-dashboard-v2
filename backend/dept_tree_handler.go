@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"kanban/backend/internal/appconfig"
 	"log"
 	"net/http"
 	"sort"
@@ -128,7 +129,7 @@ func deptSyncGet(baseURL, queryKey, path string, out interface{}) error {
 
 // deptSyncConfigured 校验 dept-sync 地址是否配置；未配置返回明确错误供 handler 回报。
 func deptSyncConfigured() (string, error) {
-	baseURL := strings.TrimSpace(appConfig.DeptSync.BaseURL)
+	baseURL := strings.TrimSpace(appconfig.Cfg.DeptSync.BaseURL)
 	if baseURL == "" {
 		return "", fmt.Errorf("未配置 dept-sync 服务地址（server 配置 dept_sync.base_url）")
 	}
@@ -149,7 +150,7 @@ func getDeptTreeV2(c *gin.Context) {
 		return
 	}
 	var resp deptSyncTreeResp
-	if err := deptSyncGet(baseURL, appConfig.DeptSync.QueryKey, "/department/tree", &resp); err != nil {
+	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/tree", &resp); err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
 		return
 	}
@@ -208,15 +209,15 @@ func rebuildSingleRootTree(forest []DeptTreeNode) []DeptTreeNode {
 
 	// ③ 找根 dept_id。
 	rootID := ""
-	if cfgID := strings.TrimSpace(appConfig.DeptSync.RootDeptId); cfgID != "" {
+	if cfgID := strings.TrimSpace(appconfig.Cfg.DeptSync.RootDeptId); cfgID != "" {
 		if _, ok := flat[cfgID]; ok {
 			rootID = cfgID
 		}
 	}
 	if rootID == "" {
-		rootName := strings.TrimSpace(appConfig.DeptSync.RootDeptName)
+		rootName := strings.TrimSpace(appconfig.Cfg.DeptSync.RootDeptName)
 		if rootName == "" {
-			rootName = DefaultRootDeptName
+			rootName = appconfig.DefaultRootDeptName
 		}
 		for _, id := range order {
 			if flat[id].DeptName == rootName {
@@ -229,7 +230,7 @@ func rebuildSingleRootTree(forest []DeptTreeNode) []DeptTreeNode {
 	// ⑤ 兜底：找不到根 → 退回原始 data（全部透传）。
 	if rootID == "" {
 		log.Printf("[WARN] dept-tree 单根重建失败：未按 root_dept_id(%q)/root_dept_name(%q) 找到根节点，退回原始森林透传",
-			appConfig.DeptSync.RootDeptId, appConfig.DeptSync.RootDeptName)
+			appconfig.Cfg.DeptSync.RootDeptId, appconfig.Cfg.DeptSync.RootDeptName)
 		return forest
 	}
 
@@ -272,7 +273,7 @@ func getDeptTreeMembersV2(c *gin.Context) {
 
 	// 1. 取该部门【整棵子树】成员花名册（include_children=true，含所有子部门成员）。
 	var membersResp deptSyncMembersResp
-	if err := deptSyncGet(baseURL, appConfig.DeptSync.QueryKey, "/department/"+deptID+"/users?include_children=true", &membersResp); err != nil {
+	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/"+deptID+"/users?include_children=true", &membersResp); err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + err.Error()})
 		return
 	}

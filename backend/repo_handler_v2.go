@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/backend/internal/appconfig"
 	"kanban/core/models"
 	"kanban/core/utils"
 	"log"
@@ -158,7 +159,7 @@ func listReposV2(c *gin.Context) {
 
 	// 内存分页
 	page := getDefaultInt(c, "page", 1)
-	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
+	pageSize := getDefaultInt(c, "pageSize", appconfig.DefaultPageSize)
 
 	total := len(items)
 	offset := (page - 1) * pageSize

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/backend/internal/appconfig"
 	"net/http"
 	"os"
 	"strings"
@@ -83,7 +84,7 @@ func listTasksV2(c *gin.Context) {
 	}
 
 	page := getDefaultInt(c, "page", 1)
-	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
+	pageSize := getDefaultInt(c, "pageSize", appconfig.DefaultPageSize)
 	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
 	if orderField != "" && !isAllowedField(orderField, taskSortFields) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
@@ -247,10 +248,10 @@ func getTaskFile(c *gin.Context) {
 	var found bool
 
 	if typ == "summary" {
-		filePath, found = models.GetSummaryFilePath(appConfig.TaskDir, task)
+		filePath, found = models.GetSummaryFilePath(appconfig.Cfg.TaskDir, task)
 		contentType = "application/json"
 	} else {
-		filePath, found = models.GetConversationFilePath(appConfig.TaskDir, task)
+		filePath, found = models.GetConversationFilePath(appconfig.Cfg.TaskDir, task)
 		contentType = "text/plain; charset=utf-8"
 	}
 

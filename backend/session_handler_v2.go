@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/backend/internal/appconfig"
 	"net/http"
 	"strings"
 	"time"
@@ -40,7 +41,7 @@ type SessionListResponse struct {
 // @Router /api/v2/sessions [get]
 func listSessionsV2(c *gin.Context) {
 	page := getDefaultInt(c, "page", 1)
-	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
+	pageSize := getDefaultInt(c, "pageSize", appconfig.DefaultPageSize)
 
 	filter := SessionFilter{}
 

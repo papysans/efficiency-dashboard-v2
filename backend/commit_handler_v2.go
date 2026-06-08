@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/backend/internal/appconfig"
 	"log"
 	"net/http"
 	"strings"
@@ -107,7 +108,7 @@ func listCommitsV2(c *gin.Context) {
 	}
 
 	page := getDefaultInt(c, "page", 1)
-	pageSize := getDefaultInt(c, "pageSize", DefaultPageSize)
+	pageSize := getDefaultInt(c, "pageSize", appconfig.DefaultPageSize)
 	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
 	if orderField != "" && !isAllowedField(orderField, commitSortFields) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
