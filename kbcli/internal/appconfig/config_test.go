@@ -1,4 +1,4 @@
-package main
+package appconfig
 
 import (
 	"kanban/kbcli/internal/logx"
@@ -533,14 +533,14 @@ efficiency_v2:
 }
 
 // TestApplyAnalysisFloor 表驱动验证全局分析起始日下界逻辑。
-// 注意：applyAnalysisFloor 依赖全局 cfg；用例临时设置 cfg.AnalysisStartDate 后还原。
+// 注意：ApplyAnalysisFloor 依赖全局 Cfg；用例临时设置 Cfg.AnalysisStartDate 后还原。
 func TestApplyAnalysisFloor(t *testing.T) {
 	// 命中下界分支会 logx.Infof，需确保 logger 已初始化，否则空指针 panic。
 	if err := logx.Init("error", "", "error"); err != nil {
 		t.Fatalf("logx.Init 失败: %v", err)
 	}
-	oldCfg := cfg
-	defer func() { cfg = oldCfg }()
+	oldCfg := Cfg
+	defer func() { Cfg = oldCfg }()
 
 	tests := []struct {
 		name      string
@@ -557,16 +557,16 @@ func TestApplyAnalysisFloor(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg = &Config{AnalysisStartDate: tc.floor}
-			if got := applyAnalysisFloor(tc.startDate); got != tc.want {
-				t.Errorf("applyAnalysisFloor(%q) with floor %q = %q, want %q", tc.startDate, tc.floor, got, tc.want)
+			Cfg = &Config{AnalysisStartDate: tc.floor}
+			if got := ApplyAnalysisFloor(tc.startDate); got != tc.want {
+				t.Errorf("ApplyAnalysisFloor(%q) with floor %q = %q, want %q", tc.startDate, tc.floor, got, tc.want)
 			}
 		})
 	}
 
-	// cfg 为 nil 时不应 panic，原样返回。
-	cfg = nil
-	if got := applyAnalysisFloor(""); got != "" {
-		t.Errorf("applyAnalysisFloor with nil cfg = %q, want empty", got)
+	// Cfg 为 nil 时不应 panic，原样返回。
+	Cfg = nil
+	if got := ApplyAnalysisFloor(""); got != "" {
+		t.Errorf("ApplyAnalysisFloor with nil Cfg = %q, want empty", got)
 	}
 }
