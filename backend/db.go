@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"kanban/core/config"
 	"kanban/core/models"
 	"kanban/core/utils"
 
@@ -183,14 +182,6 @@ func toUserGroup(g *models.UserGroup) *UserGroup {
 		CreatedAt: g.CreatedAt,
 		UpdatedAt: g.UpdatedAt,
 	}
-}
-
-// ============================================================
-// 数据库初始化
-// ============================================================
-
-func InitDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
-	return models.OpenGormDB(cfg.DSN())
 }
 
 // ============================================================

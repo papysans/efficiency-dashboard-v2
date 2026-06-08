@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"kanban/core/models"
@@ -371,61 +370,6 @@ func (gi *groupIndexer) buildCandidateHashs(commitTime time.Time, maxDays int) m
 		}
 	}
 	return hashs
-}
-
-// loadFPHashes 从指纹文件中逐行读取所有非空指纹。
-//
-// 参数:
-//   - fpPath: 指纹文件路径，预期每行一个hash字符串。
-//
-// 返回值:
-//   - []string: 指纹字符串切片。
-//   - error: 文件打开或读取错误。
-func loadFPHashes(fpPath string) ([]string, error) {
-	f, err := os.Open(fpPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var hashes []string
-	scanner := bufio.NewScanner(f)
-	// 扩大扫描缓冲区以支持较大的指纹文件（最大10MB行）
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue // 跳过空行
-		}
-		hashes = append(hashes, line)
-	}
-	return hashes, scanner.Err()
-}
-
-// scanCommitFPFiles 递归扫描仓库指纹目录下的所有 .fp 文件。
-//
-// 参数:
-//   - repoFPDir: 仓库指纹文件根目录。
-//
-// 返回值:
-//   - []string: .fp 文件的完整路径列表。
-//   - error: 目录遍历过程中的错误。
-func scanCommitFPFiles(repoFPDir string) ([]string, error) {
-	var files []string
-	if _, err := os.Stat(repoFPDir); os.IsNotExist(err) {
-		return files, nil // 目录不存在时返回空列表，不报错
-	}
-
-	err := filepath.Walk(repoFPDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".fp") {
-			files = append(files, path)
-		}
-		return nil
-	})
-	return files, err
 }
 
 // buildCommitTasks 构建对该Commit产生贡献的Task基础信息，仅做归因分析，不计算任何指标。

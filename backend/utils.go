@@ -2,25 +2,14 @@ package main
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-var safeIDRegex = regexp.MustCompile("[^a-zA-Z0-9]")
-
-func makeSafeID(id string) string {
-	return safeIDRegex.ReplaceAllString(id, "_")
-}
-
 func parseDateParam(dateStr string) (time.Time, error) {
 	return time.Parse("20060102", dateStr)
-}
-
-func formatDateYMD(t time.Time) string {
-	return t.Format("2006-01-02")
 }
 
 func getDefaultInt(c *gin.Context, key string, defaultVal int) int {
@@ -30,14 +19,6 @@ func getDefaultInt(c *gin.Context, key string, defaultVal int) int {
 	}
 	var val int
 	if _, err := fmt.Sscanf(str, "%d", &val); err != nil {
-		return defaultVal
-	}
-	return val
-}
-
-func getDefaultString(c *gin.Context, key, defaultVal string) string {
-	val := c.Query(key)
-	if val == "" {
 		return defaultVal
 	}
 	return val

@@ -12,44 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type OrgDataItem struct {
-	OrgName               string  `json:"org_name"`
-	UserCount             int     `json:"user_count"`
-	TotalTokens           int64   `json:"total_tokens"`
-	TotalCost             float64 `json:"total_cost"`
-	TaskCount             int     `json:"task_count"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
-	CommitCount           int     `json:"commit_count"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
-	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
-}
-
-type OrgSeriesPoint struct {
-	Period                string  `json:"period"`
-	UserCount             int     `json:"user_count"`
-	TotalTokens           int64   `json:"total_tokens"`
-	TotalCost             float64 `json:"total_cost"`
-	TaskCount             int     `json:"task_count"`
-	TaskDiffLines         int     `json:"task_diff_lines"`
-	TaskEfficiencyRatio   float64 `json:"task_efficiency_ratio"`
-	CommitCount           int     `json:"commit_count"`
-	CommitDiffLines       int     `json:"commit_diff_lines"`
-	CommitEfficiencyRatio float64 `json:"commit_efficiency_ratio"`
-}
-
-type OrgSeriesItem struct {
-	OrgName string           `json:"org_name"`
-	Periods []string         `json:"periods"`
-	Points  []OrgSeriesPoint `json:"points"`
-}
-
-type OrgListResponse struct {
-	Data    []OrgDataItem   `json:"data"`
-	Series  []OrgSeriesItem `json:"series"`
-	Periods []string        `json:"periods,omitempty"`
-}
-
 type OrgSummary struct {
 	UserCount             int     `json:"user_count"`
 	TaskDiffLines         int     `json:"task_diff_lines"`
@@ -128,19 +90,6 @@ type GroupDetailResponse struct {
 // orgMappings 全局组织映射表，key=user_id
 var orgMappings map[string]*models.UserOrg
 
-func GetUserOrgPath(om *models.UserOrg) string {
-	if om == nil {
-		return ""
-	}
-	parts := []string{}
-	for _, v := range []string{om.Org1, om.Org2, om.Org3, om.Org4, om.Org5, om.Org6, om.Org7, om.Org8, om.Org9} {
-		if v != "" {
-			parts = append(parts, v)
-		}
-	}
-	return strings.Join(parts, "/")
-}
-
 func getOrgDisplay(org1, org2, org3, org4, org5, org6, org7, org8, org9 string) string {
 	parts := []string{}
 	for _, v := range []string{org1, org2, org3, org4, org5, org6, org7, org8, org9} {
@@ -175,33 +124,6 @@ func getOrgValue(m *models.UserOrg, level string) string {
 	default:
 		return ""
 	}
-}
-
-// filterUsersByParent 根据 parent 路径筛选用户
-func filterUsersByParent(parent string) []*models.UserOrg {
-	var result []*models.UserOrg
-	if parent == "" {
-		for _, m := range orgMappings {
-			result = append(result, m)
-		}
-		return result
-	}
-
-	parts := strings.Split(parent, "/")
-	for _, m := range orgMappings {
-		match := true
-		for i, p := range parts {
-			level := fmt.Sprintf("org%d", i+1)
-			if getOrgValue(m, level) != p {
-				match = false
-				break
-			}
-		}
-		if match {
-			result = append(result, m)
-		}
-	}
-	return result
 }
 
 // getOrgDetailV2 GET /api/v2/orgs/detail

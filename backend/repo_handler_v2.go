@@ -451,13 +451,6 @@ func branchPriorityScore(branch string) int {
 	}
 }
 
-func strValue(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // filterPreferredBranchAggregates 从同一仓库的多分支聚合数据中筛选出最优分支的记录。
 //
 // 业务背景：一个仓库通常会在多个分支（如 main、master、dev）上产生代码统计聚合数据，
