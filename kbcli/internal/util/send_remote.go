@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func sendToRemote(remoteURL, taskType string, params map[string]interface{}) error {
+func SendToRemote(remoteURL, taskType string, params map[string]interface{}) error {
 	remoteURL = strings.TrimRight(remoteURL, "/")
 	url := fmt.Sprintf("%s/api/tasks/%s", remoteURL, taskType)
 

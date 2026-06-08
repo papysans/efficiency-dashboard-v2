@@ -7,6 +7,7 @@ import (
 	"kanban/kbcli/internal/estimator"
 	"kanban/kbcli/internal/llm"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"strings"
 	"time"
 
@@ -26,7 +27,7 @@ var efficiencyV2Cmd = &cobra.Command{
 		remote, _ := cmd.Flags().GetString("remote")
 
 		if remote != "" {
-			return sendToRemote(remote, "efficiency-v2", map[string]interface{}{
+			return util.SendToRemote(remote, "efficiency-v2", map[string]interface{}{
 				"date":       dateStr,
 				"start_date": startDate,
 				"end_date":   endDate,

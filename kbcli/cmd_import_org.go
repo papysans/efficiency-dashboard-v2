@@ -7,6 +7,7 @@ import (
 	"kanban/core/models"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"os"
 	"sort"
 	"strings"
@@ -322,7 +323,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	if fromCSV != "" {
 		userOrgs, err = loadUserOrgsFromCSV(fromCSV)
 		if err != nil {
-			recordCommandRun("import-org", startTime, 0, 0, 0, err)
+			util.RecordCommandRun("import-org", startTime, 0, 0, 0, err)
 			return err
 		}
 	} else {
@@ -334,7 +335,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 
 	gormDB, err = models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
-		recordCommandRun("import-org", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接目标数据库失败: %w", err)
 	}
 	sqlDB, _ := gormDB.DB()
@@ -361,7 +362,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		// 最终兜底：从本地 tasks/commits/sessions 生成临时组织
 		localOrgs, localErr := loadDefaultUserOrgsFromLocalData(gormDB)
 		if localErr != nil {
-			recordCommandRun("import-org", startTime, 0, 0, 0, localErr)
+			util.RecordCommandRun("import-org", startTime, 0, 0, 0, localErr)
 			return localErr
 		}
 		userOrgs = localOrgs
@@ -371,7 +372,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 
 	if toCSV != "" {
 		if err := writeOrgCSV(toCSV, userOrgs); err != nil {
-			recordCommandRun("import-org", startTime, 0, 0, 0, err)
+			util.RecordCommandRun("import-org", startTime, 0, 0, 0, err)
 			return fmt.Errorf("写入CSV文件失败: %w", err)
 		}
 		logx.Infof("CSV 文件已写入: %s", toCSV)
@@ -384,11 +385,11 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		saveFn = saveUserOrgsInsertOnly
 	}
 	if err := saveFn(gormDB, userOrgs); err != nil {
-		recordCommandRun("import-org", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("写入user_org表失败: %w", err)
 	}
 	logx.Infof("已写入 %d 条记录到 user_org 表", len(userOrgs))
-	recordCommandRun("import-org", startTime, len(userOrgs), 0, 0, nil)
+	util.RecordCommandRun("import-org", startTime, len(userOrgs), 0, 0, nil)
 	return nil
 }
 
@@ -407,7 +408,7 @@ var importOrgCmd = &cobra.Command{
 		remote, _ := cmd.Flags().GetString("remote")
 
 		if remote != "" {
-			return sendToRemote(remote, "import-org", map[string]interface{}{
+			return util.SendToRemote(remote, "import-org", map[string]interface{}{
 				"from_db":  fromDSN,
 				"from_csv": fromCSV,
 				"to_csv":   toCSV,

@@ -6,6 +6,7 @@ import (
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/llm"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"os"
 	"path/filepath"
 	"time"
@@ -50,7 +51,7 @@ func runFixCommit(repoDir, startDateStr, endDateStr, dateStr, commitID string, m
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	startDate, endDate, err := util.ParseDateRange(startDateStr, endDateStr, dateStr)
 	if err != nil {
 		return err
 	}

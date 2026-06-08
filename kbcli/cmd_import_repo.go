@@ -8,6 +8,7 @@ import (
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -118,7 +119,7 @@ func scanRepoDir(repoDir string, db *gorm.DB, force bool, startDate, endDate *ti
 		if err != nil {
 			return nil
 		}
-		if !isActiveTimeInRange(fileDate, startDate, endDate) {
+		if !util.IsActiveTimeInRange(fileDate, startDate, endDate) {
 			logx.Debugf("跳过(日期范围过滤): %s", path)
 			skipCount++
 			return nil
@@ -423,7 +424,7 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 //   - maxDays: 对话与 commit 的最大关联时间窗口（天数）
 //
 // 返回值:
-//   - error: 任何阶段发生的错误都会包装后返回，并通过 recordCommandRun 记录执行结果
+//   - error: 任何阶段发生的错误都会包装后返回，并通过 util.RecordCommandRun 记录执行结果
 //
 // 关键技术原理:
 //  1. 前置校验：检查 repoDir 是否存在，提前失败避免后续无意义的数据库连接
@@ -432,24 +433,24 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 //  4. 幂等扫描：调用 scanRepoDir 获取待导入列表和跳过计数（日期过滤 + 数据库存在性检查）
 //  5. 批量处理：逐个文件调用 importCommitFile，失败时记录日志并计数，不中断整体流程
 //  6. 进度提示：每成功导入 50 个文件调用 logx.PromptProgress 输出进度信息
-//  7. 命令埋点：通过 recordCommandRun 记录命令执行时间、成功/失败/跳过数量，用于运维监控
+//  7. 命令埋点：通过 util.RecordCommandRun 记录命令执行时间、成功/失败/跳过数量，用于运维监控
 func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 
 	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
-		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("repo目录不存在: %s", repoDir)
 	}
 
-	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	startDate, endDate, err := util.ParseDateRange(startDateStr, endDateStr, dateStr)
 	if err != nil {
-		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
-		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -459,20 +460,20 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	taskFPDir := filepath.Join(analysedDir, "task", "conversation")
 	idx, err := buildConversationsIndexer(taskFPDir)
 	if err != nil {
-		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("构建conversation指纹索引失败: %w", err)
 	}
 
 	// 扫描 repo 目录
 	files, skipCount, err := scanRepoDir(repoDir, db, force, startDate, endDate)
 	if err != nil {
-		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("扫描repo目录失败: %w", err)
 	}
 
 	if len(files) == 0 {
 		logx.Info("没有找到待导入的commit文件")
-		recordCommandRun("import-repo", startTime, 0, 0, skipCount, nil)
+		util.RecordCommandRun("import-repo", startTime, 0, 0, skipCount, nil)
 		return nil
 	}
 
@@ -493,7 +494,7 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	}
 
 	logx.Infof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
-	recordCommandRun("import-repo", startTime, successCount, failCount, skipCount, nil)
+	util.RecordCommandRun("import-repo", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
 
@@ -522,7 +523,7 @@ var importRepoCmd = &cobra.Command{
 		maxDays, _ := cmd.Flags().GetInt("max-days")
 		// 若指定了 remote，将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
-			return sendToRemote(remote, "import-repo", map[string]interface{}{
+			return util.SendToRemote(remote, "import-repo", map[string]interface{}{
 				"repo_dir":     repoDir,
 				"analysed_dir": analysedDir,
 				"force":        force,

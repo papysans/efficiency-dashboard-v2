@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"os"
 	"path/filepath"
 	"strings"
@@ -621,7 +622,7 @@ func parseConversationLines(data []byte, path string, ctx *checkContext) ([]task
 			return nil, fmt.Errorf("第%d行JSON解析失败: %w", lineNum, err)
 		}
 		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conv.Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, ctx.modelPrices)
+			conv.Cost = util.CalculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, ctx.modelPrices)
 		}
 		convs = append(convs, conv)
 	}

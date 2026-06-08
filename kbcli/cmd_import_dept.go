@@ -7,6 +7,7 @@ import (
 	"kanban/core/models"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"net/http"
 	"strings"
 	"time"
@@ -247,14 +248,14 @@ func runImportDept(baseURL, queryKey string) error {
 	}
 	if baseURL == "" {
 		err := fmt.Errorf("未配置 dept-sync 服务地址（--base-url 或 config dept_sync.base_url）")
-		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	// 1. 拉全量嵌套部门树，拍平 → 全量落 dept；构建 dept_id → dept_path 供投影查（include_children 响应无 dept_path）
 	var treeResp deptSyncTreeResp
 	if err := deptSyncGet(baseURL, queryKey, "/department/tree", &treeResp); err != nil {
-		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return err
 	}
 	var depts []models.Dept
@@ -270,7 +271,7 @@ func runImportDept(baseURL, queryKey string) error {
 	roots := findRootDeptIDs(depts)
 	if len(roots) == 0 {
 		err := fmt.Errorf("部门树未找到根部门（无 parent_dept_id 为空或悬挂的节点）")
-		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 		return err
 	}
 	logx.Infof("识别到 %d 个根部门: %v", len(roots), roots)
@@ -279,7 +280,7 @@ func runImportDept(baseURL, queryKey string) error {
 	for _, root := range roots {
 		var usersResp deptSyncDeptUsersResp
 		if err := deptSyncGet(baseURL, queryKey, "/department/"+root+"/users?include_children=true", &usersResp); err != nil {
-			recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+			util.RecordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 			return err
 		}
 		for _, p := range usersResp.Data {
@@ -294,7 +295,7 @@ func runImportDept(baseURL, queryKey string) error {
 	// 3. 落库：全量部门树 + 全量花名册（dept_user）
 	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
-		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接目标数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -315,11 +316,11 @@ func runImportDept(baseURL, queryKey string) error {
 		})
 	}
 	if err := saveDepts(db, depts); err != nil {
-		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return err
 	}
 	if err := saveDeptUsers(db, deptUsers); err != nil {
-		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return err
 	}
 	logx.Infof("已写入 %d 个部门到 dept、%d 名人员到 dept_user", len(depts), len(deptUsers))
@@ -346,7 +347,7 @@ func runImportDept(baseURL, queryKey string) error {
 		FROM commits
 		WHERE git_user_email ILIKE '%@sangfor.com' AND user_id IS NOT NULL AND user_id <> ''
 	`).Scan(&commitRows).Error; err != nil {
-		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 		return fmt.Errorf("从 commits 构建工号桥接失败: %w", err)
 	}
 	empByUID := make(map[string]string)  // 看板 user_id → 工号
@@ -368,7 +369,7 @@ func runImportDept(baseURL, queryKey string) error {
 	// 4c. 读看板全部 user_org 行（看板用户全集），逐行回填
 	var boardUsers []models.UserOrg
 	if err := db.Find(&boardUsers).Error; err != nil {
-		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 		return fmt.Errorf("读取看板 user_org 失败: %w", err)
 	}
 
@@ -414,7 +415,7 @@ func runImportDept(baseURL, queryKey string) error {
 	}
 
 	if err := saveUserOrgDeptProjection(db, projections); err != nil {
-		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
+		util.RecordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 		return err
 	}
 	logx.Infof("投影回填 user_org：universal_id 命中 %d / 工号次选命中 %d / 兜底 %d（共 %d 名看板用户，写入 %d 条）",
@@ -423,7 +424,7 @@ func runImportDept(baseURL, queryKey string) error {
 	// 5. 刷新后端 org 映射（尽力而为）
 	triggerOrgRefresh(appconfig.Cfg.BackendURL)
 
-	recordCommandRun("import-dept", startTime, len(depts)+len(deptUsers), 0, 0, nil)
+	util.RecordCommandRun("import-dept", startTime, len(depts)+len(deptUsers), 0, 0, nil)
 	return nil
 }
 

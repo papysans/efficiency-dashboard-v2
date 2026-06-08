@@ -3,6 +3,7 @@ package main
 import (
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 
 	"github.com/spf13/cobra"
 )
@@ -37,7 +38,7 @@ var importCmd = &cobra.Command{
 
 		// 如果指定了远程地址，发送到远程 kbcli 服务执行
 		if remote != "" {
-			return sendToRemote(remote, "import", map[string]interface{}{
+			return util.SendToRemote(remote, "import", map[string]interface{}{
 				"task_dir":      taskDir,
 				"repo_dir":      repoDir,
 				"analysed_dir":  analysedDir,

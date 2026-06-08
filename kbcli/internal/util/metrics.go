@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"time"
@@ -69,8 +69,8 @@ var (
 	)
 )
 
-// recordCommandRun 记录一次命令执行的指标
-func recordCommandRun(command string, startTime time.Time, successCount, failCount, skipCount int, runErr error) {
+// RecordCommandRun 记录一次命令执行的指标
+func RecordCommandRun(command string, startTime time.Time, successCount, failCount, skipCount int, runErr error) {
 	elapsed := time.Since(startTime).Seconds()
 	commandDurationSeconds.WithLabelValues(command).Observe(elapsed)
 	commandLastRunTimestamp.WithLabelValues(command).Set(float64(time.Now().Unix()))

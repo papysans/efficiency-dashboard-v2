@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"testing"
@@ -167,18 +167,18 @@ func TestParseDateRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotStart, gotEnd, err := parseDateRange(tt.startDateStr, tt.endDateStr, tt.dateStr)
+			gotStart, gotEnd, err := ParseDateRange(tt.startDateStr, tt.endDateStr, tt.dateStr)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("parseDateRange() error = nil, wantErr = true")
+					t.Fatalf("ParseDateRange() error = nil, wantErr = true")
 				}
 				if tt.wantErrContains != "" && !contains(err.Error(), tt.wantErrContains) {
-					t.Fatalf("parseDateRange() error = %q, want contains %q", err.Error(), tt.wantErrContains)
+					t.Fatalf("ParseDateRange() error = %q, want contains %q", err.Error(), tt.wantErrContains)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseDateRange() unexpected error = %v", err)
+				t.Fatalf("ParseDateRange() unexpected error = %v", err)
 			}
 			if !timesEqual(gotStart, tt.wantStartDate) {
 				t.Errorf("startDate = %v, want %v", formatTimePtr(gotStart), formatTimePtr(tt.wantStartDate))
@@ -294,9 +294,9 @@ func TestIsActiveTimeInRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isActiveTimeInRange(tt.activeTime, tt.startDate, tt.endDate)
+			got := IsActiveTimeInRange(tt.activeTime, tt.startDate, tt.endDate)
 			if got != tt.want {
-				t.Errorf("isActiveTimeInRange(%v, %v, %v) = %v, want %v",
+				t.Errorf("IsActiveTimeInRange(%v, %v, %v) = %v, want %v",
 					tt.activeTime, formatTimePtr(tt.startDate), formatTimePtr(tt.endDate), got, tt.want)
 			}
 		})

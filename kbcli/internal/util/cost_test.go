@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"kanban/kbcli/internal/appconfig"
@@ -196,9 +196,9 @@ func TestCalculateCost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := calculateCost(tt.model, tt.inTokens, tt.outTokens, tt.prices)
+			got := CalculateCost(tt.model, tt.inTokens, tt.outTokens, tt.prices)
 			if math.Abs(got-tt.want) > 1e-9 {
-				t.Errorf("calculateCost(%q, %d, %d, %v) = %v, want %v",
+				t.Errorf("CalculateCost(%q, %d, %d, %v) = %v, want %v",
 					tt.model, tt.inTokens, tt.outTokens, tt.prices, got, tt.want)
 			}
 		})

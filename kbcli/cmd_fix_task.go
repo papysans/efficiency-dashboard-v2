@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"time"
 
 	"kanban/core/models"
@@ -56,7 +57,7 @@ func runFixTask(taskDir, startDateStr, endDateStr, dateStr, specificTaskID strin
 		return nil
 	}
 
-	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	startDate, endDate, err := util.ParseDateRange(startDateStr, endDateStr, dateStr)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+	"kanban/kbcli/internal/util"
 	"math"
 	"os"
 	"path/filepath"
@@ -245,7 +246,7 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 
 		// 若成本缺失且存在 Token 和模型信息，自动计算成本
 		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conversations[i].Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, appconfig.Cfg.ModelPrices)
+			conversations[i].Cost = util.CalculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, appconfig.Cfg.ModelPrices)
 		}
 		// 去除用户输入的包装标签
 		conversations[i].UserInput = parseUserInput(conv.UserInput)
@@ -771,7 +772,7 @@ func scanConversationFiles(conversationDir string, startDate, endDate *time.Time
 				return nil
 			}
 			// 日期范围过滤：不在 [startDate, endDate) 范围内时跳过
-			if !isActiveTimeInRange(fileDate, startDate, endDate) {
+			if !util.IsActiveTimeInRange(fileDate, startDate, endDate) {
 				return nil
 			}
 
@@ -863,7 +864,7 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 //  1. 分别扫描 summary 和 conversation 目录，按 sessionId 建立映射。
 //  2. 对每个 conversation 文件，先检查是否存在对应 summary；再调用 needUpdateConversations 进行增量检测。
 //  3. 调用 importSingleTask 完成单任务导入，并统计成功/失败/跳过数量。
-//  4. 通过 recordCommandRun 记录命令执行结果，便于运维监控和审计。
+//  4. 通过 util.RecordCommandRun 记录命令执行结果，便于运维监控和审计。
 func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string, createPseudo bool) error {
 	startTime := time.Now()
 	summaryDir := filepath.Join(taskDir, "summary")
@@ -871,21 +872,21 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 
 	// 校验 summary 目录必须存在
 	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
-		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return fmt.Errorf("summary目录不存在: %s", summaryDir)
 	}
 
 	// 解析日期范围
-	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
+	startDate, endDate, err := util.ParseDateRange(startDateStr, endDateStr, dateStr)
 	if err != nil {
-		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	// 连接数据库
 	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
-		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 	sqlDB, _ := db.DB()
@@ -894,20 +895,20 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	// 扫描 conversation 和 summary 文件
 	convMap, err := scanConversationFiles(conversationDir, startDate, endDate)
 	if err != nil {
-		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	sessionMap, err := scanSessionFiles(summaryDir)
 	if err != nil {
-		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return err
 	}
 
 	// 无 conversation 文件时直接结束
 	if len(convMap) == 0 {
 		logx.Info("没有找到待导入的 conversation 文件")
-		recordCommandRun("import-conv", startTime, 0, 0, 0, nil)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, nil)
 		return nil
 	}
 
@@ -973,7 +974,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 		}
 	}
 
-	recordCommandRun("import-conv", startTime, successCount, failCount, skipCount, nil)
+	util.RecordCommandRun("import-conv", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }
 
@@ -998,7 +999,7 @@ var importConvCmd = &cobra.Command{
 
 		// 若指定了 remote 地址，则将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
-			return sendToRemote(remote, "import-conv", map[string]interface{}{
+			return util.SendToRemote(remote, "import-conv", map[string]interface{}{
 				"task_dir":      taskDir,
 				"analysed_dir":  analysedDir,
 				"force":         force,
