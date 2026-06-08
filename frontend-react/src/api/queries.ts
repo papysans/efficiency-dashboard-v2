@@ -7,8 +7,6 @@ import {
   getGlobalConfig,
   getDeptTreeV2,
   getNeedDetailV2,
-  getNeedsV2,
-  getOrgDetailV2,
   getProjectDetail,
   getProjects,
   getRepoBranches,
@@ -32,13 +30,6 @@ export function useGlobalConfig() {
     queryKey: ['global-config'],
     queryFn: () => getGlobalConfig(),
     staleTime: 5 * 60_000,
-  })
-}
-
-export function useNeeds(params: ListParams) {
-  return useQuery({
-    queryKey: ['needs', params],
-    queryFn: () => getNeedsV2(params),
   })
 }
 
@@ -117,15 +108,6 @@ export function useRepoBranches(repoAddr: string | undefined) {
     queryKey: ['repo-branches', repoAddr],
     queryFn: () => getRepoBranches(repoAddr as string),
     enabled: !!repoAddr,
-  })
-}
-
-/** 组织详情（百分比口径；org_path 由 endpoints 转 snake_case）。orgPath 空时不请求。 */
-export function useOrgDetail(params: { orgPath: string; startDate?: string; endDate?: string; granularity?: string }) {
-  return useQuery({
-    queryKey: ['org-detail', params],
-    queryFn: () => getOrgDetailV2(params),
-    enabled: !!params.orgPath,
   })
 }
 

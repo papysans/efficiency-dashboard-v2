@@ -22,7 +22,6 @@ import type {
   NeedsV2DetailResponse,
   NeedsV2Summary,
   OrgDetailResponse,
-  OrgV2Row,
   ProjectDetailResponse,
   ProjectListItem,
   RepoBranchesResponse,
@@ -126,10 +125,6 @@ export function getUserNamesV2() {
 }
 
 // ---- Orgs（列表小数口径 / 详情百分比口径） ----
-export function getOrgV2(params: { startDate?: string; endDate?: string }) {
-  return apiGet<ApiData<OrgV2Row> & { no_org_mapping?: boolean }>('/v2/orgs', params)
-}
-
 // ⚠️ 后端读取的是 org_path（snake_case），传 orgPath 会报「org_path 不能为空」。对齐 Vue OrgDetailV2。
 export function getOrgDetailV2(params: { orgPath: string; startDate?: string; endDate?: string; granularity?: string }) {
   const { orgPath, ...rest } = params
