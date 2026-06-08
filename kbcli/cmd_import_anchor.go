@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"kanban/kbcli/internal/logx"
 	"os"
 	"strconv"
 	"strings"
@@ -136,7 +137,7 @@ func runImportAnchor(csvPath string) error {
 		return fmt.Errorf("写入 anchor_set 失败: %w", err)
 	}
 
-	logInfof("import-anchor: 从 %s 灌入/更新 %d 个锚点（跳过 %d 行无效）", csvPath, len(rows), skipped)
+	logx.Infof("import-anchor: 从 %s 灌入/更新 %d 个锚点（跳过 %d 行无效）", csvPath, len(rows), skipped)
 	return nil
 }
 

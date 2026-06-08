@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/spf13/cobra"
+	"kanban/kbcli/internal/logx"
 )
 
 var importCmd = &cobra.Command{
@@ -85,7 +86,7 @@ var importCmd = &cobra.Command{
 				// 不阻断后续 efficiency 步骤。import-dept 用真实部门刷新 org，配合
 				// import-org 的非破坏性占位，使 org 自动保持正确。
 				if err := runImportDept("", ""); err != nil {
-					logWarnf("import-dept 跳过(非致命): %v", err)
+					logx.Warnf("import-dept 跳过(非致命): %v", err)
 				}
 				return nil
 			}},
@@ -93,13 +94,13 @@ var importCmd = &cobra.Command{
 		}
 
 		for _, step := range steps {
-			logInfof("========== [import] 步骤: %s ==========", step.name)
+			logx.Infof("========== [import] 步骤: %s ==========", step.name)
 			if err := step.fn(); err != nil {
-				logErrorf("步骤 %s 失败: %v", step.name, err)
+				logx.Errorf("步骤 %s 失败: %v", step.name, err)
 			}
 		}
 
-		logInfo("========== [import] 全部步骤完成 ==========")
+		logx.Info("========== [import] 全部步骤完成 ==========")
 		return nil
 	},
 }

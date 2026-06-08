@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/kbcli/internal/llm"
+	"kanban/kbcli/internal/logx"
 	"os"
 	"path/filepath"
 	"time"
@@ -53,12 +54,12 @@ func runFixCommit(repoDir, startDateStr, endDateStr, dateStr, commitID string, m
 		return err
 	}
 
-	logInfo("===== 开始处理commit估算 =====")
+	logx.Info("===== 开始处理commit估算 =====")
 	if err := fixCommits(db, repoDir, startDate, endDate, commitID, max); err != nil {
 		return fmt.Errorf("处理commit失败: %w", err)
 	}
 
-	logInfo("===== fix-commit 命令执行完成 =====")
+	logx.Info("===== fix-commit 命令执行完成 =====")
 	return nil
 }
 
@@ -79,16 +80,16 @@ func fixCommits(db *gorm.DB, repoDir string, startDate, endDate *time.Time, comm
 	}
 
 	if len(commits) == 0 {
-		logInfo("没有需要处理的commit记录")
+		logx.Info("没有需要处理的commit记录")
 		return nil
 	}
 
-	logInfof("找到 %d 个commit记录待处理", len(commits))
+	logx.Infof("找到 %d 个commit记录待处理", len(commits))
 
 	var checked, success int
 	for _, commit := range commits {
 		if max > 0 && checked >= max {
-			logInfof("已达到最大处理数量 %d，停止", max)
+			logx.Infof("已达到最大处理数量 %d，停止", max)
 			break
 		}
 		checked++
@@ -105,32 +106,32 @@ func fixCommits(db *gorm.DB, repoDir string, startDate, endDate *time.Time, comm
 
 		data, err := os.ReadFile(path)
 		if err != nil {
-			logErrorf("读取commit文件失败: %s, %v", path, err)
+			logx.Errorf("读取commit文件失败: %s, %v", path, err)
 			continue
 		}
 
 		var commitData RepoCommitData
 		if err := json.Unmarshal(data, &commitData); err != nil {
-			logErrorf("解析commit JSON失败: %s, %v", path, err)
+			logx.Errorf("解析commit JSON失败: %s, %v", path, err)
 			continue
 		}
 
 		minutes, reason, err := callAIForCommitEstimation(commitData.Comment, commitData.Diff, commitData.DiffLines)
 		if err != nil {
-			logErrorf("AI估算commit失败: %s, %v", commit.CommitId, err)
+			logx.Errorf("AI估算commit失败: %s, %v", commit.CommitId, err)
 			continue
 		}
 
 		if err := updateCommitAncientEstimation(db, commit.CommitId, minutes, reason); err != nil {
-			logErrorf("更新commit估算结果失败: %s, %v", commit.CommitId, err)
+			logx.Errorf("更新commit估算结果失败: %s, %v", commit.CommitId, err)
 			continue
 		}
 
 		success++
-		logInfof("commit估时完成: %s, minutes=%.1f", commit.CommitId, minutes)
+		logx.Infof("commit估时完成: %s, minutes=%.1f", commit.CommitId, minutes)
 	}
 
-	logInfof("commit处理完成: 检查 %d, 成功 %d", checked, success)
+	logx.Infof("commit处理完成: 检查 %d, 成功 %d", checked, success)
 	return nil
 }
 

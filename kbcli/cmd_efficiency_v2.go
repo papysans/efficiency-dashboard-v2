@@ -5,6 +5,7 @@ import (
 	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/estimator"
 	"kanban/kbcli/internal/llm"
+	"kanban/kbcli/internal/logx"
 	"strings"
 	"time"
 
@@ -157,7 +158,7 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 		if args.EndDate == "" {
 			args.EndDate = convEnd
 		}
-		logInfof("efficiency-v2: 日期窗自动夹紧到 conversation 范围 %s ~ %s", args.StartDate, args.EndDate)
+		logx.Infof("efficiency-v2: 日期窗自动夹紧到 conversation 范围 %s ~ %s", args.StartDate, args.EndDate)
 	}
 
 	if err := efficiencyv2.EnsureEfficiencyV2BaselineACoefficients(db, ""); err != nil {
@@ -203,9 +204,9 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 	// high-confidence Needs become anchors for future kNN runs.
 	if needsReloaded, err := ReloadEfficiencyV2Needs(db, needs); err == nil {
 		if added, err := efficiencyv2.UpsertEfficiencyV2SelfBootstrapAnchors(db, needsReloaded); err != nil {
-			logWarnf("self-bootstrap anchor 写入失败: %v", err)
+			logx.Warnf("self-bootstrap anchor 写入失败: %v", err)
 		} else if added > 0 {
-			logInfof("self-bootstrap 写入 %d 个 team anchor（下次跑 kNN 生效）", added)
+			logx.Infof("self-bootstrap 写入 %d 个 team anchor（下次跑 kNN 生效）", added)
 		}
 	}
 
@@ -263,7 +264,7 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 	}
 
 	for i := range needs {
-		logProgress("[efficiency-v2] 基线融合(含LLM)", i+1, len(needs), 1)
+		logx.Progress("[efficiency-v2] 基线融合(含LLM)", i+1, len(needs), 1)
 		need := &needs[i]
 		sessionIDs := efficiencyv2.EfficiencyV2StringsFromJSON(need.SessionIds)
 		commitIDs := efficiencyv2.EfficiencyV2StringsFromJSON(need.CommitIds)

@@ -1,4 +1,6 @@
-package main
+// Package logx 是 kbcli 的轻量日志（从 main 的 logger.go 抽出，去掉全局散落）。
+// 用法：Init() 初始化；Infof/Warnf/Errorf/... 包级便捷函数；Close() 收尾。
+package logx
 
 import (
 	"fmt"
@@ -56,12 +58,12 @@ type Logger struct {
 
 var logger *Logger
 
-func InitLogger(consoleLevelStr, logFile, fileLevelStr string) error {
+// Init 初始化全局 logger（原 InitLogger）。
+func Init(consoleLevelStr, logFile, fileLevelStr string) error {
 	l := &Logger{
 		consoleLevel: parseLogLevel(consoleLevelStr),
 		fileLevel:    parseLogLevel(fileLevelStr),
 	}
-
 	if logFile != "" {
 		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
@@ -69,9 +71,15 @@ func InitLogger(consoleLevelStr, logFile, fileLevelStr string) error {
 		}
 		l.file = f
 	}
-
 	logger = l
 	return nil
+}
+
+// Close 关闭日志文件句柄（nil-safe）。
+func Close() {
+	if logger != nil {
+		logger.Close()
+	}
 }
 
 func (l *Logger) Close() {
@@ -90,10 +98,8 @@ func (l *Logger) log(level LogLevel, msg string) {
 		}
 		return
 	}
-
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	line := fmt.Sprintf("[%s] [%s] %s", timestamp, level.String(), msg)
-
 	if level >= l.consoleLevel {
 		if level >= LogError {
 			fmt.Fprintln(os.Stderr, line)
@@ -101,7 +107,6 @@ func (l *Logger) log(level LogLevel, msg string) {
 			fmt.Println(line)
 		}
 	}
-
 	if l.file != nil && level >= l.fileLevel {
 		l.mu.Lock()
 		fmt.Fprintln(l.file, line)
@@ -109,34 +114,7 @@ func (l *Logger) log(level LogLevel, msg string) {
 	}
 }
 
-func (l *Logger) Debug(msg string) { l.log(LogDebug, msg) }
-func (l *Logger) Info(msg string)  { l.log(LogInfo, msg) }
-func (l *Logger) Warn(msg string)  { l.log(LogWarn, msg) }
-func (l *Logger) Error(msg string) { l.log(LogError, msg) }
-func (l *Logger) Debugf(format string, args ...interface{}) {
-	l.log(LogDebug, fmt.Sprintf(format, args...))
-}
-func (l *Logger) Infof(format string, args ...interface{}) {
-	l.log(LogInfo, fmt.Sprintf(format, args...))
-}
-func (l *Logger) Warnf(format string, args ...interface{}) {
-	l.log(LogWarn, fmt.Sprintf(format, args...))
-}
-func (l *Logger) Errorf(format string, args ...interface{}) {
-	l.log(LogError, fmt.Sprintf(format, args...))
-}
-
-// 便捷函数，供全局调用
-func logDebug(msg string)                          { logger.Debug(msg) }
-func logInfo(msg string)                           { logger.Info(msg) }
-func logWarn(msg string)                           { logger.Warn(msg) }
-func logError(msg string)                          { logger.Error(msg) }
-func logDebugf(format string, args ...interface{}) { logger.Debugf(format, args...) }
-func logInfof(format string, args ...interface{})  { logger.Infof(format, args...) }
-func logWarnf(format string, args ...interface{})  { logger.Warnf(format, args...) }
-func logErrorf(format string, args ...interface{}) { logger.Errorf(format, args...) }
-
-func (l *Logger) Prompt(msg string) {
+func (l *Logger) prompt(msg string) {
 	if l == nil {
 		fmt.Fprintln(os.Stderr, msg)
 		return
@@ -149,15 +127,22 @@ func (l *Logger) Prompt(msg string) {
 	}
 }
 
-func (l *Logger) Promptf(format string, args ...interface{}) {
-	l.Prompt(fmt.Sprintf(format, args...))
+// 包级便捷函数（原 main 的 logXxx）。
+func Debug(msg string)                          { logger.log(LogDebug, msg) }
+func Info(msg string)                           { logger.log(LogInfo, msg) }
+func Warn(msg string)                           { logger.log(LogWarn, msg) }
+func Error(msg string)                          { logger.log(LogError, msg) }
+func Debugf(format string, args ...interface{}) { logger.log(LogDebug, fmt.Sprintf(format, args...)) }
+func Infof(format string, args ...interface{})  { logger.log(LogInfo, fmt.Sprintf(format, args...)) }
+func Warnf(format string, args ...interface{})  { logger.log(LogWarn, fmt.Sprintf(format, args...)) }
+func Errorf(format string, args ...interface{}) { logger.log(LogError, fmt.Sprintf(format, args...)) }
+func Prompt(msg string)                         { logger.prompt(msg) }
+func Promptf(format string, args ...interface{}) {
+	logger.prompt(fmt.Sprintf(format, args...))
 }
 
-func logPrompt(msg string)                          { logger.Prompt(msg) }
-func logPromptf(format string, args ...interface{}) { logger.Promptf(format, args...) }
-
-// 进展提示，进度条长度为linecnt,进展到末尾后自动复位
-func logPromptProgress(cnt, linecnt int) {
+// PromptProgress 进度点（进度条长度 linecnt，到末尾复位）。
+func PromptProgress(cnt, linecnt int) {
 	if logger.consoleLevel < LogInfo {
 		return
 	}
@@ -170,9 +155,8 @@ func logPromptProgress(cnt, linecnt int) {
 	}
 }
 
-// logProgress 在同一行刷新 "label done/total (pct%)"，done>=total 时换行收尾。
-// 仅 console >= info 输出；step 控制刷新频率（每 step 个刷一次，最后一个必刷）。
-func logProgress(label string, done, total, step int) {
+// Progress 在同一行刷新 "label done/total (pct%)"，done>=total 时换行收尾。
+func Progress(label string, done, total, step int) {
 	if logger.consoleLevel < LogInfo {
 		return
 	}

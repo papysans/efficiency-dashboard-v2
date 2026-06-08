@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/kbcli/internal/logx"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -20,7 +21,7 @@ var rootCmd = &cobra.Command{
 		logFile, _ := cmd.Flags().GetString("logfile")
 		fileLevel, _ := cmd.Flags().GetString("loglevel")
 
-		if err := InitLogger(consoleLevel, logFile, fileLevel); err != nil {
+		if err := logx.Init(consoleLevel, logFile, fileLevel); err != nil {
 			return err
 		}
 		loadedCfg, err := LoadFirstConfig([]string{configPath, "config.yaml", "configs/kbcli-config.yaml", "kbcli-config.yaml", "../kbcli-config.yaml"})
@@ -42,9 +43,7 @@ func init() {
 // Execute 执行根命令，供 main.go 调用
 func Execute() {
 	err := rootCmd.Execute()
-	if logger != nil {
-		logger.Close()
-	}
+	logx.Close()
 	if err != nil {
 		os.Exit(1)
 	}

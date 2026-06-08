@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"kanban/kbcli/internal/logx"
 	"net/http"
 	"strings"
 	"time"
@@ -19,8 +20,8 @@ func sendToRemote(remoteURL, taskType string, params map[string]interface{}) err
 		return fmt.Errorf("序列化请求参数失败: %w", err)
 	}
 
-	logInfof("发送远程请求: POST %s", url)
-	logDebugf("请求体: %s", string(body))
+	logx.Infof("发送远程请求: POST %s", url)
+	logx.Debugf("请求体: %s", string(body))
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(url, "application/json", bytes.NewReader(body))
@@ -44,11 +45,11 @@ func sendToRemote(remoteURL, taskType string, params map[string]interface{}) err
 		Type   string `json:"type"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		logInfof("远程响应: %s", string(respBody))
+		logx.Infof("远程响应: %s", string(respBody))
 		return nil
 	}
 
-	logInfof("远程任务已提交: task_id=%s, status=%s, type=%s", result.TaskId, result.Status, result.Type)
-	logInfof("可通过 curl %s/api/tasks/%s 查询任务状态", remoteURL, result.TaskId)
+	logx.Infof("远程任务已提交: task_id=%s, status=%s, type=%s", result.TaskId, result.Status, result.Type)
+	logx.Infof("可通过 curl %s/api/tasks/%s 查询任务状态", remoteURL, result.TaskId)
 	return nil
 }

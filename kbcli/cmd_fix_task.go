@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/logx"
 	"time"
 
 	"kanban/core/models"
@@ -46,11 +47,11 @@ func runFixTask(taskDir, startDateStr, endDateStr, dateStr, specificTaskID strin
 	defer sqlDB.Close()
 
 	if specificTaskID != "" {
-		logInfof("===== 开始处理指定task: %s =====", specificTaskID)
+		logx.Infof("===== 开始处理指定task: %s =====", specificTaskID)
 		if err := fixSingleTask(db, taskDir, specificTaskID); err != nil {
 			return fmt.Errorf("处理指定task失败: %w", err)
 		}
-		logInfo("===== fix-task 命令执行完成 =====")
+		logx.Info("===== fix-task 命令执行完成 =====")
 		return nil
 	}
 
@@ -59,12 +60,12 @@ func runFixTask(taskDir, startDateStr, endDateStr, dateStr, specificTaskID strin
 		return err
 	}
 
-	logInfo("===== 开始处理task标题和估算 =====")
+	logx.Info("===== 开始处理task标题和估算 =====")
 	if err := fixTasks(db, taskDir, startDate, endDate, max); err != nil {
 		return fmt.Errorf("处理task失败: %w", err)
 	}
 
-	logInfo("===== fix-task 命令执行完成 =====")
+	logx.Info("===== fix-task 命令执行完成 =====")
 	return nil
 }
 
@@ -101,17 +102,17 @@ func fixSingleTask(db *gorm.DB, taskDir, taskID string) error {
 		if err == nil && title != "" {
 			UpdateTaskTitle(db, task.TaskId, title)
 			task.Title = title
-			logInfof("AI提取title完成: task=%s, title=%s", task.TaskId, title)
+			logx.Infof("AI提取title完成: task=%s, title=%s", task.TaskId, title)
 		}
 	}
 
 	if task.TaskAncientMinutesManual == nil {
 		if len(userInputs) == 0 {
-			logWarnf("task无对话数据，跳过估时: %s", task.TaskId)
+			logx.Warnf("task无对话数据，跳过估时: %s", task.TaskId)
 			return nil
 		}
 		if task.Title == "" {
-			logWarnf("task无标题，跳过估时: %s", task.TaskId)
+			logx.Warnf("task无标题，跳过估时: %s", task.TaskId)
 			return nil
 		}
 		minutes, reason, err := callAIForAncientEstimation(task.Title, task.DiffLines, totalChars)
@@ -121,7 +122,7 @@ func fixSingleTask(db *gorm.DB, taskDir, taskID string) error {
 		if err := UpdateTaskAncientEstimation(db, task.TaskId, minutes, reason); err != nil {
 			return fmt.Errorf("更新task估时结果失败: %w", err)
 		}
-		logInfof("task估时完成: %s, minutes=%.1f", task.TaskId, minutes)
+		logx.Infof("task估时完成: %s, minutes=%.1f", task.TaskId, minutes)
 	}
 
 	return nil
@@ -142,16 +143,16 @@ func fixTasks(db *gorm.DB, taskDir string, startDate, endDate *time.Time, max in
 	}
 
 	if len(tasks) == 0 {
-		logInfo("没有需要处理的task记录")
+		logx.Info("没有需要处理的task记录")
 		return nil
 	}
 
-	logInfof("找到 %d 个task记录待检查", len(tasks))
+	logx.Infof("找到 %d 个task记录待检查", len(tasks))
 
 	var checked, skipped, processed int
 	for _, task := range tasks {
 		if max > 0 && processed >= max {
-			logInfof("已达到最大处理数量 %d，停止", max)
+			logx.Infof("已达到最大处理数量 %d，停止", max)
 			break
 		}
 		checked++
@@ -160,13 +161,13 @@ func fixTasks(db *gorm.DB, taskDir string, startDate, endDate *time.Time, max in
 			continue
 		}
 		if err := fixSingleTask(db, taskDir, task.TaskId); err != nil {
-			logErrorf("处理task失败: %s, %v", task.TaskId, err)
+			logx.Errorf("处理task失败: %s, %v", task.TaskId, err)
 			continue
 		}
 		processed++
 	}
 
-	logInfof("task处理完成: 检查 %d 个, 跳过 %d 个, 处理 %d 个", checked, skipped, processed)
+	logx.Infof("task处理完成: 检查 %d 个, 跳过 %d 个, 处理 %d 个", checked, skipped, processed)
 	return nil
 }
 

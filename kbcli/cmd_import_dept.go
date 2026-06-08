@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"kanban/core/models"
+	"kanban/kbcli/internal/logx"
 	"net/http"
 	"strings"
 	"time"
@@ -216,23 +217,23 @@ func saveUserOrgDeptProjection(db *gorm.DB, rows []models.UserOrg) error {
 // triggerOrgRefresh 尽力触发 backend 重载 org 映射（失败仅告警，可手动重启 backend）。
 func triggerOrgRefresh(backendURL string) {
 	if backendURL == "" {
-		logWarnf("backend_url 未配置，跳过 orgs/refresh，请手动重启 backend 或调用 POST /api/v2/orgs/refresh 使映射生效")
+		logx.Warnf("backend_url 未配置，跳过 orgs/refresh，请手动重启 backend 或调用 POST /api/v2/orgs/refresh 使映射生效")
 		return
 	}
 	url := strings.TrimRight(backendURL, "/") + "/api/v2/orgs/refresh"
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Post(url, "application/json", nil)
 	if err != nil {
-		logWarnf("调用 orgs/refresh 失败（请手动重启 backend）: %v", err)
+		logx.Warnf("调用 orgs/refresh 失败（请手动重启 backend）: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		logWarnf("orgs/refresh 返回非 200（请手动重启 backend）: %d %s", resp.StatusCode, string(body))
+		logx.Warnf("orgs/refresh 返回非 200（请手动重启 backend）: %d %s", resp.StatusCode, string(body))
 		return
 	}
-	logInfo("已触发 backend orgs/refresh，org 映射已重载")
+	logx.Info("已触发 backend orgs/refresh，org 映射已重载")
 }
 
 func runImportDept(baseURL, queryKey string) error {
@@ -257,7 +258,7 @@ func runImportDept(baseURL, queryKey string) error {
 	}
 	var depts []models.Dept
 	flattenDeptTree(treeResp.Data, &depts)
-	logInfof("从 dept-sync 拉取到 %d 个部门", len(depts))
+	logx.Infof("从 dept-sync 拉取到 %d 个部门", len(depts))
 
 	deptPathByID := make(map[string]string, len(depts))
 	for _, d := range depts {
@@ -271,7 +272,7 @@ func runImportDept(baseURL, queryKey string) error {
 		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 		return err
 	}
-	logInfof("识别到 %d 个根部门: %v", len(roots), roots)
+	logx.Infof("识别到 %d 个根部门: %v", len(roots), roots)
 
 	peopleByEmp := make(map[string]deptSyncDeptUserNode) // 工号 → person（跨根去重）
 	for _, root := range roots {
@@ -287,7 +288,7 @@ func runImportDept(baseURL, queryKey string) error {
 			peopleByEmp[p.UserId] = p // 同工号多部门：取主部门更稳妥，但 include_children 实测每人单条主部门
 		}
 	}
-	logInfof("从根部门 include_children 拿到全量人员 %d 名（按工号去重后）", len(peopleByEmp))
+	logx.Infof("从根部门 include_children 拿到全量人员 %d 名（按工号去重后）", len(peopleByEmp))
 
 	// 3. 落库：全量部门树 + 全量花名册（dept_user）
 	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
@@ -297,7 +298,7 @@ func runImportDept(baseURL, queryKey string) error {
 	}
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
-	logInfo("目标数据库连接成功")
+	logx.Info("目标数据库连接成功")
 
 	deptUsers := make([]models.DeptUser, 0, len(peopleByEmp))
 	for _, p := range peopleByEmp {
@@ -320,7 +321,7 @@ func runImportDept(baseURL, queryKey string) error {
 		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return err
 	}
-	logInfof("已写入 %d 个部门到 dept、%d 名人员到 dept_user", len(depts), len(deptUsers))
+	logx.Infof("已写入 %d 个部门到 dept、%d 名人员到 dept_user", len(depts), len(deptUsers))
 
 	// 4. 投影回填 user_org（universal_id 直连为主，工号经 commits 桥接次选，未命中兜底）
 
@@ -415,7 +416,7 @@ func runImportDept(baseURL, queryKey string) error {
 		recordCommandRun("import-dept", startTime, len(depts), 0, 0, err)
 		return err
 	}
-	logInfof("投影回填 user_org：universal_id 命中 %d / 工号次选命中 %d / 兜底 %d（共 %d 名看板用户，写入 %d 条）",
+	logx.Infof("投影回填 user_org：universal_id 命中 %d / 工号次选命中 %d / 兜底 %d（共 %d 名看板用户，写入 %d 条）",
 		hitUniversal, hitEmpFallback, hitFallbackOrg, total, len(projections))
 
 	// 5. 刷新后端 org 映射（尽力而为）

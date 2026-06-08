@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/kbcli/internal/logx"
 	"os"
 	"reflect"
 	"testing"
@@ -534,11 +535,9 @@ efficiency_v2:
 // TestApplyAnalysisFloor 表驱动验证全局分析起始日下界逻辑。
 // 注意：applyAnalysisFloor 依赖全局 cfg；用例临时设置 cfg.AnalysisStartDate 后还原。
 func TestApplyAnalysisFloor(t *testing.T) {
-	// 命中下界分支会 logInfof，需确保 logger 已初始化，否则空指针 panic。
-	if logger == nil {
-		if err := InitLogger("error", "", "error"); err != nil {
-			t.Fatalf("InitLogger 失败: %v", err)
-		}
+	// 命中下界分支会 logx.Infof，需确保 logger 已初始化，否则空指针 panic。
+	if err := logx.Init("error", "", "error"); err != nil {
+		t.Fatalf("logx.Init 失败: %v", err)
 	}
 	oldCfg := cfg
 	defer func() { cfg = oldCfg }()

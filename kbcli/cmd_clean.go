@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/logx"
 	"time"
 
 	"kanban/core/models"
@@ -49,25 +50,25 @@ var cleanCmd = &cobra.Command{
 		}
 
 		for _, t := range tables {
-			logInfof("[clean] 处理 %s 表中 %s 早于 %s 的记录...", t.name, t.field, before.Format("2006-01-02 15:04:05"))
+			logx.Infof("[clean] 处理 %s 表中 %s 早于 %s 的记录...", t.name, t.field, before.Format("2006-01-02 15:04:05"))
 			if dryRun {
 				var cnt int64
 				if err := db.Table(t.name).Where(t.condition, before).Count(&cnt).Error; err != nil {
-					logErrorf("[clean] 统计 %s 失败: %v", t.name, err)
+					logx.Errorf("[clean] 统计 %s 失败: %v", t.name, err)
 					continue
 				}
-				logInfof("[clean] %s 表将有 %d 条记录被删除（dry-run）", t.name, cnt)
+				logx.Infof("[clean] %s 表将有 %d 条记录被删除（dry-run）", t.name, cnt)
 				continue
 			}
 			deleted, err := batchDelete(db, t.name, t.condition, before, batchSize)
 			if err != nil {
-				logErrorf("[clean] 清洗 %s 失败: %v", t.name, err)
+				logx.Errorf("[clean] 清洗 %s 失败: %v", t.name, err)
 				continue
 			}
-			logInfof("[clean] %s 表已删除 %d 条记录", t.name, deleted)
+			logx.Infof("[clean] %s 表已删除 %d 条记录", t.name, deleted)
 		}
 
-		logInfo("[clean] 全部清洗完成")
+		logx.Info("[clean] 全部清洗完成")
 		return nil
 	},
 }

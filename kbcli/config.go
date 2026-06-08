@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/logx"
 	"os"
 	"strings"
 
@@ -88,7 +89,7 @@ type DeptSyncConfig struct {
 // （date 与 start-date 互斥的命令应只在未传 date 时调用本函数）。
 func applyAnalysisFloor(startDate string) string {
 	if strings.TrimSpace(startDate) == "" && cfg != nil && strings.TrimSpace(cfg.AnalysisStartDate) != "" {
-		logInfof("应用分析起始日下界 analysis_start_date=%s", cfg.AnalysisStartDate)
+		logx.Infof("应用分析起始日下界 analysis_start_date=%s", cfg.AnalysisStartDate)
 		return cfg.AnalysisStartDate
 	}
 	return startDate
@@ -104,10 +105,10 @@ func LoadFirstConfig(files []string) (*Config, error) {
 		}
 		loadedCfg, err := LoadConfig(fname)
 		if err == nil {
-			logDebugf("load config [%s] ok, cfg: %+v\n", fname, loadedCfg)
+			logx.Debugf("load config [%s] ok, cfg: %+v\n", fname, loadedCfg)
 			return loadedCfg, nil
 		}
-		logWarnf("load config [%s] failed: %v\n", fname, err)
+		logx.Warnf("load config [%s] failed: %v\n", fname, err)
 	}
 	return nil, fmt.Errorf("load config [%s] failed", strings.Join(files, ","))
 }

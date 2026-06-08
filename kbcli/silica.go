@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/core/models"
+	"kanban/kbcli/internal/logx"
 	"os"
 	"path/filepath"
 	"sort"
@@ -161,18 +162,18 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 	var missStartTimeCount int
 	var missEndTimeCount int
 	for i, silicaFile := range silicaFiles {
-		logPromptProgress(i, 50)
+		logx.PromptProgress(i, 50)
 
 		// 加载单个task的silica数据文件
 		ss, err := loadTaskSilicaFile(silicaFile)
 		if err != nil {
-			logWarnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
+			logx.Warnf("读取task silica文件失败 [%s]: %v", silicaFile, err)
 			skipCount++
 			continue
 		}
 		// 跳过缺少关键字段的文件，避免索引中出现无效分组
 		if ss.SessionId == "" {
-			logWarnf("文件[%s]缺失字段[task_id]", silicaFile)
+			logx.Warnf("文件[%s]缺失字段[task_id]", silicaFile)
 			skipCount++
 			continue
 		}
@@ -184,7 +185,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		// 第三步：遍历该task下的所有对话，将指纹注册到分组索引中
 		for i, conv := range ss.Conversations {
 			if conv.RequestId == "" {
-				logWarnf("文件[%s]对话[%d]缺失字段[request_id]", silicaFile, i)
+				logx.Warnf("文件[%s]对话[%d]缺失字段[request_id]", silicaFile, i)
 				continue
 			}
 			if conv.RepoAddr == "" {
@@ -246,10 +247,10 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		}
 		convCount += len(ss.Conversations)
 	}
-	logInfof("加载[%d]个对话文件，忽略其中[%d]个文件", len(silicaFiles), skipCount)
-	logInfof("共[%d]组对话,缺失repo_addr[%d]个,缺失start_time[%d]个,缺失end_time[%d]个",
+	logx.Infof("加载[%d]个对话文件，忽略其中[%d]个文件", len(silicaFiles), skipCount)
+	logx.Infof("共[%d]组对话,缺失repo_addr[%d]个,缺失start_time[%d]个,缺失end_time[%d]个",
 		convCount, missRepoCount, missStartTimeCount, missStartTimeCount)
-	logInfof("共[%d]个分组, [%d]个唯一哈希", len(idx.groups), hashCount)
+	logx.Infof("共[%d]个分组, [%d]个唯一哈希", len(idx.groups), hashCount)
 	return idx, nil
 }
 

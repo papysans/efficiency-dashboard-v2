@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
+	"kanban/kbcli/internal/logx"
 	"sort"
 	"time"
 
@@ -20,13 +21,13 @@ func createPseudoTasks(db *gorm.DB) error {
 		return fmt.Errorf("查询sessions失败: %w", err)
 	}
 
-	logInfof("开始为 %d 个session创建伪任务", len(sessions))
+	logx.Infof("开始为 %d 个session创建伪任务", len(sessions))
 
 	var successCount, failCount int
 	for _, session := range sessions {
 		var conversations []models.Conversation
 		if err := db.Where("session_id = ?", session.SessionId).Order("start_time ASC").Find(&conversations).Error; err != nil {
-			logWarnf("查询session[%s]的conversations失败: %v", session.SessionId, err)
+			logx.Warnf("查询session[%s]的conversations失败: %v", session.SessionId, err)
 			failCount++
 			continue
 		}
@@ -41,7 +42,7 @@ func createPseudoTasks(db *gorm.DB) error {
 			Columns:   []clause.Column{{Name: "task_id"}},
 			DoUpdates: clause.AssignmentColumns(pseudoTaskUpdateColumns()),
 		}).Create(&task).Error; err != nil {
-			logWarnf("保存伪任务[%s]失败: %v", task.TaskId, err)
+			logx.Warnf("保存伪任务[%s]失败: %v", task.TaskId, err)
 			failCount++
 			continue
 		}
@@ -49,13 +50,13 @@ func createPseudoTasks(db *gorm.DB) error {
 		if err := db.Model(&models.Conversation{}).
 			Where("session_id = ?", session.SessionId).
 			Update("task_id", task.TaskId).Error; err != nil {
-			logWarnf("更新conversation的task_id失败 [%s]: %v", task.TaskId, err)
+			logx.Warnf("更新conversation的task_id失败 [%s]: %v", task.TaskId, err)
 		}
 
 		successCount++
 	}
 
-	logInfof("伪任务创建完成: 成功 %d 个，失败 %d 个", successCount, failCount)
+	logx.Infof("伪任务创建完成: 成功 %d 个，失败 %d 个", successCount, failCount)
 	return nil
 }
 

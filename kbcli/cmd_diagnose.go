@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"kanban/core/models"
+	"kanban/kbcli/internal/logx"
 
 	"github.com/spf13/cobra"
 )
@@ -37,10 +38,10 @@ func runFindUsers() error {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	logInfo("===== 查找数据库中实际存在的 user_id 和日期 =====")
+	logx.Info("===== 查找数据库中实际存在的 user_id 和日期 =====")
 
 	// 1. tasks 表中唯一的 user_id（前20个）
-	logInfo("1. tasks 表中唯一的 user_id（前20个）")
+	logx.Info("1. tasks 表中唯一的 user_id（前20个）")
 	type taskUser struct {
 		UserId       string
 		TaskCount    int64
@@ -60,15 +61,15 @@ func runFindUsers() error {
 		ORDER BY task_count DESC
 		LIMIT 20
 	`).Scan(&taskUsers)
-	logInfof("   找到 %d 个用户:", len(taskUsers))
+	logx.Infof("   找到 %d 个用户:", len(taskUsers))
 	for _, tu := range taskUsers {
-		logInfof("   - UserId: %s, TaskCount: %d, 日期范围: %s ~ %s",
+		logx.Infof("   - UserId: %s, TaskCount: %d, 日期范围: %s ~ %s",
 			tu.UserId, tu.TaskCount, tu.EarliestDate, tu.LatestDate)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 2. commits 表中唯一的 user_id（前20个）
-	logInfo("2. commits 表中唯一的 user_id（前20个）")
+	logx.Info("2. commits 表中唯一的 user_id（前20个）")
 	type commitUser struct {
 		UserId       string
 		CommitCount  int64
@@ -88,15 +89,15 @@ func runFindUsers() error {
 		ORDER BY commit_count DESC
 		LIMIT 20
 	`).Scan(&commitUsers)
-	logInfof("   找到 %d 个用户:", len(commitUsers))
+	logx.Infof("   找到 %d 个用户:", len(commitUsers))
 	for _, cu := range commitUsers {
-		logInfof("   - UserId: %s, CommitCount: %d, 日期范围: %s ~ %s",
+		logx.Infof("   - UserId: %s, CommitCount: %d, 日期范围: %s ~ %s",
 			cu.UserId, cu.CommitCount, cu.EarliestDate, cu.LatestDate)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 3. 最新的 tasks 和 commits 日期
-	logInfo("3. 最新的 tasks 和 commits 日期")
+	logx.Info("3. 最新的 tasks 和 commits 日期")
 	type tableDateInfo struct {
 		TableName     string
 		LatestDateStr string
@@ -120,13 +121,13 @@ func runFindUsers() error {
 		FROM commits
 	`).Scan(&tableDates)
 	for _, td := range tableDates {
-		logInfof("   - 表: %s, 最新日期: %s (%s), 总记录数: %d",
+		logx.Infof("   - 表: %s, 最新日期: %s (%s), 总记录数: %d",
 			td.TableName, td.LatestDateStr, td.LatestDate, td.TotalCount)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 4. 建议诊断参数
-	logInfo("4. 建议诊断参数")
+	logx.Info("4. 建议诊断参数")
 	if len(taskUsers) > 0 {
 		suggestedUserId := taskUsers[0].UserId
 		var latestDate string
@@ -134,12 +135,12 @@ func runFindUsers() error {
 			SELECT TO_CHAR(DATE(MAX(start_time)), 'YYYYMMDD') as date_str
 			FROM tasks
 		`).Scan(&latestDate)
-		logInfo("   建议使用的诊断命令:")
-		logInfof("   kbcli diagnose --user-id %s --date %s", suggestedUserId, latestDate)
+		logx.Info("   建议使用的诊断命令:")
+		logx.Infof("   kbcli diagnose --user-id %s --date %s", suggestedUserId, latestDate)
 	}
-	logInfo("")
+	logx.Info("")
 
-	logInfo("===== 查询完成 =====")
+	logx.Info("===== 查询完成 =====")
 	return nil
 }
 
@@ -151,16 +152,16 @@ func runDiagnose(UserId, dateStr string) error {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	logInfof("===== 诊断用户: %s, 日期: %s =====", UserId, dateStr)
+	logx.Infof("===== 诊断用户: %s, 日期: %s =====", UserId, dateStr)
 
 	// 1. 检查数据库时区
-	logInfo("1. 检查数据库时区设置")
+	logx.Info("1. 检查数据库时区设置")
 	var timezone string
 	db.Raw("SHOW timezone").Scan(&timezone)
-	logInfof("   数据库时区: %s", timezone)
+	logx.Infof("   数据库时区: %s", timezone)
 
 	// 2. 检查 user_id 字段
-	logInfo("2. user_id 字段检查")
+	logx.Info("2. user_id 字段检查")
 	type UserIdCheck struct {
 		UserId         string
 		UserIdLength   int
@@ -178,13 +179,13 @@ func runDiagnose(UserId, dateStr string) error {
 		WHERE user_id = $1
 		LIMIT 1
 	`, UserId).Scan(&uidCheck)
-	logInfof("   UserId: %s", uidCheck.UserId)
-	logInfof("   长度: %d", uidCheck.UserIdLength)
-	logInfof("   是否已去除首尾空格: %t", uidCheck.IsTrimmed)
-	logInfof("   第一个字符ASCII码: %d", uidCheck.FirstCharAscii)
+	logx.Infof("   UserId: %s", uidCheck.UserId)
+	logx.Infof("   长度: %d", uidCheck.UserIdLength)
+	logx.Infof("   是否已去除首尾空格: %t", uidCheck.IsTrimmed)
+	logx.Infof("   第一个字符ASCII码: %d", uidCheck.FirstCharAscii)
 
 	// 2. 检查 tasks 表中该用户的所有记录
-	logInfof("3. tasks 表中用户 %s 的所有记录（不限日期）", UserId)
+	logx.Infof("3. tasks 表中用户 %s 的所有记录（不限日期）", UserId)
 	type taskInfo struct {
 		UserId        string
 		TaskId        string
@@ -206,14 +207,14 @@ func runDiagnose(UserId, dateStr string) error {
 		WHERE user_id = $1
 		ORDER BY start_time DESC
 	`, UserId).Scan(&tasks)
-	logInfof("   找到 %d 条记录:", len(tasks))
+	logx.Infof("   找到 %d 条记录:", len(tasks))
 	for _, t := range tasks {
-		logInfof("   - TaskId: %s, StartTime: %s, WorkDirId: %s", t.TaskId, t.StartTime, t.WorkDirId)
+		logx.Infof("   - TaskId: %s, StartTime: %s, WorkDirId: %s", t.TaskId, t.StartTime, t.WorkDirId)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 3. 检查 tasks 表中该用户在指定日期的记录
-	logInfof("4. tasks 表中用户 %s 在指定日期 %s 的记录", UserId, dateStr)
+	logx.Infof("4. tasks 表中用户 %s 在指定日期 %s 的记录", UserId, dateStr)
 	var tasksOnDate []taskInfo
 	db.Raw(`
 		SELECT 
@@ -227,14 +228,14 @@ func runDiagnose(UserId, dateStr string) error {
 		WHERE user_id = $1 AND DATE(start_time) = $2
 		ORDER BY start_time
 	`, UserId, dateStr).Scan(&tasksOnDate)
-	logInfof("   找到 %d 条记录:", len(tasksOnDate))
+	logx.Infof("   找到 %d 条记录:", len(tasksOnDate))
 	for _, t := range tasksOnDate {
-		logInfof("   - TaskId: %s, StartTime: %s, WorkDirId: %s", t.TaskId, t.StartTime, t.WorkDirId)
+		logx.Infof("   - TaskId: %s, StartTime: %s, WorkDirId: %s", t.TaskId, t.StartTime, t.WorkDirId)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 5. 模拟 tasks 聚合查询
-	logInfof("5. 模拟 tasks 聚合查询（用户: %s，日期: %s）", UserId, dateStr)
+	logx.Infof("5. 模拟 tasks 聚合查询（用户: %s，日期: %s）", UserId, dateStr)
 	type taskAgg struct {
 		UserId             string
 		TaskIds            string
@@ -260,16 +261,16 @@ func runDiagnose(UserId, dateStr string) error {
 		WHERE user_id  = $1 AND DATE(start_time) = $2
 		GROUP BY user_id
 	`, UserId, dateStr).Scan(&taskAggs)
-	logInfof("   聚合结果数量: %d", len(taskAggs))
+	logx.Infof("   聚合结果数量: %d", len(taskAggs))
 	for _, ta := range taskAggs {
-		logInfof("   - UserId: %s", ta.UserId)
-		logInfof("     TaskIds: %s", ta.TaskIds)
-		logInfof("     TaskDiffLines: %d, TaskRealMinutes: %.2f", ta.TaskDiffLines, ta.TaskRealMinutes)
+		logx.Infof("   - UserId: %s", ta.UserId)
+		logx.Infof("     TaskIds: %s", ta.TaskIds)
+		logx.Infof("     TaskDiffLines: %d, TaskRealMinutes: %.2f", ta.TaskDiffLines, ta.TaskRealMinutes)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 6. 检查 commits 表中该用户的所有记录
-	logInfof("6. commits 表中用户 %s 的所有记录（不限日期）", UserId)
+	logx.Infof("6. commits 表中用户 %s 的所有记录（不限日期）", UserId)
 	type commitInfo struct {
 		UserId        string
 		CommitId      string
@@ -290,14 +291,14 @@ func runDiagnose(UserId, dateStr string) error {
 		ORDER BY commit_time DESC
 		LIMIT 10
 	`, UserId).Scan(&commits)
-	logInfof("   找到 %d 条记录:", len(commits))
+	logx.Infof("   找到 %d 条记录:", len(commits))
 	for _, c := range commits {
-		logInfof("   - CommitId: %s, CommitTime: %s", c.CommitId, c.CommitTime)
+		logx.Infof("   - CommitId: %s, CommitTime: %s", c.CommitId, c.CommitTime)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 7. 检查 commits 表中该用户在指定日期的记录
-	logInfof("7. commits 表中用户 %s 在指定日期 %s 的记录", UserId, dateStr)
+	logx.Infof("7. commits 表中用户 %s 在指定日期 %s 的记录", UserId, dateStr)
 	var commitsOnDate []commitInfo
 	db.Raw(`
 		SELECT 
@@ -310,14 +311,14 @@ func runDiagnose(UserId, dateStr string) error {
 		WHERE user_id = $1 AND DATE(commit_time) = $2
 		ORDER BY commit_time
 	`, UserId, dateStr).Scan(&commitsOnDate)
-	logInfof("   找到 %d 条记录:", len(commitsOnDate))
+	logx.Infof("   找到 %d 条记录:", len(commitsOnDate))
 	for _, c := range commitsOnDate {
-		logInfof("   - CommitId: %s, CommitTime: %s", c.CommitId, c.CommitTime)
+		logx.Infof("   - CommitId: %s, CommitTime: %s", c.CommitId, c.CommitTime)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 8. 模拟 commits 聚合查询
-	logInfof("8. 模拟 commits 聚合查询（用户: %s，日期: %s）", UserId, dateStr)
+	logx.Infof("8. 模拟 commits 聚合查询（用户: %s，日期: %s）", UserId, dateStr)
 	type commitAgg struct {
 		UserId                   string
 		CommitIds                string
@@ -341,16 +342,16 @@ func runDiagnose(UserId, dateStr string) error {
 		WHERE user_id = $1 AND DATE(commit_time) = $2
 		GROUP BY user_id
 	`, UserId, dateStr).Scan(&commitAggs)
-	logInfof("   聚合结果数量: %d", len(commitAggs))
+	logx.Infof("   聚合结果数量: %d", len(commitAggs))
 	for _, ca := range commitAggs {
-		logInfof("   - UserId: %s", ca.UserId)
-		logInfof("     CommitIds: %s", ca.CommitIds)
-		logInfof("     CommitDiffLines: %d, CommitRealMinutes: %.2f", ca.CommitDiffLines, ca.CommitRealMinutes)
+		logx.Infof("   - UserId: %s", ca.UserId)
+		logx.Infof("     CommitIds: %s", ca.CommitIds)
+		logx.Infof("     CommitDiffLines: %d, CommitRealMinutes: %.2f", ca.CommitDiffLines, ca.CommitRealMinutes)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 9. 检查 user_productivity 表中的记录
-	logInfof("9. user_productivity 表中的记录（用户: %s, 日期: %s）", UserId, dateStr)
+	logx.Infof("9. user_productivity 表中的记录（用户: %s, 日期: %s）", UserId, dateStr)
 	type userProd struct {
 		UserProductivityId string
 		UserId             string
@@ -377,16 +378,16 @@ func runDiagnose(UserId, dateStr string) error {
 		FROM user_productivity
 		WHERE user_id = $1 AND TO_CHAR(create_time, 'YYYYMMDD') = $2
 	`, UserId, dateStr).Scan(&userProds)
-	logInfof("   找到 %d 条记录:", len(userProds))
+	logx.Infof("   找到 %d 条记录:", len(userProds))
 	for _, up := range userProds {
-		logInfof("   - ID: %s, CreateTime: %s", up.UserProductivityId, up.CreateTime)
-		logInfof("     TaskIds: %s", up.TaskIds)
-		logInfof("     CommitIds: %s", up.CommitIds)
+		logx.Infof("   - ID: %s, CreateTime: %s", up.UserProductivityId, up.CreateTime)
+		logx.Infof("     TaskIds: %s", up.TaskIds)
+		logx.Infof("     CommitIds: %s", up.CommitIds)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 10. 检查该用户的所有日期分布
-	logInfo("10. 该用户的所有日期分布（tasks表）")
+	logx.Info("10. 该用户的所有日期分布（tasks表）")
 	type dateDist struct {
 		UserId    string
 		TaskCount int
@@ -407,41 +408,41 @@ func runDiagnose(UserId, dateStr string) error {
 		GROUP BY user_id
 	`, UserId).Scan(&dateDists)
 	for _, dd := range dateDists {
-		logInfof("   - UserId: %s", dd.UserId)
-		logInfof("     TaskCount: %d", dd.TaskCount)
-		logInfof("     最早: %s", dd.Earliest)
-		logInfof("     最晚: %s", dd.Latest)
-		logInfof("     所有日期: %s", dd.AllDates)
+		logx.Infof("   - UserId: %s", dd.UserId)
+		logx.Infof("     TaskCount: %d", dd.TaskCount)
+		logx.Infof("     最早: %s", dd.Earliest)
+		logx.Infof("     最晚: %s", dd.Latest)
+		logx.Infof("     所有日期: %s", dd.AllDates)
 	}
-	logInfo("")
+	logx.Info("")
 
 	// 诊断结论
-	logInfo("===== 诊断结论 =====")
+	logx.Info("===== 诊断结论 =====")
 	if len(tasksOnDate) == 0 && len(commitsOnDate) == 0 {
-		logInfof("❌ 问题找到：用户 %s 在日期 %s 的 tasks 和 commits 表中都没有数据！", UserId, dateStr)
+		logx.Infof("❌ 问题找到：用户 %s 在日期 %s 的 tasks 和 commits 表中都没有数据！", UserId, dateStr)
 		if len(tasks) > 0 || len(commits) > 0 {
-			logInfo("   但是该用户在其他日期有数据，可能是日期不匹配。")
-			logInfo("   可能原因：")
-			logInfo("   1. 时区问题：数据中的时间戳在数据库时区下属于不同的日期")
-			logInfo("   2. 日期格式问题：指定日期格式不正确")
-			logInfo("   3. 数据确实不在该日期")
+			logx.Info("   但是该用户在其他日期有数据，可能是日期不匹配。")
+			logx.Info("   可能原因：")
+			logx.Info("   1. 时区问题：数据中的时间戳在数据库时区下属于不同的日期")
+			logx.Info("   2. 日期格式问题：指定日期格式不正确")
+			logx.Info("   3. 数据确实不在该日期")
 		}
 	} else if len(taskAggs) == 0 && len(tasksOnDate) > 0 {
-		logInfo("❌ 问题找到：tasks 表中有数据，但聚合查询返回空！")
-		logInfo("   可能原因：")
-		logInfo("   1. user_id 在数据中有空格或特殊字符")
-		logInfo("   2. user_id 为 NULL 或空字符串")
-		logInfo("   3. DATE(start_time) 函数返回的日期不匹配")
+		logx.Info("❌ 问题找到：tasks 表中有数据，但聚合查询返回空！")
+		logx.Info("   可能原因：")
+		logx.Info("   1. user_id 在数据中有空格或特殊字符")
+		logx.Info("   2. user_id 为 NULL 或空字符串")
+		logx.Info("   3. DATE(start_time) 函数返回的日期不匹配")
 	} else if len(commitAggs) == 0 && len(commitsOnDate) > 0 {
-		logInfo("❌ 问题找到：commits 表中有数据，但聚合查询返回空！")
-		logInfo("   可能原因：")
-		logInfo("   1. user_id 在数据中有空格或特殊字符")
-		logInfo("   2. user_id 为 NULL 或空字符串")
-		logInfo("   3. DATE(commit_time) 函数返回的日期不匹配")
+		logx.Info("❌ 问题找到：commits 表中有数据，但聚合查询返回空！")
+		logx.Info("   可能原因：")
+		logx.Info("   1. user_id 在数据中有空格或特殊字符")
+		logx.Info("   2. user_id 为 NULL 或空字符串")
+		logx.Info("   3. DATE(commit_time) 函数返回的日期不匹配")
 	} else {
-		logInfof("✓ 数据正常：用户 %s 在日期 %s 有数据，聚合查询也返回了结果。", UserId, dateStr)
+		logx.Infof("✓ 数据正常：用户 %s 在日期 %s 有数据，聚合查询也返回了结果。", UserId, dateStr)
 		if len(userProds) == 0 {
-			logInfo("   但是 user_productivity 表中没有记录，可能 efficiency 命令还没有运行。")
+			logx.Info("   但是 user_productivity 表中没有记录，可能 efficiency 命令还没有运行。")
 		}
 	}
 

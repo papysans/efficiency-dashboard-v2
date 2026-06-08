@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"kanban/core/models"
+	"kanban/kbcli/internal/logx"
 	"os"
 	"sort"
 	"strings"
@@ -85,7 +86,7 @@ func loadUserOrgsFromCSV(csvFile string) ([]models.UserOrg, error) {
 		}
 		userOrgs = append(userOrgs, userOrg)
 	}
-	logInfof("从CSV文件加载到 %d 条用户组织记录", len(userOrgs))
+	logx.Infof("从CSV文件加载到 %d 条用户组织记录", len(userOrgs))
 	return userOrgs, nil
 }
 
@@ -96,7 +97,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]models.UserOrg, error) {
 		return nil, fmt.Errorf("连接 auth 数据库失败: %w", err)
 	}
 	defer authDB.Close()
-	logInfo("auth 数据库连接成功")
+	logx.Info("auth 数据库连接成功")
 
 	quotaDSN := replaceDBName(fromDSN, "quota_manager")
 	quotaDB, err := models.OpenSQLDB(quotaDSN)
@@ -104,7 +105,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]models.UserOrg, error) {
 		return nil, fmt.Errorf("连接 quota_manager 数据库失败: %w", err)
 	}
 	defer quotaDB.Close()
-	logInfo("quota_manager 数据库连接成功")
+	logx.Info("quota_manager 数据库连接成功")
 
 	userRows, err := authDB.Query(`
 		SELECT id, name, github_name, email, employee_number
@@ -169,7 +170,7 @@ func loadUserOrgsFromDB(fromDSN string) ([]models.UserOrg, error) {
 	if err := userRows.Err(); err != nil {
 		return nil, fmt.Errorf("遍历用户数据失败: %w", err)
 	}
-	logInfof("查询到 %d 条用户组织记录", len(userOrgs))
+	logx.Infof("查询到 %d 条用户组织记录", len(userOrgs))
 	return userOrgs, nil
 }
 
@@ -326,7 +327,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	} else {
 		userOrgs, err = loadUserOrgsFromDB(fromDSN)
 		if err != nil {
-			logWarnf("从 auth/quota 导入组织失败，改用本地已导入用户生成临时组织: %v", err)
+			logx.Warnf("从 auth/quota 导入组织失败，改用本地已导入用户生成临时组织: %v", err)
 		}
 	}
 
@@ -337,17 +338,17 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 	}
 	sqlDB, _ := gormDB.DB()
 	defer sqlDB.Close()
-	logInfo("目标数据库连接成功")
+	logx.Info("目标数据库连接成功")
 
 	if userOrgs == nil {
 		// 先尝试用配置的 org_csv_file 加载完整 org1~9 映射
 		if cfg.OrgCSVFile != "" {
 			csvOrgs, csvErr := loadUserOrgsFromCSV(cfg.OrgCSVFile)
 			if csvErr == nil && len(csvOrgs) > 0 {
-				logInfof("DB 不可用，已从配置 org_csv_file(%s)加载 %d 条完整组织记录", cfg.OrgCSVFile, len(csvOrgs))
+				logx.Infof("DB 不可用，已从配置 org_csv_file(%s)加载 %d 条完整组织记录", cfg.OrgCSVFile, len(csvOrgs))
 				userOrgs = csvOrgs
 			} else if csvErr != nil {
-				logWarnf("org_csv_file(%s) 读取失败，继续回落到本地任务数据: %v", cfg.OrgCSVFile, csvErr)
+				logx.Warnf("org_csv_file(%s) 读取失败，继续回落到本地任务数据: %v", cfg.OrgCSVFile, csvErr)
 			}
 		}
 	}
@@ -364,7 +365,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		}
 		userOrgs = localOrgs
 		fromLocalFallback = true
-		logWarnf("已生成 %d 条临时 user_org 记录，全部归入 org1=临时组织（org_csv_file 不可用或为空）", len(userOrgs))
+		logx.Warnf("已生成 %d 条临时 user_org 记录，全部归入 org1=临时组织（org_csv_file 不可用或为空）", len(userOrgs))
 	}
 
 	if toCSV != "" {
@@ -372,7 +373,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 			recordCommandRun("import-org", startTime, 0, 0, 0, err)
 			return fmt.Errorf("写入CSV文件失败: %w", err)
 		}
-		logInfof("CSV 文件已写入: %s", toCSV)
+		logx.Infof("CSV 文件已写入: %s", toCSV)
 	}
 
 	// 兜底"临时组织"占位走 InsertOnly（只插新用户、不覆盖已有真实 org）；
@@ -385,7 +386,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		recordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("写入user_org表失败: %w", err)
 	}
-	logInfof("已写入 %d 条记录到 user_org 表", len(userOrgs))
+	logx.Infof("已写入 %d 条记录到 user_org 表", len(userOrgs))
 	recordCommandRun("import-org", startTime, len(userOrgs), 0, 0, nil)
 	return nil
 }

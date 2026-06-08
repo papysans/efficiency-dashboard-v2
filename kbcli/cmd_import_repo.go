@@ -6,6 +6,7 @@ import (
 	"kanban/core/models"
 	"kanban/core/utils"
 	"kanban/kbcli/internal/efficiencyv2"
+	"kanban/kbcli/internal/logx"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -117,7 +118,7 @@ func scanRepoDir(repoDir string, db *gorm.DB, force bool, startDate, endDate *ti
 			return nil
 		}
 		if !isActiveTimeInRange(fileDate, startDate, endDate) {
-			logDebugf("跳过(日期范围过滤): %s", path)
+			logx.Debugf("跳过(日期范围过滤): %s", path)
 			skipCount++
 			return nil
 		}
@@ -126,7 +127,7 @@ func scanRepoDir(repoDir string, db *gorm.DB, force bool, startDate, endDate *ti
 		if !force {
 			var count int64
 			if err := db.Model(&models.Commit{}).Where("commit_id = ?", meta.CommitId).Count(&count).Error; err == nil && count > 0 {
-				logDebugf("跳过(已存在): %s", path)
+				logx.Debugf("跳过(已存在): %s", path)
 				skipCount++
 				return nil
 			}
@@ -223,16 +224,16 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 
 	// 保存 tasks 和更新 conversations
 	if err := saveTasksAndConv(db, tms); err != nil {
-		logWarnf("保存Commit[%s]关联数据失败: %v", commitData.CommitId, err)
+		logx.Warnf("保存Commit[%s]关联数据失败: %v", commitData.CommitId, err)
 	}
 	if err := saveCommit(db, &commitData, p, commitTime); err != nil {
-		logWarnf("保存Commit[%s]失败: %v", commitData.CommitId, err)
+		logx.Warnf("保存Commit[%s]失败: %v", commitData.CommitId, err)
 	}
 
-	logDebugf("导入成功: %s (新增行: %d, silica: %.4f)", commitData.CommitId, len(addedLines), p.totalSilica)
-	logDebugf("  commit_ancient_minutes=%.1f (%s)", p.ancientMinutes, p.ancientReason)
+	logx.Debugf("导入成功: %s (新增行: %d, silica: %.4f)", commitData.CommitId, len(addedLines), p.totalSilica)
+	logx.Debugf("  commit_ancient_minutes=%.1f (%s)", p.ancientMinutes, p.ancientReason)
 	// 调试日志：输出该commit的核心计算结果
-	logDebugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
+	logx.Debugf("  %s: silica=%.4f (%d/%d行匹配), ai=%.1fmin, ancient=%.1fmin, total=%.1fmin",
 		p.commitId, p.totalSilica, p.totalMatchLines, p.totalLines, p.aiMinutes, p.nonAiMinutes, p.realMinutes)
 	return nil
 }
@@ -305,7 +306,7 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 	var sessions []models.Session
 	sessionMap := make(map[string]models.Session)
 	if err := db.Where("session_id IN ?", sessionIDs).Find(&sessions).Error; err != nil {
-		logWarnf("查询sessions表失败: %v", err)
+		logx.Warnf("查询sessions表失败: %v", err)
 	} else {
 		for _, s := range sessions {
 			sessionMap[s.SessionId] = s
@@ -326,7 +327,7 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 		Where("session_id IN ?", sessionIDs).
 		Group("session_id").
 		Find(&aggs).Error; err != nil {
-		logWarnf("查询conversations表失败: %v", err)
+		logx.Warnf("查询conversations表失败: %v", err)
 	} else {
 		for _, a := range aggs {
 			convAggMap[a.SessionId] = a
@@ -405,7 +406,7 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 			if err := db.Model(&models.Conversation{}).
 				Where("session_id = ? AND request_id IN ?", tm.task.SessionId, requestIds).
 				Update("task_id", tm.task.TaskId).Error; err != nil {
-				logWarnf("更新conversation的task_id失败 [%s]: %v", tm.task.TaskId, err)
+				logx.Warnf("更新conversation的task_id失败 [%s]: %v", tm.task.TaskId, err)
 			}
 		}
 	}
@@ -429,7 +430,7 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 //  3. 先构建 conversation 指纹索引，再扫描和导入 commit
 //  4. 幂等扫描：调用 scanRepoDir 获取待导入列表和跳过计数（日期过滤 + 数据库存在性检查）
 //  5. 批量处理：逐个文件调用 importCommitFile，失败时记录日志并计数，不中断整体流程
-//  6. 进度提示：每成功导入 50 个文件调用 logPromptProgress 输出进度信息
+//  6. 进度提示：每成功导入 50 个文件调用 logx.PromptProgress 输出进度信息
 //  7. 命令埋点：通过 recordCommandRun 记录命令执行时间、成功/失败/跳过数量，用于运维监控
 func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
@@ -469,12 +470,12 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	}
 
 	if len(files) == 0 {
-		logInfo("没有找到待导入的commit文件")
+		logx.Info("没有找到待导入的commit文件")
 		recordCommandRun("import-repo", startTime, 0, 0, skipCount, nil)
 		return nil
 	}
 
-	logInfof("找到 %d 个待导入的commit文件", len(files))
+	logx.Infof("找到 %d 个待导入的commit文件", len(files))
 
 	successCount := 0
 	failCount := 0
@@ -482,15 +483,15 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	totalFiles := len(files)
 	for i, fileMeta := range files {
 		if err := importCommitFile(db, fileMeta, idx, maxDays); err != nil {
-			logWarnf("导入失败 [%s]: %v", fileMeta.Path, err)
+			logx.Warnf("导入失败 [%s]: %v", fileMeta.Path, err)
 			failCount++
 		} else {
 			successCount++
 		}
-		logProgress("[import-repo] 导入commit", i+1, totalFiles, 50)
+		logx.Progress("[import-repo] 导入commit", i+1, totalFiles, 50)
 	}
 
-	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
+	logx.Infof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
 	recordCommandRun("import-repo", startTime, successCount, failCount, skipCount, nil)
 	return nil
 }

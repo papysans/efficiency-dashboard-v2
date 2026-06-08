@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"kanban/kbcli/internal/logx"
 	"math"
 	"os"
 	"path/filepath"
@@ -167,7 +168,7 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 	var err error
 	if ss.StartTime != "" {
 		if startTime, err = time.Parse(time.RFC3339, ss.StartTime); err != nil {
-			logWarnf("session [%s] 缺少start_time字段", ss.SessionId)
+			logx.Warnf("session [%s] 缺少start_time字段", ss.SessionId)
 		}
 	}
 	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
@@ -197,7 +198,7 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 		}),
 	}).Create(&rec)
 	if result.Error != nil {
-		logErrorf("session [%s] 保存失败: %v", ss.SessionId, result.Error)
+		logx.Errorf("session [%s] 保存失败: %v", ss.SessionId, result.Error)
 		return fmt.Errorf("写入session表失败: %w", result.Error)
 	}
 	return nil
@@ -207,21 +208,21 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 	// 遍历所有对话，解析时间并累加指标；时间解析失败则跳过该对话并记录警告
 	for i, conv := range conversations {
 		if conv.StartTime == "" {
-			logWarnf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
+			logx.Warnf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
 			continue
 		}
 		if conv.EndTime == "" {
-			logWarnf("conversation [%s-%s] 缺少end_time字段", ss.SessionId, conv.RequestId)
+			logx.Warnf("conversation [%s-%s] 缺少end_time字段", ss.SessionId, conv.RequestId)
 			continue
 		}
 		_, err := time.Parse(time.RFC3339, conv.StartTime)
 		if err != nil {
-			logWarnf("conversation [%s-%s] start_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
+			logx.Warnf("conversation [%s-%s] start_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
 			continue
 		}
 		_, err = time.Parse(time.RFC3339, conv.EndTime)
 		if err != nil {
-			logWarnf("conversation [%s-%s] end_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
+			logx.Warnf("conversation [%s-%s] end_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
 			continue
 		}
 		if conv.Caller == "" {
@@ -332,7 +333,7 @@ func writeImportTask(tx *gorm.DB, p *preparedImportTask) error {
 // finalizeImportTaskSilica 写库成功后生成 task silica 文件（用于下次增量检测）；失败仅告警，不阻断。
 func finalizeImportTaskSilica(p *preparedImportTask) {
 	if err := generateTaskSilicaFile(p.ss, p.conversations, p.conversationPath, p.silicaPath); err != nil {
-		logWarnf("生成task silica文件失败 [%s]: %v", p.ss.SessionId, err)
+		logx.Warnf("生成task silica文件失败 [%s]: %v", p.ss.SessionId, err)
 	}
 }
 
@@ -359,10 +360,10 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	}
 
 	// 整批失败（多为 DB/schema 级错误）：逐条单事务重试，定位并隔离坏记录
-	logWarnf("批量写入失败，回退逐条重试: %v", err)
+	logx.Warnf("批量写入失败，回退逐条重试: %v", err)
 	for _, p := range batch {
 		if e := db.Transaction(func(tx *gorm.DB) error { return writeImportTask(tx, p) }); e != nil {
-			logWarnf("导入失败 [%s]: %v", p.ss.SessionId, e)
+			logx.Warnf("导入失败 [%s]: %v", p.ss.SessionId, e)
 			fail++
 			continue
 		}
@@ -522,12 +523,12 @@ func parseConversation(path string, lineNum int, content []byte, ignoreUnmarshal
 	// 反序列化 JSON
 	if err := json.Unmarshal(content, &conv); err != nil {
 		if !ignoreUnmarshalWarning {
-			logWarnf("解析[%s:%d]失败: %v, 内容: %s", path, lineNum, err, skeletonize(string(content), 40, 64))
+			logx.Warnf("解析[%s:%d]失败: %v, 内容: %s", path, lineNum, err, skeletonize(string(content), 40, 64))
 		}
 		return nil, err
 	}
 	if err := checkConversation(&conv); err != nil {
-		logWarnf("解析[%s:%d]发现错误: %v", path, lineNum, err)
+		logx.Warnf("解析[%s:%d]发现错误: %v", path, lineNum, err)
 		return nil, nil
 	}
 	return &conv, nil
@@ -732,7 +733,7 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 		return fmt.Errorf("写入task silica文件失败: %w", err)
 	}
 
-	logDebugf("  task silica文件已生成(%d个conversation): %s", len(tsd.Conversations), silicaPath)
+	logx.Debugf("  task silica文件已生成(%d个conversation): %s", len(tsd.Conversations), silicaPath)
 	return nil
 }
 
@@ -904,7 +905,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 
 	// 无 conversation 文件时直接结束
 	if len(convMap) == 0 {
-		logInfo("没有找到待导入的 conversation 文件")
+		logx.Info("没有找到待导入的 conversation 文件")
 		recordCommandRun("import-conv", startTime, 0, 0, 0, nil)
 		return nil
 	}
@@ -928,10 +929,10 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	}
 	for sessionId, conversationPath := range convMap {
 		processed++
-		logProgress("[import-conv] 导入对话", processed, totalConv, 50)
+		logx.Progress("[import-conv] 导入对话", processed, totalConv, 50)
 		summaryPath, ok := sessionMap[sessionId]
 		if !ok {
-			logDebugf("跳过(无对应summary): %s", sessionId)
+			logx.Debugf("跳过(无对应summary): %s", sessionId)
 			skipCount++
 			continue
 		}
@@ -939,7 +940,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 		// 构造 silica 文件路径并判断是否需要增量更新
 		silicaPath := filepath.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
 		if !needUpdateConversations(conversationPath, silicaPath, force) {
-			logDebugf("跳过(conversation未更新): %s", sessionId)
+			logx.Debugf("跳过(conversation未更新): %s", sessionId)
 			skipCount++
 			continue
 		}
@@ -948,11 +949,11 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 		p, err := prepareImportTask(summaryPath, conversationPath, silicaPath)
 		if err != nil {
 			if errors.Is(err, errSkipTask) {
-				logDebugf("跳过(日期范围过滤): %s", sessionId)
+				logx.Debugf("跳过(日期范围过滤): %s", sessionId)
 				skipCount++
 				continue
 			}
-			logWarnf("导入失败 [%s]: %v", sessionId, err)
+			logx.Warnf("导入失败 [%s]: %v", sessionId, err)
 			failCount++
 			continue
 		}
@@ -963,11 +964,11 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	}
 	flush() // 写入尾批
 
-	logInfof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
+	logx.Infof("导入完成: 成功 %d 个，失败 %d 个，跳过 %d 个", successCount, failCount, skipCount)
 
 	if createPseudo {
 		if err := createPseudoTasks(db); err != nil {
-			logWarnf("创建伪任务失败: %v", err)
+			logx.Warnf("创建伪任务失败: %v", err)
 		}
 	}
 

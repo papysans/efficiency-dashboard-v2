@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/logx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,7 +92,7 @@ func runCheck(taskDir, repoDir, dateFilter, output, minLevel string, ignoreList 
 		repoFileMap: make(map[string]string),
 	}
 
-	logInfo("===== 开始数据质量检查 =====")
+	logx.Info("===== 开始数据质量检查 =====")
 
 	if err := ctx.scanSummaries(); err != nil {
 		return fmt.Errorf("扫描summary目录失败: %w", err)
@@ -103,7 +104,7 @@ func runCheck(taskDir, repoDir, dateFilter, output, minLevel string, ignoreList 
 		return fmt.Errorf("扫描repo目录失败: %w", err)
 	}
 
-	logInfof("扫描完成: %d 个summary, %d 个conversation, %d 个repo commit",
+	logx.Infof("扫描完成: %d 个summary, %d 个conversation, %d 个repo commit",
 		len(ctx.summaryMap), len(ctx.convMap), len(ctx.repoFileMap))
 
 	if err := ctx.checkSummaries(); err != nil {
@@ -122,7 +123,7 @@ func runCheck(taskDir, repoDir, dateFilter, output, minLevel string, ignoreList 
 	if err := ctx.writeReport(output); err != nil {
 		return fmt.Errorf("写入报告失败: %w", err)
 	}
-	logInfof("报告已输出: %s", output)
+	logx.Infof("报告已输出: %s", output)
 
 	ctx.printSummary()
 
@@ -132,8 +133,8 @@ func runCheck(taskDir, repoDir, dateFilter, output, minLevel string, ignoreList 
 func (ctx *checkContext) printSummary() {
 	totalIssues := len(ctx.issues)
 	if totalIssues == 0 {
-		logPrompt("===== 检查完成 =====")
-		logPrompt("未发现问题")
+		logx.Prompt("===== 检查完成 =====")
+		logx.Prompt("未发现问题")
 		return
 	}
 
@@ -168,20 +169,20 @@ func (ctx *checkContext) printSummary() {
 
 	totalScanned := len(ctx.summaryMap) + len(ctx.convMap) + len(ctx.repoFileMap)
 
-	logPrompt("===== 检查完成 =====")
-	logPromptf("扫描文件总计: %d (summary: %d, conversation: %d, repo: %d)",
+	logx.Prompt("===== 检查完成 =====")
+	logx.Promptf("扫描文件总计: %d (summary: %d, conversation: %d, repo: %d)",
 		totalScanned, len(ctx.summaryMap), len(ctx.convMap), len(ctx.repoFileMap))
-	logPromptf("发现问题总计: %d", totalIssues)
+	logx.Promptf("发现问题总计: %d", totalIssues)
 
-	logPrompt("  按级别:")
+	logx.Prompt("  按级别:")
 	for _, sev := range []string{"error", "warn", "info"} {
 		cnt := severityCounts[sev]
 		if cnt > 0 {
-			logPromptf("    %s: %d (%.1f%%)", sev, cnt, float64(cnt)*100.0/float64(totalIssues))
+			logx.Promptf("    %s: %d (%.1f%%)", sev, cnt, float64(cnt)*100.0/float64(totalIssues))
 		}
 	}
 
-	logPrompt("  按类型:")
+	logx.Prompt("  按类型:")
 	// 按数量降序排列类型
 	var typeNames []string
 	for name := range typeCounts {
@@ -196,21 +197,21 @@ func (ctx *checkContext) printSummary() {
 	}
 	for _, name := range typeNames {
 		cnt := typeCounts[name]
-		logPromptf("    %s: %d (%.1f%%)", name, cnt, float64(cnt)*100.0/float64(totalIssues))
+		logx.Promptf("    %s: %d (%.1f%%)", name, cnt, float64(cnt)*100.0/float64(totalIssues))
 	}
 
-	logPrompt("  受影响文件:")
+	logx.Prompt("  受影响文件:")
 	if len(ctx.summaryMap) > 0 {
 		cnt := len(summaryAffected)
-		logPromptf("    summary: %d / %d (%.1f%%)", cnt, len(ctx.summaryMap), float64(cnt)*100.0/float64(len(ctx.summaryMap)))
+		logx.Promptf("    summary: %d / %d (%.1f%%)", cnt, len(ctx.summaryMap), float64(cnt)*100.0/float64(len(ctx.summaryMap)))
 	}
 	if len(ctx.convMap) > 0 {
 		cnt := len(convAffected)
-		logPromptf("    conversation: %d / %d (%.1f%%)", cnt, len(ctx.convMap), float64(cnt)*100.0/float64(len(ctx.convMap)))
+		logx.Promptf("    conversation: %d / %d (%.1f%%)", cnt, len(ctx.convMap), float64(cnt)*100.0/float64(len(ctx.convMap)))
 	}
 	if len(ctx.repoFileMap) > 0 {
 		cnt := len(repoAffected)
-		logPromptf("    repo: %d / %d (%.1f%%)", cnt, len(ctx.repoFileMap), float64(cnt)*100.0/float64(len(ctx.repoFileMap)))
+		logx.Promptf("    repo: %d / %d (%.1f%%)", cnt, len(ctx.repoFileMap), float64(cnt)*100.0/float64(len(ctx.repoFileMap)))
 	}
 }
 
@@ -283,7 +284,7 @@ func (ctx *checkContext) checkSummaries() error {
 	cnt := 0
 	for taskID, path := range ctx.summaryMap {
 		cnt++
-		logPromptProgress(cnt, 50)
+		logx.PromptProgress(cnt, 50)
 
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -326,7 +327,7 @@ func (ctx *checkContext) checkConversations() error {
 	cnt := 0
 	for taskID, path := range ctx.convMap {
 		cnt++
-		logPromptProgress(cnt, 50)
+		logx.PromptProgress(cnt, 50)
 
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -493,7 +494,7 @@ func (ctx *checkContext) checkRepos() error {
 	cnt := 0
 	for commitID, path := range ctx.repoFileMap {
 		cnt++
-		logPromptProgress(cnt, 50)
+		logx.PromptProgress(cnt, 50)
 
 		data, err := os.ReadFile(path)
 		if err != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"kanban/kbcli/internal/logx"
 	"net/http"
 	"os"
 	"os/signal"
@@ -394,12 +395,12 @@ func setupRouter() *gin.Engine {
 
 func startInit(queue *TaskQueue) {
 	if cfg.Serve.Init.Command == "" {
-		logDebug("init command is emptied")
+		logx.Debug("init command is emptied")
 		return
 	}
 	cmd := cfg.Serve.Init
 	if !validTaskTypes[cmd.Command] {
-		logWarnf("跳过未知命令类型的定时任务: %s", cmd.Command)
+		logx.Warnf("跳过未知命令类型的定时任务: %s", cmd.Command)
 		return
 	}
 
@@ -410,30 +411,30 @@ func startInit(queue *TaskQueue) {
 
 	fn, err := createTaskExecutor(cmd.Command, params)
 	if err != nil {
-		logWarnf("创建初始化任务执行器失败: %v", err)
+		logx.Warnf("创建初始化任务执行器失败: %v", err)
 		return
 	}
 
 	task := queue.Submit(cmd.Command, params, fn)
 
-	logInfof("[init] 已启动初始化任务(id=%s): command=%s, params=%v", task.ID, cmd.Command, cmd.Params)
+	logx.Infof("[init] 已启动初始化任务(id=%s): command=%s, params=%v", task.ID, cmd.Command, cmd.Params)
 }
 
 // startCron 启动定时任务调度器
 func startCron(queue *TaskQueue) *cron.Cron {
 	if len(cfg.Serve.Crontab) == 0 {
-		logInfo("没有配置定时任务，跳过cron启动")
+		logx.Info("没有配置定时任务，跳过cron启动")
 		return nil
 	}
 
 	c := cron.New(cron.WithSeconds())
 	for _, job := range cfg.Serve.Crontab {
 		if job.Schedule == "" || job.Command == "" {
-			logWarnf("跳过无效定时任务配置: schedule=%s, command=%s", job.Schedule, job.Command)
+			logx.Warnf("跳过无效定时任务配置: schedule=%s, command=%s", job.Schedule, job.Command)
 			continue
 		}
 		if !validTaskTypes[job.Command] {
-			logWarnf("跳过未知命令类型的定时任务: %s", job.Command)
+			logx.Warnf("跳过未知命令类型的定时任务: %s", job.Command)
 			continue
 		}
 
@@ -445,24 +446,24 @@ func startCron(queue *TaskQueue) *cron.Cron {
 
 		fn, err := createTaskExecutor(cmd, params)
 		if err != nil {
-			logWarnf("创建定时任务执行器失败 [%s %s]: %v", job.Schedule, cmd, err)
+			logx.Warnf("创建定时任务执行器失败 [%s %s]: %v", job.Schedule, cmd, err)
 			continue
 		}
 
 		entryID, err := c.AddFunc(job.Schedule, func() {
-			logInfof("[cron] 定时任务触发: %s", cmd)
+			logx.Infof("[cron] 定时任务触发: %s", cmd)
 			task := queue.Submit(cmd, params, fn)
-			logInfof("[cron] 任务已提交: %s (type=%s)", task.ID, cmd)
+			logx.Infof("[cron] 任务已提交: %s (type=%s)", task.ID, cmd)
 		})
 		if err != nil {
-			logWarnf("添加定时任务失败 [%s %s]: %v", job.Schedule, cmd, err)
+			logx.Warnf("添加定时任务失败 [%s %s]: %v", job.Schedule, cmd, err)
 			continue
 		}
-		logInfof("[cron] 已注册定时任务: schedule=%s, command=%s, entryID=%d", job.Schedule, cmd, entryID)
+		logx.Infof("[cron] 已注册定时任务: schedule=%s, command=%s, entryID=%d", job.Schedule, cmd, entryID)
 	}
 
 	c.Start()
-	logInfo("[cron] 定时任务调度器已启动")
+	logx.Info("[cron] 定时任务调度器已启动")
 	return c
 }
 
@@ -523,24 +524,24 @@ var serveCmd = &cobra.Command{
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 		go func() {
-			logInfof("[serve] HTTP服务器启动，监听端口: %d", port)
-			logInfof("[serve] Swagger文档地址: http://127.0.0.1:%d/swagger/index.html", port)
+			logx.Infof("[serve] HTTP服务器启动，监听端口: %d", port)
+			logx.Infof("[serve] Swagger文档地址: http://127.0.0.1:%d/swagger/index.html", port)
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				logErrorf("[serve] HTTP服务器异常: %v", err)
+				logx.Errorf("[serve] HTTP服务器异常: %v", err)
 			}
 		}()
 
 		<-quit
-		logInfo("[serve] 正在关闭服务器...")
+		logx.Info("[serve] 正在关闭服务器...")
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer shutdownCancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			logWarnf("[serve] 服务器关闭异常: %v", err)
+			logx.Warnf("[serve] 服务器关闭异常: %v", err)
 		}
 
-		logInfo("[serve] 服务器已关闭")
+		logx.Info("[serve] 服务器已关闭")
 		return nil
 	},
 }
