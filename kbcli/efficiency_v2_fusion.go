@@ -34,10 +34,14 @@ type EfficiencyV2FusionResult struct {
 	EfficiencyHigh  *float64
 	WorkEfficiency  *float64
 	ConfidenceLevel string
-	OutlierFlag     bool
-	Reasons         []string
-	TeamDensityUsed *float64
-	BaselineSources []string
+	OutlierFlag     bool // 派生 = CalendarOutlierFlag || WorkOutlierFlag
+	// 按口径拆分异常隔离：日历提效与工作量提效分别判 outlier，避免单口径极端值
+	// 把同一 need 另一口径的合理提效一并隐藏（详见 design.md）。
+	CalendarOutlierFlag bool
+	WorkOutlierFlag     bool
+	Reasons             []string
+	TeamDensityUsed     *float64
+	BaselineSources     []string
 }
 
 // EnsureEfficiencyV2FusionWeightSnapshot creates a cold-start fusion weight
@@ -225,40 +229,46 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 		result.WorkEfficiency = &wer
 	}
 
-	// 异常探测：reason 文本始终 append（诊断保留），但 outlier_flag 仅当该类别 ∈ exclusion.scope
-	// 时才置 true。outlier_flag 语义 = "撞了配置范围内的异常类别" = "应隐藏/不计入聚合"。
+	// 异常探测：reason 文本始终 append（诊断保留），但口径 flag 仅当该类别 ∈ exclusion.scope
+	// 时才置 true。flag 语义 = "撞了配置范围内的异常类别" = "应从对应口径聚合中隐藏"。
 	// 空 scope ⇒ 永不置 flag（全部计入，含极端值）。
+	// 按口径拆分：actual_to_baseline→工作量侧；efficiency_ratio→日历侧；loc_rate→两侧都打
+	// （LOC 虚高污染算法基线本身，日历与工作量提效都从该脏基线派生）。
 	thresh := cfg.ConfidenceThresholds
 	if fused > 0 && need.TotalActiveWorkCorrectedMin > 0 {
 		actualRatio := need.TotalActiveWorkCorrectedMin / fused
 		if actualRatio > thresh.OutlierActualToBaselineMax || (actualRatio > 0 && actualRatio < thresh.OutlierActualToBaselineMin) {
 			if efficiencyV2ScopeExcludes(cfg, efficiencyV2ExclusionActualToBaseline) {
-				result.OutlierFlag = true
+				result.WorkOutlierFlag = true
 			}
 			result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:actual_to_baseline=%.3f", actualRatio))
 		}
 	}
 
 	// 设计 §10.2.5：calendar 提效比落在极端区间必须可发现（阈值可配，默认 >10.0 或 <-2.0）。
-	// 不 clip（§2.3.10），只打 outlier_flag + reason，业务方看聚合数字、UI 标 tag。
+	// 不 clip（§2.3.10），只打日历侧 flag + reason，业务方看聚合数字、UI 标 tag。
 	if result.EfficiencyRatio != nil && (*result.EfficiencyRatio > thresh.OutlierEfficiencyRatioMax || *result.EfficiencyRatio < thresh.OutlierEfficiencyRatioMin) {
 		if efficiencyV2ScopeExcludes(cfg, efficiencyV2ExclusionEfficiencyRatio) {
-			result.OutlierFlag = true
+			result.CalendarOutlierFlag = true
 		}
 		result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:efficiency_ratio=%.3f", *result.EfficiencyRatio))
 	}
 
 	// LOC 速率物理不可能：实际日历内净写入行数过多(>~7行/分≈一天1w行)，多为机器生成/vendored/锁文件。
-	// 仅打 outlier_flag(从聚合统计剔除)，不 clip efficiency_ratio、不影响单任务展示。
+	// LOC 虚高污染算法基线 → 日历+工作量两口径都打 flag(从聚合统计剔除)，不 clip、不影响单任务展示。
 	if thresh.OutlierLocPerCalendarMinMax > 0 && need.TotalCalendarMin > 0 && need.ChangedLoc > 0 {
 		locRate := float64(need.ChangedLoc) / need.TotalCalendarMin
 		if locRate > thresh.OutlierLocPerCalendarMinMax {
 			if efficiencyV2ScopeExcludes(cfg, efficiencyV2ExclusionLocRate) {
-				result.OutlierFlag = true
+				result.CalendarOutlierFlag = true
+				result.WorkOutlierFlag = true
 			}
 			result.Reasons = append(result.Reasons, fmt.Sprintf("outlier:impossible_loc_rate=%.1f", locRate))
 		}
 	}
+
+	// 派生：任一口径异常 ⇒ outlier_flag=true（供前端「异常」tag/筛选、原因诊断计数兼容）。
+	result.OutlierFlag = result.CalendarOutlierFlag || result.WorkOutlierFlag
 
 	result.ConfidenceLevel = classifyEfficiencyV2Confidence(need, result, len(available), cfg)
 	if result.ConfidenceLevel == "" {
@@ -322,6 +332,8 @@ func PersistEfficiencyV2FusionOnNeed(need *models.Need, result EfficiencyV2Fusio
 	need.WorkEfficiencyRatio = result.WorkEfficiency
 	need.ConfidenceLevel = result.ConfidenceLevel
 	need.OutlierFlag = result.OutlierFlag
+	need.CalendarOutlierFlag = result.CalendarOutlierFlag
+	need.WorkOutlierFlag = result.WorkOutlierFlag
 	// Preserve the boundary-side reason (set by Need resolver), append fusion
 	// reasons fresh each run. Strip prior fusion reasons so reruns stay idempotent.
 	boundaryReason := stripEfficiencyV2FusionReasons(need.Reason)

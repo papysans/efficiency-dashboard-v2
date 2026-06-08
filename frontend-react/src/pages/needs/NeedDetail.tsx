@@ -215,7 +215,12 @@ export default function NeedDetail() {
             {need.status && <Tag tone={statusTagClass(need.status)}>{need.status}</Tag>}
             {need.confidence_level && <Tag tone={confidenceTagClass(need.confidence_level)}>效率置信 {need.confidence_level}</Tag>}
             <Tag tone={need.coverage_eligible ? 'success' : 'neutral'}>{need.coverage_eligible ? '可计入' : '未计入'}</Tag>
-            {need.outlier_flag && <Tag tone="error">异常样本</Tag>}
+            {need.calendar_outlier_flag && <Tag tone="error">日历异常</Tag>}
+            {need.work_outlier_flag && <Tag tone="error">工作量异常</Tag>}
+            {/* 兜底：旧 API 仅返回派生 outlier_flag 时显通用「异常样本」。 */}
+            {need.outlier_flag && !need.calendar_outlier_flag && !need.work_outlier_flag && (
+              <Tag tone="error">异常样本</Tag>
+            )}
           </div>
         </div>
       </header>

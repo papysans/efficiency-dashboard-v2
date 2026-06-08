@@ -1484,13 +1484,16 @@ func applyNeedCaliberFilter(q *gorm.DB) *gorm.DB {
 
 func queryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNeedAgg, error) {
 	var agg dashboardNeedAgg
+	// 按口径分别剔除 outlier：日历 SUM 用 NOT calendar_outlier_flag、工作量 SUM 用 NOT
+	// work_outlier_flag，与 kbcli 个人周表投影口径一致(design.md §4)。eligible_needs 取两侧
+	// 均干净(NOT outlier_flag)作总览计数。
 	q := applyNeedCaliberFilter(db.Model(&models.Need{})).Select(`COUNT(*) as total_needs,
 		COUNT(*) FILTER (WHERE status = 'merged') as merged_needs,
 		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag) as eligible_needs,
-		COALESCE(SUM(total_calendar_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as actual_calendar_min,
-		COALESCE(SUM(baseline_calendar_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as baseline_calendar_min,
-		COALESCE(SUM(total_active_work_corrected_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as actual_work_min,
-		COALESCE(SUM(baseline_fused_work_min) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) as baseline_work_min`)
+		COALESCE(SUM(total_calendar_min) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag), 0) as actual_calendar_min,
+		COALESCE(SUM(baseline_calendar_min) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag), 0) as baseline_calendar_min,
+		COALESCE(SUM(total_active_work_corrected_min) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag), 0) as actual_work_min,
+		COALESCE(SUM(baseline_fused_work_min) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag), 0) as baseline_work_min`)
 	if startTime != "" {
 		q = q.Where("dev_end_ts >= ?", startTime)
 	}
@@ -1540,25 +1543,28 @@ type needsDistributionAgg struct {
 
 func queryNeedsDistributionAgg(db *gorm.DB, startTime, endTime string) (*needsDistributionAgg, error) {
 	var agg needsDistributionAgg
+	// calendar 提效分布(分位数/直方图/kept-excl)按日历口径剔除 → calendar_outlier_flag；
+	// work_median 按工作量口径 → work_outlier_flag；reason_* 异常原因诊断计数保持 outlier_flag
+	// (任一异常的原因分布)。详见 design.md §4。
 	q := applyNeedCaliberFilter(db.Model(&models.Need{})).Select(`
-		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS kept_count,
-		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag)     AS excluded_count,
-		PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS calendar_median,
-		PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS calendar_p25,
-		PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS calendar_p75,
-		PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY work_efficiency_ratio) FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS work_median,
-		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio < 0)               AS h0_kept,
-		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio < 0)               AS h0_excl,
-		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 0 AND efficiency_ratio < 0.5) AS h1_kept,
-		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 0 AND efficiency_ratio < 0.5) AS h1_excl,
-		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 0.5 AND efficiency_ratio < 1) AS h2_kept,
-		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 0.5 AND efficiency_ratio < 1) AS h2_excl,
-		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 1 AND efficiency_ratio < 2)   AS h3_kept,
-		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 1 AND efficiency_ratio < 2)   AS h3_excl,
-		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 2 AND efficiency_ratio < 5)   AS h4_kept,
-		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 2 AND efficiency_ratio < 5)   AS h4_excl,
-		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND efficiency_ratio >= 5)              AS h5_kept,
-		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag     AND efficiency_ratio >= 5)              AS h5_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag) AS kept_count,
+		COUNT(*) FILTER (WHERE coverage_eligible AND calendar_outlier_flag)     AS excluded_count,
+		PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag) AS calendar_median,
+		PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag) AS calendar_p25,
+		PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY efficiency_ratio)      FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag) AS calendar_p75,
+		PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY work_efficiency_ratio) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag) AS work_median,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag AND efficiency_ratio < 0)               AS h0_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND calendar_outlier_flag     AND efficiency_ratio < 0)               AS h0_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag AND efficiency_ratio >= 0 AND efficiency_ratio < 0.5) AS h1_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND calendar_outlier_flag     AND efficiency_ratio >= 0 AND efficiency_ratio < 0.5) AS h1_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag AND efficiency_ratio >= 0.5 AND efficiency_ratio < 1) AS h2_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND calendar_outlier_flag     AND efficiency_ratio >= 0.5 AND efficiency_ratio < 1) AS h2_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag AND efficiency_ratio >= 1 AND efficiency_ratio < 2)   AS h3_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND calendar_outlier_flag     AND efficiency_ratio >= 1 AND efficiency_ratio < 2)   AS h3_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag AND efficiency_ratio >= 2 AND efficiency_ratio < 5)   AS h4_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND calendar_outlier_flag     AND efficiency_ratio >= 2 AND efficiency_ratio < 5)   AS h4_excl,
+		COUNT(*) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag AND efficiency_ratio >= 5)              AS h5_kept,
+		COUNT(*) FILTER (WHERE coverage_eligible AND calendar_outlier_flag     AND efficiency_ratio >= 5)              AS h5_excl,
 		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%impossible_loc_rate%') AS reason_loc,
 		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%efficiency_ratio%')     AS reason_eff,
 		COUNT(*) FILTER (WHERE coverage_eligible AND outlier_flag AND reason LIKE '%actual_to_baseline%')   AS reason_atb,

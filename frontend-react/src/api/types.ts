@@ -72,7 +72,9 @@ export interface NeedsV2Summary {
   efficiency_band_high: number | null
   work_efficiency_ratio: number | null // 工作量提效，小数口径
   confidence_level?: string
-  outlier_flag: boolean
+  outlier_flag: boolean // 派生 = 任一口径异常
+  calendar_outlier_flag?: boolean // 日历提效口径异常
+  work_outlier_flag?: boolean // 工作量提效口径异常
   coverage_eligible: boolean
   total_think_min: number
   total_exec_min: number
@@ -131,7 +133,9 @@ export interface NeedDetail {
   efficiency_band_high?: number | null
   work_efficiency_ratio?: number | null
   confidence_level?: string
-  outlier_flag?: boolean
+  outlier_flag?: boolean // 派生 = 任一口径异常
+  calendar_outlier_flag?: boolean // 日历提效口径异常
+  work_outlier_flag?: boolean // 工作量提效口径异常
   coverage_eligible?: boolean
   baseline_fused_work_min?: number | null
   baseline_calendar_min?: number | null

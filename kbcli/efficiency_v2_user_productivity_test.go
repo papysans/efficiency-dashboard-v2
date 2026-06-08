@@ -18,15 +18,15 @@ func TestAggregateEfficiencyV2UserProductivity_RatioFromSums(t *testing.T) {
 	needs := []models.Need{
 		{
 			NeedId: "n1", PrimaryUserId: "u1", Status: "merged",
-			BoundaryConfidence: efficiencyV2ConfidenceHigh,
-			TotalCalendarMin:   240, BaselineCalendarMin: &baseHigh,
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			TotalCalendarMin: 240, BaselineCalendarMin: &baseHigh,
 			BaselineFusedWorkMin: ptrFloat(100), TotalActiveWorkCorrectedMin: 100,
 			DevEndTs: ptrTime(devEnd),
 		},
 		{
 			NeedId: "n2", PrimaryUserId: "u1", Status: "merged",
-			BoundaryConfidence: efficiencyV2ConfidenceHigh,
-			TotalCalendarMin:   360, BaselineCalendarMin: &baseHigh2,
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			TotalCalendarMin: 360, BaselineCalendarMin: &baseHigh2,
 			BaselineFusedWorkMin: ptrFloat(200), TotalActiveWorkCorrectedMin: 200,
 			DevEndTs: ptrTime(devEnd),
 		},
@@ -52,17 +52,18 @@ func TestAggregateEfficiencyV2UserProductivity_LowConfidenceNeedsDontEnterRatio(
 	needs := []models.Need{
 		{
 			NeedId: "n1", PrimaryUserId: "u1", Status: "merged",
-			BoundaryConfidence: efficiencyV2ConfidenceHigh,
-			TotalCalendarMin:   200, BaselineCalendarMin: &baseHigh,
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			TotalCalendarMin: 200, BaselineCalendarMin: &baseHigh,
 			TotalActiveWorkCorrectedMin: 80, BaselineFusedWorkMin: ptrFloat(100),
 			DevEndTs: ptrTime(devEnd),
 		},
 		{
+			// low-confidence → 非 coverage_eligible，不进提效比口径。
 			NeedId: "n2", PrimaryUserId: "u1", Status: "merged",
 			BoundaryConfidence: efficiencyV2ConfidenceLow,
 			TotalCalendarMin:   500, BaselineCalendarMin: ptrFloat(900),
 			TotalActiveWorkCorrectedMin: 200,
-			DevEndTs: ptrTime(devEnd),
+			DevEndTs:                    ptrTime(devEnd),
 		},
 	}
 	rows := AggregateEfficiencyV2UserProductivity(needs, EfficiencyV2Config{})
@@ -83,8 +84,8 @@ func TestAggregateEfficiencyV2UserProductivity_AbandonedNotInRatio(t *testing.T)
 	needs := []models.Need{
 		{
 			NeedId: "n1", PrimaryUserId: "u1", Status: "merged",
-			BoundaryConfidence: efficiencyV2ConfidenceHigh,
-			TotalCalendarMin:   100, BaselineCalendarMin: &baseHigh,
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			TotalCalendarMin: 100, BaselineCalendarMin: &baseHigh,
 			TotalActiveWorkCorrectedMin: 60, BaselineFusedWorkMin: ptrFloat(50),
 			DevEndTs: ptrTime(devEnd),
 		},
@@ -93,7 +94,7 @@ func TestAggregateEfficiencyV2UserProductivity_AbandonedNotInRatio(t *testing.T)
 			BoundaryConfidence: efficiencyV2ConfidenceHigh,
 			TotalCalendarMin:   500, BaselineCalendarMin: ptrFloat(900),
 			TotalActiveWorkCorrectedMin: 200,
-			DevEndTs: ptrTime(devEnd),
+			DevEndTs:                    ptrTime(devEnd),
 		},
 	}
 	rows := AggregateEfficiencyV2UserProductivity(needs, EfficiencyV2Config{})
@@ -115,9 +116,9 @@ func TestAggregateEfficiencyV2UserProductivity_CoverageLimitedFlag(t *testing.T)
 	needs := []models.Need{
 		{
 			NeedId: "n1", PrimaryUserId: "u1", Status: "active",
-			BoundaryConfidence: efficiencyV2ConfidenceVeryLow,
+			BoundaryConfidence:          efficiencyV2ConfidenceVeryLow,
 			TotalActiveWorkCorrectedMin: 500,
-			DevEndTs: ptrTime(devEnd),
+			DevEndTs:                    ptrTime(devEnd),
 		},
 	}
 	rows := AggregateEfficiencyV2UserProductivity(needs, EfficiencyV2Config{})
@@ -127,6 +128,47 @@ func TestAggregateEfficiencyV2UserProductivity_CoverageLimitedFlag(t *testing.T)
 	}
 	if !strings.Contains(row.ConfidenceReason, "no_eligible_baseline") {
 		t.Fatalf("reason should mention no_eligible_baseline, got %q", row.ConfidenceReason)
+	}
+}
+
+// 核心回归：工作量侧 outlier 不应连累同一 need 的日历提效（本任务修复目标）。
+// 对照旧行为：单一 outlier_flag 会把 n1 的日历提效一并隐藏，导致用户「有 commit 没提效」。
+func TestAggregateEfficiencyV2UserProductivity_CaliberSplitOutlier(t *testing.T) {
+	weekStart := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	devEnd := weekStart.Add(48 * time.Hour)
+	needs := []models.Need{
+		{
+			// 仅工作量侧 outlier：日历提效合理(应计入)，工作量提效极端(应剔除)。
+			NeedId: "n1", PrimaryUserId: "u1", Status: "merged",
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			WorkOutlierFlag: true, OutlierFlag: true, // 派生 outlier_flag=true
+			TotalCalendarMin: 200, BaselineCalendarMin: ptrFloat(500),
+			TotalActiveWorkCorrectedMin: 5, BaselineFusedWorkMin: ptrFloat(8000),
+			DevEndTs: ptrTime(devEnd),
+		},
+		{
+			// 仅日历侧 outlier：工作量提效合理(应计入)，日历提效极端(应剔除)。
+			NeedId: "n2", PrimaryUserId: "u1", Status: "merged",
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			CalendarOutlierFlag: true, OutlierFlag: true,
+			TotalCalendarMin: 10, BaselineCalendarMin: ptrFloat(9000),
+			TotalActiveWorkCorrectedMin: 100, BaselineFusedWorkMin: ptrFloat(300),
+			DevEndTs: ptrTime(devEnd),
+		},
+	}
+	rows := AggregateEfficiencyV2UserProductivity(needs, EfficiencyV2Config{})
+	row := rows[0]
+	// 日历口径：只 n1 计入(n2 被 calendar_outlier 剔除)。
+	if row.ActualCalendarMin != 200 || row.BaselineCalendarMin != 500 {
+		t.Fatalf("calendar terms = %.2f / %.2f, want 200 / 500 (only n1)", row.ActualCalendarMin, row.BaselineCalendarMin)
+	}
+	// 工作量口径：只 n2 计入(n1 被 work_outlier 剔除)。
+	if row.ActualActiveWorkCorrectedMin != 100 || row.BaselineFusedWorkMin != 300 {
+		t.Fatalf("work terms = %.2f / %.2f, want 100 / 300 (only n2)", row.ActualActiveWorkCorrectedMin, row.BaselineFusedWorkMin)
+	}
+	// n1 的日历提效复活 = (500-200)/200 = 1.5
+	if row.EfficiencyRatio == nil || math.Abs(*row.EfficiencyRatio-1.5) > 1e-6 {
+		t.Fatalf("calendar ratio = %v, want 1.5 (n1 revived)", row.EfficiencyRatio)
 	}
 }
 
@@ -141,5 +183,5 @@ func TestEfficiencyV2WeekAnchorForNeed_AlignsToMonday(t *testing.T) {
 	}
 }
 
-func ptrFloat(v float64) *float64 { return &v }
+func ptrFloat(v float64) *float64    { return &v }
 func ptrTime(t time.Time) *time.Time { return &t }

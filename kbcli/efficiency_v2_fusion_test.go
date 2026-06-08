@@ -165,6 +165,70 @@ func TestComputeEfficiencyV2Fusion_ScopeSelectsCategory(t *testing.T) {
 	}
 }
 
+func TestComputeEfficiencyV2Fusion_ActualToBaselineFlagsWorkOnly(t *testing.T) {
+	algo := 100.0
+	knn := 100.0
+	// fused=100, calendar=100/0.25=400. TotalCalendarMin=400 → efficiency_ratio=0 (in bounds)。
+	// actualWork=600 → actual_to_baseline=6x → 仅工作量侧异常，日历侧应保持干净。
+	need := models.Need{TotalCalendarMin: 400, TotalActiveWorkCorrectedMin: 600}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin: &algo,
+		KNNMin:  &knn,
+		Weights: EfficiencyV2BaselineDefaults{WeightAlgo: 0.5, WeightKNN: 0.5, TeamWorkDensity: 0.25},
+	}, EfficiencyV2Config{})
+	if !result.WorkOutlierFlag {
+		t.Fatalf("work_outlier_flag should be true for actual_to_baseline trip")
+	}
+	if result.CalendarOutlierFlag {
+		t.Fatalf("calendar_outlier_flag should stay false when only work caliber trips")
+	}
+	if !result.OutlierFlag {
+		t.Fatalf("derived outlier_flag should be true when any caliber trips")
+	}
+}
+
+func TestComputeEfficiencyV2Fusion_EfficiencyRatioFlagsCalendarOnly(t *testing.T) {
+	algo := 100.0
+	knn := 100.0
+	// fused=100, calendar=400. TotalCalendarMin=20 → efficiency_ratio=(400-20)/20=19 >10 → 日历侧异常。
+	// actualWork=100 → actual_to_baseline=1.0 (in bounds) → 工作量侧应保持干净。
+	need := models.Need{TotalCalendarMin: 20, TotalActiveWorkCorrectedMin: 100}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin: &algo,
+		KNNMin:  &knn,
+		Weights: EfficiencyV2BaselineDefaults{WeightAlgo: 0.5, WeightKNN: 0.5, TeamWorkDensity: 0.25},
+	}, EfficiencyV2Config{})
+	if !result.CalendarOutlierFlag {
+		t.Fatalf("calendar_outlier_flag should be true for efficiency_ratio trip")
+	}
+	if result.WorkOutlierFlag {
+		t.Fatalf("work_outlier_flag should stay false when only calendar caliber trips")
+	}
+	if !result.OutlierFlag {
+		t.Fatalf("derived outlier_flag should be true when any caliber trips")
+	}
+}
+
+func TestComputeEfficiencyV2Fusion_LocRateFlagsBothCalibers(t *testing.T) {
+	algo := 100.0
+	knn := 100.0
+	// fused=100, calendar=400. TotalCalendarMin=100 → efficiency_ratio=3 (in bounds)。
+	// actualWork=100 → actual_to_baseline=1.0 (in bounds)。ChangedLoc=1000/100min=10 >7 → 仅 loc_rate 撞线，
+	// 应同时打日历+工作量两侧 flag（LOC 虚高污染基线本身）。
+	need := models.Need{TotalCalendarMin: 100, TotalActiveWorkCorrectedMin: 100, ChangedLoc: 1000}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin: &algo,
+		KNNMin:  &knn,
+		Weights: EfficiencyV2BaselineDefaults{WeightAlgo: 0.5, WeightKNN: 0.5, TeamWorkDensity: 0.25},
+	}, EfficiencyV2Config{})
+	if !result.CalendarOutlierFlag || !result.WorkOutlierFlag {
+		t.Fatalf("loc_rate trip should flag both calibers, got cal=%v work=%v", result.CalendarOutlierFlag, result.WorkOutlierFlag)
+	}
+	if !reasonsContainPrefix(result.Reasons, "outlier:impossible_loc_rate=") {
+		t.Fatalf("reason text should record impossible_loc_rate, got %#v", result.Reasons)
+	}
+}
+
 func reasonsContainPrefix(reasons []string, prefix string) bool {
 	for _, r := range reasons {
 		if strings.HasPrefix(r, prefix) {

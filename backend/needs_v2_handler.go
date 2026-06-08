@@ -39,7 +39,9 @@ type NeedsV2Summary struct {
 	EfficiencyBandHigh   *float64   `json:"efficiency_band_high"`
 	WorkEfficiencyRatio  *float64   `json:"work_efficiency_ratio"`
 	ConfidenceLevel      string     `json:"confidence_level"`
-	OutlierFlag          bool       `json:"outlier_flag"`
+	OutlierFlag          bool       `json:"outlier_flag"`          // 派生 = 任一口径异常
+	CalendarOutlierFlag  bool       `json:"calendar_outlier_flag"` // 日历提效口径异常
+	WorkOutlierFlag      bool       `json:"work_outlier_flag"`     // 工作量提效口径异常
 	CoverageEligible     bool       `json:"coverage_eligible"`
 	TotalThinkMin        float64    `json:"total_think_min"`
 	TotalExecMin         float64    `json:"total_exec_min"`
@@ -442,6 +444,8 @@ func summarizeNeed(n models.Need) NeedsV2Summary {
 		WorkEfficiencyRatio:  n.WorkEfficiencyRatio,
 		ConfidenceLevel:      n.ConfidenceLevel,
 		OutlierFlag:          n.OutlierFlag,
+		CalendarOutlierFlag:  n.CalendarOutlierFlag,
+		WorkOutlierFlag:      n.WorkOutlierFlag,
 		CoverageEligible:     n.CoverageEligible,
 		TotalThinkMin:        n.ThinkActiveMin,
 		TotalExecMin:         n.ExecutionActiveMin,

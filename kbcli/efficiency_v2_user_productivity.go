@@ -164,16 +164,21 @@ func buildEfficiencyV2UserWeekRow(userID string, weekStart time.Time, needs []mo
 		}
 
 		// 提效比累加口径必须与 dashboard 完全一致：coverage_eligible(merged+高/中置信
-		// +有可测日历) 且非 outlier。修复前这里只用 merged+confidence、漏了 outlier 和
-		// coverage_eligible，导致个人提效把 outlier need 灌进来、与首页严重对不上。
-		if need.CoverageEligible && !need.OutlierFlag {
-			actualCalSum += need.TotalCalendarMin
-			actualWorkSum += need.TotalActiveWorkCorrectedMin
-			if need.BaselineCalendarMin != nil {
-				baseCalSum += *need.BaselineCalendarMin
+		// +有可测日历) 且非 outlier。按口径分别判 outlier：日历提效只看 calendar_outlier_flag、
+		// 工作量提效只看 work_outlier_flag，避免单口径极端值(如 actual_to_baseline)把同一 need
+		// 合理的日历提效一并隐藏(详见 06-06-outlier-3000-need/design.md §3)。
+		if need.CoverageEligible {
+			if !need.CalendarOutlierFlag {
+				actualCalSum += need.TotalCalendarMin
+				if need.BaselineCalendarMin != nil {
+					baseCalSum += *need.BaselineCalendarMin
+				}
 			}
-			if need.BaselineFusedWorkMin != nil {
-				baseWorkSum += *need.BaselineFusedWorkMin
+			if !need.WorkOutlierFlag {
+				actualWorkSum += need.TotalActiveWorkCorrectedMin
+				if need.BaselineFusedWorkMin != nil {
+					baseWorkSum += *need.BaselineFusedWorkMin
+				}
 			}
 		}
 	}

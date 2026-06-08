@@ -198,7 +198,9 @@ type Need struct {
 	EfficiencyUpperBand             *float64   `gorm:"column:efficiency_band_high;type:float8" json:"efficiency_band_high"`
 	WorkEfficiencyRatio             *float64   `gorm:"type:float8" json:"work_efficiency_ratio"`
 	ConfidenceLevel                 string     `gorm:"type:varchar(50);index" json:"confidence_level"`
-	OutlierFlag                     bool       `gorm:"type:boolean;default:false;index" json:"outlier_flag"`
+	OutlierFlag                     bool       `gorm:"type:boolean;default:false;index" json:"outlier_flag"`          // 派生 = calendar_outlier_flag OR work_outlier_flag（供前端 tag/筛选/原因诊断兼容）
+	CalendarOutlierFlag             bool       `gorm:"type:boolean;default:false;index" json:"calendar_outlier_flag"` // 日历提效口径异常（efficiency_ratio / loc_rate 触发）→ 日历聚合剔除
+	WorkOutlierFlag                 bool       `gorm:"type:boolean;default:false;index" json:"work_outlier_flag"`     // 工作量提效口径异常（actual_to_baseline / loc_rate 触发）→ 工作量聚合剔除
 	CoverageEligible                bool       `gorm:"type:boolean;default:false;index" json:"coverage_eligible"`
 	FeatureDependencyRisk           string     `gorm:"type:varchar(50)" json:"feature_dependency_risk"`
 	SilicaSignal                    string     `gorm:"type:varchar(50)" json:"silica_signal"`
@@ -334,6 +336,8 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 		{"needs primary user status index", `CREATE INDEX IF NOT EXISTS idx_needs_primary_user_status ON needs (primary_user_id, status)`},
 		{"needs dev end index", `CREATE INDEX IF NOT EXISTS idx_needs_dev_end_ts ON needs (dev_end_ts)`},
 		{"needs outlier index", `CREATE INDEX IF NOT EXISTS idx_needs_outlier_flag ON needs (outlier_flag)`},
+		{"needs calendar outlier index", `CREATE INDEX IF NOT EXISTS idx_needs_calendar_outlier_flag ON needs (calendar_outlier_flag)`},
+		{"needs work outlier index", `CREATE INDEX IF NOT EXISTS idx_needs_work_outlier_flag ON needs (work_outlier_flag)`},
 		{"user_productivity_v2 need ids default", `ALTER TABLE user_productivity_v2 ALTER COLUMN need_ids SET DEFAULT '[]'::jsonb`},
 		{"user_productivity_v2 user week unique index", `CREATE UNIQUE INDEX IF NOT EXISTS ux_user_productivity_v2_user_week ON user_productivity_v2 (user_id, week_start)`},
 		{"user_productivity_v2 week index", `CREATE INDEX IF NOT EXISTS idx_user_productivity_v2_week_start ON user_productivity_v2 (week_start)`},

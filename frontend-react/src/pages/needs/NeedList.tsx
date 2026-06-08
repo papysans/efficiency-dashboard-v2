@@ -443,7 +443,14 @@ export default function NeedList() {
                     <td className={TD_NUM}>{formatDuration(row.total_active_work_corrected_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.baseline_fused_work_min)}</td>
                     <td className={TD}>
-                      {row.outlier_flag ? (
+                      {row.calendar_outlier_flag || row.work_outlier_flag ? (
+                        // 按口径标异常：日历/工作量分别提示，二者独立(可同时出现)。
+                        <span className="inline-flex gap-1">
+                          {row.calendar_outlier_flag && <Tag tone="error">日历异常</Tag>}
+                          {row.work_outlier_flag && <Tag tone="error">工作量异常</Tag>}
+                        </span>
+                      ) : row.outlier_flag ? (
+                        // 兜底：旧 API 仅返回派生 outlier_flag 时仍显通用「异常」。
                         <Tag tone="error">异常</Tag>
                       ) : row.coverage_eligible ? (
                         <Tag tone="success">可计入</Tag>

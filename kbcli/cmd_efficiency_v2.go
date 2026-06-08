@@ -335,6 +335,8 @@ func persistEfficiencyV2NeedBaselineFusion(db *gorm.DB, needs []models.Need) err
 			"work_efficiency_ratio":               needs[i].WorkEfficiencyRatio,
 			"confidence_level":                    needs[i].ConfidenceLevel,
 			"outlier_flag":                        needs[i].OutlierFlag,
+			"calendar_outlier_flag":               needs[i].CalendarOutlierFlag,
+			"work_outlier_flag":                   needs[i].WorkOutlierFlag,
 			"reason":                              needs[i].Reason,
 		}).Error; err != nil {
 			tx.Rollback()
