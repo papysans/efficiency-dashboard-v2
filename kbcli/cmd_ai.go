@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/llm"
 	"os"
 	"strings"
@@ -128,7 +129,7 @@ func runAICommit(path, op string) error {
 
 // 调用AI生成commit摘要
 func callAIForCommitSummarize(comment, diff string, diffLines int) (string, error) {
-	aiCfg := cfg.AIEstimation
+	aiCfg := appconfig.Cfg.AIEstimation
 	if !aiCfg.Enabled || aiCfg.APIKey == "" {
 		return "", fmt.Errorf("AI estimation not enabled or API key missing")
 	}

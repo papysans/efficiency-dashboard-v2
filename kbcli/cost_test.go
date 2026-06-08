@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/kbcli/internal/appconfig"
 	"math"
 	"testing"
 )
@@ -11,7 +12,7 @@ func TestCalculateCost(t *testing.T) {
 		model     string
 		inTokens  int64
 		outTokens int64
-		prices    map[string]ModelPrice
+		prices    map[string]appconfig.ModelPrice
 		want      float64
 	}{
 		{
@@ -19,7 +20,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "claude-3-5-sonnet",
 			inTokens:  1_000_000,
 			outTokens: 1_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 18.0,
@@ -29,7 +30,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "claude-3-5-sonnet-20241022",
 			inTokens:  2_000_000,
 			outTokens: 1_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude":            {InPrice: 1.0, OutPrice: 2.0},
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
@@ -40,7 +41,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "gpt-4",
 			inTokens:  1_000_000,
 			outTokens: 1_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 				"default":           {InPrice: 5.0, OutPrice: 10.0},
 			},
@@ -51,7 +52,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "gpt-4",
 			inTokens:  1_000_000,
 			outTokens: 1_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 0,
@@ -61,7 +62,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "test-model",
 			inTokens:  500_000,
 			outTokens: 250_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"test-model": {InPrice: 2.0, OutPrice: 8.0},
 			},
 			want: 3.0,
@@ -71,7 +72,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "CLAUDE-3-5-SONNET",
 			inTokens:  1_000_000,
 			outTokens: 0,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 3.0,
@@ -81,7 +82,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "Claude-3-5-Sonnet",
 			inTokens:  0,
 			outTokens: 1_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 15.0,
@@ -91,7 +92,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "claude-3-5-sonnet",
 			inTokens:  0,
 			outTokens: 0,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 0,
@@ -101,7 +102,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "claude-3-5-sonnet",
 			inTokens:  0,
 			outTokens: 2_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 30.0,
@@ -111,7 +112,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "claude-3-5-sonnet",
 			inTokens:  1_000_000_000,
 			outTokens: 500_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 10500.0,
@@ -121,7 +122,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "",
 			inTokens:  1_000_000,
 			outTokens: 1_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 				"default":           {InPrice: 1.0, OutPrice: 2.0},
 			},
@@ -132,7 +133,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "",
 			inTokens:  1_000_000,
 			outTokens: 1_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 3.0, OutPrice: 15.0},
 			},
 			want: 0,
@@ -142,7 +143,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "default-model",
 			inTokens:  1_000_000,
 			outTokens: 0,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"default": {InPrice: 1.0, OutPrice: 2.0},
 			},
 			want: 1.0,
@@ -152,7 +153,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "abc-123",
 			inTokens:  1_000_000,
 			outTokens: 0,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"a":       {InPrice: 1.0, OutPrice: 1.0},
 				"ab":      {InPrice: 2.0, OutPrice: 2.0},
 				"abc":     {InPrice: 3.0, OutPrice: 3.0},
@@ -168,7 +169,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "any-model",
 			inTokens:  2_000_000,
 			outTokens: 3_000_000,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"default": {InPrice: 2.5, OutPrice: 7.5},
 			},
 			want: 27.5,
@@ -178,7 +179,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "claude-3-5-sonnet",
 			inTokens:  1,
 			outTokens: 1,
-			prices: map[string]ModelPrice{
+			prices: map[string]appconfig.ModelPrice{
 				"claude-3-5-sonnet": {InPrice: 1_000_000.0, OutPrice: 1_000_000.0},
 			},
 			want: 2.0,
@@ -188,7 +189,7 @@ func TestCalculateCost(t *testing.T) {
 			model:     "claude-3-5-sonnet",
 			inTokens:  1_000_000,
 			outTokens: 1_000_000,
-			prices:    map[string]ModelPrice{},
+			prices:    map[string]appconfig.ModelPrice{},
 			want:      0,
 		},
 	}

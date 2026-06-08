@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"sort"
 	"time"
@@ -86,8 +87,8 @@ func buildPseudoTask(session models.Session, conversations []models.Conversation
 		}
 	}
 
-	realMinutes, realReason := calcTaskRealMinutes(validTimes, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
-	ancientMinutes, ancientReason := estimateTaskAncientMinutes(&cfg.AlgoEstimation, float64(totalInchars), float64(diffLines), realMinutes)
+	realMinutes, realReason := calcTaskRealMinutes(validTimes, appconfig.Cfg.TaskStatistics.GapThresholdMinutes, appconfig.Cfg.TaskStatistics.ExtensionMinutes)
+	ancientMinutes, ancientReason := estimateTaskAncientMinutes(&appconfig.Cfg.AlgoEstimation, float64(totalInchars), float64(diffLines), realMinutes)
 
 	workDirID := ""
 	if firstConv.WorkDir != "" {

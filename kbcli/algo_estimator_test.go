@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/estimator"
 	"strings"
 	"testing"
 )
 
 func setupTestCfg(ec estimator.EstimateConfig) func() {
-	oldCfg := cfg
-	cfg = &Config{AlgoEstimation: ec}
-	return func() { cfg = oldCfg }
+	oldCfg := appconfig.Cfg
+	appconfig.Cfg = &appconfig.Config{AlgoEstimation: ec}
+	return func() { appconfig.Cfg = oldCfg }
 }
 
 func TestEstimateCommitAncientMinutes_ZeroOrNegative(t *testing.T) {

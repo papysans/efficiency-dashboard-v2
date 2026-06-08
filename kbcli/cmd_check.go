@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"os"
 	"path/filepath"
@@ -29,7 +30,7 @@ type checkContext struct {
 	dateFilter  string
 	minLevel    string
 	ignoreSet   map[string]bool // issue类型 -> 是否忽略
-	modelPrices map[string]ModelPrice
+	modelPrices map[string]appconfig.ModelPrice
 	issues      []CheckIssue
 	summaryMap  map[string]string // taskID -> summary path
 	convMap     map[string]string // taskID -> conversation path
@@ -85,7 +86,7 @@ func runCheck(taskDir, repoDir, dateFilter, output, minLevel string, ignoreList 
 		dateFilter:  dateFilter,
 		minLevel:    minLevel,
 		ignoreSet:   ignoreSet,
-		modelPrices: cfg.ModelPrices,
+		modelPrices: appconfig.Cfg.ModelPrices,
 		issues:      make([]CheckIssue, 0),
 		summaryMap:  make(map[string]string),
 		convMap:     make(map[string]string),
@@ -789,10 +790,10 @@ var checkCmd = &cobra.Command{
 		level, _ := cmd.Flags().GetString("level")
 
 		if taskDir == "" {
-			taskDir = cfg.TaskDir
+			taskDir = appconfig.Cfg.TaskDir
 		}
 		if repoDir == "" {
-			repoDir = cfg.RepoDir
+			repoDir = appconfig.Cfg.RepoDir
 		}
 		if output == "" {
 			output = fmt.Sprintf("check-%s.json", time.Now().Format("20060102"))

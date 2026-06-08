@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"os"
 	"strconv"
@@ -25,7 +26,7 @@ var importAnchorCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		csvPath, _ := cmd.Flags().GetString("csv")
 		if strings.TrimSpace(csvPath) == "" {
-			csvPath = cfg.EfficiencyV2.AnchorSetCSV
+			csvPath = appconfig.Cfg.EfficiencyV2.AnchorSetCSV
 		}
 		if strings.TrimSpace(csvPath) == "" {
 			return fmt.Errorf("未指定锚点 CSV 路径（--csv 或 efficiency_v2.anchor_set_csv）")
@@ -119,7 +120,7 @@ func runImportAnchor(csvPath string) error {
 		return fmt.Errorf("CSV 无有效锚点行（路径 %s，跳过 %d 行）", csvPath, skipped)
 	}
 
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}

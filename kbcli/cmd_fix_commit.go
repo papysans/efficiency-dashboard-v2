@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/llm"
 	"kanban/kbcli/internal/logx"
 	"os"
@@ -29,12 +30,12 @@ var fixCommitCmd = &cobra.Command{
 		max, _ := cmd.Flags().GetInt("max")
 
 		if repoDir == "" {
-			repoDir = cfg.RepoDir
+			repoDir = appconfig.Cfg.RepoDir
 		}
 
 		// 未显式传 start-date 且非单日(date)/单提交(commit)模式时，套全局分析起始日下界。
 		if date == "" && commitID == "" {
-			startDate = applyAnalysisFloor(startDate)
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
 
 		return runFixCommit(repoDir, startDate, endDate, date, commitID, max)
@@ -42,7 +43,7 @@ var fixCommitCmd = &cobra.Command{
 }
 
 func runFixCommit(repoDir, startDateStr, endDateStr, dateStr, commitID string, max int) error {
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
@@ -136,7 +137,7 @@ func fixCommits(db *gorm.DB, repoDir string, startDate, endDate *time.Time, comm
 }
 
 func callAIForCommitEstimation(comment, diff string, diffLines int) (float64, string, error) {
-	aiCfg := cfg.AIEstimation
+	aiCfg := appconfig.Cfg.AIEstimation
 	if !aiCfg.Enabled || aiCfg.APIKey == "" {
 		return 0, "", fmt.Errorf("AI estimation not enabled or API key missing")
 	}

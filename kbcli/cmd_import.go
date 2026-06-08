@@ -1,8 +1,10 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+
+	"github.com/spf13/cobra"
 )
 
 var importCmd = &cobra.Command{
@@ -29,7 +31,7 @@ var importCmd = &cobra.Command{
 		maxDays, _ := cmd.Flags().GetInt("max-days")
 		createPseudo, _ := cmd.Flags().GetBool("create-pseudo")
 		if !cmd.Flags().Changed("create-pseudo") {
-			createPseudo = cfg.TaskCreate.CreatePseudoTask
+			createPseudo = appconfig.Cfg.TaskCreate.CreatePseudoTask
 		}
 		remote, _ := cmd.Flags().GetString("remote")
 
@@ -50,24 +52,24 @@ var importCmd = &cobra.Command{
 			})
 		}
 		if taskDir == "" {
-			taskDir = cfg.TaskDir
+			taskDir = appconfig.Cfg.TaskDir
 		}
 		if repoDir == "" {
-			repoDir = cfg.RepoDir
+			repoDir = appconfig.Cfg.RepoDir
 		}
 		if analysedDir == "" {
-			analysedDir = cfg.AnalysedDir
+			analysedDir = appconfig.Cfg.AnalysedDir
 		}
 		if fromDB == "" {
-			fromDB = cfg.OrgDSN
+			fromDB = appconfig.Cfg.OrgDSN
 		}
 		if maxDays <= 0 {
-			maxDays = cfg.TaskCreate.SilicaMaxDays
+			maxDays = appconfig.Cfg.TaskCreate.SilicaMaxDays
 		}
 		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
 		// 一处生效全流程：import-conv/import-repo/efficiency 都用这个 startDateStr。
 		if dateStr == "" {
-			startDateStr = applyAnalysisFloor(startDateStr)
+			startDateStr = appconfig.ApplyAnalysisFloor(startDateStr)
 		}
 
 		steps := []struct {

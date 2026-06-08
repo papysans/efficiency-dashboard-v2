@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"time"
 
@@ -24,14 +25,14 @@ var fixTaskCmd = &cobra.Command{
 		specificTask, _ := cmd.Flags().GetString("task")
 
 		if taskDir == "" {
-			taskDir = cfg.TaskDir
+			taskDir = appconfig.Cfg.TaskDir
 		}
 
 		max, _ := cmd.Flags().GetInt("max")
 
 		// 未显式传 start-date 且非单日(date)/单任务(task)模式时，套全局分析起始日下界。
 		if date == "" && specificTask == "" {
-			startDate = applyAnalysisFloor(startDate)
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
 
 		return runFixTask(taskDir, startDate, endDate, date, specificTask, max)
@@ -39,7 +40,7 @@ var fixTaskCmd = &cobra.Command{
 }
 
 func runFixTask(taskDir, startDateStr, endDateStr, dateStr, specificTaskID string, max int) error {
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}

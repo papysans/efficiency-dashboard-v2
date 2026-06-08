@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/core/models"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"os"
 	"path/filepath"
@@ -485,8 +486,8 @@ func calcTaskMetrics(tms []taskMatched, commitId string, totalLines int) []taskM
 			}
 		}
 
-		realMinutes, realReason := calcTaskRealMinutes(validTimes, cfg.TaskStatistics.GapThresholdMinutes, cfg.TaskStatistics.ExtensionMinutes)
-		ancientMinutes, ancientReason := estimateTaskAncientMinutes(&cfg.AlgoEstimation, float64(tm.totalInchars), float64(tm.totalLines), realMinutes)
+		realMinutes, realReason := calcTaskRealMinutes(validTimes, appconfig.Cfg.TaskStatistics.GapThresholdMinutes, appconfig.Cfg.TaskStatistics.ExtensionMinutes)
+		ancientMinutes, ancientReason := estimateTaskAncientMinutes(&appconfig.Cfg.AlgoEstimation, float64(tm.totalInchars), float64(tm.totalLines), realMinutes)
 
 		taskId := tm.sessionId + "|" + commitId
 		tm.task = &models.Task{

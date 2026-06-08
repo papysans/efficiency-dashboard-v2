@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"kanban/core/models"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"net/http"
 	"strings"
@@ -239,10 +240,10 @@ func triggerOrgRefresh(backendURL string) {
 func runImportDept(baseURL, queryKey string) error {
 	startTime := time.Now()
 	if baseURL == "" {
-		baseURL = cfg.DeptSync.BaseURL
+		baseURL = appconfig.Cfg.DeptSync.BaseURL
 	}
 	if queryKey == "" {
-		queryKey = cfg.DeptSync.QueryKey
+		queryKey = appconfig.Cfg.DeptSync.QueryKey
 	}
 	if baseURL == "" {
 		err := fmt.Errorf("未配置 dept-sync 服务地址（--base-url 或 config dept_sync.base_url）")
@@ -291,7 +292,7 @@ func runImportDept(baseURL, queryKey string) error {
 	logx.Infof("从根部门 include_children 拿到全量人员 %d 名（按工号去重后）", len(peopleByEmp))
 
 	// 3. 落库：全量部门树 + 全量花名册（dept_user）
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-dept", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接目标数据库失败: %w", err)
@@ -371,8 +372,8 @@ func runImportDept(baseURL, queryKey string) error {
 		return fmt.Errorf("读取看板 user_org 失败: %w", err)
 	}
 
-	fallbackOrg := strings.TrimSpace(cfg.DeptSync.FallbackOrgName)
-	fallbackDept := strings.TrimSpace(cfg.DeptSync.FallbackDeptName)
+	fallbackOrg := strings.TrimSpace(appconfig.Cfg.DeptSync.FallbackOrgName)
+	fallbackDept := strings.TrimSpace(appconfig.Cfg.DeptSync.FallbackDeptName)
 
 	var (
 		projections    []models.UserOrg
@@ -420,7 +421,7 @@ func runImportDept(baseURL, queryKey string) error {
 		hitUniversal, hitEmpFallback, hitFallbackOrg, total, len(projections))
 
 	// 5. 刷新后端 org 映射（尽力而为）
-	triggerOrgRefresh(cfg.BackendURL)
+	triggerOrgRefresh(appconfig.Cfg.BackendURL)
 
 	recordCommandRun("import-dept", startTime, len(depts)+len(deptUsers), 0, 0, nil)
 	return nil

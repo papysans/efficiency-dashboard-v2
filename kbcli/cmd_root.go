@@ -1,14 +1,12 @@
 package main
 
 import (
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"os"
 
 	"github.com/spf13/cobra"
 )
-
-// cfg 是全局配置，在 rootCmd 的 PersistentPreRunE 中加载
-var cfg *Config
 
 // rootCmd 是 kbcli 的根 cobra 命令
 var rootCmd = &cobra.Command{
@@ -24,11 +22,11 @@ var rootCmd = &cobra.Command{
 		if err := logx.Init(consoleLevel, logFile, fileLevel); err != nil {
 			return err
 		}
-		loadedCfg, err := LoadFirstConfig([]string{configPath, "config.yaml", "configs/kbcli-config.yaml", "kbcli-config.yaml", "../kbcli-config.yaml"})
+		loadedCfg, err := appconfig.LoadFirstConfig([]string{configPath, "config.yaml", "configs/kbcli-config.yaml", "kbcli-config.yaml", "../kbcli-config.yaml"})
 		if err != nil {
 			return err
 		}
-		cfg = loadedCfg
+		appconfig.Cfg = loadedCfg
 		return nil
 	},
 }

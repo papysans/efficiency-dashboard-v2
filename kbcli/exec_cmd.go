@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"time"
 )
@@ -89,56 +90,56 @@ func getIntParam(params map[string]interface{}, key string, defaultVal int) int 
 }
 
 func executeImportConv(params map[string]interface{}) error {
-	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
-	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
+	taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
+	analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
+	createPseudo := getBoolParam(params, "create_pseudo", appconfig.Cfg.TaskCreate.CreatePseudoTask)
 	if date == "" {
-		startDate = applyAnalysisFloor(startDate)
+		startDate = appconfig.ApplyAnalysisFloor(startDate)
 	}
 	return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
 }
 
 func executeImportRepo(params map[string]interface{}) error {
-	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
-	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
+	repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
+	analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
-	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
+	maxDays := getIntParam(params, "max_days", appconfig.Cfg.TaskCreate.SilicaMaxDays)
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
 	if date == "" {
-		startDate = applyAnalysisFloor(startDate)
+		startDate = appconfig.ApplyAnalysisFloor(startDate)
 	}
 	return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
 }
 
 func executeImportOrg(params map[string]interface{}) error {
-	fromDB := getStringParam(params, "from_db", cfg.OrgDSN)
+	fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
 	fromCSV := getStringParam(params, "from_csv", "")
 	toCSV := getStringParam(params, "to_csv", "")
 	return runImportOrg(fromDB, fromCSV, toCSV)
 }
 
 func executeImport(params map[string]interface{}) error {
-	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
-	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
-	analysedDir := getStringParam(params, "analysed_dir", cfg.AnalysedDir)
+	taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
+	repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
+	analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
 	force := getBoolParam(params, "force", false)
-	fromDB := getStringParam(params, "from_db", cfg.OrgDSN)
+	fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
 	fromCSV := getStringParam(params, "from_csv", "")
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
-	maxDays := getIntParam(params, "max_days", cfg.TaskCreate.SilicaMaxDays)
-	createPseudo := getBoolParam(params, "create_pseudo", cfg.TaskCreate.CreatePseudoTask)
+	maxDays := getIntParam(params, "max_days", appconfig.Cfg.TaskCreate.SilicaMaxDays)
+	createPseudo := getBoolParam(params, "create_pseudo", appconfig.Cfg.TaskCreate.CreatePseudoTask)
 	// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
 	// 一处生效全流程：import-conv/import-repo/efficiency(-v2) 都用这个 startDate。
 	if date == "" {
-		startDate = applyAnalysisFloor(startDate)
+		startDate = appconfig.ApplyAnalysisFloor(startDate)
 	}
 	// 增量 days 窗【只用于取数】(import-conv/repo)：仅增量加行、安全。
 	// efficiency 重算仍用原始 startDate（cron 的 days 不传时=空=全量），避免跨窗 need 被
@@ -186,33 +187,33 @@ func executeEfficiencyV2(params map[string]interface{}) error {
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
 	if date == "" {
-		startDate = applyAnalysisFloor(startDate)
+		startDate = appconfig.ApplyAnalysisFloor(startDate)
 	}
 	return runEfficiencyV2(startDate, endDate, date)
 }
 
 func executeFixTask(params map[string]interface{}) error {
-	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
+	taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
 	specificTask := getStringParam(params, "task", "")
 	max := getIntParam(params, "max", 0)
 	if date == "" && specificTask == "" {
-		startDate = applyAnalysisFloor(startDate)
+		startDate = appconfig.ApplyAnalysisFloor(startDate)
 	}
 	return runFixTask(taskDir, startDate, endDate, date, specificTask, max)
 }
 
 func executeFixCommit(params map[string]interface{}) error {
-	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
+	repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
 	commitID := getStringParam(params, "commit", "")
 	max := getIntParam(params, "max", 0)
 	if date == "" && commitID == "" {
-		startDate = applyAnalysisFloor(startDate)
+		startDate = appconfig.ApplyAnalysisFloor(startDate)
 	}
 	return runFixCommit(repoDir, startDate, endDate, date, commitID, max)
 }

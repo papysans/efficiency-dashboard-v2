@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"kanban/core/models"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"os"
 	"sort"
@@ -331,7 +332,7 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 		}
 	}
 
-	gormDB, err = models.OpenGormDB(cfg.StatDatabase.DSN())
+	gormDB, err = models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-org", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接目标数据库失败: %w", err)
@@ -342,13 +343,13 @@ func runImportOrg(fromDSN, fromCSV, toCSV string) error {
 
 	if userOrgs == nil {
 		// 先尝试用配置的 org_csv_file 加载完整 org1~9 映射
-		if cfg.OrgCSVFile != "" {
-			csvOrgs, csvErr := loadUserOrgsFromCSV(cfg.OrgCSVFile)
+		if appconfig.Cfg.OrgCSVFile != "" {
+			csvOrgs, csvErr := loadUserOrgsFromCSV(appconfig.Cfg.OrgCSVFile)
 			if csvErr == nil && len(csvOrgs) > 0 {
-				logx.Infof("DB 不可用，已从配置 org_csv_file(%s)加载 %d 条完整组织记录", cfg.OrgCSVFile, len(csvOrgs))
+				logx.Infof("DB 不可用，已从配置 org_csv_file(%s)加载 %d 条完整组织记录", appconfig.Cfg.OrgCSVFile, len(csvOrgs))
 				userOrgs = csvOrgs
 			} else if csvErr != nil {
-				logx.Warnf("org_csv_file(%s) 读取失败，继续回落到本地任务数据: %v", cfg.OrgCSVFile, csvErr)
+				logx.Warnf("org_csv_file(%s) 读取失败，继续回落到本地任务数据: %v", appconfig.Cfg.OrgCSVFile, csvErr)
 			}
 		}
 	}
@@ -414,7 +415,7 @@ var importOrgCmd = &cobra.Command{
 		}
 
 		if fromDSN == "" {
-			fromDSN = cfg.OrgDSN
+			fromDSN = appconfig.Cfg.OrgDSN
 		}
 
 		return runImportOrg(fromDSN, fromCSV, toCSV)

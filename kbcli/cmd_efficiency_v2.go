@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/estimator"
 	"kanban/kbcli/internal/llm"
@@ -33,7 +34,7 @@ var efficiencyV2Cmd = &cobra.Command{
 		}
 		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
 		if dateStr == "" {
-			startDate = applyAnalysisFloor(startDate)
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
 		return runEfficiencyV2(startDate, endDate, dateStr)
 	},
@@ -104,7 +105,7 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 	if err != nil {
 		return err
 	}
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
@@ -113,9 +114,9 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 	return RunEfficiencyV2Pipeline(db, EfficiencyV2PipelineArgs{
 		StartDate:      start,
 		EndDate:        end,
-		EfficiencyV2:   cfg.EfficiencyV2,
-		AIEstimation:   cfg.AIEstimation,
-		AlgoEstimation: cfg.AlgoEstimation,
+		EfficiencyV2:   appconfig.Cfg.EfficiencyV2,
+		AIEstimation:   appconfig.Cfg.AIEstimation,
+		AlgoEstimation: appconfig.Cfg.AlgoEstimation,
 	})
 }
 

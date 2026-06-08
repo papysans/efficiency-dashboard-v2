@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"net/http"
 	"os"
@@ -394,11 +395,11 @@ func setupRouter() *gin.Engine {
 }
 
 func startInit(queue *TaskQueue) {
-	if cfg.Serve.Init.Command == "" {
+	if appconfig.Cfg.Serve.Init.Command == "" {
 		logx.Debug("init command is emptied")
 		return
 	}
-	cmd := cfg.Serve.Init
+	cmd := appconfig.Cfg.Serve.Init
 	if !validTaskTypes[cmd.Command] {
 		logx.Warnf("跳过未知命令类型的定时任务: %s", cmd.Command)
 		return
@@ -422,13 +423,13 @@ func startInit(queue *TaskQueue) {
 
 // startCron 启动定时任务调度器
 func startCron(queue *TaskQueue) *cron.Cron {
-	if len(cfg.Serve.Crontab) == 0 {
+	if len(appconfig.Cfg.Serve.Crontab) == 0 {
 		logx.Info("没有配置定时任务，跳过cron启动")
 		return nil
 	}
 
 	c := cron.New(cron.WithSeconds())
-	for _, job := range cfg.Serve.Crontab {
+	for _, job := range appconfig.Cfg.Serve.Crontab {
 		if job.Schedule == "" || job.Command == "" {
 			logx.Warnf("跳过无效定时任务配置: schedule=%s, command=%s", job.Schedule, job.Command)
 			continue
@@ -488,7 +489,7 @@ var serveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
 		if port <= 0 {
-			port = cfg.Serve.Port
+			port = appconfig.Cfg.Serve.Port
 		}
 		if port <= 0 {
 			port = 8080

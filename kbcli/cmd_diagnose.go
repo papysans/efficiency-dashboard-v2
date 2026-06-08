@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"kanban/core/models"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 
 	"github.com/spf13/cobra"
@@ -31,7 +32,7 @@ var diagnoseCmd = &cobra.Command{
 }
 
 func runFindUsers() error {
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
@@ -145,7 +146,7 @@ func runFindUsers() error {
 }
 
 func runDiagnose(UserId, dateStr string) error {
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}

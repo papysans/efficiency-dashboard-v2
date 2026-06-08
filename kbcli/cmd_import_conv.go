@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"math"
 	"os"
@@ -244,7 +245,7 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 
 		// 若成本缺失且存在 Token 和模型信息，自动计算成本
 		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conversations[i].Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, cfg.ModelPrices)
+			conversations[i].Cost = calculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, appconfig.Cfg.ModelPrices)
 		}
 		// 去除用户输入的包装标签
 		conversations[i].UserInput = parseUserInput(conv.UserInput)
@@ -882,7 +883,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	}
 
 	// 连接数据库
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-conv", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
@@ -992,7 +993,7 @@ var importConvCmd = &cobra.Command{
 		date, _ := cmd.Flags().GetString("date")
 		createPseudo, _ := cmd.Flags().GetBool("create-pseudo")
 		if !cmd.Flags().Changed("create-pseudo") {
-			createPseudo = cfg.TaskCreate.CreatePseudoTask
+			createPseudo = appconfig.Cfg.TaskCreate.CreatePseudoTask
 		}
 
 		// 若指定了 remote 地址，则将命令参数序列化后发送到远程 kbcli 服务执行
@@ -1009,14 +1010,14 @@ var importConvCmd = &cobra.Command{
 		}
 		// 若未显式指定目录，回退到配置文件中的默认值
 		if taskDir == "" {
-			taskDir = cfg.TaskDir
+			taskDir = appconfig.Cfg.TaskDir
 		}
 		if analysedDir == "" {
-			analysedDir = cfg.AnalysedDir
+			analysedDir = appconfig.Cfg.AnalysedDir
 		}
 		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
 		if date == "" {
-			startDate = applyAnalysisFloor(startDate)
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
 
 		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/llm"
 	"strconv"
 	"strings"
@@ -12,7 +13,7 @@ import (
 
 // callAIForTaskTitle 调用 AI 从对话记录提取任务标题（不超过100字符）
 func callAIForTaskTitle(db *gorm.DB, taskID string, userInputs []string) (string, error) {
-	aiCfg := cfg.AIEstimation
+	aiCfg := appconfig.Cfg.AIEstimation
 	if !aiCfg.Enabled || aiCfg.APIKey == "" {
 		return "", fmt.Errorf("AI estimation not enabled or API key missing")
 	}
@@ -154,7 +155,7 @@ diff_lines: {{diff_lines}}
 //   - minutes:    final_minutes
 //   - reason:     reason 字段（含 confidence 标记）
 func callAIForAncientEstimation(title string, diffLines int, totalChars int64) (float64, string, error) {
-	aiCfg := cfg.AIEstimation
+	aiCfg := appconfig.Cfg.AIEstimation
 	if !aiCfg.Enabled || aiCfg.APIKey == "" {
 		return 0, "", fmt.Errorf("AI estimation not enabled or API key missing")
 	}

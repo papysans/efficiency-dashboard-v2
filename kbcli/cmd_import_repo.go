@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"kanban/core/models"
 	"kanban/core/utils"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/logx"
 	"os"
@@ -446,7 +447,7 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 		return err
 	}
 
-	db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {
 		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("连接数据库失败: %w", err)
@@ -534,17 +535,17 @@ var importRepoCmd = &cobra.Command{
 
 		// 未指定目录时，回退到配置文件中的默认值
 		if repoDir == "" {
-			repoDir = cfg.RepoDir
+			repoDir = appconfig.Cfg.RepoDir
 		}
 		if analysedDir == "" {
-			analysedDir = cfg.AnalysedDir
+			analysedDir = appconfig.Cfg.AnalysedDir
 		}
 		if maxDays <= 0 {
-			maxDays = cfg.TaskCreate.SilicaMaxDays
+			maxDays = appconfig.Cfg.TaskCreate.SilicaMaxDays
 		}
 		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
 		if date == "" {
-			startDate = applyAnalysisFloor(startDate)
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
 
 		// 执行本地导入流程

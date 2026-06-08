@@ -1,4 +1,4 @@
-package main
+package appconfig
 
 import (
 	"fmt"
@@ -13,6 +13,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// Cfg 是全局配置，在 rootCmd 的 PersistentPreRunE 中加载（原 main 包的 cfg）。
+var Cfg *Config
 
 // ModelPrice 模型价格配置
 type ModelPrice struct {
@@ -84,13 +87,13 @@ type DeptSyncConfig struct {
 	FallbackDeptName string `yaml:"fallback_dept_name"`
 }
 
-// applyAnalysisFloor 当未显式指定 start-date 时，用全局 analysis_start_date 作为起始下界。
-// 仅在 startDate 为空且 cfg.AnalysisStartDate 非空时生效；调用方需保证 date（单日）语义不被破坏
+// ApplyAnalysisFloor 当未显式指定 start-date 时，用全局 analysis_start_date 作为起始下界。
+// 仅在 startDate 为空且 Cfg.AnalysisStartDate 非空时生效；调用方需保证 date（单日）语义不被破坏
 // （date 与 start-date 互斥的命令应只在未传 date 时调用本函数）。
-func applyAnalysisFloor(startDate string) string {
-	if strings.TrimSpace(startDate) == "" && cfg != nil && strings.TrimSpace(cfg.AnalysisStartDate) != "" {
-		logx.Infof("应用分析起始日下界 analysis_start_date=%s", cfg.AnalysisStartDate)
-		return cfg.AnalysisStartDate
+func ApplyAnalysisFloor(startDate string) string {
+	if strings.TrimSpace(startDate) == "" && Cfg != nil && strings.TrimSpace(Cfg.AnalysisStartDate) != "" {
+		logx.Infof("应用分析起始日下界 analysis_start_date=%s", Cfg.AnalysisStartDate)
+		return Cfg.AnalysisStartDate
 	}
 	return startDate
 }

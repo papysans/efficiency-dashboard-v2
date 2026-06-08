@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"time"
 
@@ -31,7 +32,7 @@ var cleanCmd = &cobra.Command{
 			return fmt.Errorf("解析 --before 参数失败: %w", err)
 		}
 
-		db, err := models.OpenGormDB(cfg.StatDatabase.DSN())
+		db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 		if err != nil {
 			return fmt.Errorf("连接数据库失败: %w", err)
 		}
