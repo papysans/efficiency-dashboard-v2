@@ -28,18 +28,12 @@ func extractAddedLinesFromDiff(diffText string) []addedLine {
 		return nil
 	}
 
+	// 输入是合法 JSON-diff 数组（结构化格式）时一律按 JSON 解析返回——即使为空 / 全空字段
+	// 也返回其结果（可能 0 行），绝不把 JSON 文本本身当裸代码兜底（否则空 diff 会产生幻影行）。
+	// 真实裸代码不是合法的 []diffJSONEntry，Unmarshal 会失败并继续走下面的格式探测/裸代码兜底。
 	var jsonDiff []diffJSONEntry
-	if err := json.Unmarshal([]byte(diffText), &jsonDiff); err == nil && len(jsonDiff) > 0 {
-		hasExpected := false
-		for _, d := range jsonDiff {
-			if d.File != "" || d.After != "" || d.Before != "" || d.Additions > 0 || d.Deletions > 0 {
-				hasExpected = true
-				break
-			}
-		}
-		if hasExpected {
-			return extractFromJSONDiff(jsonDiff)
-		}
+	if err := json.Unmarshal([]byte(diffText), &jsonDiff); err == nil {
+		return extractFromJSONDiff(jsonDiff)
 	}
 
 	if strings.Contains(diffText, "<<< BEFORE") && strings.Contains(diffText, ">>> AFTER") {

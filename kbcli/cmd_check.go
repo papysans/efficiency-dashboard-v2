@@ -219,8 +219,9 @@ func matchDateFilter(path, dateFilter string) bool {
 		return true
 	}
 	// 路径格式: .../summary/YYYY/MM/DD/... 或 ...\summary\YYYY\MM\DD\...
-	// 将路径统一为斜杠格式，查找 /YYYY/MM/DD/ 模式
-	normalized := filepath.ToSlash(path)
+	// 显式把反斜杠统一成斜杠（filepath.ToSlash 在 Unix 上是 no-op，无法处理 Windows 风格
+	// 路径；这里数据可能来自 Windows 采集，故跨平台都要规范化）。再查找 /YYYY/MM/DD/ 模式。
+	normalized := strings.ReplaceAll(path, "\\", "/")
 	formattedDate := dateFilter[:4] + "/" + dateFilter[4:6] + "/" + dateFilter[6:]
 	return strings.Contains(normalized, "/"+formattedDate+"/")
 }

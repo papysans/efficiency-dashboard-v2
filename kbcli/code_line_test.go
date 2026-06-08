@@ -120,11 +120,12 @@ func TestExtractAddedLines_JSON_MultipleAllEmptyEntries(t *testing.T) {
 	}
 }
 
-// 覆盖 L31-32 条件失败: JSON 解析失败 → 跳过 JSON 分支
+// JSON 解析失败的非 diff 裸文本 → 走裸代码兜底（每个非空行算 1 条新增行，用于恢复 exec 阶段）。
+// 注：合法但空的 JSON 数组([]/[{}])走 JSON 分支返回 0 行，不会落裸代码兜底（见上面的 EmptyArray 等用例）。
 func TestExtractAddedLines_InvalidJSON(t *testing.T) {
 	got := extractAddedLinesFromDiff("not json at all")
-	if got != nil && len(got) != 0 {
-		t.Errorf("期望空结果, 得到 %d 条", len(got))
+	if len(got) != 1 {
+		t.Errorf("期望裸代码兜底 1 条, 得到 %d 条", len(got))
 	}
 }
 
