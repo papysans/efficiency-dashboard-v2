@@ -701,18 +701,20 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 			continue
 		}
 
+		// 只要分组键可定位即生成指纹：repo_addr 或 work_dir_id 任一非空。
+		// 放宽原 ss.RepoAddr 限制，让缺 repo_addr 的对话也能经 work_dir_id 后备分组参与匹配。
 		var fingerprints []string
-		if ss.RepoAddr != "" {
-			for _, al := range conv.addedLines {
-				fingerprints = append(fingerprints, calcLineFingerprint(al))
-			}
+		if conv.RepoAddr != "" || conv.workDirId != "" {
+			fingerprints = calcLineFingerprints(conv.addedLines)
 		}
 		tsc := taskSilicaConversation{
 			RequestId:      conv.RequestId,
 			StartTime:      conv.StartTime,
 			EndTime:        conv.EndTime,
 			RepoAddr:       conv.RepoAddr,
+			WorkDirId:      conv.workDirId,
 			UserInputChars: len(conv.UserInput),
+			DiffLines:      len(conv.addedLines), // 原始新增行数（不受护栏影响）
 			Fingerprints:   fingerprints,
 		}
 		tsd.Conversations = append(tsd.Conversations, tsc)

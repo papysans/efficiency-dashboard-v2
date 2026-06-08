@@ -766,60 +766,62 @@ func TestComputeDiffAddedLines_LargeContent(t *testing.T) {
 // calcLineFingerprint — 指纹计算测试
 // ============================================================================
 
-// 覆盖 L162-164: 完整指纹计算链路
+// 长内容行产生 64 字符 SHA-256 指纹
 func TestCalcLineFingerprint(t *testing.T) {
-	al := addedLine{FilePath: "/home/user/project/main.go", Content: "package main"}
+	al := addedLine{FilePath: "/home/user/project/main.go", Content: "result := computeTotal(items, taxRate)"}
 	fp := calcLineFingerprint(al)
-	if fp == "" {
-		t.Error("指纹不应为空")
-	}
 	if len(fp) != 64 {
 		t.Errorf("期望 64 字符的 SHA-256 哈希, 得到长度 %d: %s", len(fp), fp)
 	}
 }
 
-// 覆盖 L162: filepath.Base / L163: utils.RemoveWhitespace
 // 确定性: 相同输入 → 相同指纹
 func TestCalcLineFingerprint_Deterministic(t *testing.T) {
-	al := addedLine{FilePath: "/a/b/src/app.go", Content: "func main() {}"}
-	fp1 := calcLineFingerprint(al)
-	fp2 := calcLineFingerprint(al)
-	if fp1 != fp2 {
-		t.Errorf("相同输入应产生相同指纹: %s vs %s", fp1, fp2)
+	al := addedLine{FilePath: "/a/b/src/app.go", Content: "func computeAverage(values []float64) float64 {"}
+	if calcLineFingerprint(al) != calcLineFingerprint(al) {
+		t.Error("相同输入应产生相同指纹")
 	}
 }
 
 // 不同内容 → 不同指纹
 func TestCalcLineFingerprint_DifferentContent(t *testing.T) {
-	a1 := addedLine{FilePath: "a.go", Content: "line1"}
-	a2 := addedLine{FilePath: "a.go", Content: "line2"}
+	a1 := addedLine{FilePath: "a.go", Content: "totalAmount := basePrice * quantity"}
+	a2 := addedLine{FilePath: "a.go", Content: "totalAmount := basePrice * discount"}
 	if calcLineFingerprint(a1) == calcLineFingerprint(a2) {
 		t.Error("不同内容应产生不同指纹")
 	}
 }
 
-// 不同文件相同内容 → 不同指纹（filepath.Base 参与计算）
-func TestCalcLineFingerprint_DifferentFile(t *testing.T) {
-	a1 := addedLine{FilePath: "foo.go", Content: "same"}
-	a2 := addedLine{FilePath: "bar.go", Content: "same"}
-	if calcLineFingerprint(a1) == calcLineFingerprint(a2) {
-		t.Error("不同文件名应产生不同指纹")
+// content-only 核心：文件名(含裸代码的空文件名)不影响指纹 —— 这是裸代码对话能匹配 commit 的关键。
+func TestCalcLineFingerprint_FileNameIgnored(t *testing.T) {
+	withName := addedLine{FilePath: "foo/bar/service.go", Content: "return errors.Wrap(err, \"load config\")"}
+	bareCode := addedLine{FilePath: "", Content: "return errors.Wrap(err, \"load config\")"}
+	if calcLineFingerprint(withName) != calcLineFingerprint(bareCode) {
+		t.Error("content-only: 文件名(含裸代码空文件名)不应影响指纹")
 	}
 }
 
-// filepath.Base 只取文件名，忽略目录路径
-func TestCalcLineFingerprint_SameBaseDifferentDir(t *testing.T) {
-	a1 := addedLine{FilePath: "/proj/a/app.go", Content: "x"}
-	a2 := addedLine{FilePath: "/proj/b/app.go", Content: "x"}
-	if calcLineFingerprint(a1) != calcLineFingerprint(a2) {
-		t.Error("相同 Base 文件名应产生相同指纹（目录不影响）")
+// 护栏：去空白后短于 minFingerprintLen 的行不生成指纹（返回空）。
+func TestCalcLineFingerprint_ShortLineGuarded(t *testing.T) {
+	for _, s := range []string{"}", "})", "return nil", "break", "i++", "});"} {
+		if fp := calcLineFingerprint(addedLine{Content: s}); fp != "" {
+			t.Errorf("短样板行 %q 应被护栏过滤返回空, 得到 %s", s, fp)
+		}
+	}
+	// 边界：去空白后恰好 minFingerprintLen 字节 → 生成指纹
+	if calcLineFingerprint(addedLine{Content: strings.Repeat("a", minFingerprintLen)}) == "" {
+		t.Errorf("恰好 %d 字节应生成指纹", minFingerprintLen)
+	}
+	// 边界：minFingerprintLen-1 字节 → 被过滤
+	if calcLineFingerprint(addedLine{Content: strings.Repeat("a", minFingerprintLen-1)}) != "" {
+		t.Errorf("%d 字节应被护栏过滤", minFingerprintLen-1)
 	}
 }
 
 // 空白字符不影响指纹（RemoveWhitespace）
 func TestCalcLineFingerprint_WhitespaceInsensitive(t *testing.T) {
-	a1 := addedLine{FilePath: "f.go", Content: "func main() {"}
-	a2 := addedLine{FilePath: "f.go", Content: "func  main()  {"}
+	a1 := addedLine{Content: "func computeTotal(a int) int {"}
+	a2 := addedLine{Content: "func  computeTotal( a int )  int {"}
 	if calcLineFingerprint(a1) != calcLineFingerprint(a2) {
 		t.Error("空白字符差异应被 RemoveWhitespace 消除，指纹应一致")
 	}
@@ -827,10 +829,29 @@ func TestCalcLineFingerprint_WhitespaceInsensitive(t *testing.T) {
 
 // 换行/制表符也被移除
 func TestCalcLineFingerprint_NewlineTabInsensitive(t *testing.T) {
-	a1 := addedLine{FilePath: "f.go", Content: "a\tb\nc\rd"}
-	a2 := addedLine{FilePath: "f.go", Content: "abcd"}
+	a1 := addedLine{Content: "alpha\tbeta\ngamma\rdelta_extra"}
+	a2 := addedLine{Content: "alphabetagammadelta_extra"}
 	if calcLineFingerprint(a1) != calcLineFingerprint(a2) {
 		t.Error("换行/制表/回车应被 RemoveWhitespace 消除")
+	}
+}
+
+// calcLineFingerprints 批量生成并过滤护栏命中的短行，结果无空指纹。
+func TestCalcLineFingerprints_FiltersShortLines(t *testing.T) {
+	als := []addedLine{
+		{Content: "result := computeTotal(items, taxRate)"}, // 长 → 保留
+		{Content: "}"},          // 短 → 滤
+		{Content: "return nil"}, // 短 → 滤
+		{Content: "config.Load(path, defaultOptions...)"}, // 长 → 保留
+	}
+	fps := calcLineFingerprints(als)
+	if len(fps) != 2 {
+		t.Errorf("期望 2 条非空指纹(短行被滤), 得到 %d", len(fps))
+	}
+	for _, fp := range fps {
+		if fp == "" {
+			t.Error("结果不应含空指纹")
+		}
 	}
 }
 

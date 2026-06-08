@@ -23,7 +23,9 @@ type taskSilicaConversation struct {
 	StartTime      string   `json:"start_time"`
 	EndTime        string   `json:"end_time"`
 	RepoAddr       string   `json:"repo_addr"`
+	WorkDirId      string   `json:"work_dir_id"` // 后备分组键：repo_addr 缺失时用 work_dir_id 与 commit 匹配
 	UserInputChars int      `json:"user_input_chars"`
+	DiffLines      int      `json:"diff_lines"` // 对话原始新增行数（acceptRatio 分母用，与护栏过滤后的 Fingerprints 数区分）
 	Fingerprints   []string `json:"fingerprints"`
 }
 

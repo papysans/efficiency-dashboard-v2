@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"kanban/core/utils"
-	"path/filepath"
 	"strings"
 )
 
@@ -183,8 +182,37 @@ func computeDiffAddedLines(filePath, before, after string) []addedLine {
 	return result
 }
 
+// minFingerprintLen 是参与指纹匹配的最小行长（去空白后字节数）。
+// 短于此的行（如 "}"、"return nil"、"})"）视为样板噪声，不生成指纹——
+// 因为 content-only 指纹丢掉了文件名维度，样板行会跨文件大量误匹配，撑高 silica。
+// 取 16：能滤掉绝大多数单符号/单关键字样板，又保留有实际内容的代码行。偏覆盖，可调。
+const minFingerprintLen = 16
+
+// calcLineFingerprint 为单行新增代码生成「内容指纹」（content-only，不含文件名）。
+//
+// 设计变更（silica 裸代码适配）：原指纹 = sha256(basename(file)+content)，但对话侧 diff 多为
+// 裸代码（无文件名 → basename="."），与 commit 侧真实文件名的指纹永不相等，导致 silica 覆盖仅 0.58%。
+// 改为只 hash 去空白后的行内容，使裸代码对话也能与 commit 匹配。
+//
+// 护栏：去空白后长度 < minFingerprintLen 的行返回 ""，由 calcLineFingerprints 过滤，不进指纹集。
 func calcLineFingerprint(al addedLine) string {
-	path := filepath.Base(al.FilePath)
-	hash := sha256.Sum256([]byte(utils.RemoveWhitespace(path + al.Content)))
+	c := utils.RemoveWhitespace(al.Content)
+	if len(c) < minFingerprintLen {
+		return ""
+	}
+	hash := sha256.Sum256([]byte(c))
 	return hex.EncodeToString(hash[:])
+}
+
+// calcLineFingerprints 批量生成行内容指纹，并过滤掉护栏命中的空指纹。
+// conv 侧（写 .silica.json 指纹）与 commit 侧（匹配）统一调用本函数，保证两侧护栏一致——
+// 否则一侧滤、一侧不滤会让指纹集错位。
+func calcLineFingerprints(als []addedLine) []string {
+	fps := make([]string, 0, len(als))
+	for _, al := range als {
+		if fp := calcLineFingerprint(al); fp != "" {
+			fps = append(fps, fp)
+		}
+	}
+	return fps
 }

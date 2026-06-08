@@ -194,19 +194,20 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 	addedLines := extractAddedLinesFromDiff(commitData.Diff)
 	commitData.DiffLines = len(addedLines)
 
-	// 计算指纹列表
-	fpHashes := make([]string, len(addedLines))
-	for i, al := range addedLines {
-		fpHashes[i] = calcLineFingerprint(al)
-	}
+	// 计算指纹列表（content-only + 护栏：短样板行不生成指纹，见 calcLineFingerprints）。
+	// 注意 DiffLines 仍用 addedLines 全量长度（阶段分类用），不受护栏影响。
+	fpHashes := calcLineFingerprints(addedLines)
 
-	// 计算 silica
+	// 计算 silica（work_dir_id 作为缺 repo_addr 对话的后备分组键，与 saveCommit 同算法）
+	commitWorkDirId := utils.GenerateWorkDirID(commitData.ClientId, commitData.WorkDir)
 	p, tms := analyzeCommitSilica(
 		commitData.CommitId,
 		commitData.RepoAddr,
 		commitData.UserId,
+		commitWorkDirId,
 		commitTime,
 		fpHashes,
+		len(addedLines), // silica 分母 = 原始 diff 行数（护栏不改口径）
 		idx,
 		maxDays,
 	)

@@ -73,7 +73,61 @@ type groupIndexer struct {
 // conversationsIndexer 全局conversation指纹索引，聚合所有分组的数据。
 // 用于快速判断某行代码是否由某次AI对话生成。
 type conversationsIndexer struct {
-	groups map[groupKey]groupIndexer // 分组索引
+	groups   map[groupKey]groupIndexer // 主分组索引，键为 (repoAddr, userID)
+	wdGroups map[wdKey]groupIndexer    // 后备分组索引，键为 (work_dir_id, userID)，仅收录缺 repo_addr 的对话
+}
+
+// wdKey 是 work_dir_id 后备分组键。保留 userID 维度，避免不同用户因 work_dir_id 碰撞
+// （work_dir_id = clientID[:6]+workDir，clientID[:6] 可能是共享前缀）而跨用户误归组——
+// 与主分组 (repoAddr,userID) 一样防串户。
+type wdKey struct {
+	workDirId string
+	userID    string
+}
+
+// newGroupIndexer 创建空的分组索引器。
+func newGroupIndexer() groupIndexer {
+	return groupIndexer{
+		Lines:    make(map[string]*convMeta),
+		Sessions: make(map[string]*sessionMeta),
+	}
+}
+
+// lookupGroups 为某 commit 取出可匹配的对话分组：主分组 (repoAddr,userID) 与
+// work_dir_id 后备分组。两者都存在时合并为一个临时索引（主分组指纹优先，后备仅补充）。
+// 后备分组让缺 repo_addr 的对话也能经 work_dir_id 与 commit 匹配。
+func (idx *conversationsIndexer) lookupGroups(repoAddr, userId, workDirId string) (groupIndexer, bool) {
+	main, hasMain := idx.groups[groupKey{repoAddr: repoAddr, userID: userId}]
+	var fb groupIndexer
+	hasFb := false
+	if workDirId != "" {
+		fb, hasFb = idx.wdGroups[wdKey{workDirId: workDirId, userID: userId}]
+	}
+	switch {
+	case !hasMain && !hasFb:
+		return groupIndexer{}, false
+	case hasMain && !hasFb:
+		return main, true
+	case !hasMain && hasFb:
+		return fb, true
+	}
+	// 两者都有：合并（主分组优先占据指纹归属，后备仅填补主分组没有的指纹）
+	merged := newGroupIndexer()
+	for h, cm := range main.Lines {
+		merged.Lines[h] = cm
+	}
+	for h, cm := range fb.Lines {
+		if _, ok := merged.Lines[h]; !ok {
+			merged.Lines[h] = cm
+		}
+	}
+	for sid, s := range fb.Sessions {
+		merged.Sessions[sid] = s
+	}
+	for sid, s := range main.Sessions {
+		merged.Sessions[sid] = s
+	}
+	return merged, true
 }
 
 // commitParser 用于解析单个commit的指纹文件并计算含硅量及相关衍生指标。
@@ -98,19 +152,18 @@ type commitParser struct {
 	cost             float64   // AI调用成本总数
 }
 
-// buildCommitParser 从指纹列表构建commitParser实例。
+// buildCommitParser 从指纹列表构建 commitParser 实例。
 //
 // 参数:
-//   - commitId: commit的唯一ID。
-//   - fpHashes: 代码行指纹列表。
-//
-// 返回值:
-//   - *commitParser: 解析器实例，包含已加载的指纹列表。
-func buildCommitParser(commitId string, fpHashes []string) *commitParser {
+//   - commitId: commit 的唯一 ID。
+//   - fpHashes: 过滤护栏后的匹配指纹集（仅用于匹配，可能少于原始行数）。
+//   - totalLines: commit 原始新增行数（silica 分母 + ancient 估算用），与护栏无关，
+//     保证 silica 仍是 "AI 占整个 commit 的比例"，不因护栏剔除样板行而被动抬高。
+func buildCommitParser(commitId string, fpHashes []string, totalLines int) *commitParser {
 	return &commitParser{
 		commitId:   commitId,
 		fpHashs:    fpHashes,
-		totalLines: len(fpHashes),
+		totalLines: totalLines,
 	}
 }
 
@@ -132,7 +185,8 @@ func buildCommitParser(commitId string, fpHashes []string) *commitParser {
 //  4. 索引构建完成后，可通过 buildCandidateHashs 按时间窗口快速筛选候选指纹。
 func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) {
 	idx := &conversationsIndexer{
-		groups: make(map[groupKey]groupIndexer),
+		groups:   make(map[groupKey]groupIndexer),
+		wdGroups: make(map[wdKey]groupIndexer),
 	}
 
 	// 目录不存在时返回空索引，不报错（兼容增量分析场景）
@@ -189,10 +243,6 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 				logx.Warnf("文件[%s]对话[%d]缺失字段[request_id]", silicaFile, i)
 				continue
 			}
-			if conv.RepoAddr == "" {
-				missRepoCount++
-				continue
-			}
 			// 解析对话结束时间，用于后续的时间窗口筛选和冲突仲裁
 			var startTime, endTime time.Time
 			if conv.EndTime != "" {
@@ -206,25 +256,41 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 				missEndTimeCount++
 			}
 
-			// 按 repoAddr + userID 确定分组键
-			gk := groupKey{repoAddr: conv.RepoAddr, userID: ss.UserId}
-
-			// 获取或初始化该分组索引器
-			gi, exists := idx.groups[gk]
-			if !exists {
-				gi = groupIndexer{
-					Lines:    make(map[string]*convMeta),
-					Sessions: make(map[string]*sessionMeta),
+			// 选择分组：有 repo_addr 走主分组 (repoAddr,userID)；缺 repo_addr 时改用 work_dir_id
+			// 后备分组，让这部分对话也能与 commit 匹配；两者皆无则无法定位分组，跳过。
+			var gi groupIndexer
+			var exists bool
+			if conv.RepoAddr != "" {
+				gk := groupKey{repoAddr: conv.RepoAddr, userID: ss.UserId}
+				gi, exists = idx.groups[gk]
+				if !exists {
+					gi = newGroupIndexer()
+					idx.groups[gk] = gi
 				}
-				idx.groups[gk] = gi
+			} else if conv.WorkDirId != "" {
+				missRepoCount++ // 缺 repo_addr，走 (work_dir_id, userID) 后备分组
+				wk := wdKey{workDirId: conv.WorkDirId, userID: ss.UserId}
+				gi, exists = idx.wdGroups[wk]
+				if !exists {
+					gi = newGroupIndexer()
+					idx.wdGroups[wk] = gi
+				}
+			} else {
+				missRepoCount++
+				continue // 既无 repo_addr 又无 work_dir_id，无法定位分组
 			}
 			gi.Sessions[ss.SessionId] = session
 
-			// 创建对话元数据对象
+			// 创建对话元数据对象。DiffLines 用原始新增行数（acceptRatio 分母），
+			// 与护栏过滤后的 Fingerprints 数区分；旧 .silica.json 无此字段时回退到指纹数。
+			diffLines := conv.DiffLines
+			if diffLines == 0 {
+				diffLines = len(conv.Fingerprints)
+			}
 			cm := &convMeta{
 				sessionId:      ss.SessionId,
 				requestId:      conv.RequestId,
-				DiffLines:      len(conv.Fingerprints),
+				DiffLines:      diffLines,
 				UserInputChars: conv.UserInputChars,
 				startTime:      startTime,
 				endTime:        endTime,
@@ -578,16 +644,17 @@ func (p *commitParser) calcCommitDerivedMinutes(tms []taskMatched) error {
 // analyzeCommitSilica 计算单个commit的含硅量及相关指标。
 // 纯计算函数，不操作数据库，不读取文件。
 func analyzeCommitSilica(
-	commitId, repoAddr, userId string,
+	commitId, repoAddr, userId, workDirId string,
 	commitTime time.Time,
 	fpHashes []string,
+	totalDiffLines int,
 	idx *conversationsIndexer,
 	maxDays int,
 ) (*commitParser, []taskMatched) {
-	p := buildCommitParser(commitId, fpHashes)
+	p := buildCommitParser(commitId, fpHashes, totalDiffLines)
 
-	gk := groupKey{repoAddr: repoAddr, userID: userId}
-	gi, exists := idx.groups[gk]
+	// 主分组 (repoAddr,userID) + work_dir_id 后备分组，覆盖缺 repo_addr 的对话。
+	gi, exists := idx.lookupGroups(repoAddr, userId, workDirId)
 	if !exists {
 		return p, nil
 	}
@@ -597,7 +664,7 @@ func analyzeCommitSilica(
 	tms = calcTaskMetrics(tms, p.commitId, p.totalLines)
 	p.aggregateCommitTaskStats(tms)
 	p.calcCommitDerivedMinutes(tms)
-	p.ancientMinutes, p.ancientReason = estimateCommitAncientMinutes(len(fpHashes))
+	p.ancientMinutes, p.ancientReason = estimateCommitAncientMinutes(totalDiffLines)
 
 	return p, tms
 }
