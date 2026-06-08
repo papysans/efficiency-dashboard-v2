@@ -1,6 +1,6 @@
 # AI Coding 指标看板 (Efficiency Dashboard)
 
-实时追踪 AI 辅助开发效率，量化提效价值的全栈指标看板系统。通过采集开发者的 AI 任务数据、Git 提交记录，计算含硅量与综合提效比，帮助团队直观了解 AI Coding 工具的实际效能。
+实时追踪 AI 辅助开发效率、量化提效价值的全栈指标看板。采集开发者的 AI 任务数据与 Git 提交记录，计算**含硅量**（AI 生成代码占比）与**综合提效比**，帮助团队直观了解 AI Coding 工具的实际效能。
 
 ---
 
@@ -8,10 +8,10 @@
 
 | 层级 | 技术 |
 |------|------|
-| 后端 API | Go 1.26 + Gin + GORM + PostgreSQL |
-| 前端界面 | Vue 3 + Element Plus + Vite + ECharts |
-| 数据处理 CLI | Go 1.25 + Cobra |
-| 数据库 | PostgreSQL 15 |
+| 后端 API | Go 1.26 + Gin + GORM（端口 **9990**） |
+| 前端界面 | **React 19** + Vite + Tailwind + ECharts（dev 端口 **8881**） |
+| 数据处理 CLI | Go 1.25 + Cobra（`kbcli`） |
+| 数据库 | PostgreSQL 15（库名 **`costrict_stat`**） |
 | 部署 | Docker Compose / Helm |
 
 ---
@@ -20,212 +20,193 @@
 
 ```
 .
-├── backend/          # Go REST API 服务（端口 9990）
-│   ├── main.go
-│   └── *_handler_v2.go   # 各模块 API 处理器
-├── frontend/         # Vue 3 前端看板
-│   ├── package.json
-│   └── src/
-│       ├── views/        # 页面视图
-│       ├── components/   # 公共组件
-│       └── router/       # 路由配置
-├── core/             # 共享 Go 库
-│   ├── models/       # 数据库模型（GORM）
-│   ├── config/       # 数据库连接配置
-│   └── utils/        # 工具函数（效能比计算、文本处理等）
-├── kbcli/            # CLI 数据导入与计算工具
-│   ├── cmd_import*.go    # 数据导入命令
-│   ├── cmd_silica.go     # 含硅量计算
-│   ├── cmd_efficiency.go # 效能计算
-│   └── cmd_serve.go      # 异步任务 HTTP 服务（端口 8080）
-├── compose/          # Docker Compose 部署配置
-└── helm/             # Kubernetes Helm 部署方案
+├── backend/          # Go REST API 服务（:9990，*_handler_v2.go 各模块处理器）
+├── frontend-react/   # React 19 前端看板（Vite，:8881，/api 代理到 :9990）
+├── core/             # 共享 Go 库（models GORM 模型 / config / utils）
+├── kbcli/            # 数据导入与计算 CLI（含 internal/ 子包：efficiencyv2 / appconfig / util / ...）
+├── configs/          # 配置模板（kbcli-config.yaml / server-config.yaml）
+├── compose/          # Docker Compose 部署（postgres / server / portal / kbcli）
+└── helm/             # Kubernetes Helm 部署
 ```
+
+> 历史的 `frontend/`（Vue）已下线，前端唯一实现是 `frontend-react/`。
 
 ---
 
 ## 核心功能
 
-### 1. 多维度数据看板
+- **首页总览**：省人天 & ROI、提效趋势、Top 提效榜（需求/人）、规模概览
+- **需求 / 任务 / 用户 / 仓库 / 组织 / 项目 / 提交** 七大维度看板
+- **提交详情**：Commit 含硅量、关联 Task、AI 贡献分析
+- **组织视图**：基于 dept-sync 部门树的层级效能汇总
 
-- **首页仪表盘**：核心指标汇总（仓库数、用户数、Task 数、Commit 数、总费用、综合提效比）
-- **仓库视图**：按仓库维度查看代码提交、含硅量等指标
-- **用户视图**：按开发者维度统计生产力数据，支持用户分组
-- **组织视图**：按组织架构层级汇总效能指标
-- **提交视图**：逐条查看 Commit 详情及 AI 贡献分析
-- **任务视图**：查看 AI 交互任务详情、Token 消耗与耗时
-- **项目视图**：虚拟项目管理，聚合多个仓库与任务进行提效分析
+### 关键指标
 
-### 2. 数据采集与处理（kbcli）
-
-| 命令 | 说明 |
-|------|------|
-| `kbcli import-conv` | 导入 AI 任务原始数据 |
-| `kbcli import-repo` | 导入仓库与 Commit 数据 |
-| `kbcli import-org`  | 导入用户组织架构映射 |
-| `kbcli silica`      | 计算 Commit 含硅量（AI 生成代码占比） |
-| `kbcli efficiency`  | 按日计算用户与组织效能数据 |
-| `kbcli import`      | 顺序执行完整导入流程 |
-| `kbcli serve`       | 启动异步任务调度 HTTP 服务 |
-
-### 3. 关键指标
-
-- **含硅量 (Silica)**：Commit 中由 AI 对话生成的代码行占比
-- **综合提效比**：传统预估耗时 / 实际耗时，反映 AI 辅助的效率提升
-- **代码采纳率**：Task 产生的代码行被后续 Commit 采纳的比例
-- **Token 消耗**：Upstream / Downstream Token 统计及费用估算
+- **含硅量 (Silica)**：Commit 中由 AI 对话生成的代码行占比（kbcli import-repo 阶段按指纹匹配计算）
+- **综合提效比**：传统古法预估耗时 / 实际耗时；多基线（algo / kNN / LLM）融合
+- **代码采纳率 / Token 消耗 / 费用**
 
 ---
 
-## 数据模型
-
-主要业务表：
-
-- `tasks` / `task_conversations` — AI 任务及对话明细
-- `commits` — Git 提交记录及含硅量分析结果
-- `sessions` — 客户端会话信息
-- `user_org` — 用户与组织架构映射
-- `user_productivity` — 按日聚合的用户生产力数据
-- `projects` — 虚拟项目定义（聚合仓库与任务）
-- `user_groups` — 用户分组配置
-
----
-
-## 快速开始
+## 快速开始（本地开发）
 
 ### 环境要求
 
-- Go 1.25+
-- Node.js 18+
-- PostgreSQL 15+
+- Go 1.25+（backend 需 1.26）、Node.js 18+、PostgreSQL 15、Docker
 
-### 1. 启动数据库
+### 1. 起数据库（PostgreSQL，库 `costrict_stat`）
 
 ```bash
-cd compose
-# 使用 Docker Compose 一键启动全部服务
-docker-compose up -d
+# 方式 A：用 compose 起 postgres（推荐）
+cd compose && docker compose up -d postgres
+
+# 方式 B：自备 docker
+docker run -d --name kanban-postgres -p 5432:5432 \
+  -e POSTGRES_PASSWORD=1 -e POSTGRES_DB=costrict_stat postgres:15
 ```
 
-或手动创建 PostgreSQL 数据库：
-- 数据库名：`report`
-- 用户：`postgres`
+> 表结构由 backend / kbcli 启动时 GORM AutoMigrate 自动建。需要现成数据可从备份恢复（见 `.local/*.backup.sql.gz`，gitignored）。
 
-### 2. 启动后端 API
+### 2. 起后端 API（:9990）
 
 ```bash
 cd backend
-go mod tidy
-go run .
-# 默认监听 http://localhost:9990
-# Swagger 文档：http://localhost:9990/swagger/index.html
+go run .   # 自动读 ./config.yaml 或 ../configs/server-config.yaml
+# Swagger: http://localhost:9990/swagger/index.html
 ```
 
-### 3. 启动前端
+> 个人覆盖配置放 `.local/`（gitignored）；改 DB 连接时复制一份模板再改，不要动 committed 模板。
+
+### 3. 起前端（:8881）
 
 ```bash
-cd frontend
+cd frontend-react
 npm install
-npm run dev
-# 默认访问 http://localhost:5173
+npm run dev   # http://localhost:8881，/api 自动代理到 :9990
 ```
 
-### 4. 运行数据导入（示例）
-
-```bash
-cd kbcli
-go run . import --task-dir /path/to/tasks --repo-dir /path/to/repos
-```
+### 4. 灌数据（见下方「数据管线」）
 
 ---
 
-## 部署方式
+## 数据管线（kbcli）
 
-### Docker Compose
+> 调用形态：本地 `cd kbcli && go run . <cmd> --config ../configs/kbcli-config.yaml [flags]`；
+> 内网 compose `docker compose exec kbcli /app/bin/kbcli <cmd> --config /app/config.yaml [flags]`。
+> 日期 flag 通用：`--date YYYYMMDD`（单天） / `--start-date YYYYMMDD --end-date YYYYMMDD`（区间），不带=全量。
 
-```bash
-cd compose
-docker-compose up -d
+### 命令一览
+
+| 命令 | 说明 |
+|------|------|
+| `import` | **编排链**：import-conv → import-repo → import-org → import-dept → efficiency-v2 |
+| `import-conv` | 导入 AI 任务/对话原始数据（来自 mnt 上游）|
+| `import-repo` | 导入仓库/Commit，并按指纹计算**含硅量** |
+| `import-org` | 导入用户↔组织映射（非破坏占位，不覆盖真实 org）|
+| `import-dept` | 从 **dept-sync** 拉部门树+人员，投影回填 user_org（**组织树**来源）|
+| `import-anchor` | 灌 **kNN 锚点母表**（⚠️ **不在 import 链里，需手动**）|
+| `efficiency-v2` | 计算/重算 V2 效能（提效比、基线融合、用户/组织聚合）|
+| `fix-task` / `fix-commit` | LLM 估算补齐新增 task/commit 耗时 |
+| `clean` | 清洗早于某日的过期数据（先 `--dry-run`）|
+| `check` / `serve` | 自检 / 异步任务调度服务（:8080，自带 cron）|
+
+### 从零 / 大改的全流程顺序
+
+```
+import-anchor（kNN 锚点，单独灌一次）
+  → import（= conv → repo → org → dept → efficiency-v2 一条串起来）
 ```
 
-服务组成：
-- `postgres` — 数据库
-- `server` — 后端 API
-- `portal` — 前端 Nginx
-- `kbcli` — 数据处理 CLI 服务
-
-前端看板可单独打包为 Nginx 镜像：
+### 常用 ops
 
 ```bash
-make package-portal VER=1.0.2
+# ① 改了 scope/阈值 → 只重算口径（最常用，不重读 mnt，快）
+kbcli efficiency-v2 --config <cfg>                                  # 全量重算（配置改动全部生效）
+kbcli efficiency-v2 --config <cfg> --start-date 20260525 --end-date 20260604   # 区间
+kbcli efficiency-v2 --config <cfg> --date 20260526                 # 单天
+#   ⚠️ 带日期只重算那个窗口的 need；改了 scope/阈值想全部生效，跑不带日期的全量那条。
+
+# ② 源数据变了 / 要重扫 mnt → 重新取数+重算（含 efficiency-v2，重）
+kbcli import --config <cfg> -f --start-date 20260525 --end-date 20260527   # 区间强制重扫
+kbcli import --config <cfg> -f                                            # 全量强制
+#   ⚠️ -f 必加，否则已导入的 session 会被跳过（analysed-dir 有缓存）。
+
+# ③ 换了 kNN 锚点母表 CSV → 重灌 anchor_set
+kbcli import-anchor --config <cfg>                                  # 用 config 里的 anchor_set_csv
+kbcli import-anchor --config <cfg> --csv /path/to/anchor_set.csv
+
+# ④ 修复 / 清洗（偶尔）
+kbcli fix-task   --config <cfg> --start-date 20260525 --end-date 20260527
+kbcli fix-commit --config <cfg> --date 20260526
+kbcli clean      --config <cfg> --before 2026-05-18 --dry-run       # 先预览再去掉 --dry-run
 ```
 
-后端与前端镜像一起打包：
+### 自动化（cron）
+
+`kbcli serve`（:8080）内置定时任务：每 4h 增量 `import`、每日 04:30 `fix-task` / 05:00 `fix-commit`、每周日 03:00 `force` 全量 `import` 纠偏。
+**⚠️ `import-anchor`(kNN) 不在 cron 里**，换锚点时需手动跑。
+
+### 升级后要不要全量重导？
+
+- **纯代码更新（重构 / 删死码 / bug 修，不改 schema/口径）** → **不必重导**，重建 `kbcli`/`backend` 二进制（或拉新镜像）即可，存量数据有效。
+- **改了 efficiency_v2 的 scope/阈值/权重** → 跑 ①「全量 `efficiency-v2`」即可（不重读 mnt）。
+- **改了取数/含硅量算法（如裸代码指纹适配）** → 跑 ②「`import -f`」重扫重算。
+
+---
+
+## 数据模型（主要表，V2 口径）
+
+- `needs` — 需求边界聚合（提效比、基线融合 baseline_fused_work_min 等 V2 核心）
+- `commits` / `tasks` / `task_conversations` / `sessions` — 提交 / 任务 / 对话 / 会话明细
+- `user_org` / `dept` / `dept_user` — 用户组织映射 / 部门树
+- `user_productivity_v2` — 按周聚合的用户生产力（V2）
+- `baseline_fusion_weights` — 基线融合权重
+- `projects` / `user_groups` — 虚拟项目 / 用户分组
+
+> 旧 `user_productivity`（V1 按日预聚合表）**已下线**，相关读取改为从 tasks/commits 基表实时聚合。
+
+---
+
+## 部署
+
+### Docker Compose（内网）
 
 ```bash
-make package-all VER=1.0.2
+cd compose && docker compose up -d         # postgres + server(:9990) + portal(nginx) + kbcli
 ```
+
+镜像打包：`make package-all VER=1.0.x`（后端+前端）/ `make package-portal VER=1.0.x`（仅前端）。
 
 ### Helm（Kubernetes）
 
-支持两种部署模式：
-
-**独立部署**（单独升级某服务）：
 ```bash
-helm install postgresql ./charts/postgresql -n efficiency --create-namespace
-helm install server ./charts/server -n efficiency
-helm install portal ./charts/portal -n efficiency
+helm install efficiency-dashboard ./helm/efficiency-dashboard -n efficiency --create-namespace
 ```
 
-**伞形部署**（一键全量部署）：
-```bash
-helm install efficiency-dashboard ./efficiency-dashboard -n efficiency --create-namespace
-```
-
-详见 [helm/README.md](helm/README.md)。
-
----
-
-## API 文档
-
-后端和 kbcli serve 均内置 Swagger UI：
-
-- Backend：`http://localhost:9990/swagger/index.html`
-- KBCLI Serve：`http://localhost:8080/swagger/index.html`
+详见 [helm/README.md](helm/README.md)、[compose/README.md](compose/README.md)。
 
 ---
 
 ## 测试
 
-### 后端集成测试
-
 ```bash
-cd backend
-go test -v ./...
+cd backend && go test ./...           # 后端单元测试
+cd kbcli   && go test ./...           # kbcli 单元测试（含 internal/ 子包）
+cd frontend-react && npm run test     # 前端 vitest
 ```
 
-### 前端测试
-
-```bash
-cd frontend
-npm run test
-```
+> backend 的 `*_integration_test.go` 白盒集成套件已废弃移除；如需端到端覆盖建议另起黑盒方案。
 
 ---
 
 ## 配置说明
 
-主要配置文件：
-
-- `backend/config.yaml` — 后端服务配置（端口、数据库 DSN、CORS）
-- `kbcli/config.yaml` — CLI 工具配置（数据目录、数据库连接、定时任务）
-- `compose/*/config.yaml` — Docker Compose 各服务配置
-
----
-
-## 贡献与反馈
-
-- 问题反馈：[GitHub Issues](https://github.com/zgsm-ai/costrict-cli/issues)
+| 文件 | 用途 |
+|------|------|
+| `configs/server-config.yaml` / `backend/config.yaml` | 后端（端口、DB DSN、CORS）|
+| `configs/kbcli-config.yaml` | kbcli（DB、模型价格、algo/efficiency_v2 调参、dept_sync、cron）|
+| `compose/*/config.yaml` | compose 各服务配置 |
+| `.local/*`（gitignored）| 个人本地覆盖，复制模板后修改 |
 
 ---
 
