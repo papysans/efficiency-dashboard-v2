@@ -168,58 +168,6 @@ type CommitLightStats struct {
 }
 
 // ============================================================
-// 值→指针转换辅助（零值映射为 nil）
-// ============================================================
-
-func toStrPtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	s2 := s
-	return &s2
-}
-func toIntPtr(i int) *int {
-	if i == 0 {
-		return nil
-	}
-	v := i
-	return &v
-}
-func toInt64Ptr(i int64) *int64 {
-	if i == 0 {
-		return nil
-	}
-	v := i
-	return &v
-}
-func toFloat64Ptr(f float64) *float64 {
-	if f == 0 {
-		return nil
-	}
-	v := f
-	return &v
-}
-
-func ptrToInt64(p *int64) int64 {
-	if p == nil {
-		return 0
-	}
-	return *p
-}
-func ptrToFloat64(p *float64) float64 {
-	if p == nil {
-		return 0
-	}
-	return *p
-}
-func ptrToStr(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
-}
-
-// ============================================================
 // models → response 类型转换
 // ============================================================
 
@@ -332,16 +280,6 @@ func toRelatedTask(t *models.Task) *RelatedTask {
 		Cost:            t.Cost,
 		DiffLines:       t.DiffLines,
 	}
-}
-
-func toRelatedTaskSlice(tasks []models.Task) []RelatedTask {
-	result := make([]RelatedTask, len(tasks))
-	for i, t := range tasks {
-		if rt := toRelatedTask(&t); rt != nil {
-			result[i] = *rt
-		}
-	}
-	return result
 }
 
 func GetRelatedTasks(db *gorm.DB, taskIds []string, taskSilicas []float64) []RelatedTask {
@@ -1214,22 +1152,6 @@ func ListProjectTasks(db *gorm.DB, projectID string) ([]models.ProjectTask, erro
 	return pts, nil
 }
 
-func CountProjectTasks(db *gorm.DB, projectID string) (int, error) {
-	var count int64
-	if err := db.Model(&models.ProjectTask{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("统计 project_tasks 失败: %w", err)
-	}
-	return int(count), nil
-}
-
-func GetProjectTaskIDs(db *gorm.DB, projectID string) ([]string, error) {
-	var ids []string
-	if err := db.Model(&models.ProjectTask{}).Where("project_id = ?", projectID).Pluck("task_id", &ids).Error; err != nil {
-		return nil, fmt.Errorf("查询 project_task_ids 失败: %w", err)
-	}
-	return ids, nil
-}
-
 // ============================================================
 // user_productivity CRUD (GORM)
 // ============================================================
@@ -1456,18 +1378,6 @@ func CreateUserGroup(db *gorm.DB, name string, orgName string, userIDs []string)
 	}
 	// 重新查询以获取完整数据
 	return GetUserGroup(db, g.GroupID)
-}
-
-func ListUserGroups(db *gorm.DB) ([]UserGroup, error) {
-	var gs []models.UserGroup
-	if err := db.Order("created_at DESC").Find(&gs).Error; err != nil {
-		return nil, fmt.Errorf("查询 user_groups 列表失败: %w", err)
-	}
-	result := make([]UserGroup, len(gs))
-	for i := range gs {
-		result[i] = *toUserGroup(&gs[i])
-	}
-	return result, nil
 }
 
 func GetUserGroup(db *gorm.DB, groupId string) (*UserGroup, error) {

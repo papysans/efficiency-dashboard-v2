@@ -10,13 +10,13 @@ import (
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "顺序执行完整的导入流程: import-conv → import-repo → import-org → import-dept → efficiency",
+	Short: "顺序执行完整的导入流程: import-conv → import-repo → import-org → import-dept → efficiency-v2",
 	Long: `顺序执行完整的导入流程:
   1. import-conv: 导入task数据
   2. import-repo: 导入repo/commit数据（含silica计算）
   3. import-org: 导入用户组织信息（兜底"临时组织"占位为非破坏性，不覆盖已有真实 org）
   4. import-dept: 从 dept-sync 刷新真实部门并投影回填 user_org（未配置/不可达时非致命跳过）
-  5. efficiency: 计算用户和组织效能数据
+  5. efficiency-v2: 计算用户和组织效能数据
 
 所有子命令的参数均可在import命令中使用，参数含义与各子命令一致。`,
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -13,7 +13,7 @@ const (
 
 var (
 	// kbcli_command_runs_total 命令执行总次数
-	// labels: command (import/import-conv/import-repo/import-org/silica/efficiency), status (success/fail)
+	// labels: command (import/import-conv/import-repo/import-org/efficiency-v2), status (success/fail)
 	commandRunsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,

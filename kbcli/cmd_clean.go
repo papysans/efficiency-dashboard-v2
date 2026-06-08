@@ -15,7 +15,7 @@ import (
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "清洗过期或有问题的数据",
-	Long:  "根据指定条件清洗 commits、tasks、task_conversations、user_productivity 表中的过期数据。",
+	Long:  "根据指定条件清洗 commits、tasks、task_conversations 表中的过期数据。",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beforeStr, _ := cmd.Flags().GetString("before")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")

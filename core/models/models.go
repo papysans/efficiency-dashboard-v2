@@ -347,7 +347,5 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("迁移 v2 效率表结构失败: %w", err)
 	}
 
-	// execDDLIgnoreError(db, `ALTER TABLE commits RENAME COLUMN work_path TO work_dir`)
-
 	return nil
 }

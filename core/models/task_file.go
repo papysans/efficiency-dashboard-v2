@@ -6,11 +6,6 @@ import (
 	"strings"
 )
 
-type PathConfig struct {
-	AnalysedDir string
-	TaskDir     string
-}
-
 func GetDatePartsFromTask(task *Task, typ string) (yyyy, mm, dd string, ok bool) {
 	var dateStr string
 	if typ == "summary" {
