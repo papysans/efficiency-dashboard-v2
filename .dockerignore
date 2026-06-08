@@ -10,10 +10,6 @@ Dockerfile
 .dockerignore
 **/*.test
 **/tmp
-frontend/node_modules
-frontend/dist
-frontend/playwright-report
-frontend/test-results
 frontend-react/node_modules
 frontend-react/dist
 frontend-react/.vite
