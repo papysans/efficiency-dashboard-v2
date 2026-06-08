@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -1269,23 +1270,207 @@ func GetProjectTaskIDs(db *gorm.DB, projectID string) ([]string, error) {
 // user_productivity CRUD (GORM)
 // ============================================================
 
-func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, orderClause string) ([]models.UserProductivity, int, error) {
-	q := filter.applyToQuery(db.Model(&models.UserProductivity{}))
-	var count int64
-	if err := q.Count(&count).Error; err != nil {
-		return nil, 0, fmt.Errorf("统计 user_productivity 总数失败: %w", err)
+// ListUserProductivity 返回按 (user_id, 自然日) 聚合的生产力 daily 行。
+//
+// V1 user_productivity 预聚合表已下线，本函数改为从 tasks/commits 基表实时聚合，
+// 口径与原 kbcli efficiency 写侧 (calculateUserProductivity) 完全一致：
+//   - tasks 按 DATE(start_time)、commits 按 DATE(commit_time) 分日；
+//   - real/ancient 分钟数 manual 值优先 (COALESCE(xxx_manual, xxx))；
+//   - tokens/cost 仅来自 tasks（与 V1 一致）；
+//   - 效能比 = utils.CalcEfficiencyRatio(ancient, real)；
+//   - 用户名三级回退：user_org(orgMappings) > tasks > commits。
+//
+// 下游消费方（org/group/user-group 详情、project members）对 daily 行的用法不变，
+// 故 API 输出契约保持不变。orderClause 现已无底表可排，按 (日期,user_id) 默认稳定排序。
+func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, _ string) ([]models.UserProductivity, int, error) {
+	// 复用 UserFilter 的 user_id 过滤口径（org 交集 + 显式 UserIds），见 applyToQuery。
+	userIds := filter.UserIds
+	if orgUserIds := filter.GetFilter(); orgUserIds != nil {
+		if userIds == nil {
+			userIds = orgUserIds
+		} else {
+			orgSet := make(map[string]bool, len(orgUserIds))
+			for _, uid := range orgUserIds {
+				orgSet[uid] = true
+			}
+			inter := make([]string, 0, len(userIds))
+			for _, uid := range userIds {
+				if orgSet[uid] {
+					inter = append(inter, uid)
+				}
+			}
+			userIds = inter
+		}
 	}
-	if orderClause != "" {
-		q = q.Order(orderClause)
+	if userIds != nil && len(userIds) == 0 { // 过滤后空集 → 无数据
+		return []models.UserProductivity{}, 0, nil
 	}
-	if pageSize > 0 {
-		q = q.Limit(pageSize).Offset((page - 1) * pageSize)
+
+	type dayKey struct{ uid, day string }
+	rowMap := make(map[dayKey]*models.UserProductivity)
+	order := make([]dayKey, 0)
+	getRow := func(uid string, day time.Time) *models.UserProductivity {
+		dk := dayKey{uid: uid, day: day.Format("2006-01-02")}
+		r := rowMap[dk]
+		if r == nil {
+			ct := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
+			r = &models.UserProductivity{
+				UserProductivityId: uid + "_" + ct.Format("20060102"),
+				CreateTime:         ct,
+				UserId:             uid,
+			}
+			rowMap[dk] = r
+			order = append(order, dk)
+		}
+		return r
 	}
-	var ups []models.UserProductivity
-	if err := q.Find(&ups).Error; err != nil {
-		return nil, int(count), fmt.Errorf("查询 user_productivity 列表失败: %w", err)
+
+	// ---- tasks 聚合（tokens/cost 仅此处计入）----
+	type taskAggRow struct {
+		UserId             string
+		Day                time.Time
+		TaskCount          int
+		TaskDiffLines      int
+		UpstreamTokens     int64
+		DownstreamTokens   int64
+		Cost               float64
+		TaskRealMinutes    float64
+		TaskAncientMinutes float64
+		UserName           string
 	}
-	return ups, int(count), nil
+	tq := db.Table("tasks").
+		Select(`user_id,
+			DATE(start_time) AS day,
+			COUNT(*) AS task_count,
+			COALESCE(SUM(diff_lines),0) AS task_diff_lines,
+			COALESCE(SUM(upstream_tokens),0) AS upstream_tokens,
+			COALESCE(SUM(downstream_tokens),0) AS downstream_tokens,
+			COALESCE(SUM(cost),0) AS cost,
+			COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)),0) AS task_real_minutes,
+			COALESCE(SUM(COALESCE(task_ancient_minutes_manual, task_ancient_minutes)),0) AS task_ancient_minutes,
+			COALESCE(MAX(user_name),'') AS user_name`).
+		Where("user_id IS NOT NULL AND user_id <> ''").
+		Group("user_id, DATE(start_time)")
+	if len(userIds) > 0 {
+		tq = tq.Where("user_id IN ?", userIds)
+	}
+	if filter.StartTime != "" {
+		tq = tq.Where("DATE(start_time) >= DATE(?)", filter.StartTime)
+	}
+	if filter.EndTime != "" {
+		tq = tq.Where("DATE(start_time) <= DATE(?)", filter.EndTime)
+	}
+	var taskRows []taskAggRow
+	if err := tq.Scan(&taskRows).Error; err != nil {
+		return nil, 0, fmt.Errorf("聚合 tasks 生产力失败: %w", err)
+	}
+	taskName := make(map[string]string)
+	for _, tr := range taskRows {
+		r := getRow(tr.UserId, tr.Day)
+		r.TaskCount = tr.TaskCount
+		r.TaskDiffLines = tr.TaskDiffLines
+		r.UpstreamTokens = tr.UpstreamTokens
+		r.DownstreamTokens = tr.DownstreamTokens
+		r.Cost = tr.Cost
+		r.TaskRealMinutes = tr.TaskRealMinutes
+		r.TaskAncientMinutes = tr.TaskAncientMinutes
+		if tr.UserName != "" {
+			taskName[tr.UserId] = tr.UserName
+		}
+	}
+
+	// ---- commits 聚合 ----
+	type commitAggRow struct {
+		UserId                 string
+		Day                    time.Time
+		CommitCount            int
+		CommitDiffLines        int
+		CommitAncientMinutes   float64
+		CommitRealAiMinutes    float64
+		CommitRealNonAiMinutes float64
+		CommitRealMinutes      float64
+		UserName               string
+	}
+	cq := db.Table("commits").
+		Select(`user_id,
+			DATE(commit_time) AS day,
+			COUNT(*) AS commit_count,
+			COALESCE(SUM(diff_lines),0) AS commit_diff_lines,
+			COALESCE(SUM(COALESCE(commit_ancient_minutes_manual, commit_ancient_minutes)),0) AS commit_ancient_minutes,
+			COALESCE(SUM(commit_real_ai_minutes),0) AS commit_real_ai_minutes,
+			COALESCE(SUM(commit_real_non_ai_minutes),0) AS commit_real_non_ai_minutes,
+			COALESCE(SUM(COALESCE(commit_real_minutes_manual, commit_real_minutes)),0) AS commit_real_minutes,
+			COALESCE(MAX(COALESCE(NULLIF(user_name,''), git_user_name)),'') AS user_name`).
+		Where("user_id IS NOT NULL AND user_id <> ''").
+		Group("user_id, DATE(commit_time)")
+	if len(userIds) > 0 {
+		cq = cq.Where("user_id IN ?", userIds)
+	}
+	if filter.StartTime != "" {
+		cq = cq.Where("DATE(commit_time) >= DATE(?)", filter.StartTime)
+	}
+	if filter.EndTime != "" {
+		cq = cq.Where("DATE(commit_time) <= DATE(?)", filter.EndTime)
+	}
+	var commitRows []commitAggRow
+	if err := cq.Scan(&commitRows).Error; err != nil {
+		return nil, 0, fmt.Errorf("聚合 commits 生产力失败: %w", err)
+	}
+	commitName := make(map[string]string)
+	for _, cr := range commitRows {
+		r := getRow(cr.UserId, cr.Day)
+		r.CommitCount = cr.CommitCount
+		r.CommitDiffLines = cr.CommitDiffLines
+		r.CommitAncientMinutes = cr.CommitAncientMinutes
+		r.CommitRealAiMinutes = cr.CommitRealAiMinutes
+		r.CommitRealNonAiMinutes = cr.CommitRealNonAiMinutes
+		r.CommitRealMinutes = cr.CommitRealMinutes
+		if cr.UserName != "" {
+			commitName[cr.UserId] = cr.UserName
+		}
+	}
+
+	// 用户名三级回退（user_org 优先）+ 效能比
+	for _, r := range rowMap {
+		name := taskName[r.UserId]
+		if name == "" {
+			name = commitName[r.UserId]
+		}
+		if om, ok := orgMappings[r.UserId]; ok && om.UserName != "" {
+			name = om.UserName
+		}
+		r.UserName = name
+		r.TaskEfficiencyRatio = utils.CalcEfficiencyRatio(r.TaskAncientMinutes, r.TaskRealMinutes)
+		r.CommitEfficiencyRatio = utils.CalcEfficiencyRatio(r.CommitAncientMinutes, r.CommitRealMinutes)
+	}
+
+	sort.Slice(order, func(i, j int) bool {
+		if order[i].day != order[j].day {
+			return order[i].day < order[j].day
+		}
+		return order[i].uid < order[j].uid
+	})
+	all := make([]models.UserProductivity, 0, len(order))
+	for _, dk := range order {
+		all = append(all, *rowMap[dk])
+	}
+
+	count := len(all)
+	if pageSize > 0 { // 调用方多传 page=1,pageSize 极大 → 等价全量
+		start := (page - 1) * pageSize
+		if start < 0 {
+			start = 0
+		}
+		if start >= count {
+			return []models.UserProductivity{}, count, nil
+		}
+		end := start + pageSize
+		if end > count {
+			end = count
+		}
+		all = all[start:end]
+	}
+	return all, count, nil
 }
 
 // ============================================================
