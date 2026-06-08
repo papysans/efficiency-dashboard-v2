@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/estimator"
 	"kanban/kbcli/internal/llm"
 	"strings"
 	"time"
@@ -121,7 +122,7 @@ type EfficiencyV2PipelineArgs struct {
 	EndDate        string
 	EfficiencyV2   EfficiencyV2Config
 	AIEstimation   llm.AIEstimationConfig
-	AlgoEstimation EstimateConfig
+	AlgoEstimation estimator.EstimateConfig
 }
 
 type EfficiencyV2PipelineCounts struct {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/estimator"
 	"sort"
 	"strings"
 	"time"
@@ -42,7 +43,7 @@ type taskSilicaConversation struct {
 //  2. 输入字符数经截断后，映射到 [MinFactor, MaxFactor] 区间的线性因子 factor。
 //  3. workload = (totalLines / LinesPerMinutes) * factor，反映“按代码量估算的时间”。
 //  4. 用 maxWorkload（真实时长的 MaxRatio 倍）和 minWorkload（不小于 MinMinutes 且不小于真实时长）进行上下界裁剪，防止极端偏差。
-func estimateTaskAncientMinutes(ec *EstimateConfig, totalInchars, totalLines, realMinutes float64) (float64, string) {
+func estimateTaskAncientMinutes(ec *estimator.EstimateConfig, totalInchars, totalLines, realMinutes float64) (float64, string) {
 	// 输入字符数超过配置上限时截断，避免异常大输入导致 factor 越界
 	if totalInchars >= ec.MaxInputChars {
 		totalInchars = ec.MaxInputChars

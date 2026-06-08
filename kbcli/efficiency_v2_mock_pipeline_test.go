@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/estimator"
 	"kanban/kbcli/internal/llm"
 	"os"
 	"path/filepath"
@@ -109,7 +110,7 @@ func TestEfficiencyV2MockPipeline(t *testing.T) {
 
 	cfg := EfficiencyV2Config{}
 	cfg = normalizeEfficiencyV2Config(cfg)
-	algo := EstimateConfig{CommitLinePerMinutes: efficiencyV2DefaultLinesPerMinute, MinMinutes: 5}
+	algo := estimator.EstimateConfig{CommitLinePerMinutes: efficiencyV2DefaultLinesPerMinute, MinMinutes: 5}
 
 	// ---- Step 1: normalise conversation events ----
 	events, err := NormalizeEfficiencyV2ConversationEvents(conversations)

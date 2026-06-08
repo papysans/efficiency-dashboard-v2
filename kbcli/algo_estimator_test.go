@@ -2,18 +2,19 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/estimator"
 	"strings"
 	"testing"
 )
 
-func setupTestCfg(ec EstimateConfig) func() {
+func setupTestCfg(ec estimator.EstimateConfig) func() {
 	oldCfg := cfg
 	cfg = &Config{AlgoEstimation: ec}
 	return func() { cfg = oldCfg }
 }
 
 func TestEstimateCommitAncientMinutes_ZeroOrNegative(t *testing.T) {
-	defer setupTestCfg(EstimateConfig{
+	defer setupTestCfg(estimator.EstimateConfig{
 		MinMinutes:           5,
 		CommitLinePerMinutes: 100.0 / 480.0,
 	})()
@@ -41,7 +42,7 @@ func TestEstimateCommitAncientMinutes_ZeroOrNegative(t *testing.T) {
 }
 
 func TestEstimateCommitAncientMinutes_CalculatedValue(t *testing.T) {
-	defer setupTestCfg(EstimateConfig{
+	defer setupTestCfg(estimator.EstimateConfig{
 		MinMinutes:           5,
 		CommitLinePerMinutes: 100.0 / 480.0, // ≈ 0.20833
 	})()
@@ -59,7 +60,7 @@ func TestEstimateCommitAncientMinutes_CalculatedValue(t *testing.T) {
 }
 
 func TestEstimateCommitAncientMinutes_ClampsToMinMinutes(t *testing.T) {
-	defer setupTestCfg(EstimateConfig{
+	defer setupTestCfg(estimator.EstimateConfig{
 		MinMinutes:           5,
 		CommitLinePerMinutes: 100.0 / 480.0, // ≈ 0.20833
 	})()
@@ -75,7 +76,7 @@ func TestEstimateCommitAncientMinutes_ClampsToMinMinutes(t *testing.T) {
 }
 
 func TestEstimateCommitAncientMinutes_LargeDiffNoUpperClamp(t *testing.T) {
-	defer setupTestCfg(EstimateConfig{
+	defer setupTestCfg(estimator.EstimateConfig{
 		MinMinutes:           5,
 		CommitLinePerMinutes: 100.0 / 480.0,
 	})()
@@ -128,7 +129,7 @@ func TestEstimateCommitAncientMinutes_DifferentRates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer setupTestCfg(EstimateConfig{
+			defer setupTestCfg(estimator.EstimateConfig{
 				MinMinutes:           tt.minMinutes,
 				CommitLinePerMinutes: tt.commitLinePerMinutes,
 			})()
@@ -142,7 +143,7 @@ func TestEstimateCommitAncientMinutes_DifferentRates(t *testing.T) {
 }
 
 func TestEstimateCommitAncientMinutes_ReasonFormat(t *testing.T) {
-	defer setupTestCfg(EstimateConfig{
+	defer setupTestCfg(estimator.EstimateConfig{
 		MinMinutes:           5,
 		CommitLinePerMinutes: 2.5,
 	})()
@@ -155,7 +156,7 @@ func TestEstimateCommitAncientMinutes_ReasonFormat(t *testing.T) {
 }
 
 func TestEstimateCommitAncientMinutes_MinMinutesZero(t *testing.T) {
-	defer setupTestCfg(EstimateConfig{
+	defer setupTestCfg(estimator.EstimateConfig{
 		MinMinutes:           0,
 		CommitLinePerMinutes: 1.0,
 	})()

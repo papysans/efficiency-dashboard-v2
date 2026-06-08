@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"kanban/kbcli/internal/estimator"
 	"math"
 	"strings"
 	"testing"
@@ -26,7 +27,7 @@ func TestAggregateEfficiencyV2NeedActuals_PersonAndWallAndCalendar(t *testing.T)
 	need := efficiencyV2AggTestNeed("need-1", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
 
 	cfg := EfficiencyV2Config{}
-	algo := EstimateConfig{}
+	algo := estimator.EstimateConfig{}
 	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, cfg, algo)
 	if len(updated) != 1 {
 		t.Fatalf("need count = %d, want 1", len(updated))
@@ -59,7 +60,7 @@ func TestAggregateEfficiencyV2NeedActuals_ExcludesLongIdleGap(t *testing.T) {
 	need := efficiencyV2AggTestNeed("need-idle", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
 
 	cfg := EfficiencyV2Config{}
-	algo := EstimateConfig{}
+	algo := estimator.EstimateConfig{}
 	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, cfg, algo)
 	got := updated[0]
 
@@ -82,7 +83,7 @@ func TestAggregateEfficiencyV2NeedActuals_IncludesShortGapInCalendar(t *testing.
 	need := efficiencyV2AggTestNeed("need-short-gap", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
 
 	cfg := EfficiencyV2Config{}
-	algo := EstimateConfig{}
+	algo := estimator.EstimateConfig{}
 	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, cfg, algo)
 	got := updated[0]
 
@@ -123,7 +124,7 @@ func TestAggregateEfficiencyV2NeedActuals_UncoveredCommitsByTemporal(t *testing.
 	need := efficiencyV2AggTestNeed("need-cov", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c-covered", "c-uncovered"})
 
 	cfg := EfficiencyV2Config{}
-	algo := EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5}
+	algo := estimator.EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5}
 	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, []models.Commit{coveredCommit, uncoveredCommit}, cfg, algo)
 	got := updated[0]
 
@@ -172,7 +173,7 @@ func TestAggregateEfficiencyV2NeedActuals_CommitWithinPreMarginCovered(t *testin
 	need := efficiencyV2AggTestNeed("need-pre", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c-pre"})
 
 	cfg := EfficiencyV2Config{}
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, []models.Commit{commit}, cfg, EstimateConfig{})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, []models.Commit{commit}, cfg, estimator.EstimateConfig{})
 	got := updated[0]
 	if got.UncoveredLoc != 0 {
 		t.Fatalf("commit within pre-margin should be covered, uncovered_loc = %d", got.UncoveredLoc)
@@ -194,7 +195,7 @@ func TestAggregateEfficiencyV2NeedActuals_SignalsAndRatios(t *testing.T) {
 
 	need := efficiencyV2AggTestNeed("need-signals", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1", "c2", "c3"})
 
-	algo := EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5}
+	algo := estimator.EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5}
 	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, algo)
 	got := updated[0]
 
@@ -244,7 +245,7 @@ func TestAggregateEfficiencyV2NeedActuals_DegradedReasonsWhenNoCommits(t *testin
 	session := efficiencyV2AggTestMetric("s-1", "u-alice", base, base.Add(30*time.Minute), 30)
 	need := efficiencyV2AggTestNeed("need-nocommit", efficiencyV2BoundaryFileCluster, efficiencyV2ConfidenceLow, "u-alice", []string{"s-1"}, nil)
 
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, nil, EfficiencyV2Config{}, EstimateConfig{})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, nil, EfficiencyV2Config{}, estimator.EstimateConfig{})
 	got := updated[0]
 
 	if got.AICodeRatio != nil {
@@ -272,7 +273,7 @@ func TestAggregateEfficiencyV2NeedActuals_LowAISignal(t *testing.T) {
 	}
 	need := efficiencyV2AggTestNeed("need-low-ai", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1"})
 
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, estimator.EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
 	got := updated[0]
 
 	if got.SilicaSignal != "low" {
@@ -289,7 +290,7 @@ func TestAggregateEfficiencyV2NeedActuals_HighUncoveredFlagsSignal(t *testing.T)
 	}
 	need := efficiencyV2AggTestNeed("need-uncov", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1", "c2"})
 
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, estimator.EstimateConfig{LinesPerMinutes: 2, CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
 	got := updated[0]
 
 	// uncovered ratio = 70/100 = 0.7 > 0.3 default threshold → low signal
@@ -306,7 +307,7 @@ func TestAggregateEfficiencyV2NeedActuals_ThreeIntervalCalendar(t *testing.T) {
 	sessionC := efficiencyV2AggTestMetric("s-c", "u-alice", base.Add(5*24*time.Hour+90*time.Minute), base.Add(5*24*time.Hour+150*time.Minute), 60)
 
 	need := efficiencyV2AggTestNeed("need-3int", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b", "s-c"}, nil)
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB, sessionC}, nil, EfficiencyV2Config{}, EstimateConfig{})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB, sessionC}, nil, EfficiencyV2Config{}, estimator.EstimateConfig{})
 	got := updated[0]
 
 	// Wall = 60 + 30 + 60 = 150 (no overlap)
@@ -329,7 +330,7 @@ func TestAggregateEfficiencyV2NeedActuals_NoSessionsAllUncovered(t *testing.T) {
 	}
 	need := efficiencyV2AggTestNeed("need-nosess", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", nil, []string{"c1"})
 
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, nil, commits, EfficiencyV2Config{}, EstimateConfig{CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, nil, commits, EfficiencyV2Config{}, estimator.EstimateConfig{CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
 	got := updated[0]
 	if got.UncoveredLoc != 50 {
 		t.Fatalf("uncovered_loc = %d, want 50 (no sessions = all uncovered)", got.UncoveredLoc)
@@ -349,7 +350,7 @@ func TestAggregateEfficiencyV2NeedActuals_RevertChinese(t *testing.T) {
 	}
 	need := efficiencyV2AggTestNeed("need-rev-cn", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1", "c2", "c3"})
 
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, EstimateConfig{})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, estimator.EstimateConfig{})
 	got := updated[0]
 	if got.RevertCount != 2 {
 		t.Fatalf("revert_count = %d, want 2", got.RevertCount)
@@ -362,7 +363,7 @@ func TestAggregateEfficiencyV2NeedActuals_AlwaysIncludesCoveredRuleReason(t *tes
 	commit := models.Commit{CommitId: "c1", UserId: "u-alice", RepoAddr: "r", RepoBranch: "feature/x", CommitTime: base.Add(80 * time.Minute), DiffLines: 100, Silica: 0.8}
 	need := efficiencyV2AggTestNeed("need-rule", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1"})
 
-	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, []models.Commit{commit}, EfficiencyV2Config{}, EstimateConfig{CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, []models.Commit{commit}, EfficiencyV2Config{}, estimator.EstimateConfig{CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
 	signals := decodeEfficiencyV2JSONObject(t, updated[0].QualitySignals)
 	reason, _ := signals["reason"].(string)
 	if !strings.Contains(reason, "covered_rule=temporal_only") {
@@ -371,7 +372,7 @@ func TestAggregateEfficiencyV2NeedActuals_AlwaysIncludesCoveredRuleReason(t *tes
 }
 
 func TestNormalizeEfficiencyV2AlgoConfigCommitMinutesPerLineOverridesLineRate(t *testing.T) {
-	algo := normalizeEfficiencyV2AlgoConfig(EstimateConfig{
+	algo := normalizeEfficiencyV2AlgoConfig(estimator.EstimateConfig{
 		CommitLinePerMinutes: 0.2,
 		CommitMinutesPerLine: 2,
 	})

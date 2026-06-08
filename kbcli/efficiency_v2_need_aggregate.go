@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/estimator"
 	"sort"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ var efficiencyV2DefaultLinesPerMinute = float64(DefaultTraditionalDevLinesPerDay
 // stage totals, uncovered-commit, and quality/confidence signal fields for the
 // supplied Needs. It reads associated session_stage_metrics and commits from
 // the database.
-func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need, cfg EfficiencyV2Config, algo EstimateConfig) ([]models.Need, error) {
+func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need, cfg EfficiencyV2Config, algo estimator.EstimateConfig) ([]models.Need, error) {
 	if len(needs) == 0 {
 		return needs, nil
 	}
@@ -98,7 +99,7 @@ func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need,
 // totals, uncovered-commit correction, and quality/confidence signals from
 // session stage metrics and commit membership. It returns updated copies of
 // the input Needs.
-func AggregateEfficiencyV2NeedActuals(needs []models.Need, metrics []models.SessionStageMetric, commits []models.Commit, cfg EfficiencyV2Config, algo EstimateConfig) []models.Need {
+func AggregateEfficiencyV2NeedActuals(needs []models.Need, metrics []models.SessionStageMetric, commits []models.Commit, cfg EfficiencyV2Config, algo estimator.EstimateConfig) []models.Need {
 	cfg = normalizeEfficiencyV2Config(cfg)
 	algo = normalizeEfficiencyV2AlgoConfig(algo)
 
@@ -118,7 +119,7 @@ func AggregateEfficiencyV2NeedActuals(needs []models.Need, metrics []models.Sess
 	return updated
 }
 
-func aggregateOneEfficiencyV2Need(need models.Need, metricsBySession map[string]models.SessionStageMetric, commitsByID map[string]models.Commit, cfg EfficiencyV2Config, algo EstimateConfig) models.Need {
+func aggregateOneEfficiencyV2Need(need models.Need, metricsBySession map[string]models.SessionStageMetric, commitsByID map[string]models.Commit, cfg EfficiencyV2Config, algo estimator.EstimateConfig) models.Need {
 	sessionIDs := efficiencyV2StringsFromJSON(need.SessionIds)
 	commitIDs := efficiencyV2StringsFromJSON(need.CommitIds)
 
@@ -261,7 +262,7 @@ func aggregateEfficiencyV2NeedTime(need *models.Need, sessions []models.SessionS
 	// are aggregated, using dev_start_ts/dev_end_ts per design.
 }
 
-func aggregateEfficiencyV2NeedCommits(need *models.Need, sessions []models.SessionStageMetric, commits []models.Commit, cfg EfficiencyV2Config, algo EstimateConfig) {
+func aggregateEfficiencyV2NeedCommits(need *models.Need, sessions []models.SessionStageMetric, commits []models.Commit, cfg EfficiencyV2Config, algo estimator.EstimateConfig) {
 	preMargin := time.Duration(cfg.UncoveredCommit.PreMarginMinutes) * time.Minute
 	postMargin := time.Duration(cfg.UncoveredCommit.PostMarginMinutes) * time.Minute
 
@@ -453,7 +454,7 @@ func isEfficiencyV2RevertCommit(comment string) bool {
 	return false
 }
 
-func estimateEfficiencyV2UncoveredHumanMinutes(loc int64, algo EstimateConfig) float64 {
+func estimateEfficiencyV2UncoveredHumanMinutes(loc int64, algo estimator.EstimateConfig) float64 {
 	if loc <= 0 {
 		return 0
 	}
@@ -494,7 +495,7 @@ func mergeEfficiencyV2Intervals(intervals [][2]time.Time) [][2]time.Time {
 	return merged
 }
 
-func normalizeEfficiencyV2AlgoConfig(algo EstimateConfig) EstimateConfig {
+func normalizeEfficiencyV2AlgoConfig(algo estimator.EstimateConfig) estimator.EstimateConfig {
 	if algo.CommitMinutesPerLine > 0 {
 		algo.CommitLinePerMinutes = 1 / algo.CommitMinutesPerLine
 	} else if algo.CommitLinePerMinutes <= 0 {

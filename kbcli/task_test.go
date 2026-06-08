@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/estimator"
 	"strings"
 	"testing"
 )
 
-// defaultTestConfig returns a consistent EstimateConfig for tests.
-func defaultTestConfig() *EstimateConfig {
-	return &EstimateConfig{
+// defaultTestConfig returns a consistent estimator.EstimateConfig for tests.
+func defaultTestConfig() *estimator.EstimateConfig {
+	return &estimator.EstimateConfig{
 		MaxInputChars:        10000,
 		MaxRatio:             3.0,
 		MaxFactor:            2.0,
