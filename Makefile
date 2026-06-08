@@ -51,4 +51,18 @@ upload_dockerhub:
 # 上传镜像包到制品库和前置harbor
 upload: upload_dockerhub
 
-.PHONY: docs build package package-portal package-all upload deploy upload_dockerhub clean 
+# ===== 本地开发 =====
+# 一键本地栈：postgres(:5432) + backend(:9990) + frontend(:8881)，Ctrl-C 退出
+dev:
+	@bash scripts/dev.sh
+
+# 一键数据管线：import-anchor(kNN) → import(conv→repo→org→dept→efficiency-v2)
+# 额外参数用 ARGS，例如：make pipeline ARGS="-f --start-date 20260525 --end-date 20260527"
+pipeline:
+	@bash scripts/pipeline.sh $(ARGS)
+
+# 停掉 dev 的 postgres 容器
+db-stop:
+	@docker stop efficiency-dev-pg 2>/dev/null && echo "✓ efficiency-dev-pg 已停" || echo "(未运行)"
+
+.PHONY: docs build package package-portal package-all upload deploy upload_dockerhub clean dev pipeline db-stop

@@ -54,6 +54,18 @@
 
 - Go 1.25+（backend 需 1.26）、Node.js 18+、PostgreSQL 15、Docker
 
+### 一键启动（推荐）
+
+```bash
+make dev                 # 起 postgres(:5432) + backend(:9990) + frontend(:8881)，Ctrl-C 退出
+make pipeline ARGS="-f"  # 灌数据：import-anchor(kNN) → import；ARGS 透传给 import
+make db-stop             # 停掉 dev 的 postgres 容器
+```
+
+> 现成数据可从备份恢复（`.local/*.backup.sql.gz`）；`make pipeline` 需 config 里的上游数据源（mnt）可达。
+
+以下为分步手动启动（即 `make dev` 的等价拆解）：
+
 ### 1. 起数据库（PostgreSQL，库 `costrict_stat`）
 
 ```bash
