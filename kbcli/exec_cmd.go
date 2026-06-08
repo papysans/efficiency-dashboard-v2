@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -27,8 +26,6 @@ func createTaskExecutor(taskType string, params map[string]interface{}) (func() 
 		return func() error { return executeImportRepo(params) }, nil
 	case "import-org":
 		return func() error { return executeImportOrg(params) }, nil
-	case "efficiency":
-		return func() error { return executeEfficiency(params) }, nil
 	case "efficiency-v2":
 		return func() error { return executeEfficiencyV2(params) }, nil
 	case "fix-task":
@@ -125,13 +122,6 @@ func executeImportOrg(params map[string]interface{}) error {
 	return runImportOrg(fromDB, fromCSV, toCSV)
 }
 
-func executeEfficiency(params map[string]interface{}) error {
-	startDate := getStringParam(params, "start_date", "")
-	endDate := getStringParam(params, "end_date", "")
-	date := getStringParam(params, "date", "")
-	return runEfficiency(startDate, endDate, date)
-}
-
 func executeImport(params map[string]interface{}) error {
 	taskDir := getStringParam(params, "task_dir", cfg.TaskDir)
 	repoDir := getStringParam(params, "repo_dir", cfg.RepoDir)
@@ -153,10 +143,6 @@ func executeImport(params map[string]interface{}) error {
 	// efficiency 重算仍用原始 startDate（cron 的 days 不传时=空=全量），避免跨窗 need 被
 	// 窗内 commit 部分覆盖（commit_ids 是覆盖更新，会永久丢掉窗外老 commit）。
 	ingestStart := resolveStartDateByDays(params, startDate, date)
-	mode := strings.ToLower(strings.TrimSpace(getStringParam(params, "efficiency_mode", cfg.EfficiencyMode)))
-	if mode == "" {
-		mode = "legacy"
-	}
 
 	steps := []struct {
 		name string
@@ -178,29 +164,7 @@ func executeImport(params map[string]interface{}) error {
 			}
 			return nil
 		}},
-	}
-	switch mode {
-	case "new":
-		steps = append(steps, struct {
-			name string
-			fn   func() error
-		}{"efficiency-v2", func() error { return runEfficiencyV2(startDate, endDate, date) }})
-	case "both":
-		steps = append(steps,
-			struct {
-				name string
-				fn   func() error
-			}{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }},
-			struct {
-				name string
-				fn   func() error
-			}{"efficiency-v2", func() error { return runEfficiencyV2(startDate, endDate, date) }},
-		)
-	default:
-		steps = append(steps, struct {
-			name string
-			fn   func() error
-		}{"efficiency", func() error { return runEfficiency(startDate, endDate, date) }})
+		{"efficiency-v2", func() error { return runEfficiencyV2(startDate, endDate, date) }},
 	}
 
 	for _, step := range steps {

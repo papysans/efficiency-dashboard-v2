@@ -171,7 +171,6 @@ type Config struct {
 	AIEstimation   AIEstimationConfig    `yaml:"ai_estimation"`
 	BackendURL     string                `yaml:"backend_url"`
 	HTTPProxy      string                `yaml:"http_proxy"`
-	EfficiencyMode string                `yaml:"efficiency_mode"`
 	EfficiencyV2   EfficiencyV2Config    `yaml:"efficiency_v2"`
 	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
 	OrgDSN         string                `yaml:"org_dsn"`
@@ -378,9 +377,6 @@ func LoadConfig(filename string) (*Config, error) {
 }
 
 func applyEfficiencyV2Defaults(c *Config) {
-	if c.EfficiencyMode == "" {
-		c.EfficiencyMode = "legacy"
-	}
 	if c.EfficiencyV2.TeamProfile == "" {
 		c.EfficiencyV2.TeamProfile = "balanced"
 	}

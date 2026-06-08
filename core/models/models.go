@@ -152,6 +152,8 @@ type Task struct {
 
 func (Task) TableName() string { return "tasks" }
 
+// UserProductivity 现为内存 DTO：V1 user_productivity 表已下线(不再 AutoMigrate)，
+// backend ListUserProductivity 从 tasks/commits 基表实时聚合后填充此结构。表的物理删除需手动 DROP。
 type UserProductivity struct {
 	UserProductivityId     string    `gorm:"primaryKey;type:varchar(255)" json:"user_productivity_id"`
 	CreateTime             time.Time `gorm:"type:timestamptz;index" json:"create_time"`
@@ -327,7 +329,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&ProjectTask{},
 		&ProjectRepo{},
 		&ProjectCommit{},
-		&UserProductivity{},
 		&UserGroup{},
 		&ConversationEvent{},
 		&SessionStageMetric{},

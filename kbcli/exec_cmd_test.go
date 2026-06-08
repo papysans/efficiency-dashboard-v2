@@ -230,7 +230,7 @@ func TestCreateTaskExecutor(t *testing.T) {
 		{"import-conv", "import-conv", false, false},
 		{"import-repo", "import-repo", false, false},
 		{"import-org", "import-org", false, false},
-		{"efficiency", "efficiency", false, false},
+		{"efficiency-v2", "efficiency-v2", false, false},
 		{"fix-task", "fix-task", false, false},
 		{"fix-commit", "fix-commit", false, false},
 		{"unknown", "unknown", true, true},

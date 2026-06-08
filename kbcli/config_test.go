@@ -171,9 +171,6 @@ model_prices: {}
 		t.Fatalf("LoadConfig 返回错误: %v", err)
 	}
 
-	if cfg.EfficiencyMode != "legacy" {
-		t.Errorf("EfficiencyMode: want legacy, got %s", cfg.EfficiencyMode)
-	}
 	if cfg.EfficiencyV2.TeamProfile != "balanced" {
 		t.Errorf("EfficiencyV2.TeamProfile: want balanced, got %s", cfg.EfficiencyV2.TeamProfile)
 	}
@@ -416,7 +413,6 @@ algo_estimation:
 func TestLoadConfig_EfficiencyV2ExplicitValues(t *testing.T) {
 	yaml := `
 model_prices: {}
-efficiency_mode: both
 efficiency_v2:
   team_profile: metr_senior
   idle_threshold_days: 9
@@ -467,9 +463,6 @@ efficiency_v2:
 		t.Fatalf("LoadConfig 返回错误: %v", err)
 	}
 
-	if cfg.EfficiencyMode != "both" {
-		t.Errorf("EfficiencyMode: want both, got %s", cfg.EfficiencyMode)
-	}
 	if cfg.EfficiencyV2.TeamProfile != "metr_senior" {
 		t.Errorf("EfficiencyV2.TeamProfile: want metr_senior, got %s", cfg.EfficiencyV2.TeamProfile)
 	}

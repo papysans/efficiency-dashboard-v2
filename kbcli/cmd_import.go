@@ -89,7 +89,7 @@ var importCmd = &cobra.Command{
 				}
 				return nil
 			}},
-			{"efficiency", func() error { return runEfficiency(startDateStr, endDateStr, dateStr) }},
+			{"efficiency-v2", func() error { return runEfficiencyV2(startDateStr, endDateStr, dateStr) }},
 		}
 
 		for _, step := range steps {

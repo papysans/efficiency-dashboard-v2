@@ -142,7 +142,6 @@ algo_estimation:
   # 兼容旧字段：古法每分钟写多少行。新调参优先改 commit_minutes_per_line。
   # commit_line_per_minutes: 0.5
 
-efficiency_mode: new
 
 efficiency_v2:
   # === v2 常用调参 ===

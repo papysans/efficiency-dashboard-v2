@@ -120,11 +120,11 @@ func TestEfficiencyV2BaselineAExecDoesNotReadCommitAncient(t *testing.T) {
 	}
 }
 
-// TestLegacyEfficiencyCmdStillRegistered confirms the legacy efficiency
-// command is preserved alongside the new v2 path.
-func TestLegacyEfficiencyCmdStillRegistered(t *testing.T) {
-	if !validTaskTypes["efficiency"] {
-		t.Fatalf("legacy `efficiency` task type must remain registered")
+// TestEfficiencyV2RegisteredLegacyRemoved confirms the v2 efficiency task type
+// is registered and the retired legacy `efficiency` task type is gone.
+func TestEfficiencyV2RegisteredLegacyRemoved(t *testing.T) {
+	if validTaskTypes["efficiency"] {
+		t.Fatalf("legacy `efficiency` task type should be removed")
 	}
 	if !validTaskTypes["efficiency-v2"] {
 		t.Fatalf("`efficiency-v2` task type should be registered")

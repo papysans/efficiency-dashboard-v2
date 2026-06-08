@@ -164,7 +164,6 @@ serve:
         force: true
 
 # v2 调参区
-efficiency_mode: new
 
 efficiency_v2:
   baseline_defaults:

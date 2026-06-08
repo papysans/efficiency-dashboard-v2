@@ -24,13 +24,13 @@ var taskQueue *TaskQueue
 
 // validTaskTypes 定义支持的任务类型
 var validTaskTypes = map[string]bool{
-	"import":      true,
-	"import-conv": true,
-	"import-repo": true,
-	"import-org":  true,
-	"efficiency":  true,
-	"fix-task":    true,
-	"fix-commit":  true,
+	"import":        true,
+	"import-conv":   true,
+	"import-repo":   true,
+	"import-org":    true,
+	"efficiency-v2": true,
+	"fix-task":      true,
+	"fix-commit":    true,
 }
 
 // HealthResponse 健康检查响应
@@ -97,11 +97,6 @@ type SilicaBody struct {
 	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
 	Force       bool   `json:"force" example:"false"`
 	MaxDays     int    `json:"max_days" example:"7"`
-}
-
-// EfficiencyBody efficiency 请求体
-type EfficiencyBody struct {
-	Date string `json:"date" example:"20240101"`
 }
 
 // FixTaskBody fix-task 请求体
@@ -211,24 +206,9 @@ func createSilicaHandler(c *gin.Context) {
 	createTaskHandlerFunc("silica", c)
 }
 
-// createEfficiencyHandler 创建 efficiency 异步任务
-// @Summary 提交 efficiency 异步任务
-// @Description 将 efficiency 逻辑以异步任务方式提交到队列执行
-// @Tags tasks
-// @Accept json
-// @Produce json
-// @Param body body EfficiencyBody true "请求参数"
-// @Success 202 {object} CreateTaskResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 405 {object} ErrorResponse
-// @Router /api/tasks/efficiency [post]
-func createEfficiencyHandler(c *gin.Context) {
-	createTaskHandlerFunc("efficiency", c)
-}
-
 // createImportHandler 创建 import 异步任务
 // @Summary 提交 import 异步任务
-// @Description 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org → silica → efficiency
+// @Description 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org → import-dept → efficiency-v2
 // @Tags tasks
 // @Accept json
 // @Produce json
@@ -401,7 +381,6 @@ func setupRouter() *gin.Engine {
 	r.POST("/api/tasks/import-repo", createImportRepoHandler)
 	r.POST("/api/tasks/import-org", createImportOrgHandler)
 	r.POST("/api/tasks/silica", createSilicaHandler)
-	r.POST("/api/tasks/efficiency", createEfficiencyHandler)
 	r.POST("/api/tasks/fix-task", createFixTaskHandler)
 	r.POST("/api/tasks/fix-commit", createFixCommitHandler)
 
