@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/llm"
 	"os"
 	"path/filepath"
 	"sort"
@@ -179,7 +180,7 @@ func TestEfficiencyV2MockPipeline(t *testing.T) {
 		PersistEfficiencyV2BaselineBOnNeed(need, knnResult)
 
 		// LLM: disabled by config (no API key). The path produces reason="llm:disabled".
-		llmResult := CallAIForNeedEstimationV4(BuildEfficiencyV2NeedStructuredSummary(*need, needSessions, needCommits, nil), AIEstimationConfig{})
+		llmResult := CallAIForNeedEstimationV4(BuildEfficiencyV2NeedStructuredSummary(*need, needSessions, needCommits, nil), llm.AIEstimationConfig{})
 		PersistEfficiencyV2BaselineCOnNeed(need, llmResult)
 
 		fusion := ComputeEfficiencyV2Fusion(*need, EfficiencyV2FusionInputs{
@@ -291,16 +292,16 @@ func synthesiseMockSupportRows(tasks []rawTaskRow) (sessions []models.Session, c
 
 	for sessID, task := range sessionFirstSeen {
 		sessions = append(sessions, models.Session{
-			SessionId:       sessID,
-			CreateTime:      parseMockTime(task.StartTime),
-			UserId:          task.UserId,
-			UserName:        task.UserName,
-			ClientId:        task.ClientId,
-			ClientIde:       task.ClientIde,
-			ClientVersion:   task.ClientVersion,
-			ClientOs:        task.ClientOs,
-			ClientOsVersion: task.ClientOsVersion,
-			SessionDate:     task.SessionDate,
+			SessionId:        sessID,
+			CreateTime:       parseMockTime(task.StartTime),
+			UserId:           task.UserId,
+			UserName:         task.UserName,
+			ClientId:         task.ClientId,
+			ClientIde:        task.ClientIde,
+			ClientVersion:    task.ClientVersion,
+			ClientOs:         task.ClientOs,
+			ClientOsVersion:  task.ClientOsVersion,
+			SessionDate:      task.SessionDate,
 			ConversationDate: task.ConversationDate,
 		})
 	}
@@ -336,20 +337,20 @@ func synthesiseMockSupportRows(tasks []rawTaskRow) (sessions []models.Session, c
 
 	for commitID, task := range commitFirstSeen {
 		commits = append(commits, models.Commit{
-			CommitId:    commitID,
-			CommitTime:  parseMockTime(task.EndTime),
-			RepoAddr:    task.RepoAddr,
-			RepoBranch:  task.RepoBranch,
-			GitUserName: task.UserName,
+			CommitId:     commitID,
+			CommitTime:   parseMockTime(task.EndTime),
+			RepoAddr:     task.RepoAddr,
+			RepoBranch:   task.RepoBranch,
+			GitUserName:  task.UserName,
 			GitUserEmail: task.UserName + "@example.invalid",
-			UserId:      task.UserId,
-			UserName:    task.UserName,
-			ClientId:    task.ClientId,
-			WorkDir:     task.WorkDir,
-			WorkDirId:   task.WorkDirId,
-			DiffLines:   task.DiffLines,
-			Silica:      task.Silica,
-			Comment:     firstNonEmpty(task.Title, "mock commit"),
+			UserId:       task.UserId,
+			UserName:     task.UserName,
+			ClientId:     task.ClientId,
+			WorkDir:      task.WorkDir,
+			WorkDirId:    task.WorkDirId,
+			DiffLines:    task.DiffLines,
+			Silica:       task.Silica,
+			Comment:      firstNonEmpty(task.Title, "mock commit"),
 		})
 	}
 

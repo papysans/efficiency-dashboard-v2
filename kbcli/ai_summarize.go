@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/llm"
 	"strconv"
 	"strings"
 
@@ -22,11 +23,11 @@ func callAIForTaskTitle(db *gorm.DB, taskID string, userInputs []string) (string
 用户输入记录：
 %s`, truncateSlice(userInputs, 3000))
 
-	messages := []chatMessage{
+	messages := []llm.ChatMessage{
 		{Role: "system", Content: "请回答问题"},
 		{Role: "user", Content: prompt},
 	}
-	content, err := callLLM(aiCfg, messages, 256)
+	content, err := llm.CallLLM(aiCfg, messages, 256)
 	if err != nil {
 		return "", err
 	}
@@ -164,11 +165,11 @@ func callAIForAncientEstimation(title string, diffLines int, totalChars int64) (
 		"{{total_chars}}", strconv.FormatInt(totalChars, 10),
 	).Replace(promptV4UserTemplate)
 
-	messages := []chatMessage{
+	messages := []llm.ChatMessage{
 		{Role: "system", Content: promptV4System},
 		{Role: "user", Content: userPrompt},
 	}
-	content, err := callLLM(aiCfg, messages, 2048)
+	content, err := llm.CallLLM(aiCfg, messages, 2048)
 	if err != nil {
 		return 0, "", err
 	}

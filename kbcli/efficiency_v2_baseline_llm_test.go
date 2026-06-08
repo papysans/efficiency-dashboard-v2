@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/kbcli/internal/llm"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestBuildEfficiencyV2NeedStructuredSummary_NoRawTranscripts(t *testing.T) {
 	tasks := []models.Task{
 		{TaskId: "t1", SessionId: "s-1", Title: "实现密码重置流程"},
 		{TaskId: "t2", SessionId: "s-1", Title: "实现密码重置流程"}, // duplicate dedup
-		{TaskId: "t3", SessionId: "s-1", Title: ""},                // empty skipped
+		{TaskId: "t3", SessionId: "s-1", Title: ""},         // empty skipped
 	}
 	summary := BuildEfficiencyV2NeedStructuredSummary(need, []models.SessionStageMetric{session}, commits, tasks)
 	if summary.NeedID != "n-1" {
@@ -69,7 +70,7 @@ func TestBuildEfficiencyV2LLMPrompt_DoesNotIncludeRawTranscripts(t *testing.T) {
 }
 
 func TestCallAIForNeedEstimationV4_DisabledReturnsNullWithReason(t *testing.T) {
-	result := CallAIForNeedEstimationV4(EfficiencyV2NeedStructuredSummary{NeedID: "n-1"}, AIEstimationConfig{Enabled: false})
+	result := CallAIForNeedEstimationV4(EfficiencyV2NeedStructuredSummary{NeedID: "n-1"}, llm.AIEstimationConfig{Enabled: false})
 	if result.TotalMin != nil {
 		t.Fatalf("total should be nil when disabled, got %v", *result.TotalMin)
 	}
@@ -79,7 +80,7 @@ func TestCallAIForNeedEstimationV4_DisabledReturnsNullWithReason(t *testing.T) {
 }
 
 func TestCallAIForNeedEstimationV4_MissingAPIKeyReturnsDisabled(t *testing.T) {
-	result := CallAIForNeedEstimationV4(EfficiencyV2NeedStructuredSummary{NeedID: "n-1"}, AIEstimationConfig{Enabled: true, APIKey: ""})
+	result := CallAIForNeedEstimationV4(EfficiencyV2NeedStructuredSummary{NeedID: "n-1"}, llm.AIEstimationConfig{Enabled: true, APIKey: ""})
 	if result.TotalMin != nil {
 		t.Fatalf("total should be nil when API key missing")
 	}

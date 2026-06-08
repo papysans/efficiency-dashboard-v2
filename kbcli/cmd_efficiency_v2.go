@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kanban/kbcli/internal/llm"
 	"strings"
 	"time"
 
@@ -107,10 +108,10 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 	return RunEfficiencyV2Pipeline(db, EfficiencyV2PipelineArgs{
-		StartDate:   start,
-		EndDate:     end,
-		EfficiencyV2: cfg.EfficiencyV2,
-		AIEstimation: cfg.AIEstimation,
+		StartDate:      start,
+		EndDate:        end,
+		EfficiencyV2:   cfg.EfficiencyV2,
+		AIEstimation:   cfg.AIEstimation,
 		AlgoEstimation: cfg.AlgoEstimation,
 	})
 }
@@ -119,14 +120,14 @@ type EfficiencyV2PipelineArgs struct {
 	StartDate      string
 	EndDate        string
 	EfficiencyV2   EfficiencyV2Config
-	AIEstimation   AIEstimationConfig
+	AIEstimation   llm.AIEstimationConfig
 	AlgoEstimation EstimateConfig
 }
 
 type EfficiencyV2PipelineCounts struct {
-	Events          int
-	StageMetrics    int
-	Needs           int
+	Events           int
+	StageMetrics     int
+	Needs            int
 	UserProductivity int
 }
 

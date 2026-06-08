@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/llm"
 	"strings"
 
 	"kanban/core/models"
@@ -11,47 +12,47 @@ import (
 const efficiencyV2LLMV4Version = "v4.0"
 
 type EfficiencyV2NeedStructuredSummary struct {
-	NeedID            string             `json:"need_id"`
-	BoundarySource    string             `json:"boundary_source"`
-	Status            string             `json:"status"`
-	RepoAddr          string             `json:"repo_addr,omitempty"`
-	RepoBranch        string             `json:"repo_branch,omitempty"`
-	ChangedLOC        int64              `json:"changed_loc"`
-	FileCount         int64              `json:"file_count"`
-	CommitCount       int64              `json:"commit_count"`
-	UncoveredLOC      int64              `json:"uncovered_loc"`
-	AICodeRatio       *float64           `json:"ai_code_ratio,omitempty"`
-	Silica            *float64           `json:"silica,omitempty"`
-	ThinkMin          float64            `json:"think_active_min"`
-	ExecutionMin      float64            `json:"exec_active_min"`
-	VerificationMin   float64            `json:"verify_active_min"`
-	ActivePersonMin   float64            `json:"active_person_min"`
-	UncoveredHumanMin float64            `json:"uncovered_human_min"`
-	KeyDecisions      []string           `json:"key_decisions,omitempty"`
-	SessionSummaries  []string           `json:"session_summaries,omitempty"`
-	CommitMessages    []string           `json:"commit_messages,omitempty"`
-	TaskTitles        []string           `json:"task_titles,omitempty"`
-	TouchedFiles      []string           `json:"touched_files,omitempty"`
-	DegradedReasons   []string           `json:"degraded_reasons,omitempty"`
+	NeedID            string   `json:"need_id"`
+	BoundarySource    string   `json:"boundary_source"`
+	Status            string   `json:"status"`
+	RepoAddr          string   `json:"repo_addr,omitempty"`
+	RepoBranch        string   `json:"repo_branch,omitempty"`
+	ChangedLOC        int64    `json:"changed_loc"`
+	FileCount         int64    `json:"file_count"`
+	CommitCount       int64    `json:"commit_count"`
+	UncoveredLOC      int64    `json:"uncovered_loc"`
+	AICodeRatio       *float64 `json:"ai_code_ratio,omitempty"`
+	Silica            *float64 `json:"silica,omitempty"`
+	ThinkMin          float64  `json:"think_active_min"`
+	ExecutionMin      float64  `json:"exec_active_min"`
+	VerificationMin   float64  `json:"verify_active_min"`
+	ActivePersonMin   float64  `json:"active_person_min"`
+	UncoveredHumanMin float64  `json:"uncovered_human_min"`
+	KeyDecisions      []string `json:"key_decisions,omitempty"`
+	SessionSummaries  []string `json:"session_summaries,omitempty"`
+	CommitMessages    []string `json:"commit_messages,omitempty"`
+	TaskTitles        []string `json:"task_titles,omitempty"`
+	TouchedFiles      []string `json:"touched_files,omitempty"`
+	DegradedReasons   []string `json:"degraded_reasons,omitempty"`
 }
 
 type EfficiencyV2LLMResult struct {
-	ThinkMin        *float64
-	ExecMin         *float64
-	VerifyMin       *float64
-	TotalMin        *float64
-	Confidence      string
-	Reason          string
-	RawResponse     string
+	ThinkMin    *float64
+	ExecMin     *float64
+	VerifyMin   *float64
+	TotalMin    *float64
+	Confidence  string
+	Reason      string
+	RawResponse string
 }
 
 type efficiencyV2LLMParseResponse struct {
-	ThinkMin        float64 `json:"think_min"`
-	ExecMin         float64 `json:"exec_min"`
-	VerifyMin       float64 `json:"verify_min"`
-	TotalMin        float64 `json:"total_min"`
-	Confidence      string  `json:"confidence"`
-	Reason          string  `json:"reason"`
+	ThinkMin   float64 `json:"think_min"`
+	ExecMin    float64 `json:"exec_min"`
+	VerifyMin  float64 `json:"verify_min"`
+	TotalMin   float64 `json:"total_min"`
+	Confidence string  `json:"confidence"`
+	Reason     string  `json:"reason"`
 }
 
 // BuildEfficiencyV2NeedStructuredSummary projects a Need to the structured
@@ -165,7 +166,7 @@ Need 结构化数据（无原文 transcript / 无 diff 内容）：
 // returns invalid output. Retries once on JSON parse failure with a stricter
 // format-only reminder (handles deepseek-flash occasional truncation / leading
 // reasoning text).
-func CallAIForNeedEstimationV4(summary EfficiencyV2NeedStructuredSummary, aiCfg AIEstimationConfig) EfficiencyV2LLMResult {
+func CallAIForNeedEstimationV4(summary EfficiencyV2NeedStructuredSummary, aiCfg llm.AIEstimationConfig) EfficiencyV2LLMResult {
 	if !aiCfg.Enabled || strings.TrimSpace(aiCfg.APIKey) == "" {
 		return EfficiencyV2LLMResult{Confidence: efficiencyV2StageConfidenceLow, Reason: "llm:disabled"}
 	}
@@ -176,11 +177,11 @@ func CallAIForNeedEstimationV4(summary EfficiencyV2NeedStructuredSummary, aiCfg 
 	systemPrompt := "You estimate without-AI development minutes from structured Need summaries. Output strict JSON."
 
 	// First attempt
-	messages := []chatMessage{
+	messages := []llm.ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: prompt},
 	}
-	content, err := callLLM(aiCfg, messages, 1024)
+	content, err := llm.CallLLM(aiCfg, messages, 1024)
 	if err != nil {
 		return EfficiencyV2LLMResult{Confidence: efficiencyV2StageConfidenceLow, Reason: fmt.Sprintf("llm:call_failed:%v", err)}
 	}
@@ -191,11 +192,11 @@ func CallAIForNeedEstimationV4(summary EfficiencyV2NeedStructuredSummary, aiCfg 
 
 	// Retry once with stricter format reminder when JSON parse fails (truncated /
 	// no_json / invalid_json reasons). Bump max_tokens to reduce truncation risk.
-	retryMessages := []chatMessage{
+	retryMessages := []llm.ChatMessage{
 		{Role: "system", Content: systemPrompt + " 仅返回 JSON 对象，无任何前置说明文字，不要 markdown 代码块包装。必须包含 think_min/exec_min/verify_min/total_min/confidence/reason 字段，total_min 必须是数字。"},
 		{Role: "user", Content: prompt},
 	}
-	retryContent, retryErr := callLLM(aiCfg, retryMessages, 2048)
+	retryContent, retryErr := llm.CallLLM(aiCfg, retryMessages, 2048)
 	if retryErr != nil {
 		// Surface original parse reason with retry suffix
 		result.Reason = result.Reason + "|retry_call_failed:" + retryErr.Error()

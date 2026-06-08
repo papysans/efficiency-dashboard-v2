@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"kanban/core/config"
+	"kanban/kbcli/internal/llm"
 
 	"gopkg.in/yaml.v3"
 )
@@ -14,20 +15,6 @@ import (
 type ModelPrice struct {
 	InPrice  float64 `yaml:"in_price"`
 	OutPrice float64 `yaml:"out_price"`
-}
-
-// AIEstimationConfig AI 估时配置
-type AIEstimationConfig struct {
-	Enabled      bool              `yaml:"enabled"`
-	APIKey       string            `yaml:"api_key"`
-	XApiKey      string            `yaml:"x_api_key"`
-	BaseURL      string            `yaml:"base_url"`
-	Model        string            `yaml:"model"`
-	TimeoutMS    int               `yaml:"timeout_ms"`
-	HTTPProxy    string            `yaml:"http_proxy"`
-	Prompt       string            `yaml:"prompt"`
-	APIFormat    string            `yaml:"api_format"`
-	ExtraHeaders map[string]string `yaml:"extra_headers"`
 }
 
 type EstimateConfig struct {
@@ -163,22 +150,22 @@ type ServeConfig struct {
 
 // Config 全局配置结构
 type Config struct {
-	ModelPrices    map[string]ModelPrice `yaml:"model_prices"`
-	TaskDir        string                `yaml:"task_dir"`
-	RepoDir        string                `yaml:"repo_dir"`
-	AnalysedDir    string                `yaml:"analysed_dir"`
-	OrgCSVFile     string                `yaml:"org_csv_file"`
-	AIEstimation   AIEstimationConfig    `yaml:"ai_estimation"`
-	BackendURL     string                `yaml:"backend_url"`
-	HTTPProxy      string                `yaml:"http_proxy"`
-	EfficiencyV2   EfficiencyV2Config    `yaml:"efficiency_v2"`
-	StatDatabase   config.DatabaseConfig `yaml:"stat_database"`
-	OrgDSN         string                `yaml:"org_dsn"`
-	DeptSync       DeptSyncConfig        `yaml:"dept_sync"`
-	AlgoEstimation EstimateConfig        `yaml:"algo_estimation"`
-	TaskCreate     TaskCreateConfig      `yaml:"task_create"`
-	Serve          ServeConfig           `yaml:"serve"`
-	TaskStatistics TaskTimeStatistics    `yaml:"task_statistics"`
+	ModelPrices    map[string]ModelPrice  `yaml:"model_prices"`
+	TaskDir        string                 `yaml:"task_dir"`
+	RepoDir        string                 `yaml:"repo_dir"`
+	AnalysedDir    string                 `yaml:"analysed_dir"`
+	OrgCSVFile     string                 `yaml:"org_csv_file"`
+	AIEstimation   llm.AIEstimationConfig `yaml:"ai_estimation"`
+	BackendURL     string                 `yaml:"backend_url"`
+	HTTPProxy      string                 `yaml:"http_proxy"`
+	EfficiencyV2   EfficiencyV2Config     `yaml:"efficiency_v2"`
+	StatDatabase   config.DatabaseConfig  `yaml:"stat_database"`
+	OrgDSN         string                 `yaml:"org_dsn"`
+	DeptSync       DeptSyncConfig         `yaml:"dept_sync"`
+	AlgoEstimation EstimateConfig         `yaml:"algo_estimation"`
+	TaskCreate     TaskCreateConfig       `yaml:"task_create"`
+	Serve          ServeConfig            `yaml:"serve"`
+	TaskStatistics TaskTimeStatistics     `yaml:"task_statistics"`
 	// AnalysisStartDate 全局分析起始日下界（YYYYMMDD，默认空=不设下界）。
 	// 未显式传 --start-date / start_date（且未传 date）时，按日期取数/计算的命令自动用它作为
 	// 起始下界，从而永不处理该日期之前的数据。显式传 start-date 时以显式为准，不被覆盖。

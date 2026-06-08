@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/kbcli/internal/llm"
 	"os"
 	"strings"
 
@@ -148,11 +149,11 @@ func callAIForCommitSummarize(comment, diff string, diffLines int) (string, erro
 		diffLines,
 	)
 
-	messages := []chatMessage{
+	messages := []llm.ChatMessage{
 		{Role: "system", Content: "请回答问题"},
 		{Role: "user", Content: prompt},
 	}
-	content, err := callLLM(aiCfg, messages, 512)
+	content, err := llm.CallLLM(aiCfg, messages, 512)
 	if err != nil {
 		return "", err
 	}
