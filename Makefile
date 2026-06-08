@@ -28,7 +28,7 @@ DEBUGOPT :=
 endif
 # 构建
 build:
-	cd backend && python ../build.py --software $(VER) $(DEBUGOPT)
+	cd backend && python ../scripts/build.py --software $(VER) $(DEBUGOPT)
 
 docs:
 	cd backend && swag init

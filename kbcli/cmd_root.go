@@ -23,7 +23,7 @@ var rootCmd = &cobra.Command{
 		if err := InitLogger(consoleLevel, logFile, fileLevel); err != nil {
 			return err
 		}
-		loadedCfg, err := LoadFirstConfig([]string{configPath, "config.yaml", "kbcli-config.yaml", "../kbcli-config.yaml"})
+		loadedCfg, err := LoadFirstConfig([]string{configPath, "config.yaml", "configs/kbcli-config.yaml", "kbcli-config.yaml", "../kbcli-config.yaml"})
 		if err != nil {
 			return err
 		}

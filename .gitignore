@@ -194,6 +194,7 @@ compose/kbcli/config.local.yaml
 compose/server/config.local.yaml
 
 # 本地大文件 / 构建产物（勿提交）
+/analysed/
 /compose.zip
 /efficiency-dashboard-images-*.tar
 /.trellis/

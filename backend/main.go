@@ -50,7 +50,7 @@ func healthCheck(c *gin.Context) {
 
 func main() {
 	var err error
-	c, err := LoadFirstConfig([]string{"config.yaml", "server-config.yaml", "../server-config.yaml"})
+	c, err := LoadFirstConfig([]string{"config.yaml", "configs/server-config.yaml", "server-config.yaml", "../server-config.yaml"})
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
