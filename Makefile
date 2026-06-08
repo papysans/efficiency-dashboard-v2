@@ -10,10 +10,10 @@ OS     := $(shell go env GOOS)
 ARCH   := $(shell go env GOARCH)
 ENV    := prod
 
-SHENMA_DOCKER_REPO  := $(shell grep '^SHENMA_DOCKER_REPO=' ./.env | cut -d '=' -f 2-)
-SHENMA_DOCKER_HOST  := $(shell grep '^SHENMA_DOCKER_HOST=' ./.env | cut -d '=' -f 2-)
-SHENMA_DOCKER_USER  := $(shell grep '^SHENMA_DOCKER_USER=' ./.env | cut -d '=' -f 2-)
-SHENMA_DOCKER_PASSWORD := $(shell grep '^SHENMA_DOCKER_PASSWORD=' ./.env | cut -d '=' -f 2-)
+SHENMA_DOCKER_REPO  := $(shell test -f ./.env && grep '^SHENMA_DOCKER_REPO=' ./.env | cut -d '=' -f 2-)
+SHENMA_DOCKER_HOST  := $(shell test -f ./.env && grep '^SHENMA_DOCKER_HOST=' ./.env | cut -d '=' -f 2-)
+SHENMA_DOCKER_USER  := $(shell test -f ./.env && grep '^SHENMA_DOCKER_USER=' ./.env | cut -d '=' -f 2-)
+SHENMA_DOCKER_PASSWORD := $(shell test -f ./.env && grep '^SHENMA_DOCKER_PASSWORD=' ./.env | cut -d '=' -f 2-)
 
 #ENV := prod
 EXEEXT ?= 
