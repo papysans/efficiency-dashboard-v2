@@ -1522,6 +1522,8 @@ type dashboardNeedAgg struct {
 	BaselineCalendarMin float64
 	ActualWorkMin       float64
 	BaselineWorkMin     float64
+	AICoveredLoc        int64
+	TotalLocNet         int64
 }
 
 // applyNeedCaliberFilter 限定到看板口径：已交付(非 active) + 非主干分支。
@@ -1543,7 +1545,8 @@ func queryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNe
 		COALESCE(SUM(total_calendar_min) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag), 0) as actual_calendar_min,
 		COALESCE(SUM(baseline_calendar_min) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag), 0) as baseline_calendar_min,
 		COALESCE(SUM(total_active_work_corrected_min) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag), 0) as actual_work_min,
-		COALESCE(SUM(baseline_fused_work_min) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag), 0) as baseline_work_min`)
+		COALESCE(SUM(baseline_fused_work_min) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag), 0) as baseline_work_min,
+		` + needAICodeAggSelect())
 	if startTime != "" {
 		q = q.Where("dev_end_ts >= ?", startTime)
 	}

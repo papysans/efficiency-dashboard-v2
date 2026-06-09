@@ -43,6 +43,9 @@ type NeedsV2Summary struct {
 	CalendarOutlierFlag  bool       `json:"calendar_outlier_flag"` // 日历提效口径异常
 	WorkOutlierFlag      bool       `json:"work_outlier_flag"`     // 工作量提效口径异常
 	CoverageEligible     bool       `json:"coverage_eligible"`
+	TotalLocNet          int64      `json:"total_loc_net"`
+	AICoveredLoc         int64      `json:"ai_covered_loc"`
+	AICodeRatio          *float64   `json:"ai_code_ratio"`
 	TotalThinkMin        float64    `json:"total_think_min"`
 	TotalExecMin         float64    `json:"total_exec_min"`
 	TotalVerifyMin       float64    `json:"total_verify_min"`
@@ -447,6 +450,9 @@ func summarizeNeed(n models.Need) NeedsV2Summary {
 		CalendarOutlierFlag:  n.CalendarOutlierFlag,
 		WorkOutlierFlag:      n.WorkOutlierFlag,
 		CoverageEligible:     n.CoverageEligible,
+		TotalLocNet:          n.ChangedLoc,
+		AICoveredLoc:         n.AICoveredLoc,
+		AICodeRatio:          n.AICodeRatio,
 		TotalThinkMin:        n.ThinkActiveMin,
 		TotalExecMin:         n.ExecutionActiveMin,
 		TotalVerifyMin:       n.VerificationActiveMin,

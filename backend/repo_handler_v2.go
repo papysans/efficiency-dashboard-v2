@@ -5,7 +5,6 @@ import (
 	"kanban/core/models"
 	"kanban/core/utils"
 	"log"
-	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -15,15 +14,16 @@ import (
 )
 
 type RepoListItem struct {
-	RepoAddr          string  `json:"repo_addr"`
-	RepoBranch        string  `json:"repo_branch"`
-	CommitCount       int     `json:"commit_count"`
-	StartTime         string  `json:"start_time"`
-	EndTime           string  `json:"end_time"`
-	SumAncientMinutes float64 `json:"sum_ancient_minutes"`
-	SumRealMinutes    float64 `json:"sum_real_minutes"`
-	TaskCount         int     `json:"task_count"`
-	EfficiencyRatio   float64 `json:"efficiency_ratio"`
+	RepoAddr          string   `json:"repo_addr"`
+	RepoBranch        string   `json:"repo_branch"`
+	CommitCount       int      `json:"commit_count"`
+	StartTime         string   `json:"start_time"`
+	EndTime           string   `json:"end_time"`
+	SumAncientMinutes float64  `json:"sum_ancient_minutes"`
+	SumRealMinutes    float64  `json:"sum_real_minutes"`
+	TaskCount         int      `json:"task_count"`
+	EfficiencyRatio   float64  `json:"efficiency_ratio"`
+	AICodeRatio       *float64 `json:"ai_code_ratio"`
 }
 
 type ReposListResponse struct {
@@ -42,8 +42,9 @@ type RepoEfficiency struct {
 }
 
 type RepoSummary struct {
-	CommitCount int `json:"commit_count"`
-	TaskCount   int `json:"task_count"`
+	CommitCount int      `json:"commit_count"`
+	TaskCount   int      `json:"task_count"`
+	AICodeRatio *float64 `json:"ai_code_ratio"`
 }
 
 type RepoCommitItem struct {
@@ -138,6 +139,11 @@ func listReposV2(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库聚合失败: " + err.Error()})
 		return
 	}
+	aiAggs, err := queryRepoNeedAICodeAggs(statDB, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库 AI 代码占比失败: " + err.Error()})
+		return
+	}
 	aggregates = filterPreferredBranchAggregates(aggregates)
 
 	// 转换 RepoAggregate 为 RepoListItem
@@ -153,6 +159,7 @@ func listReposV2(c *gin.Context) {
 		ri.SumRealMinutes = agg.SumRealMinutes
 		ri.TaskCount = agg.TaskCount
 		ri.EfficiencyRatio = utils.CalcEfficiencyRatio(agg.SumAncientMinutes, agg.SumRealMinutes)
+		ri.AICodeRatio = calcRepoNeedAICodeRatio(aiAggs, agg.RepoAddr, agg.RepoBranch)
 		items = append(items, ri)
 	}
 	sortRepoData(items, orderField, orderDir)
@@ -335,6 +342,11 @@ func getRepoDetailV2(c *gin.Context) {
 		}
 	}
 	efficiencyRatio := utils.CalcEfficiencyRatio(repoAncientMinutes, repoRealMinutes)
+	aiAgg, err := queryRepoNeedAICodeAgg(statDB, startTime, endTime, filter.RepoAddr, filter.RepoBranch)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库 AI 代码占比失败: " + err.Error()})
+		return
+	}
 
 	// 步骤 4：获取分支列表
 	branches, err := ListBranchesByRepoAddr(statDB, filter.RepoAddr)
@@ -375,9 +387,7 @@ func getRepoDetailV2(c *gin.Context) {
 			Cost:                       cm.Cost,
 			UpstreamTokens:             cm.UpstreamTokens,
 			DownstreamTokens:           cm.DownstreamTokens,
-		}
-		if cm.Silica > 0 {
-			item.Silica = math.Round(cm.Silica*1000) / 10
+			Silica:                     cm.Silica,
 		}
 		// 计算单条 commit 的效率比率
 		ancient := cm.CommitAncientMinutes
@@ -406,6 +416,7 @@ func getRepoDetailV2(c *gin.Context) {
 		Summary: RepoSummary{
 			CommitCount: len(commits),
 			TaskCount:   len(tasks),
+			AICodeRatio: calcNeedAICodeRatio(aiAgg.AICoveredLoc, aiAgg.TotalLocNet),
 		},
 	})
 }

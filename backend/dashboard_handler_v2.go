@@ -38,6 +38,7 @@ type DashboardSummaryResponse struct {
 	NeedBaselineCalendarMin float64  `json:"need_baseline_calendar_min"`
 	NeedCalendarRatio       *float64 `json:"need_calendar_ratio"`
 	NeedWorkRatio           *float64 `json:"need_work_ratio"`
+	AICodeRatio             *float64 `json:"ai_code_ratio"`
 }
 
 // efficiencyV2Ratio 返回 v2 小数口径提效比 (baseline - actual) / actual；actual<=0 返回 nil。
@@ -114,14 +115,15 @@ func getDashboardSummary(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, DashboardSummaryResponse{
-		TotalUsersV2:            commitAgg.TotalUsers,
-		TotalNeeds:              needAgg.TotalNeeds,
-		MergedNeeds:             needAgg.MergedNeeds,
-		EligibleNeeds:           needAgg.EligibleNeeds,
-		NeedActualCalendarMin:   needAgg.ActualCalendarMin,
-		NeedBaselineCalendarMin: needAgg.BaselineCalendarMin,
-		NeedCalendarRatio:       needCalendarRatio,
-		NeedWorkRatio:           needWorkRatio,
+		TotalUsersV2:              commitAgg.TotalUsers,
+		TotalNeeds:                needAgg.TotalNeeds,
+		MergedNeeds:               needAgg.MergedNeeds,
+		EligibleNeeds:             needAgg.EligibleNeeds,
+		NeedActualCalendarMin:     needAgg.ActualCalendarMin,
+		NeedBaselineCalendarMin:   needAgg.BaselineCalendarMin,
+		NeedCalendarRatio:         needCalendarRatio,
+		NeedWorkRatio:             needWorkRatio,
+		AICodeRatio:               calcNeedAICodeRatio(needAgg.AICoveredLoc, needAgg.TotalLocNet),
 		TotalTasks:                taskAgg.TotalTasks,
 		TotalUsers:                totalUsers,
 		TotalWorkDirs:             taskAgg.TotalWorkDirs,

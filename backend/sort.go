@@ -7,7 +7,7 @@ import (
 
 // ===================== Needs =====================
 
-var needSortFields = []string{"devStartTs", "devEndTs", "efficiencyRatio", "workEfficiencyRatio", "totalCalendarMin", "baselineCalendarMin"}
+var needSortFields = []string{"devStartTs", "devEndTs", "efficiencyRatio", "workEfficiencyRatio", "totalCalendarMin", "baselineCalendarMin", "aiCodeRatio"}
 
 func buildNeedOrder(field, dir string) string {
 	switch field {
@@ -23,6 +23,8 @@ func buildNeedOrder(field, dir string) string {
 		return "total_calendar_min " + dir + " NULLS LAST"
 	case "baselineCalendarMin":
 		return "baseline_calendar_min " + dir + " NULLS LAST"
+	case "aiCodeRatio":
+		return "ai_code_ratio " + dir + " NULLS LAST"
 	default:
 		return "dev_end_ts DESC NULLS LAST"
 	}
@@ -229,6 +231,7 @@ func sortProjectData(data []ProjectListItem, field, dir string) {
 var repoSortFields = []string{
 	"commitCount", "startTime", "endTime",
 	"sumAncientMinutes", "sumRealMinutes", "taskCount", "efficiencyRatio",
+	"aiCodeRatio",
 }
 
 func sortRepoData(data []RepoListItem, field, dir string) {
@@ -298,6 +301,11 @@ func sortRepoData(data []RepoListItem, field, dir string) {
 				return va < vb
 			}
 			return va > vb
+		case "aiCodeRatio":
+			if less, decided := lessFloatSink(a.AICodeRatio, b.AICodeRatio, asc); decided {
+				return less
+			}
+			return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
 		default:
 			return strings.Compare(a.RepoAddr, b.RepoAddr) < 0
 		}
@@ -307,8 +315,247 @@ func sortRepoData(data []RepoListItem, field, dir string) {
 // ===================== Users =====================
 
 var userSortFields = []string{
-	"cost", "taskCount", "taskDiffLines", "taskRealMinutes",
-	"taskAncientMinutes", "taskEfficiencyRatio", "commitCount",
-	"commitDiffLines", "commitRealMinutes", "commitAncientMinutes",
-	"commitEfficiencyRatio",
+	"userName", "weekCount", "mergedNeedCount", "activeNeedCount",
+	"abandonedNeedCount", "actualCalendarMin", "baselineCalendarMin",
+	"calendarRatio", "actualWorkMin", "baselineWorkMin", "workRatio",
+	"commitCount", "commitDiffLines", "cost", "tokens", "aiCodeRatio",
+}
+
+func userV2Tiebreak(a, b UserV2Row) bool {
+	if a.UserName != b.UserName {
+		return strings.Compare(a.UserName, b.UserName) < 0
+	}
+	return strings.Compare(a.UserId, b.UserId) < 0
+}
+
+func sortUserV2Data(data []UserV2Row, field, dir string) {
+	if field == "" {
+		return
+	}
+	asc := dir == "ASC"
+	sort.SliceStable(data, func(i, j int) bool {
+		a, b := data[i], data[j]
+		switch field {
+		case "userName":
+			if less, decided := lessStringSink(a.UserName, b.UserName, asc); decided {
+				return less
+			}
+			return strings.Compare(a.UserId, b.UserId) < 0
+		case "weekCount":
+			if a.WeekCount == b.WeekCount {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.WeekCount < b.WeekCount
+			}
+			return a.WeekCount > b.WeekCount
+		case "mergedNeedCount":
+			if a.MergedNeedCount == b.MergedNeedCount {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.MergedNeedCount < b.MergedNeedCount
+			}
+			return a.MergedNeedCount > b.MergedNeedCount
+		case "activeNeedCount":
+			if a.ActiveNeedCount == b.ActiveNeedCount {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.ActiveNeedCount < b.ActiveNeedCount
+			}
+			return a.ActiveNeedCount > b.ActiveNeedCount
+		case "abandonedNeedCount":
+			if a.AbandonedNeedCount == b.AbandonedNeedCount {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.AbandonedNeedCount < b.AbandonedNeedCount
+			}
+			return a.AbandonedNeedCount > b.AbandonedNeedCount
+		case "actualCalendarMin":
+			if a.ActualCalendarMin == b.ActualCalendarMin {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.ActualCalendarMin < b.ActualCalendarMin
+			}
+			return a.ActualCalendarMin > b.ActualCalendarMin
+		case "baselineCalendarMin":
+			if a.BaselineCalendarMin == b.BaselineCalendarMin {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.BaselineCalendarMin < b.BaselineCalendarMin
+			}
+			return a.BaselineCalendarMin > b.BaselineCalendarMin
+		case "calendarRatio":
+			if less, decided := lessFloatSink(a.CalendarRatio, b.CalendarRatio, asc); decided {
+				return less
+			}
+			return userV2Tiebreak(a, b)
+		case "actualWorkMin":
+			if a.ActualWorkMin == b.ActualWorkMin {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.ActualWorkMin < b.ActualWorkMin
+			}
+			return a.ActualWorkMin > b.ActualWorkMin
+		case "baselineWorkMin":
+			if a.BaselineWorkMin == b.BaselineWorkMin {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.BaselineWorkMin < b.BaselineWorkMin
+			}
+			return a.BaselineWorkMin > b.BaselineWorkMin
+		case "workRatio":
+			if less, decided := lessFloatSink(a.WorkRatio, b.WorkRatio, asc); decided {
+				return less
+			}
+			return userV2Tiebreak(a, b)
+		case "commitCount":
+			if a.CommitCount == b.CommitCount {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.CommitCount < b.CommitCount
+			}
+			return a.CommitCount > b.CommitCount
+		case "commitDiffLines":
+			if a.CommitDiffLines == b.CommitDiffLines {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.CommitDiffLines < b.CommitDiffLines
+			}
+			return a.CommitDiffLines > b.CommitDiffLines
+		case "cost":
+			if a.Cost == b.Cost {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.Cost < b.Cost
+			}
+			return a.Cost > b.Cost
+		case "tokens":
+			if a.Tokens == b.Tokens {
+				return userV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.Tokens < b.Tokens
+			}
+			return a.Tokens > b.Tokens
+		case "aiCodeRatio":
+			if less, decided := lessFloatSink(a.AICodeRatio, b.AICodeRatio, asc); decided {
+				return less
+			}
+			return userV2Tiebreak(a, b)
+		default:
+			return userV2Tiebreak(a, b)
+		}
+	})
+}
+
+// ===================== Orgs =====================
+
+var orgSortFields = []string{
+	"orgName", "userCount", "mergedNeedCount", "actualCalendarMin",
+	"baselineCalendarMin", "calendarRatio", "workRatio", "commitCount",
+	"commitDiffLines", "cost", "aiCodeRatio",
+}
+
+func orgV2Tiebreak(a, b OrgV2Row) bool {
+	return strings.Compare(a.OrgName, b.OrgName) < 0
+}
+
+func sortOrgV2Data(data []OrgV2Row, field, dir string) {
+	if field == "" {
+		return
+	}
+	asc := dir == "ASC"
+	sort.SliceStable(data, func(i, j int) bool {
+		a, b := data[i], data[j]
+		switch field {
+		case "orgName":
+			if less, decided := lessStringSink(a.OrgName, b.OrgName, asc); decided {
+				return less
+			}
+			return orgV2Tiebreak(a, b)
+		case "userCount":
+			if a.UserCount == b.UserCount {
+				return orgV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.UserCount < b.UserCount
+			}
+			return a.UserCount > b.UserCount
+		case "mergedNeedCount":
+			if a.MergedNeedCount == b.MergedNeedCount {
+				return orgV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.MergedNeedCount < b.MergedNeedCount
+			}
+			return a.MergedNeedCount > b.MergedNeedCount
+		case "actualCalendarMin":
+			if a.ActualCalendarMin == b.ActualCalendarMin {
+				return orgV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.ActualCalendarMin < b.ActualCalendarMin
+			}
+			return a.ActualCalendarMin > b.ActualCalendarMin
+		case "baselineCalendarMin":
+			if a.BaselineCalendarMin == b.BaselineCalendarMin {
+				return orgV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.BaselineCalendarMin < b.BaselineCalendarMin
+			}
+			return a.BaselineCalendarMin > b.BaselineCalendarMin
+		case "calendarRatio":
+			if less, decided := lessFloatSink(a.CalendarRatio, b.CalendarRatio, asc); decided {
+				return less
+			}
+			return orgV2Tiebreak(a, b)
+		case "workRatio":
+			if less, decided := lessFloatSink(a.WorkRatio, b.WorkRatio, asc); decided {
+				return less
+			}
+			return orgV2Tiebreak(a, b)
+		case "commitCount":
+			if a.CommitCount == b.CommitCount {
+				return orgV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.CommitCount < b.CommitCount
+			}
+			return a.CommitCount > b.CommitCount
+		case "commitDiffLines":
+			if a.CommitDiffLines == b.CommitDiffLines {
+				return orgV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.CommitDiffLines < b.CommitDiffLines
+			}
+			return a.CommitDiffLines > b.CommitDiffLines
+		case "cost":
+			if a.Cost == b.Cost {
+				return orgV2Tiebreak(a, b)
+			}
+			if asc {
+				return a.Cost < b.Cost
+			}
+			return a.Cost > b.Cost
+		case "aiCodeRatio":
+			if less, decided := lessFloatSink(a.AICodeRatio, b.AICodeRatio, asc); decided {
+				return less
+			}
+			return orgV2Tiebreak(a, b)
+		default:
+			return orgV2Tiebreak(a, b)
+		}
+	})
 }
