@@ -1023,7 +1023,9 @@ var importConvCmd = &cobra.Command{
 			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
 
-		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+		return withImportAdvisoryLock("import-conv", func() error {
+			return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+		})
 	},
 }
 

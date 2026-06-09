@@ -52,59 +52,61 @@ var importCmd = &cobra.Command{
 				"create_pseudo": createPseudo,
 			})
 		}
-		if taskDir == "" {
-			taskDir = appconfig.Cfg.TaskDir
-		}
-		if repoDir == "" {
-			repoDir = appconfig.Cfg.RepoDir
-		}
-		if analysedDir == "" {
-			analysedDir = appconfig.Cfg.AnalysedDir
-		}
-		if fromDB == "" {
-			fromDB = appconfig.Cfg.OrgDSN
-		}
-		if maxDays <= 0 {
-			maxDays = appconfig.Cfg.TaskCreate.SilicaMaxDays
-		}
-		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
-		// 一处生效全流程：import-conv/import-repo/efficiency 都用这个 startDateStr。
-		if dateStr == "" {
-			startDateStr = appconfig.ApplyAnalysisFloor(startDateStr)
-		}
-
-		steps := []struct {
-			name string
-			fn   func() error
-		}{
-			{"import-conv", func() error {
-				return runImportConv(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr, createPseudo)
-			}},
-			{"import-repo", func() error {
-				return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr)
-			}},
-			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-			{"import-dept", func() error {
-				// 非致命：未配置 dept_sync.base_url 或 dept-sync 不可达时仅告警跳过，
-				// 不阻断后续 efficiency 步骤。import-dept 用真实部门刷新 org，配合
-				// import-org 的非破坏性占位，使 org 自动保持正确。
-				if err := runImportDept("", ""); err != nil {
-					logx.Warnf("import-dept 跳过(非致命): %v", err)
-				}
-				return nil
-			}},
-			{"efficiency-v2", func() error { return runEfficiencyV2(startDateStr, endDateStr, dateStr) }},
-		}
-
-		for _, step := range steps {
-			logx.Infof("========== [import] 步骤: %s ==========", step.name)
-			if err := step.fn(); err != nil {
-				logx.Errorf("步骤 %s 失败: %v", step.name, err)
+		return withImportAdvisoryLock("import", func() error {
+			if taskDir == "" {
+				taskDir = appconfig.Cfg.TaskDir
 			}
-		}
+			if repoDir == "" {
+				repoDir = appconfig.Cfg.RepoDir
+			}
+			if analysedDir == "" {
+				analysedDir = appconfig.Cfg.AnalysedDir
+			}
+			if fromDB == "" {
+				fromDB = appconfig.Cfg.OrgDSN
+			}
+			if maxDays <= 0 {
+				maxDays = appconfig.Cfg.TaskCreate.SilicaMaxDays
+			}
+			// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
+			// 一处生效全流程：import-conv/import-repo/efficiency 都用这个 startDateStr。
+			if dateStr == "" {
+				startDateStr = appconfig.ApplyAnalysisFloor(startDateStr)
+			}
 
-		logx.Info("========== [import] 全部步骤完成 ==========")
-		return nil
+			steps := []struct {
+				name string
+				fn   func() error
+			}{
+				{"import-conv", func() error {
+					return runImportConv(taskDir, analysedDir, force, startDateStr, endDateStr, dateStr, createPseudo)
+				}},
+				{"import-repo", func() error {
+					return runImportRepo(repoDir, analysedDir, force, maxDays, startDateStr, endDateStr, dateStr)
+				}},
+				{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
+				{"import-dept", func() error {
+					// 非致命：未配置 dept_sync.base_url 或 dept-sync 不可达时仅告警跳过，
+					// 不阻断后续 efficiency 步骤。import-dept 用真实部门刷新 org，配合
+					// import-org 的非破坏性占位，使 org 自动保持正确。
+					if err := runImportDept("", ""); err != nil {
+						logx.Warnf("import-dept 跳过(非致命): %v", err)
+					}
+					return nil
+				}},
+				{"efficiency-v2", func() error { return runEfficiencyV2(startDateStr, endDateStr, dateStr) }},
+			}
+
+			for _, step := range steps {
+				logx.Infof("========== [import] 步骤: %s ==========", step.name)
+				if err := step.fn(); err != nil {
+					logx.Errorf("步骤 %s 失败: %v", step.name, err)
+				}
+			}
+
+			logx.Info("========== [import] 全部步骤完成 ==========")
+			return nil
+		})
 	},
 }
 

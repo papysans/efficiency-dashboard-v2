@@ -551,7 +551,9 @@ var importRepoCmd = &cobra.Command{
 		}
 
 		// 执行本地导入流程
-		return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
+		return withImportAdvisoryLock("import-repo", func() error {
+			return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
+		})
 	},
 }
 

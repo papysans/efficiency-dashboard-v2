@@ -419,7 +419,9 @@ var importOrgCmd = &cobra.Command{
 			fromDSN = appconfig.Cfg.OrgDSN
 		}
 
-		return runImportOrg(fromDSN, fromCSV, toCSV)
+		return withImportAdvisoryLock("import-org", func() error {
+			return runImportOrg(fromDSN, fromCSV, toCSV)
+		})
 	},
 }
 
