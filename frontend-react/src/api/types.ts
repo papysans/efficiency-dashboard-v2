@@ -17,6 +17,7 @@ export interface ApiData<T> {
 /** /v2/config */
 export interface GlobalConfig {
   traditional_dev_lines_per_day: number
+  dashboard_title_prefix: string
 }
 
 /** /v2/dashboard/summary（§2.9 / §5） */

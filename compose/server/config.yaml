@@ -18,6 +18,8 @@ cors:
   allow_origins:
     - "*"
 
+dashboard_title_prefix: "Costrict"
+
 ai_estimation:
   enabled: true
   api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"

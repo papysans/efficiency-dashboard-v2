@@ -14,6 +14,7 @@ cors:
     - "*"
 
 traditional_dev_lines_per_day: 100
+dashboard_title_prefix: "Costrict"
 
 task_dir: "/mnt/prod_env/user-indicator/raw/task"
 repo_dir: "/mnt/prod_env/user-indicator/raw/repo"

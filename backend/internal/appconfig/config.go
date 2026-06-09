@@ -23,6 +23,7 @@ type Config struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
 	TraditionalDevLinesPerDay int            `yaml:"traditional_dev_lines_per_day"`
+	DashboardTitlePrefix      string         `yaml:"dashboard_title_prefix"`
 	DeptSync                  DeptSyncConfig `yaml:"dept_sync"`
 }
 
@@ -70,6 +71,7 @@ func loadConfig(path string) (*Config, error) {
 	if strings.TrimSpace(cfg.DeptSync.RootDeptName) == "" {
 		cfg.DeptSync.RootDeptName = DefaultRootDeptName
 	}
+	cfg.DashboardTitlePrefix = strings.TrimSpace(cfg.DashboardTitlePrefix)
 	return &cfg, nil
 }
 

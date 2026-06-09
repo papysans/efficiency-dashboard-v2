@@ -27,6 +27,8 @@ data:
         - {{ . | quote }}
         {{- end }}
 
+    dashboard_title_prefix: {{ .Values.dashboardTitlePrefix | quote }}
+
     ai_estimation:
       enabled: {{ .Values.aiEstimation.enabled }}
       api_key: {{ .Values.aiEstimation.apiKey | quote }}

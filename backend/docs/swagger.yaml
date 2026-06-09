@@ -164,6 +164,9 @@ definitions:
     type: object
   main.ConfigResponse:
     properties:
+      dashboard_title_prefix:
+        example: Costrict
+        type: string
       traditional_dev_lines_per_day:
         example: 100
         type: integer

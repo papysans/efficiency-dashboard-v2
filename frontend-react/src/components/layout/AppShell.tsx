@@ -1,4 +1,5 @@
 import { Outlet, NavLink, Link } from 'react-router'
+import { useGlobalConfig } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
 
 const navItems = [
@@ -14,6 +15,8 @@ const navItems = [
 
 export default function AppShell() {
   const { theme, toggle } = useTheme()
+  const { data: globalConfig } = useGlobalConfig()
+  const dashboardTitle = `${globalConfig?.dashboard_title_prefix ?? ''}效能看板`
 
   return (
     <div className="relative min-h-screen">
@@ -26,7 +29,7 @@ export default function AppShell() {
       <nav className="glass sticky top-0 z-50 px-6 py-3 flex items-center justify-between rounded-none border-x-0 border-t-0">
         <div className="flex items-center gap-8">
           <Link to="/" className="text-xl font-bold text-gray-900 dark:text-white no-underline tracking-tight">
-            效能看板
+            {dashboardTitle}
           </Link>
           <div className="hidden md:flex items-center gap-1">
             {navItems.map(({ to, label, end }) => (
