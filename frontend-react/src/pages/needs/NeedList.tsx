@@ -266,7 +266,7 @@ export default function NeedList() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">需求 Need 提效</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            按需求边界度量提效比，日历提效为最终业务口径，工作量提效用于诊断。
+            按需求边界度量提效比，日历提效看交付周期缩短了多少，人力提效看人工投入节省了多少。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -347,7 +347,7 @@ export default function NeedList() {
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Need 列表</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">提效比按百分比展示（小数口径 ×100）</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">按可计入需求汇总</span>
         </div>
 
         {errMsg && (
@@ -367,30 +367,33 @@ export default function NeedList() {
                 </th>
                 <th className={TH}>
                   <span className="inline-flex items-center gap-1">
-                    <SortableTh field="workEfficiencyRatio" label="工作量提效" active={isSortActive('workEfficiencyRatio')} desc={isSortDesc('workEfficiencyRatio')} onSort={onSortChange} />
+                    <SortableTh field="workEfficiencyRatio" label="人力提效" active={isSortActive('workEfficiencyRatio')} desc={isSortDesc('workEfficiencyRatio')} onSort={onSortChange} />
                     <InfoMark tip={WORK_RATIO_TIP} />
                   </span>
+                </th>
+                <th className={TH}>
+                  <SortableTh field="aiCodeRatio" label="AI 代码占比" active={isSortActive('aiCodeRatio')} desc={isSortDesc('aiCodeRatio')} onSort={onSortChange} />
                 </th>
                 <th className={TH}>仓库</th>
                 <th className={TH}>分支</th>
                 <th className={TH}>主用户</th>
                 <th className={TH_NUM}>
                   <span className="inline-flex items-center gap-1 justify-end">
-                    <SortableTh field="totalCalendarMin" label="实际日历" numeric active={isSortActive('totalCalendarMin')} desc={isSortDesc('totalCalendarMin')} onSort={onSortChange} />
+                    <SortableTh field="totalCalendarMin" label="实际周期" numeric active={isSortActive('totalCalendarMin')} desc={isSortDesc('totalCalendarMin')} onSort={onSortChange} />
                     <InfoMark tip={ACTUAL_CALENDAR_TIP} />
                   </span>
                 </th>
                 <th className={TH_NUM}>
                   <span className="inline-flex items-center gap-1 justify-end">
-                    <SortableTh field="baselineCalendarMin" label="基线日历" numeric active={isSortActive('baselineCalendarMin')} desc={isSortDesc('baselineCalendarMin')} onSort={onSortChange} />
+                    <SortableTh field="baselineCalendarMin" label="传统周期预估" numeric active={isSortActive('baselineCalendarMin')} desc={isSortDesc('baselineCalendarMin')} onSort={onSortChange} />
                     <InfoMark tip={BASELINE_CALENDAR_TIP} />
                   </span>
                 </th>
                 <th className={TH_NUM}>
-                  <span className="inline-flex items-center gap-1 justify-end">实际工作量 <InfoMark tip={ACTUAL_WORK_TIP} /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">实际人力 <InfoMark tip={ACTUAL_WORK_TIP} /></span>
                 </th>
                 <th className={TH_NUM}>
-                  <span className="inline-flex items-center gap-1 justify-end">基线工作量 <InfoMark tip={FUSED_BASELINE_WORK_TIP} /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">传统人力预估 <InfoMark tip={FUSED_BASELINE_WORK_TIP} /></span>
                 </th>
                 <th className={TH}>质量</th>
                 <th className={TH}>边界来源</th>
@@ -403,14 +406,14 @@ export default function NeedList() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={13}>
+                    <td className={TD} colSpan={14}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={13}>
+                  <td colSpan={14}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无 Need 数据</div>
                   </td>
                 </tr>
@@ -435,6 +438,7 @@ export default function NeedList() {
                     </td>
                     <td className={TD}><RatioPill value={row.efficiency_ratio} /></td>
                     <td className={TD}><RatioPill value={row.work_efficiency_ratio} /></td>
+                    <td className={TD}><RatioPill value={row.ai_code_ratio} /></td>
                     <td className={TD}><Ellipsis text={row.repo_addr} /></td>
                     <td className={TD}><Ellipsis text={row.repo_branch} /></td>
                     <td className={TD}><Ellipsis text={resolveName(row.primary_user_id)} /></td>
@@ -455,7 +459,7 @@ export default function NeedList() {
                       ) : row.coverage_eligible ? (
                         <Tag tone="success">可计入</Tag>
                       ) : (
-                        <Tag tone="neutral">未计入</Tag>
+                        <span className="text-gray-300 dark:text-gray-600">-</span>
                       )}
                     </td>
                     <td className={TD}>{boundarySourceLabel(row.boundary_source)}</td>

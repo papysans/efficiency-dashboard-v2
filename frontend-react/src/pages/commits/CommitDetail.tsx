@@ -3,21 +3,19 @@
 //
 // ⚠️ efficiency_ratio 百分比口径：详情大数字 Math.round()+'%'，不 ×100，用 percentTextClass 着色。
 // manual 优先：度量区有 manual 时显示 manual 值 + 黄(?)理由 + 删除线原 AI 值 + 灰(?)AI 理由。
-// silica（实跑验证）：列表/详情数据集 silica 恒为 0；按 Vue 现状：
-//   - 度量区「硅含量」直接 {silica}%（顶层 commit.Silica，疑似已是百分比值）。
-//   - 关联 Tasks 表的 silica 是 0~1，要 ×100 显示。
+// silica 字段在前端展示为 AI 代码占比；输入为 0~1 小数口径。
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCommitDetail } from '@/api/queries'
 import { updateCommitManualV2 } from '@/api/endpoints'
 import type { CommitDetail as CommitDetailType, RelatedTask, UpdateCommitManualRequest } from '@/api/types'
-import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
+import { fmtCost, formatDuration, formatLocalTime, formatV2Ratio } from '@/lib/formatters'
 import { Tag } from '@/components/ui/Tag'
 import { percentTextClass } from '@/components/ui/PercentPill'
 import { Modal } from '@/components/ui/Modal'
 
-/** 关联 Task 硅含量 tag tone（silica 0~1 → 比 0.8/0.5）。 */
+/** 关联 Task AI 代码占比 tag tone（0~1 小数口径）。 */
 function relatedSilicaTone(v: number): 'success' | 'primary' | 'info' {
   if (v >= 0.8) return 'success'
   if (v >= 0.5) return 'primary'
@@ -47,14 +45,14 @@ export default function CommitDetail() {
 
   const [modalOpen, setModalOpen] = useState(false)
 
-  // realMinutesExplain（§1.2）：有 reason 用之；否则若有关联 task → Σ(real × silica)；无 task → 无关联 Task。
+  // realMinutesExplain（§1.2）：有 reason 用之；否则若有关联 task → Σ(real × AI 代码占比)；无 task → 无关联 Task。
   const realMinutesExplain = useMemo(() => {
     if (commit.commit_real_minutes_reason) return commit.commit_real_minutes_reason
     if (relatedTasks.length > 0) {
       const parts = relatedTasks.map(
         (t) => `${formatDuration(t.task_real_minutes)} × ${((t.silica ?? 0) * 100).toFixed(0)}%`,
       )
-      return `计算方式：Σ(Task实际耗时 × 硅含量)\n${parts.join(' + ')}`
+      return `计算方式：Σ(Task实际耗时 × AI 代码占比)\n${parts.join(' + ')}`
     }
     return '无关联 Task'
   }, [commit.commit_real_minutes_reason, relatedTasks])
@@ -165,11 +163,11 @@ export default function CommitDetail() {
             </span>
           </Kv>
           <Kv
-            label="硅含量"
+            label="AI 代码占比"
             title="commit 中由 AI Task 生成的代码占比，基于关联 Task 的 diff 行数加权计算"
           >
             {silica != null ? (
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{silica}%</span>
+              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{formatV2Ratio(silica)}</span>
             ) : (
               <span className="text-gray-400 dark:text-gray-500">-</span>
             )}
@@ -195,7 +193,7 @@ export default function CommitDetail() {
                   <th className={TH}>开始时间</th>
                   <th className={TH_NUM}>代码行数</th>
                   <th className={TH_NUM}>实际耗时</th>
-                  <th className={TH_CENTER}>硅含量</th>
+                  <th className={TH_CENTER}>AI 代码占比</th>
                   <th className={TH_NUM}>费用</th>
                 </tr>
               </thead>
@@ -218,7 +216,7 @@ export default function CommitDetail() {
                     <td className={TD_NUM}>{formatDuration(t.task_real_minutes)}</td>
                     <td className="px-3 py-2 align-middle text-center">
                       {t.silica != null ? (
-                        <Tag tone={relatedSilicaTone(t.silica)}>{(t.silica * 100).toFixed(1)}%</Tag>
+                        <Tag tone={relatedSilicaTone(t.silica)}>{formatV2Ratio(t.silica)}</Tag>
                       ) : (
                         '-'
                       )}

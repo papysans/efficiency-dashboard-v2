@@ -577,7 +577,7 @@ export default function TaskList() {
 const NEW_PROJECT = '__new__'
 
 /**
- * 批量「添加到 Project」对话框（§4.1）：选已有 Project 或新建（createProject）+ silica 权重。
+ * 批量「添加到 Project」对话框（§4.1）：选已有 Project 或新建（createProject）+ AI 代码权重。
  * Task 入口无冲突检测，直接 addTasksToProject。
  */
 function AddTasksToProjectModal({
@@ -694,7 +694,7 @@ function AddTasksToProjectModal({
             </ModalField>
           </>
         )}
-        <ModalField label="Silica 权重">
+        <ModalField label="AI 代码权重">
           <input
             type="number"
             min={0}

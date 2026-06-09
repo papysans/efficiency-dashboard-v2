@@ -135,9 +135,9 @@ export default function UserDetail() {
       <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <MetricCard label="合并需求" value={formatNumber(summary?.merged_need_count ?? 0)} />
         <MetricCard label="日历提效" value={<RatioPill value={summary?.calendar_ratio} />} />
-        <MetricCard label="工作量提效" value={<RatioPill value={summary?.work_ratio} />} />
-        <MetricCard label="实际日历" value={formatDuration(summary?.actual_calendar_min)} />
-        <MetricCard label="基线日历" value={formatDuration(summary?.baseline_calendar_min)} />
+        <MetricCard label="人力提效" value={<RatioPill value={summary?.work_ratio} />} />
+        <MetricCard label="实际周期" value={formatDuration(summary?.actual_calendar_min)} />
+        <MetricCard label="传统周期预估" value={formatDuration(summary?.baseline_calendar_min)} />
         <MetricCard
           label="Commit / 代码行"
           value={`${summary?.commit_count ?? 0} / ${formatNumber(summary?.commit_diff_lines, 0)}`}
@@ -154,7 +154,7 @@ export default function UserDetail() {
                 <th className={TH_NUM}>合并</th>
                 <th className={TH_NUM}>活跃</th>
                 <th className={TH}>日历提效</th>
-                <th className={TH}>工作量提效</th>
+                <th className={TH}>人力提效</th>
                 <th className={TH_NUM}>Commit</th>
                 <th className={TH}>置信</th>
               </tr>
@@ -200,9 +200,9 @@ export default function UserDetail() {
               <th className={TH}>状态</th>
               <th className={TH}>仓库</th>
               <th className={TH}>分支</th>
-              <th className={TH_NUM}>实际日历</th>
+              <th className={TH_NUM}>实际周期</th>
               <th className={TH}>日历提效</th>
-              <th className={TH}>工作量提效</th>
+              <th className={TH}>人力提效</th>
             </tr>
           </thead>
           <tbody>

@@ -49,6 +49,7 @@ export interface DashboardSummary {
   need_baseline_calendar_min: number
   need_calendar_ratio: number | null // 小数口径
   need_work_ratio: number | null // 小数口径
+  ai_code_ratio?: number | null // 小数口径
 }
 
 /** /v2/needs 列表项（§2.1，小数口径） */
@@ -72,6 +73,9 @@ export interface NeedsV2Summary {
   efficiency_band_low: number | null
   efficiency_band_high: number | null
   work_efficiency_ratio: number | null // 工作量提效，小数口径
+  total_loc_net?: number | null
+  ai_covered_loc?: number | null
+  ai_code_ratio?: number | null
   confidence_level?: string
   outlier_flag: boolean // 派生 = 任一口径异常
   calendar_outlier_flag?: boolean // 日历提效口径异常
@@ -220,6 +224,7 @@ export interface UserV2Row {
   commit_diff_lines: number
   cost: number
   tokens: number
+  ai_code_ratio?: number | null // 小数口径
   confidence_limited: boolean
   confidence_reason?: string
 }
@@ -318,6 +323,7 @@ export interface OrgV2Row {
   baseline_calendar_min: number
   calendar_ratio: number | null // 小数口径
   work_ratio: number | null // 小数口径
+  ai_code_ratio?: number | null // 小数口径
   commit_count: number
   commit_diff_lines: number
   cost: number
@@ -334,6 +340,7 @@ export interface RepoListItem {
   sum_real_minutes: number
   task_count: number
   efficiency_ratio: number // 百分比口径
+  ai_code_ratio?: number | null // 小数口径
 }
 
 /** /v2/repos/detail 的 efficiency 块（百分比口径）。 */
@@ -345,7 +352,7 @@ export interface RepoEfficiency {
   repo_real_minutes_reason?: string
 }
 
-/** /v2/repos/detail 的 commits 项（§Repo-5，commit_*_manual 优先；silica 后端已 *100 即百分数）。 */
+/** /v2/repos/detail 的 commits 项（§Repo-5，commit_*_manual 优先；silica 为 Commit 级 AI 代码占比，小数口径）。 */
 export interface RepoCommitItem {
   commit_id: string
   commit_time?: string | null
@@ -372,7 +379,7 @@ export interface RepoDetailResponse {
   commits: RepoCommitItem[]
   tasks: TaskListItem[]
   efficiency: RepoEfficiency
-  summary?: { commit_count?: number; task_count?: number }
+  summary?: { commit_count?: number; task_count?: number; ai_code_ratio?: number | null }
 }
 
 /** /v2/repos/branches 响应。 */
@@ -475,6 +482,7 @@ export interface DeptMember {
   baseline_calendar_min: number
   calendar_ratio: number | null // 小数口径
   work_ratio: number | null // 小数口径
+  ai_code_ratio?: number | null // 小数口径
   commit_count: number
   commit_diff_lines: number
   cost: number
@@ -490,6 +498,7 @@ export interface DeptMembersSummary {
   baseline_calendar_min: number
   calendar_ratio: number | null // 小数口径
   work_ratio: number | null // 小数口径
+  ai_code_ratio?: number | null // 小数口径
   commit_count: number
   commit_diff_lines: number
   cost: number

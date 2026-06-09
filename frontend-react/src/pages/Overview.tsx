@@ -9,7 +9,7 @@ import { AdoptionCard } from '@/components/executive/AdoptionCard'
 import { TopRankCard } from '@/components/executive/TopRankCard'
 
 // 高管提效总览大屏（PR1）。Bento 12 列网格 + 玻璃拟态 + 卡片 staggered 渐入。
-// 四件套：① Hero 省人天&ROI ② 提效趋势 ③ Top 提效榜（需求/人）④ AI 采用度环形。
+// 四件套：① Hero 省人天&ROI ② 提效趋势 ③ Top 提效榜（需求/人）④ AI 代码占比环形。
 export default function Overview() {
   const [startDate, endDate] = useMemo(() => {
     const [s, e] = getDefaultDateRangeWide()

@@ -3,11 +3,11 @@
 //
 // ⚠️ 口径：
 //   - userStats 行 task/commit_efficiency_ratio = **百分比口径** PercentPill（前端 reduce 算出 ancient/real*100）。
-//   - ProjectCommit 表 silica 直接当百分比（不 ×100，阈值 80/50）。
+//   - ProjectCommit 表 silica 展示为 AI 代码占比，直接当百分比（不 ×100，阈值 80/50）。
 //   - 顶部 devEfficiencyRatio/e2eEfficiencyRatio 是**内部小数**（如 3.0），显示 Math.round(*100)+'%'，
 //     着色 percentTextClass(*100)。这是 PR4 唯一「内部小数、显示×100」例外，仍走 300/150 阈值。
 //
-// 8 管理操作：编辑 / 删除 / 人工调整 / 加 Task / 移 Task / 改 Task silica / 加 Repo（含编辑=删旧+加新）/ 移 Repo。
+// 8 管理操作：编辑 / 删除 / 人工调整 / 加 Task / 移 Task / 改 Task AI 代码权重 / 加 Repo（含编辑=删旧+加新）/ 移 Repo。
 // ⚠️ updateProject 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空。
 // ⚠️ 加 Repo 用数组 index，编辑/删后 index 漂移 → 操作后必 loadData（invalidate）。
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -417,7 +417,7 @@ export default function ProjectDetail() {
                 <th className={TH}>开始时间</th>
                 <th className={TH_NUM}>传统预估</th>
                 <th className={TH_NUM}>实际耗时</th>
-                <th className={TH_NUM}>Silica权重</th>
+                <th className={TH_NUM}>AI 代码权重</th>
                 <th className={TH_NUM}>费用</th>
                 <th className={TH_CENTER}>操作</th>
               </tr>
@@ -476,7 +476,7 @@ export default function ProjectDetail() {
                 <th className={TH_NUM}>代码行数</th>
                 <th className={TH_NUM}>传统预估</th>
                 <th className={TH_NUM}>实际耗时</th>
-                <th className={TH_CENTER}>硅含量</th>
+                <th className={TH_CENTER}>AI 代码占比</th>
               </tr>
             </thead>
             <tbody>
@@ -555,7 +555,7 @@ function commitUserName(c: ProjectCommitItem, resolveName: (id?: string) => stri
   return c.git_user_name || c.user_name || c.user_id || '-'
 }
 
-/** ProjectCommit 硅含量 tag tone（直接当百分比，不 ×100，阈值 80/50）。 */
+/** ProjectCommit AI 代码占比 tag tone（直接当百分比，不 ×100，阈值 80/50）。 */
 function projectSilicaTone(v: number): 'success' | 'primary' | 'info' {
   if (v >= 80) return 'success'
   if (v >= 50) return 'primary'
@@ -832,7 +832,7 @@ function AddTaskModal({
           })}
         </div>
       )}
-      <Field label="Silica 权重">
+      <Field label="AI 代码权重">
         <input type="number" step={0.1} min={0} value={silica} onChange={(e) => setSilica(e.target.value)} className={INPUT} />
       </Field>
       <div className="text-xs text-gray-400 dark:text-gray-500">已选 {selected.length} 个 Task</div>
@@ -840,7 +840,7 @@ function AddTaskModal({
   )
 }
 
-// ============ 改 Task silica dialog ============
+// ============ 改 Task AI 代码权重 dialog ============
 function SilicaModal({
   task,
   projectId,
@@ -877,9 +877,9 @@ function SilicaModal({
   }
 
   return (
-    <FormModal open={!!task} title="编辑 Silica 权重" maxWidth={400} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
+    <FormModal open={!!task} title="编辑 AI 代码权重" maxWidth={400} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
       {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
-      <Field label="Silica 权重">
+      <Field label="AI 代码权重">
         <input type="number" step={0.1} min={0} value={silica} onChange={(e) => setSilica(e.target.value)} className={INPUT} />
       </Field>
     </FormModal>
