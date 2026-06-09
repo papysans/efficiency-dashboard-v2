@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"kanban/core/models"
 	"kanban/core/utils"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -76,6 +78,13 @@ type taskConversation struct {
 	startTime  time.Time
 	endTime    time.Time
 }
+
+const (
+	importConvTaskBatchSize         = 200
+	importConvSessionSQLBatchSize   = 200
+	importConvConversationBatchSize = 100
+	importConvDBRetryMax            = 5
+)
 
 // flexString 是一个灵活的字符串类型，用于兼容 JSON 中字段可能为字符串或数字的场景。
 type flexString string
@@ -166,6 +175,18 @@ func extractDateFromPath(baseDir, filePath string) string {
 }
 
 func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate string) error {
+	rec := buildSessionRecord(ss, sessionDate, conversationDate)
+
+	// 使用 UPSERT 写入 sessions 表：session_id 冲突时更新除主键外的业务字段
+	result := db.Clauses(sessionUpsertClause()).Create(&rec)
+	if result.Error != nil {
+		logx.Errorf("session [%s] 保存失败: %v", ss.SessionId, result.Error)
+		return fmt.Errorf("写入session表失败: %w", result.Error)
+	}
+	return nil
+}
+
+func buildSessionRecord(ss *taskSession, sessionDate, conversationDate string) models.Session {
 	var startTime time.Time = time.Now().UTC()
 	var err error
 	if ss.StartTime != "" {
@@ -173,8 +194,7 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 			logx.Warnf("session [%s] 缺少start_time字段", ss.SessionId)
 		}
 	}
-	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
-	rec := models.Session{
+	return models.Session{
 		SessionId:        ss.SessionId,
 		CreateTime:       startTime,
 		UserId:           ss.UserId,
@@ -187,9 +207,10 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 		SessionDate:      sessionDate,
 		ConversationDate: conversationDate,
 	}
+}
 
-	// 使用 UPSERT 写入 tasks 表：task_id 冲突时更新除主键外的业务字段
-	result := db.Clauses(clause.OnConflict{
+func sessionUpsertClause() clause.OnConflict {
+	return clause.OnConflict{
 		Columns: []clause.Column{{Name: "session_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"user_id", "user_name", "create_time",
@@ -198,10 +219,19 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 			"session_date", "conversation_date",
 			"updated_at",
 		}),
-	}).Create(&rec)
-	if result.Error != nil {
-		logx.Errorf("session [%s] 保存失败: %v", ss.SessionId, result.Error)
-		return fmt.Errorf("写入session表失败: %w", result.Error)
+	}
+}
+
+func saveSessions(db *gorm.DB, batch []*preparedImportTask) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	records := make([]models.Session, 0, len(batch))
+	for _, p := range batch {
+		records = append(records, buildSessionRecord(p.ss, p.sessionDate, p.conversationDate))
+	}
+	if err := db.Clauses(sessionUpsertClause()).CreateInBatches(&records, importConvSessionSQLBatchSize).Error; err != nil {
+		return fmt.Errorf("写入session表失败: %w", err)
 	}
 	return nil
 }
@@ -332,6 +362,16 @@ func writeImportTask(tx *gorm.DB, p *preparedImportTask) error {
 	return nil
 }
 
+func writeImportTaskBatch(tx *gorm.DB, batch []*preparedImportTask) error {
+	if err := saveSessions(tx, batch); err != nil {
+		return err
+	}
+	if err := saveConversationBatch(tx, batch); err != nil {
+		return fmt.Errorf("保存conversations失败: %w", err)
+	}
+	return nil
+}
+
 // finalizeImportTaskSilica 写库成功后生成 task silica 文件（用于下次增量检测）；失败仅告警，不阻断。
 func finalizeImportTaskSilica(p *preparedImportTask) {
 	if err := generateTaskSilicaFile(p.ss, p.conversations, p.conversationPath, p.silicaPath); err != nil {
@@ -346,13 +386,10 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	if len(batch) == 0 {
 		return 0, 0
 	}
-	err := db.Transaction(func(tx *gorm.DB) error {
-		for _, p := range batch {
-			if err := writeImportTask(tx, p); err != nil {
-				return err
-			}
-		}
-		return nil
+	err := withImportConvDBRetry(func() error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			return writeImportTaskBatch(tx, batch)
+		})
 	})
 	if err == nil {
 		for _, p := range batch {
@@ -364,7 +401,9 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	// 整批失败（多为 DB/schema 级错误）：逐条单事务重试，定位并隔离坏记录
 	logx.Warnf("批量写入失败，回退逐条重试: %v", err)
 	for _, p := range batch {
-		if e := db.Transaction(func(tx *gorm.DB) error { return writeImportTask(tx, p) }); e != nil {
+		if e := withImportConvDBRetry(func() error {
+			return db.Transaction(func(tx *gorm.DB) error { return writeImportTask(tx, p) })
+		}); e != nil {
 			logx.Warnf("导入失败 [%s]: %v", p.ss.SessionId, e)
 			fail++
 			continue
@@ -375,60 +414,113 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	return success, fail
 }
 
-// saveConversations 将任务对话列表批量保存到数据库，使用事务保证原子性。
+func withImportConvDBRetry(fn func() error) error {
+	var err error
+	for attempt := 1; attempt <= importConvDBRetryMax; attempt++ {
+		err = fn()
+		if err == nil || !isRetriablePostgresError(err) {
+			return err
+		}
+		if attempt == importConvDBRetryMax {
+			break
+		}
+		delay := time.Duration(attempt*attempt) * 200 * time.Millisecond
+		logx.Warnf("数据库写入遇到可重试错误，第 %d/%d 次重试，等待 %s: %v", attempt, importConvDBRetryMax, delay, err)
+		time.Sleep(delay)
+	}
+	return err
+}
+
+func isRetriablePostgresError(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch pgErr.Code {
+	case "40P01", // deadlock_detected
+		"40001": // serialization_failure
+		return true
+	default:
+		return false
+	}
+}
+
+// saveConversations 将任务对话列表批量保存到数据库。
 // 功能：逐条将 taskConversation 转换为 models.Conversation 后插入，冲突时忽略（DoNothing）。
 // 参数：
 //   - db: GORM 数据库连接。
 //   - conversations: 需要保存的对话列表。
 //
-// 返回值：事务执行过程中发生的错误。
-// 关键技术原理：通过 db.Transaction 开启事务，确保一批对话要么全部写入成功，要么全部回滚；
-// 复合唯一键 (task_id, request_id) 冲突时忽略插入，避免重复数据报错。
+// 返回值：写库过程中发生的错误。
+// 关键技术原理：调用方负责事务边界；复合唯一键 (session_id, request_id) 冲突时忽略插入，避免重复数据报错。
 func saveConversations(db *gorm.DB, conversations []taskConversation) error {
 	if len(conversations) == 0 {
 		return nil
 	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		for _, conv := range conversations {
-			// 转换字段并对文本内容进行清洗，防止非法字符入库
-			tc := models.Conversation{
-				TaskId:           "",
-				SessionId:        conv.sessionId,
-				RequestId:        conv.RequestId,
-				Sender:           conv.Sender,
-				PromptMode:       conv.PromptMode,
-				Mode:             conv.Mode,
-				Model:            conv.Model,
-				StartTime:        conv.startTime,
-				EndTime:          conv.endTime,
-				ProcessTime:      int64(conv.ProcessTime),
-				ProcessTtft:      int64(conv.ProcessTtft),
-				UpstreamTokens:   conv.UpstreamTokens,
-				DownstreamTokens: conv.DownstreamTokens,
-				Cost:             conv.Cost,
-				RequestContent:   utils.SanitizeText(conv.RequestContent),
-				ResponseContent:  utils.SanitizeText(conv.ResponseContent),
-				UserInput:        utils.SanitizeText(conv.UserInput),
-				DiffLines:        conv.DiffLines,
-				ErrorCode:        string(conv.ErrorCode),
-				ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
-				RepoAddr:         conv.RepoAddr,
-				RepoBranch:       conv.RepoBranch,
-				WorkDir:          conv.WorkDir,
-				WorkDirId:        conv.workDirId,
-			}
+	records := makeConversationRecords(conversations)
+	return saveConversationRecords(db, records)
+}
 
-			// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败
-			result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "session_id"}, {Name: "request_id"}},
-				DoNothing: true,
-			}).Create(&tc)
-			if result.Error != nil {
-				return fmt.Errorf("写入task_conversations表失败: %w", result.Error)
-			}
-		}
+func saveConversationBatch(db *gorm.DB, batch []*preparedImportTask) error {
+	total := 0
+	for _, p := range batch {
+		total += len(p.conversations)
+	}
+	if total == 0 {
 		return nil
-	})
+	}
+	records := make([]models.Conversation, 0, total)
+	for _, p := range batch {
+		records = append(records, makeConversationRecords(p.conversations)...)
+	}
+	return saveConversationRecords(db, records)
+}
+
+func makeConversationRecords(conversations []taskConversation) []models.Conversation {
+	records := make([]models.Conversation, 0, len(conversations))
+	for _, conv := range conversations {
+		records = append(records, models.Conversation{
+			TaskId:           "",
+			SessionId:        conv.sessionId,
+			RequestId:        conv.RequestId,
+			Sender:           conv.Sender,
+			PromptMode:       conv.PromptMode,
+			Mode:             conv.Mode,
+			Model:            conv.Model,
+			StartTime:        conv.startTime,
+			EndTime:          conv.endTime,
+			ProcessTime:      int64(conv.ProcessTime),
+			ProcessTtft:      int64(conv.ProcessTtft),
+			UpstreamTokens:   conv.UpstreamTokens,
+			DownstreamTokens: conv.DownstreamTokens,
+			Cost:             conv.Cost,
+			RequestContent:   utils.SanitizeText(conv.RequestContent),
+			ResponseContent:  utils.SanitizeText(conv.ResponseContent),
+			UserInput:        utils.SanitizeText(conv.UserInput),
+			DiffLines:        conv.DiffLines,
+			ErrorCode:        string(conv.ErrorCode),
+			ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
+			RepoAddr:         conv.RepoAddr,
+			RepoBranch:       conv.RepoBranch,
+			WorkDir:          conv.WorkDir,
+			WorkDirId:        conv.workDirId,
+		})
+	}
+	return records
+}
+
+func saveConversationRecords(db *gorm.DB, records []models.Conversation) error {
+	if len(records) == 0 {
+		return nil
+	}
+	// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败
+	if err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "session_id"}, {Name: "request_id"}},
+		DoNothing: true,
+	}).CreateInBatches(&records, importConvConversationBatchSize).Error; err != nil {
+		return fmt.Errorf("写入task_conversations表失败: %w", err)
+	}
+	return nil
 }
 
 // parseUserInput 解析并提取用户输入中的实际内容。
@@ -921,17 +1013,22 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	// 遍历所有 conversation 文件，匹配 summary 并执行导入
 	totalConv := len(convMap)
 	processed := 0
-	// 累积成批写入：每 importConvBatchSize 个 session 合并到一个事务提交，
+	// 累积成批写入：每 importConvTaskBatchSize 个 session 合并到一个事务提交，
 	// 把「单 session 一次 fsync」摊薄成「每批一次」，显著提速大批量导入。
-	const importConvBatchSize = 200
-	batch := make([]*preparedImportTask, 0, importConvBatchSize)
+	batch := make([]*preparedImportTask, 0, importConvTaskBatchSize)
 	flush := func() {
 		s, f := flushImportConvBatch(db, batch)
 		successCount += s
 		failCount += f
 		batch = batch[:0]
 	}
-	for sessionId, conversationPath := range convMap {
+	sessionIDs := make([]string, 0, len(convMap))
+	for sessionID := range convMap {
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+	sort.Strings(sessionIDs)
+	for _, sessionId := range sessionIDs {
+		conversationPath := convMap[sessionId]
 		processed++
 		logx.Progress("[import-conv] 导入对话", processed, totalConv, 50)
 		summaryPath, ok := sessionMap[sessionId]
@@ -962,7 +1059,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 			continue
 		}
 		batch = append(batch, p)
-		if len(batch) >= importConvBatchSize {
+		if len(batch) >= importConvTaskBatchSize {
 			flush()
 		}
 	}
