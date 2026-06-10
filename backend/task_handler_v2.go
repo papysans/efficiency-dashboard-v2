@@ -3,11 +3,11 @@ package main
 import (
 	"kanban/backend/internal/appconfig"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/storage"
 	"kanban/core/utils"
 
 	"github.com/gin-gonic/gin"
@@ -260,7 +260,7 @@ func getTaskFile(c *gin.Context) {
 		return
 	}
 
-	data, err := os.ReadFile(filePath)
+	data, err := storage.ReadFile(filePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return

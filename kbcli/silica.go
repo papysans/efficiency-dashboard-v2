@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/core/models"
+	"kanban/core/storage"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -189,17 +188,16 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 	}
 
 	// 目录不存在时返回空索引，不报错（兼容增量分析场景）
-	if _, err := os.Stat(taskFPDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(taskFPDir); err != nil {
+		return nil, err
+	} else if !ok {
 		return idx, nil
 	}
 
 	// 第一步：递归扫描所有 .silica.json 文件
 	var silicaFiles []string
-	err := filepath.Walk(taskFPDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".silica.json") {
+	err := storage.Walk(taskFPDir, func(path string, info storage.FileInfo) error {
+		if strings.HasSuffix(info.Name, ".silica.json") {
 			silicaFiles = append(silicaFiles, path)
 		}
 		return nil
@@ -329,7 +327,7 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 //   - *taskSilicaData: 解析后的数据结构。
 //   - error: 文件读取或JSON解析错误。
 func loadTaskSilicaFile(path string) (*taskSilicaData, error) {
-	data, err := os.ReadFile(path)
+	data, err := storage.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

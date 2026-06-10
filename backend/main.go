@@ -9,6 +9,7 @@ import (
 	_ "kanban/backend/docs"
 
 	"kanban/core/models"
+	"kanban/core/storage"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -56,6 +57,14 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 	appconfig.Cfg = *c
+
+	// 初始化存储后端，并对配置中的 s3:// 路径做启动期 fail-fast 校验
+	if err := storage.Configure(appconfig.Cfg.Storage); err != nil {
+		log.Fatalf("初始化存储后端失败: %v", err)
+	}
+	if err := storage.ValidateLocations(appconfig.Cfg.TaskDir, appconfig.Cfg.AnalysedDir); err != nil {
+		log.Fatalf("存储路径校验失败: %v", err)
+	}
 
 	statDB, err = models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
 	if err != nil {

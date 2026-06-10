@@ -10,7 +10,6 @@ import (
 	"kanban/kbcli/internal/logx"
 	"kanban/kbcli/internal/util"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/storage"
 	"kanban/core/utils"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -163,7 +163,7 @@ func (f *flexInt64) UnmarshalJSON(data []byte) error {
 var errSkipTask = errors.New("task skipped by date filter")
 
 func extractDateFromPath(baseDir, filePath string) string {
-	relPath, err := filepath.Rel(baseDir, filePath)
+	relPath, err := storage.Rel(baseDir, filePath)
 	if err != nil {
 		return ""
 	}
@@ -305,7 +305,7 @@ type preparedImportTask struct {
 // prepareImportTask 读取并解析单个任务的 summary 与 conversation 文件，算好待写入的记录。
 // 仅做文件 IO 与解析、不触库；这样所有易失败的解析步骤都在事务外，不会污染批量事务。
 func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*preparedImportTask, error) {
-	data, err := os.ReadFile(summaryPath)
+	data, err := storage.ReadFile(summaryPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取summary文件失败: %w", err)
 	}
@@ -330,11 +330,11 @@ func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*prepa
 	}
 
 	// 根据 ss 和 conversations 计算完整的 Task 记录
-	summaryDir := filepath.Dir(filepath.Dir(summaryPath))
-	summaryDir = filepath.Dir(filepath.Dir(summaryDir))
+	summaryDir := storage.Dir(storage.Dir(summaryPath))
+	summaryDir = storage.Dir(storage.Dir(summaryDir))
 	sessionDate := extractDateFromPath(summaryDir, summaryPath)
-	conversationDir := filepath.Dir(filepath.Dir(conversationPath))
-	conversationDir = filepath.Dir(filepath.Dir(conversationDir))
+	conversationDir := storage.Dir(storage.Dir(conversationPath))
+	conversationDir = storage.Dir(storage.Dir(conversationDir))
 	conversationDate := extractDateFromPath(conversationDir, conversationPath)
 
 	// 解析对话内的时间/指标；saveConversations 依赖此处填充的 startTime/endTime
@@ -639,7 +639,7 @@ func parseConversation(path string, lineNum int, content []byte, ignoreUnmarshal
 //  2. 容错机制：当单行整体验证失败时，尝试调用 splitConversations 将连续拼接的 JSON 对象（如 {"a":1}{"a":2}）拆分为多个对象分别解析。
 //  3. scanner.Buffer 显式设置缓冲区初始大小和最大大小，防止超长行导致扫描器默认缓冲区溢出。
 func parseConversationFile(path string) ([]taskConversation, error) {
-	f, err := os.Open(path)
+	f, err := storage.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -774,8 +774,8 @@ func splitConversations(line string) ([]string, error) {
 func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, conversationPath, silicaPath string) error {
 	// 获取 conversation 文件大小，用于后续增量导入时判断是否需要更新
 	var fileSize int64
-	if info, err := os.Stat(conversationPath); err == nil {
-		fileSize = info.Size()
+	if info, err := storage.Stat(conversationPath); err == nil {
+		fileSize = info.Size
 	}
 
 	// 组装 taskSilicaData 基础信息
@@ -812,20 +812,14 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 		tsd.Conversations = append(tsd.Conversations, tsc)
 	}
 
-	// 确保目标目录存在
-	dir := filepath.Dir(silicaPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
-	}
-
 	// 序列化为 JSON
 	data, err := json.Marshal(tsd)
 	if err != nil {
 		return fmt.Errorf("序列化taskSilicaData失败: %w", err)
 	}
 
-	// 写入 silica 文件
-	if err := os.WriteFile(silicaPath, data, 0644); err != nil {
+	// 写入 silica 文件（本地后端自动创建父目录）
+	if err := storage.WriteFile(silicaPath, data); err != nil {
 		return fmt.Errorf("写入task silica文件失败: %w", err)
 	}
 
@@ -844,18 +838,17 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 func scanConversationFiles(conversationDir string, startDate, endDate *time.Time) (map[string]string, error) {
 	convMap := make(map[string]string)
 	// 目录不存在时返回空映射，不做报错处理
-	if _, err := os.Stat(conversationDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(conversationDir); err != nil {
+		return nil, err
+	} else if !ok {
 		return convMap, nil
 	}
 
-	err := filepath.Walk(conversationDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	err := storage.Walk(conversationDir, func(path string, info storage.FileInfo) error {
 		// 仅处理 .jsonl 文件
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".jsonl") {
+		if strings.HasSuffix(info.Name, ".jsonl") {
 			// 从相对路径中提取日期信息 YYYY/MM/DD
-			relPath, err := filepath.Rel(conversationDir, path)
+			relPath, err := storage.Rel(conversationDir, path)
 			if err != nil {
 				return err
 			}
@@ -870,7 +863,7 @@ func scanConversationFiles(conversationDir string, startDate, endDate *time.Time
 				return nil
 			}
 
-			sessionId := strings.TrimSuffix(info.Name(), ".jsonl")
+			sessionId := strings.TrimSuffix(info.Name, ".jsonl")
 			// 若存在同名 sessionId 的多个文件，保留字典序更大的路径（通常表示更晚生成或更优先的版本）
 			if existing, ok := convMap[sessionId]; !ok || path > existing {
 				convMap[sessionId] = path
@@ -893,16 +886,15 @@ func scanConversationFiles(conversationDir string, startDate, endDate *time.Time
 func scanSessionFiles(summaryDir string) (map[string]string, error) {
 	sessionMap := make(map[string]string)
 	// 目录不存在时返回空映射
-	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(summaryDir); err != nil {
+		return nil, err
+	} else if !ok {
 		return sessionMap, nil
 	}
-	err := filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	err := storage.Walk(summaryDir, func(path string, info storage.FileInfo) error {
 		// 仅处理 .json 文件
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
-			sessionId := strings.TrimSuffix(info.Name(), ".json")
+		if strings.HasSuffix(info.Name, ".json") {
+			sessionId := strings.TrimSuffix(info.Name, ".json")
 			// 同名冲突时保留字典序更大的路径
 			if existing, ok := sessionMap[sessionId]; !ok || path > existing {
 				sessionMap[sessionId] = path
@@ -930,7 +922,7 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 		return true
 	}
 	// 读取并解析已有的 silica 文件
-	data, err := os.ReadFile(silicaPath)
+	data, err := storage.ReadFile(silicaPath)
 	if err != nil {
 		return true
 	}
@@ -939,11 +931,11 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 		return true
 	}
 	// 获取当前 conversation 文件大小并与 silica 中记录的值比较
-	info, err := os.Stat(conversationPath)
+	info, err := storage.Stat(conversationPath)
 	if err != nil {
 		return true
 	}
-	return info.Size() != tsd.Size
+	return info.Size != tsd.Size
 }
 
 // runImportConv 执行完整的 task 批量导入流程。
@@ -961,13 +953,17 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 //  4. 通过 util.RecordCommandRun 记录命令执行结果，便于运维监控和审计。
 func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string, createPseudo bool) error {
 	startTime := time.Now()
-	summaryDir := filepath.Join(taskDir, "summary")
-	conversationDir := filepath.Join(taskDir, "conversation")
+	summaryDir := storage.Join(taskDir, "summary")
+	conversationDir := storage.Join(taskDir, "conversation")
 
 	// 校验 summary 目录必须存在
-	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(summaryDir); err != nil {
 		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
-		return fmt.Errorf("summary目录不存在: %s", summaryDir)
+		return fmt.Errorf("检查summary目录失败: %w", err)
+	} else if !ok {
+		err := fmt.Errorf("summary目录不存在: %s", summaryDir)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+		return err
 	}
 
 	// 解析日期范围
@@ -1039,7 +1035,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 		}
 
 		// 构造 silica 文件路径并判断是否需要增量更新
-		silicaPath := filepath.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
+		silicaPath := storage.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
 		if !needUpdateConversations(conversationPath, silicaPath, force) {
 			logx.Debugf("跳过(conversation未更新): %s", sessionId)
 			skipCount++

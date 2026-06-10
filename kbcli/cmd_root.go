@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kanban/core/storage"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"os"
@@ -27,7 +28,11 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 		appconfig.Cfg = loadedCfg
-		return nil
+		// 初始化存储后端，并对配置中的 s3:// 路径做启动期 fail-fast 校验
+		if err := storage.Configure(appconfig.Cfg.Storage); err != nil {
+			return err
+		}
+		return storage.ValidateLocations(appconfig.Cfg.TaskDir, appconfig.Cfg.RepoDir, appconfig.Cfg.AnalysedDir, appconfig.Cfg.OrgCSVFile)
 	},
 }
 

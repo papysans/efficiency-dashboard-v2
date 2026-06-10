@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"kanban/core/config"
+	"kanban/core/storage"
 	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/estimator"
 	"kanban/kbcli/internal/llm"
@@ -70,6 +71,9 @@ type Config struct {
 	TaskCreate     TaskCreateConfig                `yaml:"task_create"`
 	Serve          ServeConfig                     `yaml:"serve"`
 	TaskStatistics TaskTimeStatistics              `yaml:"task_statistics"`
+	// Storage 存储后端配置。task_dir/repo_dir/analysed_dir 等路径以 s3:// 开头时
+	// 走 S3 兼容对象存储（需配置 storage.s3），否则走本地磁盘，允许混搭。
+	Storage storage.Config `yaml:"storage"`
 	// AnalysisStartDate 全局分析起始日下界（YYYYMMDD，默认空=不设下界）。
 	// 未显式传 --start-date / start_date（且未传 date）时，按日期取数/计算的命令自动用它作为
 	// 起始下界，从而永不处理该日期之前的数据。显式传 start-date 时以显式为准，不被覆盖。
