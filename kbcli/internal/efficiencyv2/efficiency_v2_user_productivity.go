@@ -337,9 +337,10 @@ func rollupEfficiencyV2UsageFromNeeds(db *gorm.DB, needs []models.Need) (map[eff
 			DiffLines int64
 		}
 		var rows []commitRow
+		// loc 用量走治理后口径：排除 excluded，effective_diff_lines 命中时优先于原始 diff_lines
 		if err := db.Model(&models.Commit{}).
-			Select("commit_id, diff_lines").
-			Where("commit_id IN ?", commitIDs).Find(&rows).Error; err != nil {
+			Select("commit_id, COALESCE(effective_diff_lines, diff_lines) AS diff_lines").
+			Where("commit_id IN ? AND excluded_flag = false", commitIDs).Find(&rows).Error; err != nil {
 			return nil, fmt.Errorf("agg commits: %w", err)
 		}
 		for _, r := range rows {

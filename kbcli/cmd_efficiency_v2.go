@@ -289,7 +289,8 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 		}
 		var commits []models.Commit
 		if len(commitIDs) > 0 {
-			if err := db.Where("commit_id IN ?", commitIDs).Find(&commits).Error; err != nil {
+			// 治理排除的 commit 不进基线/LLM 估时（双保险，聚合口径处亦排除）
+			if err := db.Where("commit_id IN ? AND excluded_flag = false", commitIDs).Find(&commits).Error; err != nil {
 				return err
 			}
 		}

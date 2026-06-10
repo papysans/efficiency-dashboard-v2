@@ -203,11 +203,13 @@ func computeEfficiencyV2BaselineExec(need models.Need, commits []models.Commit, 
 	totalLOC := int64(0)
 	var grossInsertions, grossDeletions int64
 	for _, commit := range commits {
-		totalLOC += int64(commit.DiffLines)
-		if commit.DiffLines >= 0 {
-			grossInsertions += int64(commit.DiffLines)
+		// 估时 loc 口径统一走治理后的有效行数（softcap/降权/重放去重折算）
+		lines := commit.GetEffectiveDiffLines()
+		totalLOC += lines
+		if lines >= 0 {
+			grossInsertions += lines
 		} else {
-			grossDeletions += int64(-commit.DiffLines)
+			grossDeletions += -lines
 		}
 	}
 

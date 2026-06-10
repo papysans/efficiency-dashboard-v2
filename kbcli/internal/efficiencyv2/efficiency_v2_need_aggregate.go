@@ -51,7 +51,8 @@ func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need,
 	var commits []models.Commit
 	if len(commitIDs) > 0 {
 		keys := efficiencyV2SortedMapKeys(commitIDs)
-		if err := db.Where("commit_id IN ?", keys).Find(&commits).Error; err != nil {
+		// 治理排除的 commit 不进聚合（GetEffectiveDiffLines 对 excluded 也返回 0，查询过滤是双保险）
+		if err := db.Where("commit_id IN ? AND excluded_flag = false", keys).Find(&commits).Error; err != nil {
 			return nil, fmt.Errorf("load commits: %w", err)
 		}
 	}
@@ -286,7 +287,9 @@ func aggregateEfficiencyV2NeedCommits(need *models.Need, sessions []models.Sessi
 	var uncoveredCommitIDs []string
 	var revertCount int64
 	for _, commit := range commits {
-		changedLoc += int64(commit.DiffLines)
+		// loc 口径统一走治理后的有效行数（softcap/降权/重放去重折算，excluded 记 0）
+		lines := commit.GetEffectiveDiffLines()
+		changedLoc += lines
 		if isEfficiencyV2RevertCommit(commit.Comment) {
 			revertCount++
 		}
@@ -294,9 +297,9 @@ func aggregateEfficiencyV2NeedCommits(need *models.Need, sessions []models.Sessi
 		// models.Commit; once that arrives the rule should also require file
 		// overlap with a session's touched files.
 		if isEfficiencyV2CommitCovered(commit, windows) {
-			aiCoveredLoc += int64(commit.DiffLines)
+			aiCoveredLoc += lines
 		} else {
-			uncoveredLoc += int64(commit.DiffLines)
+			uncoveredLoc += lines
 			uncoveredCommitIDs = append(uncoveredCommitIDs, commit.CommitId)
 		}
 	}
@@ -359,7 +362,7 @@ func aggregateEfficiencyV2NeedSignals(need *models.Need, commits []models.Commit
 		var weightedSilica, totalWeight float64
 		anyPositiveSilica := false
 		for _, commit := range commits {
-			weight := float64(commit.DiffLines)
+			weight := float64(commit.GetEffectiveDiffLines())
 			if weight <= 0 {
 				weight = 1
 			}
