@@ -221,6 +221,28 @@ func TestResolveEfficiencyV2NeedCommitExtendsDevEnd(t *testing.T) {
 	}
 }
 
+func TestResolveEfficiencyV2NeedFutureCommitClamped(t *testing.T) {
+	// 采集侧时区双偏移会产生「未来」commit_time（实测内网多用户 +8h），dev_end 应被 clamp 到当前时刻。
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	metric := efficiencyV2NeedTestMetric("s-future", "u-future", "git@example.com/acme/app.git", "feature/future-commit", base, base.Add(30*time.Minute))
+	futureCommit := efficiencyV2NeedTestCommit("c-future", "u-future", "git@example.com/acme/app.git", "feature/future-commit", time.Now().Add(8*time.Hour), "Merge pull request #99 from feature/future-commit")
+
+	needs := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{futureCommit}, EfficiencyV2Config{})
+	if len(needs) != 1 {
+		t.Fatalf("need count: want 1, got %d", len(needs))
+	}
+	need := needs[0]
+	if need.DevEndTs == nil {
+		t.Fatal("dev_end_ts is nil")
+	}
+	if need.DevEndTs.After(time.Now()) {
+		t.Fatalf("dev_end_ts = %v 仍在未来，未被 clamp", need.DevEndTs)
+	}
+	if need.DevStartTs == nil || !need.DevStartTs.Equal(base) {
+		t.Fatalf("dev_start_ts = %v, want %v", need.DevStartTs, base)
+	}
+}
+
 func TestResolveEfficiencyV2NeedLowConfidenceCoverageEligibleFalse(t *testing.T) {
 	base := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	clusterMetric := efficiencyV2NeedTestMetric("s-cluster", "u-cluster", "git@example.com/acme/app.git", "main", base, base.Add(time.Hour))
