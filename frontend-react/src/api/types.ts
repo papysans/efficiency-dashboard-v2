@@ -602,6 +602,7 @@ export interface Conversation {
   cost?: number | null
   diff_lines?: number | null
   user_input?: string
+  request_content?: string
   error_code?: string
   error_reason?: string
   [k: string]: unknown

@@ -126,17 +126,26 @@ export default function NeedDetail() {
     return `区间 ${formatV2Ratio(need.efficiency_band_low)} ~ ${formatV2Ratio(need.efficiency_band_high)}`
   }, [need.efficiency_band_low, need.efficiency_band_high])
 
-  const baselineRows = useMemo(
-    () => [
-      { name: '算法基线', think: baseline.algo_think_min, exec: baseline.algo_exec_min, verify: baseline.algo_verify_min, total: baseline.algo_total_min, reason: '' },
-      { name: '相似锚点 kNN', think: null, exec: null, verify: null, total: baseline.anchor_knn_min, reason: baseline.anchor_knn_reason || '' },
-      { name: 'LLM 估算', think: baseline.llm_think_min, exec: baseline.llm_exec_min, verify: baseline.llm_verify_min, total: baseline.llm_total_min, reason: baseline.llm_reason || baseline.llm_confidence || '' },
-      { name: '传统人力预估', think: null, exec: null, verify: null, total: baseline.fused_work_min, reason: '' },
-      { name: '离散工作量', think: null, exec: null, verify: null, total: baseline.spread_work_min, reason: '' },
-      { name: '传统周期预估', think: null, exec: null, verify: null, total: baseline.calendar_min, reason: baseline.team_work_density == null ? '' : '按团队常规节奏换算' },
-    ],
-    [baseline],
-  )
+  // 只展示各来源「估算合计」：阶段拆分仅算法基线有值（kNN/融合无阶段、验证采集未覆盖），
+  // 原 6×3 阶段矩阵会出现大片「-」→ 算法基线的拆分收进说明列，LLM 无估值（禁用/失败）时整行隐藏。
+  const baselineRows = useMemo(() => {
+    const rows = [
+      {
+        name: '算法基线',
+        total: baseline.algo_total_min,
+        reason:
+          baseline.algo_total_min == null
+            ? ''
+            : `阶段拆分：思考 ${fmtMin(baseline.algo_think_min)} / 执行 ${fmtMin(baseline.algo_exec_min)} / 验证 ${fmtMin(baseline.algo_verify_min)}`,
+      },
+      { name: '相似锚点 kNN', total: baseline.anchor_knn_min, reason: baseline.anchor_knn_reason || '' },
+    ]
+    if (baseline.llm_total_min != null) {
+      rows.push({ name: 'LLM 估算', total: baseline.llm_total_min, reason: baseline.llm_reason || baseline.llm_confidence || '' })
+    }
+    rows.push({ name: '传统人力预估（融合）', total: baseline.fused_work_min, reason: '上述各路估算加权融合' })
+    return rows
+  }, [baseline])
 
   function toggleCommitFiles(id: string) {
     setExpandedCommits((prev) => {
@@ -248,10 +257,7 @@ export default function NeedDetail() {
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10">
               <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">来源</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">思考</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">执行</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">验证</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">合计</th>
+              <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400">估算（分钟）</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">说明</th>
             </tr>
           </thead>
@@ -259,17 +265,19 @@ export default function NeedDetail() {
             {baselineRows.map((r) => (
               <tr key={r.name} className="border-b border-gray-100/50 dark:border-white/5">
                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{r.name}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtMin(r.think)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtMin(r.exec)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtMin(r.verify)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtMin(r.total)}</td>
                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                  <div className="max-w-[360px] truncate" title={reasonHints(r.reason)}>{r.reason ? reasonSummary(r.reason) : '-'}</div>
+                  <div className="max-w-[480px] truncate" title={reasonHints(r.reason)}>{r.reason ? reasonSummary(r.reason) : '-'}</div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {baseline.calendar_min != null && (
+          <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+            传统周期预估（日历口径）：{fmtMin(baseline.calendar_min)} 分钟 · 按团队常规节奏换算，与上表人力口径不可直接相加。
+          </p>
+        )}
       </Panel>
 
       {/* ⑤ 阶段工作量 */}
@@ -391,8 +399,8 @@ export default function NeedDetail() {
         </table>
       </Panel>
 
-      {/* ⑨ 关联 Commits */}
-      <Panel title="关联 Commits" hint={`${commits.length} 个`} bodyClass="overflow-x-auto">
+      {/* ⑨ 关联 Commits（默认收起，点标题展开） */}
+      <Panel title="关联 Commits" hint={`${commits.length} 个`} bodyClass="overflow-x-auto" collapsible defaultCollapsed>
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10 text-left text-gray-500 dark:text-gray-400">
@@ -479,25 +487,52 @@ function Panel({
   hint,
   hintTitle,
   bodyClass = '',
+  collapsible = false,
+  defaultCollapsed = false,
   children,
 }: {
   title: string
   hint?: string
   hintTitle?: string
   bodyClass?: string
+  collapsible?: boolean
+  defaultCollapsed?: boolean
   children: ReactNode
 }) {
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed)
   return (
     <section className="glass rounded-2xl overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
-        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</span>
+      <div
+        className={`flex items-center justify-between px-5 py-3 ${collapsed ? '' : 'border-b border-gray-200/50 dark:border-white/10'}`}
+      >
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200 cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded"
+          >
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            {title}
+          </button>
+        ) : (
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</span>
+        )}
         {hint && (
           <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[50%]" title={hintTitle}>
             {hint}
           </span>
         )}
       </div>
-      <div className={`p-5 ${bodyClass}`}>{children}</div>
+      {!collapsed && <div className={`p-5 ${bodyClass}`}>{children}</div>}
     </section>
   )
 }
