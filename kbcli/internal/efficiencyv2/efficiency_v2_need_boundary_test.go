@@ -351,3 +351,28 @@ func TestSelectFullyExcludedNeedIDs(t *testing.T) {
 		t.Fatalf("selectFullyExcludedNeedIDs = %v, want %v", got, want)
 	}
 }
+
+func TestEfficiencyV2NeedContentOwnedBy(t *testing.T) {
+	mk := func(sess, cmt []string) models.Need {
+		return models.Need{SessionIds: EfficiencyV2StringJSON(sess), CommitIds: EfficiencyV2StringJSON(cmt)}
+	}
+	owned := map[string]bool{"s1": true, "c1": true, "c2": true}
+	cases := []struct {
+		name string
+		need models.Need
+		want bool
+	}{
+		{"全覆盖", mk([]string{"s1"}, []string{"c1", "c2"}), true},
+		{"commit 有存活", mk([]string{"s1"}, []string{"c1", "c9"}), false},
+		{"session 有存活", mk([]string{"s9"}, []string{"c1"}), false},
+		{"纯 commit 全覆盖", mk(nil, []string{"c1"}), true},
+		{"空内容不参与", mk(nil, nil), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := efficiencyV2NeedContentOwnedBy(tc.need, owned, owned); got != tc.want {
+				t.Fatalf("efficiencyV2NeedContentOwnedBy = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

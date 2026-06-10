@@ -228,16 +228,42 @@ func cleanupEfficiencyV2PreCanonNeeds(db *gorm.DB, needs []models.Need) error {
 		Find(&existing).Error; err != nil {
 		return fmt.Errorf("query pre-canon needs: %w", err)
 	}
+	// 本轮新行（按分支）接管的 session/commit 归属，用于内容覆盖判定。
+	ownedSessions := make(map[string]map[string]bool) // repo_branch → session_id 集合
+	ownedCommits := make(map[string]map[string]bool)  // repo_branch → commit_id 集合
+	for _, need := range needs {
+		if need.BoundarySource != efficiencyV2BoundaryBranch || need.RepoBranch == "" {
+			continue
+		}
+		if ownedSessions[need.RepoBranch] == nil {
+			ownedSessions[need.RepoBranch] = make(map[string]bool)
+			ownedCommits[need.RepoBranch] = make(map[string]bool)
+		}
+		for _, id := range EfficiencyV2StringsFromJSON(need.SessionIds) {
+			ownedSessions[need.RepoBranch][id] = true
+		}
+		for _, id := range EfficiencyV2StringsFromJSON(need.CommitIds) {
+			ownedCommits[need.RepoBranch][id] = true
+		}
+	}
 	var staleIDs []string
 	for _, old := range existing {
+		if newKeys[old.BoundaryKey] {
+			continue // 本轮新行自身，不动
+		}
 		canonKey := efficiencyV2ClampNeedKey(fmt.Sprintf("branch:%s:%s", governance.CanonRepoAddr(old.RepoAddr), old.RepoBranch))
-		if canonKey == old.BoundaryKey {
-			continue // 已是 canon 写法（含本轮新行自身），不动
+		if canonKey != old.BoundaryKey && newKeys[canonKey] {
+			// 判据一：canon 重构旧行 key 命中本轮新行 → 典型 pre-canon 旧写法行。
+			staleIDs = append(staleIDs, old.NeedId)
+			continue
 		}
-		if !newKeys[canonKey] {
-			continue // 本轮窗口没有对应的 canon 新行，保守保留
+		// 判据二（内容覆盖）：旧行的 session 与 commit 已全部被本轮同分支新行接管 →
+		// 旧行是被取代的残留（覆盖 canon 规则演进留下的畸形地址行——这类行 canon 自查
+		// "幂等"无法识别，如 userinfo 剥离上线前被冒号规则搅碎的 token 地址）。
+		// 空内容（无 session 也无 commit）不参与，避免误删占位行。
+		if efficiencyV2NeedContentOwnedBy(old, ownedSessions[old.RepoBranch], ownedCommits[old.RepoBranch]) {
+			staleIDs = append(staleIDs, old.NeedId)
 		}
-		staleIDs = append(staleIDs, old.NeedId)
 	}
 	if len(staleIDs) == 0 {
 		return nil
@@ -247,6 +273,27 @@ func cleanupEfficiencyV2PreCanonNeeds(db *gorm.DB, needs []models.Need) error {
 		return fmt.Errorf("delete pre-canon needs: %w", err)
 	}
 	return nil
+}
+
+// efficiencyV2NeedContentOwnedBy 判定 need 的全部 session 与 commit 是否都已被
+// 给定的归属集合接管（至少要有一项内容，空 need 返回 false）。
+func efficiencyV2NeedContentOwnedBy(need models.Need, sessions, commits map[string]bool) bool {
+	sessIDs := EfficiencyV2StringsFromJSON(need.SessionIds)
+	commitIDs := EfficiencyV2StringsFromJSON(need.CommitIds)
+	if len(sessIDs) == 0 && len(commitIDs) == 0 {
+		return false
+	}
+	for _, id := range sessIDs {
+		if !sessions[id] {
+			return false
+		}
+	}
+	for _, id := range commitIDs {
+		if !commits[id] {
+			return false
+		}
+	}
+	return true
 }
 
 func updateEfficiencyV2StageMetricNeedIDs(db *gorm.DB, needs []models.Need) error {
