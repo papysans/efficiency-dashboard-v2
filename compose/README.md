@@ -106,21 +106,21 @@ CHAT_STATS_SRC=../chat-indicator-statistics ./build.sh
    ```
 5. 配置源数据源 + 同步：chat 的 `chat_metrics` 源库（PG/ES）不在 config.yaml 里，服务起来后在看板「设置 → 数据源管理」页添加并测试连接，再到「设置 → 同步任务」按时间范围手动触发同步。
 
-## 发包与内网拉取（papysans/efficiency-dashboard-v2 → ghcr）
+## 发包与内网拉取（zgsm-sangfor/efficiency-dashboard → ghcr）
 
-镜像统一为 `ghcr.io/papysans/efficiency-dashboard-v2/<server|kbcli|portal>`，tag = `beta-<git tag>`。
+镜像统一为 `ghcr.io/zgsm-sangfor/efficiency-dashboard-v2/<server|kbcli|portal>`，tag = `beta-<git tag>`（路径中段 `efficiency-dashboard-v2` 是 workflow 写死的包名，与仓库名不同）。
 
 ### 一、外网发包（GitHub Actions）
-1. 在仓库 papysans/efficiency-dashboard-v2 打 tag 并推送：`git tag v1.1.14 && git push origin v1.1.14`（或 Actions 页手动跑 `build-and-push-images`，version 填 v1.1.14）。
-2. CI 构建多架构(amd64+arm64)并推到 `ghcr.io/papysans/efficiency-dashboard-v2/{server,kbcli,portal}:beta-v1.1.14`。
-3. ghcr 包默认 private；内网要拉，需在 GitHub 把这三个 package 设为 public（或内网用 PAT `docker login ghcr.io`）。
+1. 在仓库 zgsm-sangfor/efficiency-dashboard 打 tag 并推送：`git tag v1.3.1 && git push upstream v1.3.1`（或 Actions 页手动跑 `build-and-push-images`，version 填 v1.3.1）。
+2. CI 构建多架构(amd64+arm64)并推到 `ghcr.io/zgsm-sangfor/efficiency-dashboard-v2/{server,kbcli,portal}:beta-v1.3.1`。
+3. ghcr 包默认 private；内网要拉，需在 GitHub 把这三个 package 设为 public（或内网用 PAT `docker login ghcr.io`）。**注意：换到 zgsm-sangfor 后这三个是全新的 package，首次发包成功后必须重新逐个设为 public，否则内网拉取 401/denied。**
 
 ### 二、内网部署（二选一）
 - A 内网可直连 ghcr：`cd compose && docker compose --env-file .env pull && docker compose --env-file .env up -d`（.env 已指向上述镜像）。
 - B 离线：外网 `cd compose && bash save.sh` 导出 tar.gz → 把 tar.gz 与整个 compose/ 拷到内网 → `docker load -i efficiency-dashboard-images-*.tar.gz && cd compose && docker compose up -d`。
 
 ### 三、升级新版本
-改 compose/.env 的 `VERSION` 与 `IMAGE_*` tag（如 beta-v1.1.5）→ 重新 pull/save → `docker compose up -d`。
+改 compose/.env 的 `VERSION` 与 `IMAGE_*` tag（如 beta-v1.3.1）→ 重新 pull/save → `docker compose up -d`。
 
 ## 备注
 
