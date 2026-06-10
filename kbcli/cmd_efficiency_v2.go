@@ -185,7 +185,9 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 	}
 	counts.StageMetrics = len(metrics)
 
-	needs, err := efficiencyv2.ResolveAndUpsertEfficiencyV2Needs(db, args.EfficiencyV2, args.StartDate, args.EndDate)
+	// Need 边界解析必须看全量历史（commits 不带日期窗）；日期窗只约束上面的
+	// 事件归一化与下面的用户周聚合。详见 ResolveAndUpsertEfficiencyV2Needs 注释。
+	needs, prunedNeeds, err := efficiencyv2.ResolveAndUpsertEfficiencyV2Needs(db, args.EfficiencyV2)
 	if err != nil {
 		return counts, fmt.Errorf("resolve needs: %w", err)
 	}
@@ -212,7 +214,16 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 		}
 	}
 
-	weeklyCount, err := efficiencyv2.AggregateAndUpsertEfficiencyV2UserProductivity(db, args.EfficiencyV2, args.StartDate, args.EndDate)
+	// need prune 删过旧行（key 换代）时，窗口化重写不够：窗口外历史周的
+	// user_productivity_v2.need_ids 会悬挂引用已删 need。此时强制全量重写并
+	// 清理未再生成的周行；prune=0 的常规重算仍走窗口化路径（幂等不受影响）。
+	var weeklyCount int
+	if prunedNeeds > 0 {
+		logx.Infof("efficiency-v2: need prune 删除 %d 行，user_productivity_v2 扩为全量重写以刷新历史周引用", prunedNeeds)
+		weeklyCount, err = efficiencyv2.RebuildEfficiencyV2UserProductivityAll(db, args.EfficiencyV2)
+	} else {
+		weeklyCount, err = efficiencyv2.AggregateAndUpsertEfficiencyV2UserProductivity(db, args.EfficiencyV2, args.StartDate, args.EndDate)
+	}
 	if err != nil {
 		return counts, fmt.Errorf("user productivity v2: %w", err)
 	}

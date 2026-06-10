@@ -81,6 +81,10 @@ type EfficiencyV2Config struct {
 	TeamProfile       string `yaml:"team_profile"`
 	IdleThresholdDays int    `yaml:"idle_threshold_days"`
 	MaxNeedSpanDays   int    `yaml:"max_need_span_days"`
+	// IntegrationFlow*：episode 切分后仍然 跨度 > span 天 且 distinct 贡献者 ≥ min
+	// 的段视为多人集成流，confidence 降为 low（被既有规则踢出 eligible）。
+	IntegrationFlowSpanDays        int `yaml:"integration_flow_span_days"`
+	IntegrationFlowMinContributors int `yaml:"integration_flow_min_contributors"`
 	// BaselineCalendarCalibration 缩放基线日历(=融合工作量/团队密度)，仅作用于日历口径提效比。
 	BaselineCalendarCalibration float64                           `yaml:"baseline_calendar_calibration"`
 	VerificationCommandPatterns []string                          `yaml:"verification_command_patterns"`
@@ -115,6 +119,12 @@ func ApplyDefaults(cfg *EfficiencyV2Config) {
 	}
 	if cfg.MaxNeedSpanDays == 0 {
 		cfg.MaxNeedSpanDays = 30
+	}
+	if cfg.IntegrationFlowSpanDays == 0 {
+		cfg.IntegrationFlowSpanDays = 7
+	}
+	if cfg.IntegrationFlowMinContributors == 0 {
+		cfg.IntegrationFlowMinContributors = 3
 	}
 	if len(cfg.VerificationCommandPatterns) == 0 {
 		cfg.VerificationCommandPatterns = append([]string(nil), defaultEfficiencyV2VerificationCommandPatterns...)

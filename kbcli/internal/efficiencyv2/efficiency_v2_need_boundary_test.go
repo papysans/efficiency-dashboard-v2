@@ -64,7 +64,7 @@ func TestResolveEfficiencyV2NeedPrecedence(t *testing.T) {
 				FilePaths: []string{"docs/a.md", "docs/b.md"},
 			}),
 			wantSource: efficiencyV2BoundaryFileCluster,
-			wantID:     "cluster:u-dan:2026w21:docs",
+			wantID:     "cluster:u-dan:docs",
 			wantConf:   efficiencyV2ConfidenceLow,
 		},
 		{
@@ -72,7 +72,7 @@ func TestResolveEfficiencyV2NeedPrecedence(t *testing.T) {
 			metric:     efficiencyV2NeedTestMetric("s-orphan", "u-erin", "", "", base, base.Add(time.Hour)),
 			event:      efficiencyV2NeedTestEvent("e-orphan", "s-orphan", "u-erin", "", "", base, EfficiencyV2BoundaryEvidence{IsOrphan: true}),
 			wantSource: efficiencyV2BoundaryOrphan,
-			wantID:     "orphan:u-erin:2026w21",
+			wantID:     "orphan:u-erin",
 			wantConf:   efficiencyV2ConfidenceVeryLow,
 		},
 	}
@@ -99,7 +99,7 @@ func TestResolveEfficiencyV2NeedPrecedence(t *testing.T) {
 
 func TestResolveEfficiencyV2NeedMainlineBranchFiltering(t *testing.T) {
 	base := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
-	for _, branch := range []string{"main", "master", "develop", "release", "release/2026.05"} {
+	for _, branch := range []string{"main", "master", "develop", "release", "release/2026.05", "develop/v2"} {
 		t.Run(branch, func(t *testing.T) {
 			metric := efficiencyV2NeedTestMetric("s-"+strings.ReplaceAll(branch, "/", "-"), "u-main", "git@example.com/acme/app.git", branch, base, base.Add(time.Hour))
 			commit := efficiencyV2NeedTestCommit("c-"+strings.ReplaceAll(branch, "/", "-"), "u-main", "git@example.com/acme/app.git", branch, base.Add(30*time.Minute), "TASK-204 fix mainline regression")
@@ -127,7 +127,7 @@ func TestResolveEfficiencyV2NeedCommitTouchedFilesCreateFileCluster(t *testing.T
 	if len(needs) != 1 {
 		t.Fatalf("need count: want 1, got %d", len(needs))
 	}
-	if needs[0].BoundarySource != efficiencyV2BoundaryFileCluster || needs[0].NeedId != "cluster:u-files:2026w21:reports" {
+	if needs[0].BoundarySource != efficiencyV2BoundaryFileCluster || needs[0].NeedId != "cluster:u-files:reports" {
 		t.Fatalf("commit touched files should create file cluster, got %s/%s", needs[0].BoundarySource, needs[0].NeedId)
 	}
 	if !strings.Contains(string(needs[0].TouchedFiles), "reports/monthly.go") {
