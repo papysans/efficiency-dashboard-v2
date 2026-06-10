@@ -514,6 +514,17 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		}
 	}
 
+	// 采集侧存在把本地时间误标 UTC 的 commit（实测多用户 +8h 的「未来」时间戳），
+	// 会把 dev span 顶到未来：仅对超过当前时刻的端点 clamp，不做全量纠偏（历史时段内的偏移无法区分）。
+	now := time.Now()
+	if !devEnd.IsZero() && devEnd.After(now) {
+		log.Printf("efficiency-v2 need %s: dev_end %s 晚于当前时刻，已 clamp 到 now（疑似上游时区双偏移）", bucket.key, devEnd.Format(time.RFC3339))
+		devEnd = now
+	}
+	if !devStart.IsZero() && devStart.After(now) {
+		devStart = now
+	}
+
 	contributorIDs := efficiencyV2SortedMapKeys(contributors)
 	if primaryUser == "" && len(contributorIDs) > 0 {
 		primaryUser = contributorIDs[0]

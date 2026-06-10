@@ -24,7 +24,6 @@ import { RatioPill } from '@/components/ui/RatioPill'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
-import { Tag } from '@/components/ui/Tag'
 
 // ---- 纯函数（移植 NeedViewV2）----
 
@@ -264,7 +263,7 @@ export default function NeedList() {
       {/* header */}
       <header className="space-y-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">需求 Need 提效</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">需求看板</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             按需求边界度量提效比，日历提效看交付周期缩短了多少，人力提效看人工投入节省了多少。
           </p>
@@ -395,8 +394,6 @@ export default function NeedList() {
                 <th className={TH_NUM}>
                   <span className="inline-flex items-center gap-1 justify-end">传统人力预估 <InfoMark tip={FUSED_BASELINE_WORK_TIP} /></span>
                 </th>
-                <th className={TH}>质量</th>
-                <th className={TH}>边界来源</th>
                 <th className={TH}>
                   <SortableTh field="devStartTs" label="记录时间" active={isSortActive('devStartTs')} desc={isSortDesc('devStartTs')} onSort={onSortChange} />
                 </th>
@@ -406,14 +403,14 @@ export default function NeedList() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={14}>
+                    <td className={TD} colSpan={12}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={14}>
+                  <td colSpan={12}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无 Need 数据</div>
                   </td>
                 </tr>
@@ -462,23 +459,6 @@ export default function NeedList() {
                     <td className={TD_NUM}>{formatDuration(row.baseline_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.total_active_work_corrected_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.baseline_fused_work_min)}</td>
-                    <td className={TD}>
-                      {row.calendar_outlier_flag || row.work_outlier_flag ? (
-                        // 按口径标异常：日历/工作量分别提示，二者独立(可同时出现)。
-                        <span className="inline-flex gap-1">
-                          {row.calendar_outlier_flag && <Tag tone="error">日历异常</Tag>}
-                          {row.work_outlier_flag && <Tag tone="error">工作量异常</Tag>}
-                        </span>
-                      ) : row.outlier_flag ? (
-                        // 兜底：旧 API 仅返回派生 outlier_flag 时仍显通用「异常」。
-                        <Tag tone="error">异常</Tag>
-                      ) : row.coverage_eligible ? (
-                        <Tag tone="success">可计入</Tag>
-                      ) : (
-                        <span className="text-gray-300 dark:text-gray-600">-</span>
-                      )}
-                    </td>
-                    <td className={TD}>{boundarySourceLabel(row.boundary_source)}</td>
                     <td className={TD}>{formatDateTimeNoYear(row.dev_start_ts)}</td>
                   </tr>
                 ))
