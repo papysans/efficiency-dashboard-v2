@@ -122,10 +122,13 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 	if err := governance.ApplyCommitGovernance(db, govCfg, start, end); err != nil {
 		return fmt.Errorf("commit governance pass 失败: %w", err)
 	}
+	// repo 地址归一开关由治理配置注入（normalization.repo_addr_canon），不走 efficiency_v2 yaml。
+	effCfg := appconfig.Cfg.EfficiencyV2
+	effCfg.RepoAddrCanon = govCfg.Normalization.RepoAddrCanon
 	return RunEfficiencyV2Pipeline(db, EfficiencyV2PipelineArgs{
 		StartDate:      start,
 		EndDate:        end,
-		EfficiencyV2:   appconfig.Cfg.EfficiencyV2,
+		EfficiencyV2:   effCfg,
 		AIEstimation:   appconfig.Cfg.AIEstimation,
 		AlgoEstimation: appconfig.Cfg.AlgoEstimation,
 	})

@@ -254,6 +254,42 @@ func TestResolveEfficiencyV2NeedLowConfidenceCoverageEligibleFalse(t *testing.T)
 	}
 }
 
+// TestResolveEfficiencyV2NeedRepoAddrCanonMergesWritingStyles 验证 repo_addr_canon 开启时，
+// 同一仓库的 git@ 与 https 写法分裂在 branch 边界处合并为同一个 need（key 用归一地址）。
+func TestResolveEfficiencyV2NeedRepoAddrCanonMergesWritingStyles(t *testing.T) {
+	base := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
+	metric := efficiencyV2NeedTestMetric("s-canon", "u-alice", "git@example.com:acme/app.git", "feature/canon-x", base, base.Add(time.Hour))
+	commit := efficiencyV2NeedTestCommit("c-canon", "u-alice", "https://example.com/acme/app", "feature/canon-x", base.Add(30*time.Minute), "feat: canon merge")
+
+	// 开关关闭：两种写法分裂成两个 branch need（旧行为）。
+	needsOff := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{commit}, EfficiencyV2Config{})
+	if len(needsOff) != 2 {
+		t.Fatalf("canon off: need count = %d, want 2 (写法分裂)", len(needsOff))
+	}
+
+	// 开关开启：归一后合并成同一个 need，key 内嵌归一地址。
+	needsOn := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{commit}, EfficiencyV2Config{RepoAddrCanon: true})
+	if len(needsOn) != 1 {
+		t.Fatalf("canon on: need count = %d, want 1 (写法归一合并)", len(needsOn))
+	}
+	got := needsOn[0]
+	if got.BoundarySource != efficiencyV2BoundaryBranch {
+		t.Fatalf("boundary source = %s, want %s", got.BoundarySource, efficiencyV2BoundaryBranch)
+	}
+	wantKey := "branch:example.com/acme/app:feature/canon-x"
+	if got.BoundaryKey != wantKey {
+		t.Fatalf("boundary key = %q, want %q", got.BoundaryKey, wantKey)
+	}
+	if got.RepoAddr != "example.com/acme/app" {
+		t.Fatalf("need repo_addr = %q, want 归一地址 example.com/acme/app", got.RepoAddr)
+	}
+	sessionIDs := EfficiencyV2StringsFromJSON(got.SessionIds)
+	commitIDs := EfficiencyV2StringsFromJSON(got.CommitIds)
+	if len(sessionIDs) != 1 || len(commitIDs) != 1 {
+		t.Fatalf("merged need 应同时含 session 与 commit, got sessions=%v commits=%v", sessionIDs, commitIDs)
+	}
+}
+
 func efficiencyV2NeedTestMetric(sessionID, userID, repoAddr, branch string, start, end time.Time) models.SessionStageMetric {
 	return models.SessionStageMetric{
 		SessionId:      sessionID,

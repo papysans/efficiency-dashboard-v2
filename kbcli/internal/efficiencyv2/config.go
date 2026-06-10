@@ -92,6 +92,14 @@ type EfficiencyV2Config struct {
 	BaselineAlgo                EfficiencyV2BaselineAlgoOverrides `yaml:"baseline_algo"`
 	// AnchorSetCSV kNN 锚点母表 CSV 路径，供 import-anchor 命令灌入 anchor_set。
 	AnchorSetCSV string `yaml:"anchor_set_csv"`
+	// ParallelSessionUnion 并行 session 人时去重：need 内按 user 分组，每个 user 的
+	// person_min 贡献 = min(sum(total_active_min), 该 user session 区间并集时长)。
+	// *bool 区分 yaml 未写(nil→默认 true)与显式 false（参考 Exclusion.RawScope 的惯用法）。
+	ParallelSessionUnion *bool `yaml:"parallel_session_union"`
+	// RepoAddrCanon repo 地址写法归一开关，来自治理配置 normalization.repo_addr_canon，
+	// 由 efficiency-v2 管线入口注入（不走本 yaml）。开启时 need 边界 key 构造与
+	// repo+branch 配对比较统一用归一地址（governance.CanonRepoAddr）。
+	RepoAddrCanon bool `yaml:"-"`
 }
 
 var defaultEfficiencyV2VerificationCommandPatterns = []string{
@@ -195,6 +203,10 @@ func ApplyDefaults(cfg *EfficiencyV2Config) {
 		cfg.ConfidenceThresholds.OutlierLocPerCalendarMinMax = 7.0
 	}
 	cfg.Exclusion.Scope = resolveEfficiencyV2ExclusionScope(cfg.Exclusion.RawScope)
+	if cfg.ParallelSessionUnion == nil {
+		enabled := true
+		cfg.ParallelSessionUnion = &enabled
+	}
 	if cfg.BaselineCalendarCalibration <= 0 {
 		cfg.BaselineCalendarCalibration = 1.0
 	}

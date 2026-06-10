@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"kanban/core/models"
+	"kanban/kbcli/internal/governance"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -117,7 +118,67 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 	if err := updateEfficiencyV2StageMetricNeedIDs(db, needs); err != nil {
 		return nil, err
 	}
+	if cfg.RepoAddrCanon {
+		if err := cleanupEfficiencyV2PreCanonNeeds(db, needs); err != nil {
+			return nil, err
+		}
+	}
 	return needs, nil
+}
+
+// cleanupEfficiencyV2PreCanonNeeds 清理 repo 地址归一前残留的旧 need 行。
+// 背景：branch 边界 key 内嵌 repo_addr（branch:{repo}:{branch}），开启 repo_addr_canon 后
+// 同一边界的 key 变成归一写法，needs 表的 (boundary_source, boundary_key) 唯一索引
+// 不会覆盖旧 key 行，留下 canon 前的旧行与新行重复统计同一边界。
+// 保护条件（全部满足才删，缺一不可，防止误删正常 need）：
+//  1. boundary_source 相同且仅限 lv2_branch——其他 source 的 key 不含 repo_addr，不受归一影响；
+//  2. repo_branch 与新 need 相同——同仓库不同分支是不同 need，绝不能互删；
+//  3. 旧行 repo_addr 经 Canon 后重构出的边界 key == 本轮某个新 need 的 boundary_key
+//     （即 canon 后 repo_addr 相同、boundary_key 不同的 pre-canon 旧写法行），
+//     且旧行自身 key 不等于该 canon key——新行本轮已聚合落库，删除旧行不丢数据。
+//
+// 采用 DELETE 而非 UPDATE 旧行 key 迁移：canon key 的新行本轮已存在，UPDATE 必撞唯一索引；
+// 旧行的会话/commit 归属已被新行重新聚合吸收，删除幂等且无信息损失。
+func cleanupEfficiencyV2PreCanonNeeds(db *gorm.DB, needs []models.Need) error {
+	newKeys := make(map[string]bool)
+	branches := make(map[string]bool)
+	for _, need := range needs {
+		if need.BoundarySource != efficiencyV2BoundaryBranch {
+			continue
+		}
+		newKeys[need.BoundaryKey] = true
+		if need.RepoBranch != "" {
+			branches[need.RepoBranch] = true
+		}
+	}
+	if len(newKeys) == 0 {
+		return nil
+	}
+	var existing []models.Need
+	if err := db.Where("boundary_source = ?", efficiencyV2BoundaryBranch).
+		Where("repo_branch IN ?", efficiencyV2SortedMapKeys(branches)).
+		Find(&existing).Error; err != nil {
+		return fmt.Errorf("query pre-canon needs: %w", err)
+	}
+	var staleIDs []string
+	for _, old := range existing {
+		canonKey := efficiencyV2ClampNeedKey(fmt.Sprintf("branch:%s:%s", governance.CanonRepoAddr(old.RepoAddr), old.RepoBranch))
+		if canonKey == old.BoundaryKey {
+			continue // 已是 canon 写法（含本轮新行自身），不动
+		}
+		if !newKeys[canonKey] {
+			continue // 本轮窗口没有对应的 canon 新行，保守保留
+		}
+		staleIDs = append(staleIDs, old.NeedId)
+	}
+	if len(staleIDs) == 0 {
+		return nil
+	}
+	sort.Strings(staleIDs)
+	if err := db.Where("need_id IN ?", staleIDs).Delete(&models.Need{}).Error; err != nil {
+		return fmt.Errorf("delete pre-canon needs: %w", err)
+	}
+	return nil
 }
 
 func updateEfficiencyV2StageMetricNeedIDs(db *gorm.DB, needs []models.Need) error {
@@ -152,6 +213,16 @@ func ResolveEfficiencyV2Needs(stageMetrics []models.SessionStageMetric, events [
 	}
 	for _, commit := range commits {
 		candidates = append(candidates, efficiencyV2CandidateFromCommit(commit))
+	}
+	// repo 地址写法归一（治理配置 normalization.repo_addr_canon）：候选统一在此 Canon 一次，
+	// 下游所有用到 repoAddr 的点——branch 边界 key 构造（branch:{repo}:{branch}）、
+	// session↔commit 按 repo+branch 配对的线索传播与分桶——都用归一地址，
+	// 让 git@ 与 https、带不带 .git 等写法分裂的同一仓库合并成同一个 need。
+	// conversations/commits 表的 repo_addr 原值不动（治理不改原始数据），仅派生侧归一。
+	if cfg.RepoAddrCanon {
+		for i := range candidates {
+			candidates[i].repoAddr = governance.CanonRepoAddr(candidates[i].repoAddr)
+		}
 	}
 	efficiencyV2PropagateCommitBoundaryClues(candidates)
 
