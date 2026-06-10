@@ -10,9 +10,9 @@ const navGroups = [
     items: [
       { to: '/', label: '总览', end: true },
       { to: '/needs-v2', label: '需求' },
-      { to: '/task-v2', label: '任务' },
+      // 「任务」(/task-v2)、「仓库」(/repo-v2) 暂从导航隐藏：数据缺失、单独入口意义不大。
+      // 路由仍保留（其他页面有互链跳转到任务/仓库详情），后续数据补齐后可恢复。
       { to: '/user-v2', label: '用户' },
-      { to: '/repo-v2', label: '仓库' },
       { to: '/org-tree-v2', label: '组织' },
       { to: '/project-v2', label: '项目' },
       { to: '/commit-v2', label: '提交' },
