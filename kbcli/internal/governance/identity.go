@@ -13,7 +13,9 @@ import (
 
 // builtinBotEmailRe 内置 bot 邮箱正则（builtin_bot_patterns=true 时启用），
 // 命中即视为机器人身份（noreply/CI bot 等非真人交付）。
-var builtinBotEmailRe = regexp.MustCompile(`(?i)bot|noreply|no-reply|actions|robot`)
+// bot/actions/robot 用 \b 锚定，避免误伤 zhangbotao@、abbot@ 这类真人拼音邮箱；
+// noreply/no-reply 无误伤面，保持子串匹配。
+var builtinBotEmailRe = regexp.MustCompile(`(?i)\bbot\b|noreply|no-reply|\bactions\b|\brobot\b`)
 
 // governanceGlobMatch 大小写不敏感的通配符匹配（* 匹配任意串，glob 语法）；
 // 模式非法时视为不命中，不报错。

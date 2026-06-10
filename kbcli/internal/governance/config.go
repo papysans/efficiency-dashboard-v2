@@ -24,7 +24,7 @@ type IdentityMapConfig struct {
 
 // IdentityConfig 身份治理配置：识别并排除测试/机器人身份伪造的交付。
 type IdentityConfig struct {
-	BuiltinBotPatterns   bool              `yaml:"builtin_bot_patterns"`   // 启用内置邮箱正则 bot|noreply|no-reply|actions|robot
+	BuiltinBotPatterns   bool              `yaml:"builtin_bot_patterns"`   // 启用内置邮箱正则（见 identity.go builtinBotEmailRe，词边界锚定）
 	BlockedEmails        []string          `yaml:"blocked_emails"`         // 精确匹配的黑名单 git 邮箱
 	BlockedEmailPatterns []string          `yaml:"blocked_email_patterns"` // 通配符邮箱模式，如 *@example.com
 	BlockedNamePatterns  []string          `yaml:"blocked_name_patterns"`  // git user name 黑名单模式
@@ -61,7 +61,8 @@ func DefaultConfig() Config {
 		CommitRules: CommitRulesConfig{
 			DiffLinesSoftcap: 3000,
 			DownweightCommentPatterns: []DownweightRule{
-				{Pattern: "(?i)merge|sync|format|style|scaffold|init", Factor: 0.2},
+				// \b 锚定避免子串误伤（definitely 含 init、merged 含 merge）
+				{Pattern: `(?i)\b(merge|sync|format|style|scaffold|init)\b`, Factor: 0.2},
 			},
 			ReplayDedup: true,
 		},
