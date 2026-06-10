@@ -397,6 +397,60 @@ func TestAggregateEfficiencyV2NeedActuals_AlwaysIncludesCoveredRuleReason(t *tes
 	}
 }
 
+func TestAggregateEfficiencyV2NeedActuals_GovernanceEffectiveCaliber(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	session := efficiencyV2AggTestMetric("s-1", "u-alice", base, base.Add(60*time.Minute), 60)
+
+	effCapped := int64(600)
+	effZero := int64(0)
+	commits := []models.Commit{
+		// 正常 commit：未治理（effective=nil 回退原值），落在 session 窗内 → covered 100
+		{CommitId: "c-norm", UserId: "u-alice", CommitTime: base.Add(30 * time.Minute), DiffLines: 100, Silica: 0.8, Comment: "feat: x"},
+		// 巨型提交被 softcap+降权折算到 600，窗外 → uncovered 只吃 600 而非原始 5000
+		{CommitId: "c-capped", UserId: "u-alice", CommitTime: base.Add(5 * time.Hour), DiffLines: 5000, EffectiveDiffLines: &effCapped, Comment: "scaffold init"},
+		// 被治理排除：即使混进聚合输入（查询过滤被绕过），loc 也记 0
+		{CommitId: "c-excluded", UserId: "u-alice", CommitTime: base.Add(31 * time.Minute), DiffLines: 400, ExcludedFlag: true, ExcludedReason: "identity:blocked_email", Comment: "fake delivery"},
+		// rebase 重放重复：effective=0，不重复计入交付量
+		{CommitId: "c-replay", UserId: "u-alice", CommitTime: base.Add(32 * time.Minute), DiffLines: 300, EffectiveDiffLines: &effZero, ReplayOf: "c-norm", Comment: "rebase replay done"},
+		// merge commit：W1 merge 规则置 effective=0
+		{CommitId: "c-merge", UserId: "u-alice", CommitTime: base.Add(33 * time.Minute), DiffLines: 800, EffectiveDiffLines: &effZero, IsMerge: true, Comment: "Merge branch 'main'"},
+	}
+	need := efficiencyV2AggTestNeed("need-gov", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice",
+		[]string{"s-1"}, []string{"c-norm", "c-capped", "c-excluded", "c-replay", "c-merge"})
+
+	algo := estimator.EstimateConfig{CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5}
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{session}, commits, EfficiencyV2Config{}, algo)
+	got := updated[0]
+
+	// loc 口径只吃 effective：100 + 600 + 0(excluded) + 0(replay) + 0(merge) = 700
+	if got.ChangedLoc != 700 {
+		t.Fatalf("total_loc_net = %d, want 700 (effective caliber)", got.ChangedLoc)
+	}
+	if got.AICoveredLoc != 100 {
+		t.Fatalf("ai_covered_loc = %d, want 100", got.AICoveredLoc)
+	}
+	if got.UncoveredLoc != 600 {
+		t.Fatalf("uncovered_loc = %d, want 600 (capped, not raw 5000)", got.UncoveredLoc)
+	}
+	uncoveredIDs := EfficiencyV2StringsFromJSON(got.UncoveredCommitIds)
+	if len(uncoveredIDs) != 1 || uncoveredIDs[0] != "c-capped" {
+		t.Fatalf("uncovered_commit_ids = %v, want [c-capped]", uncoveredIDs)
+	}
+	// uncovered 估时只吃 effective：600 / (100/480) = 2880 min
+	wantUncoveredMin := 600.0 / (100.0 / 480.0)
+	if math.Abs(got.UncoveredHumanMin-wantUncoveredMin) > 0.01 {
+		t.Fatalf("uncovered_human_min = %.2f, want %.2f", got.UncoveredHumanMin, wantUncoveredMin)
+	}
+	wantCorrected := 60.0 + wantUncoveredMin
+	if math.Abs(got.TotalActiveWorkCorrectedMin-wantCorrected) > 0.01 {
+		t.Fatalf("active_work_corrected_min = %.2f, want %.2f", got.TotalActiveWorkCorrectedMin, wantCorrected)
+	}
+	// 计数类口径不变：5 个 commit 全部计数
+	if got.CommitCount != 5 {
+		t.Fatalf("commit_count = %d, want 5 (count caliber unchanged)", got.CommitCount)
+	}
+}
+
 func TestNormalizeEfficiencyV2AlgoConfigCommitMinutesPerLineOverridesLineRate(t *testing.T) {
 	algo := NormalizeEfficiencyV2AlgoConfig(estimator.EstimateConfig{
 		CommitLinePerMinutes: 0.2,

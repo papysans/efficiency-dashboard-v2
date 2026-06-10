@@ -71,7 +71,8 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 	if err := db.Order("session_id ASC").Order("event_start_ts ASC").Order("event_id ASC").Find(&events).Error; err != nil {
 		return nil, fmt.Errorf("query conversation events: %w", err)
 	}
-	commitsQuery := db.Order("commit_time ASC").Order("commit_id ASC")
+	// 治理排除的 commit 不参与 Need 边界构建（双保险：聚合口径处也按 effective 记 0）
+	commitsQuery := db.Where("excluded_flag = false").Order("commit_time ASC").Order("commit_id ASC")
 	if startDate != "" {
 		commitsQuery = commitsQuery.Where("DATE(commit_time) >= ?", startDate)
 	}
