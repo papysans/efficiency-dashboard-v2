@@ -25,7 +25,7 @@ func TestEfficiencyV2NeedActualsAggregation_PopulatesActualSignalFields(t *testi
 	if _, err := BuildAndUpsertEfficiencyV2SessionStageMetrics(db, events, cfg.EfficiencyV2); err != nil {
 		t.Fatalf("build/upsert stage metrics: %v", err)
 	}
-	needs, err := ResolveAndUpsertEfficiencyV2Needs(db, cfg.EfficiencyV2, "", "")
+	needs, _, err := ResolveAndUpsertEfficiencyV2Needs(db, cfg.EfficiencyV2)
 	if err != nil {
 		t.Fatalf("resolve needs: %v", err)
 	}

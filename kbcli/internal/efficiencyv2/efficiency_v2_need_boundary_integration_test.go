@@ -33,7 +33,7 @@ func TestEfficiencyV2NeedBoundaryResolution_PersistsFixtureNeeds(t *testing.T) {
 		t.Fatalf("build/upsert stage metrics: %v", err)
 	}
 
-	needs, err := ResolveAndUpsertEfficiencyV2Needs(db, cfg.EfficiencyV2, "", "")
+	needs, _, err := ResolveAndUpsertEfficiencyV2Needs(db, cfg.EfficiencyV2)
 	if err != nil {
 		t.Fatalf("resolve/upsert needs: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestEfficiencyV2NeedBoundaryResolution_PersistsFixtureNeeds(t *testing.T) {
 	assertEfficiencyV2FixtureNeeds(t, db, fixture)
 
 	firstNeedIDsByBoundary := loadEfficiencyV2NeedIDsByBoundary(t, db)
-	needsAgain, err := ResolveAndUpsertEfficiencyV2Needs(db, cfg.EfficiencyV2, "", "")
+	needsAgain, _, err := ResolveAndUpsertEfficiencyV2Needs(db, cfg.EfficiencyV2)
 	if err != nil {
 		t.Fatalf("rerun resolve/upsert needs: %v", err)
 	}
