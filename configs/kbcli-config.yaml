@@ -153,6 +153,9 @@ efficiency_v2:
     weight_llm: 0.25
     # 工作量换算为日历周期的密度，只影响日历提效，不影响工作量提效。
     team_work_density: 0.35
+  # 并行 session 人时去重：need 内同一用户多个时间窗重叠的 session（同时开多个 IDE 会话），
+  # active 人时按该用户 session 区间并集时长封顶。默认 true；写 false 恢复直接求和。
+  # parallel_session_union: true
   stage:
     # 原始工具调用没有结束时间时，用这些默认耗时补齐。
     default_edit_duration_seconds: 30
