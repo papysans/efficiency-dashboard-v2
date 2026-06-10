@@ -56,6 +56,20 @@ type repoFileMeta struct {
 // 使用正则从路径中拆解出仓库、分支、日期和 commit ID，用于后续构造指纹文件路径
 var reRepoPath = regexp.MustCompile(`^([^/]+)/([^/]+)/(\d{4})/(\d{2})/(\d{2})/([^/]+)\.json$`)
 
+// reDiffGitHeader 匹配 diff 头行 "diff --git a/<path> b/<path>"，b 侧为提交后路径（重命名取新名）。
+var reDiffGitHeader = regexp.MustCompile(`(?m)^diff --git a/(\S+) b/(\S+)`)
+
+// extractTouchedFilesFromDiff 从完整 diff 文本的 "diff --git" 头行提取 b 侧文件路径列表
+// （去重排序），用于源 JSON files 数组缺失时回填 touched_files。空 diff 返回空。
+func extractTouchedFilesFromDiff(diff string) []string {
+	matches := reDiffGitHeader.FindAllStringSubmatch(diff, -1)
+	files := make([]string, 0, len(matches))
+	for _, m := range matches {
+		files = append(files, m[2])
+	}
+	return efficiencyv2.EfficiencyV2SortedUnique(files)
+}
+
 // scanRepoDir 递归扫描 repo 目录，收集所有待导入的 commit JSON 文件元信息。
 //
 // 参数:
@@ -189,6 +203,12 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 
 	if commitData.WorkDir == "" {
 		commitData.WorkDir = commitData.WorkPath
+	}
+
+	// touched_files 兜底：上游约 1/3 的上报 files 数组为空但 diff 文本完整，
+	// 此时从 diff 头行提取 b 侧路径回填，保证下游 need 边界/file-cluster 有文件信号。
+	if len(commitData.Files) == 0 && strings.TrimSpace(commitData.Diff) != "" {
+		commitData.Files = extractTouchedFilesFromDiff(commitData.Diff)
 	}
 
 	addedLines := extractAddedLinesFromDiff(commitData.Diff)
