@@ -1,9 +1,10 @@
-import { Outlet, NavLink, Link } from 'react-router'
+import { Outlet, NavLink, Link, useLocation } from 'react-router'
 import { useGlobalConfig } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
 
-// 两段式导航：「效能」= 现有 8 项；「平台」= chat-indicator-statistics 客观指标（实时查询/设置）。
+// 两段式导航：「效能」= 现有 8 项；「平台」= chat-indicator-statistics 客观指标（平台指标/设置）。
 // 「平台」组仅在 /v2/config 的 chat_stats_enabled === true 时渲染（false/未配置/请求中一律隐藏）。
+// match = 高亮前缀：平台指标/设置各有多个子页（/platform/*、/settings/*），单入口按前缀保持高亮。
 const navGroups = [
   {
     group: '效能',
@@ -21,14 +22,15 @@ const navGroups = [
   {
     group: '平台',
     items: [
-      { to: '/platform/realtime', label: '实时查询' },
-      { to: '/settings/pricing', label: '设置' },
+      { to: '/platform/overview', label: '平台指标', match: '/platform' },
+      { to: '/settings/pricing', label: '设置', match: '/settings' },
     ],
   },
 ] as const
 
 export default function AppShell() {
   const { theme, toggle } = useTheme()
+  const { pathname } = useLocation()
   const { data: globalConfig } = useGlobalConfig()
   const dashboardTitle = `${globalConfig?.dashboard_title_prefix ?? ''}效能看板`
   const chatStatsEnabled = globalConfig?.chat_stats_enabled === true
@@ -64,7 +66,7 @@ export default function AppShell() {
                     end={'end' in item ? item.end : undefined}
                     className={({ isActive }) =>
                       `px-3 py-1.5 rounded-lg text-sm font-medium no-underline transition-colors ${
-                        isActive
+                        isActive || ('match' in item && pathname.startsWith(item.match))
                           ? 'bg-apple-blue text-white'
                           : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-white/10'
                       }`

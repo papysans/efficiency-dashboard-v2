@@ -3,7 +3,6 @@
 // 避免必然 400；若仍撞限频（多人同时刷），错误条直接展示 chat 侧友好文案「请 N 秒后再试」。
 // datasource_id 不传 = 服务端自动取第一个启用的数据源（内网单源，省一次 /datasources 请求）。
 import { useEffect, useMemo, useState } from 'react'
-import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import { useChatRealtime, useGlobalConfig } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
@@ -12,7 +11,16 @@ import { EChart } from '@/components/charts/EChart'
 import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { formatNumber } from '@/lib/formatters'
 import { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
-import { ChatUserCell, PIE_COLORS, PlatformTabs, shortToken } from './platformShared'
+import {
+  baseTooltip,
+  ChartCard,
+  ChatUserCell,
+  EmptyHint,
+  multiAreaOption,
+  PIE_COLORS,
+  PlatformTabs,
+  shortToken,
+} from './platformShared'
 
 type Range = '30m' | '1h' | '3h'
 
@@ -25,76 +33,7 @@ const RANGE_OPTIONS: Array<{ value: Range; label: string }> = [
 /** chat 侧 /stats/realtime 全局限频窗口（10 秒一次）。 */
 const COOLDOWN_MS = 10_000
 
-// ---- option 工厂（纯函数，useMemo 按 data/theme 重建） ----
-
-function rgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r},${g},${b},${alpha})`
-}
-
-function baseTooltip(p: ChartPalette) {
-  return {
-    backgroundColor: p.tooltipBg,
-    borderColor: p.tooltipBorder,
-    borderWidth: 1,
-    textStyle: { color: p.tooltipText },
-  }
-}
-
-interface AreaSeries {
-  name: string
-  color: string
-  data: number[]
-}
-
-/** 折线+渐变面积图（分钟趋势通用）。yFmt 控制 y 轴刻度格式（token 缩写 / 百分比）。 */
-function multiAreaOption(
-  p: ChartPalette,
-  times: string[],
-  series: AreaSeries[],
-  opts: { yFmt?: (v: number) => string; yMax?: number } = {},
-): EChartsOption {
-  return {
-    animation: true,
-    grid: { left: 8, right: 16, top: series.length > 1 ? 36 : 24, bottom: 8, containLabel: true },
-    tooltip: { trigger: 'axis', ...baseTooltip(p) },
-    legend:
-      series.length > 1
-        ? { top: 0, left: 'center', textStyle: { color: p.textColor }, itemWidth: 14, itemHeight: 8 }
-        : undefined,
-    xAxis: {
-      type: 'category',
-      data: times,
-      boundaryGap: false,
-      axisLine: { lineStyle: { color: p.axisColor } },
-      axisLabel: { color: p.textColor, hideOverlap: true },
-      axisTick: { show: false },
-    },
-    yAxis: {
-      type: 'value',
-      max: opts.yMax,
-      axisLabel: { color: p.textColor, formatter: opts.yFmt },
-      splitLine: { lineStyle: { color: p.splitLineColor } },
-    },
-    series: series.map((s) => ({
-      name: s.name,
-      type: 'line',
-      smooth: true,
-      symbol: 'none',
-      data: s.data,
-      lineStyle: { color: s.color, width: 2 },
-      itemStyle: { color: s.color },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: rgba(s.color, 0.25) },
-          { offset: 1, color: rgba(s.color, 0) },
-        ]),
-      },
-    })),
-  }
-}
+// ---- option 工厂（纯函数，useMemo 按 data/theme 重建；通用面积图工厂在 platformShared） ----
 
 /** 环形分布图（模型分布 / Auto 路由细分）。 */
 function donutOption(p: ChartPalette, items: Array<{ name: string; value: number }>): EChartsOption {
@@ -455,30 +394,6 @@ export default function RealtimeReport() {
           暂无数据，点击「刷新」开始查询
         </div>
       ) : null}
-    </div>
-  )
-}
-
-function ChartCard({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
-  return (
-    <section className="glass rounded-2xl p-5 hover:shadow-lg transition-shadow">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h2>
-        {sub && <span className="text-xs text-gray-400 dark:text-gray-500">{sub}</span>}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function EmptyHint({ compact = false }: { compact?: boolean }) {
-  return (
-    <div
-      className={`flex items-center justify-center text-sm text-gray-400 dark:text-gray-500 ${
-        compact ? 'py-10' : 'h-[260px]'
-      }`}
-    >
-      暂无数据
     </div>
   )
 }

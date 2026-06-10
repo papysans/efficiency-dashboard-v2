@@ -17,6 +17,7 @@ import CommitDetail from '@/pages/commits/CommitDetail'
 import WorkDirDetail from '@/pages/workdir/WorkDirDetail'
 import ProjectList from '@/pages/projects/ProjectList'
 import ProjectDetail from '@/pages/projects/ProjectDetail'
+import PlatformOverview from '@/pages/platform/PlatformOverview'
 import RealtimeReport from '@/pages/platform/RealtimeReport'
 import RealtimeQuery from '@/pages/platform/RealtimeQuery'
 import Pricing from '@/pages/settings/Pricing'
@@ -64,6 +65,7 @@ export const router = createBrowserRouter([
       { path: 'workdir/:workDirId', element: <WorkDirDetail /> },
 
       // 平台客观指标（chat-indicator-statistics 代理）+ 设置区（占位骨架，T3/T4 填充）
+      { path: 'platform/overview', element: <PlatformOverview /> },
       { path: 'platform/realtime', element: <RealtimeReport /> },
       { path: 'platform/realtime/query', element: <RealtimeQuery /> },
       { path: 'settings/pricing', element: <Pricing /> },

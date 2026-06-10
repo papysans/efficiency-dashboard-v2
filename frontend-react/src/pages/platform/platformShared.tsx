@@ -1,7 +1,11 @@
-// 平台（chat-indicator-statistics 代理）两个子页的共享小件：子页 tab、token 缩写、错误码判断、
-// 饼图色板、universal_id → 看板用户互链单元格。
+// 平台（chat-indicator-statistics 代理）三个子页的共享小件：子页 tab、token 缩写、错误码判断、
+// 饼图色板、universal_id → 看板用户互链单元格、ECharts option 工厂与图表卡片。
 // 仅平台页内部复用，不进 src/api/ 或全局组件（避免与并行任务冲突）。
+import type { ReactNode } from 'react'
 import { Link, NavLink } from 'react-router'
+import * as echarts from 'echarts'
+import type { EChartsOption } from 'echarts'
+import type { ChartPalette } from '@/components/charts/chartTheme'
 
 /** 饼图/多系列色板（对齐 chat 侧 Apple 系配色，主色换看板 Apple Blue）。 */
 export const PIE_COLORS = [
@@ -66,12 +70,125 @@ export function ChatUserCell({
   return fallback ? <span title={uid || undefined}>{fallback}</span> : <span>-</span>
 }
 
+// ---- ECharts option 工厂 + 图表卡片（态势页 / 总览页共用） ----
+
+function rgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+export function baseTooltip(p: ChartPalette) {
+  return {
+    backgroundColor: p.tooltipBg,
+    borderColor: p.tooltipBorder,
+    borderWidth: 1,
+    textStyle: { color: p.tooltipText },
+  }
+}
+
+export interface AreaSeries {
+  name: string
+  color: string
+  data: number[]
+}
+
+/** 折线+渐变面积图（分钟/按日趋势通用）。yFmt 控制 y 轴刻度格式（token 缩写 / 百分比 / 金额）。 */
+export function multiAreaOption(
+  p: ChartPalette,
+  times: string[],
+  series: AreaSeries[],
+  opts: { yFmt?: (v: number) => string; yMax?: number } = {},
+): EChartsOption {
+  return {
+    animation: true,
+    grid: { left: 8, right: 16, top: series.length > 1 ? 36 : 24, bottom: 8, containLabel: true },
+    tooltip: { trigger: 'axis', ...baseTooltip(p) },
+    legend:
+      series.length > 1
+        ? { top: 0, left: 'center', textStyle: { color: p.textColor }, itemWidth: 14, itemHeight: 8 }
+        : undefined,
+    xAxis: {
+      type: 'category',
+      data: times,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: p.axisColor } },
+      axisLabel: { color: p.textColor, hideOverlap: true },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      max: opts.yMax,
+      axisLabel: { color: p.textColor, formatter: opts.yFmt },
+      splitLine: { lineStyle: { color: p.splitLineColor } },
+    },
+    series: series.map((s) => ({
+      name: s.name,
+      type: 'line',
+      smooth: true,
+      symbol: 'none',
+      data: s.data,
+      lineStyle: { color: s.color, width: 2 },
+      itemStyle: { color: s.color },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: rgba(s.color, 0.25) },
+          { offset: 1, color: rgba(s.color, 0) },
+        ]),
+      },
+    })),
+  }
+}
+
+/** 玻璃拟态图表/表格卡片。extra 放在标题行右侧（如模型筛选下拉）。 */
+export function ChartCard({
+  title,
+  sub,
+  extra,
+  children,
+}: {
+  title: string
+  sub?: string
+  extra?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="glass rounded-2xl p-5 hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{title}</h2>
+        {sub && !extra && <span className="text-xs text-gray-400 dark:text-gray-500">{sub}</span>}
+        {extra && (
+          <div className="flex items-center gap-2">
+            {sub && <span className="text-xs text-gray-400 dark:text-gray-500">{sub}</span>}
+            {extra}
+          </div>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+export function EmptyHint({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={`flex items-center justify-center text-sm text-gray-400 dark:text-gray-500 ${
+        compact ? 'py-10' : 'h-[260px]'
+      }`}
+    >
+      暂无数据
+    </div>
+  )
+}
+
 const TABS = [
+  { to: '/platform/overview', label: '平台总览', end: true },
   { to: '/platform/realtime', label: '实时态势', end: true },
   { to: '/platform/realtime/query', label: '明细查询', end: false },
 ]
 
-/** 实时态势 / 明细查询 两子页切换 tab（玻璃药丸样式）。 */
+/** 平台总览 / 实时态势 / 明细查询 三子页切换 tab（玻璃药丸样式）。 */
 export function PlatformTabs() {
   return (
     <nav className="glass rounded-xl p-1 inline-flex items-center gap-1" aria-label="平台子页切换">
