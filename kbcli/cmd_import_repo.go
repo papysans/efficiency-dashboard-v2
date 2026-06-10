@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/core/models"
+	"kanban/core/storage"
 	"kanban/core/utils"
 	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/logx"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -68,7 +68,7 @@ var reRepoPath = regexp.MustCompile(`^([^/]+)/([^/]+)/(\d{4})/(\d{2})/(\d{2})/([
 //   - error: 扫描过程中发生的错误
 //
 // 关键技术原理:
-//  1. 使用 filepath.Walk 递归遍历目录树
+//  1. 使用 storage.Walk 递归遍历目录树（disk/s3 双后端）
 //  2. 通过正则表达式 reRepoPath 校验并拆解文件路径，确保只有符合约定格式的文件才会被纳入
 //  3. 日期过滤：根据文件路径中的日期进行范围判断
 //  4. 幂等性控制：非 force 模式下，若数据库已有该 commit 记录，则直接跳过
@@ -76,20 +76,12 @@ func scanRepoDir(repoDir string, db *gorm.DB, force bool, startDate, endDate *ti
 	var files []repoFileMeta
 	skipCount := 0
 
-	err := filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
+	err := storage.Walk(repoDir, func(path string, info storage.FileInfo) error {
+		if !strings.HasSuffix(info.Name, ".json") {
 			return nil
 		}
 
-		if !strings.HasSuffix(info.Name(), ".json") {
-			return nil
-		}
-
-		relPath, err := filepath.Rel(repoDir, path)
+		relPath, err := storage.Rel(repoDir, path)
 		if err != nil {
 			return err
 		}
@@ -160,7 +152,7 @@ func scanRepoDir(repoDir string, db *gorm.DB, force bool, startDate, endDate *ti
 //  6. 使用 GORM 的 clause.OnConflict 实现 UPSERT：一次性写入 commit 基本信息和 silica 相关字段
 //  7. 保存关联的 tasks 并更新 conversations 的 task_id
 func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer, maxDays int) error {
-	data, err := os.ReadFile(meta.Path)
+	data, err := storage.ReadFile(meta.Path)
 	if err != nil {
 		return fmt.Errorf("读取文件失败: %w", err)
 	}
@@ -435,9 +427,13 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 
-	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(repoDir); err != nil {
 		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
-		return fmt.Errorf("repo目录不存在: %s", repoDir)
+		return fmt.Errorf("检查repo目录失败: %w", err)
+	} else if !ok {
+		err := fmt.Errorf("repo目录不存在: %s", repoDir)
+		recordCommandRun("import-repo", startTime, 0, 0, 0, err)
+		return err
 	}
 
 	startDate, endDate, err := parseDateRange(startDateStr, endDateStr, dateStr)
@@ -455,7 +451,7 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	defer sqlDB.Close()
 
 	// 先构建 conversation 索引
-	taskFPDir := filepath.Join(analysedDir, "task", "conversation")
+	taskFPDir := storage.Join(analysedDir, "task", "conversation")
 	idx, err := buildConversationsIndexer(taskFPDir)
 	if err != nil {
 		recordCommandRun("import-repo", startTime, 0, 0, 0, err)

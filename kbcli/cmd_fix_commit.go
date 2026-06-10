@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"kanban/kbcli/internal/llm"
 	"kanban/kbcli/internal/logx"
-	"os"
 	"path/filepath"
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/storage"
 	"kanban/core/utils"
 
 	"github.com/spf13/cobra"
@@ -102,9 +102,9 @@ func fixCommits(db *gorm.DB, repoDir string, startDate, endDate *time.Time, comm
 			commit.CommitTime.Format("02"),
 			commit.CommitId+".json",
 		)
-		path := filepath.Join(repoDir, relPath)
+		path := storage.Join(repoDir, relPath)
 
-		data, err := os.ReadFile(path)
+		data, err := storage.ReadFile(path)
 		if err != nil {
 			logx.Errorf("读取commit文件失败: %s, %v", path, err)
 			continue

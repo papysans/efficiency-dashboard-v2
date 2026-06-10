@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"kanban/core/storage"
 	"kanban/kbcli/internal/logx"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -228,53 +228,53 @@ func matchDateFilter(path, dateFilter string) bool {
 }
 
 func (ctx *checkContext) scanSummaries() error {
-	summaryDir := filepath.Join(ctx.taskDir, "summary")
-	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
-		return nil
+	summaryDir := storage.Join(ctx.taskDir, "summary")
+	if ok, err := storage.Exists(summaryDir); err != nil || !ok {
+		return err
 	}
-	return filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
-			return err
+	return storage.Walk(summaryDir, func(path string, info storage.FileInfo) error {
+		if !strings.HasSuffix(info.Name, ".json") {
+			return nil
 		}
 		if !matchDateFilter(path, ctx.dateFilter) {
 			return nil
 		}
-		taskID := strings.TrimSuffix(info.Name(), ".json")
+		taskID := strings.TrimSuffix(info.Name, ".json")
 		ctx.summaryMap[taskID] = path
 		return nil
 	})
 }
 
 func (ctx *checkContext) scanConversations() error {
-	convDir := filepath.Join(ctx.taskDir, "conversation")
-	if _, err := os.Stat(convDir); os.IsNotExist(err) {
-		return nil
+	convDir := storage.Join(ctx.taskDir, "conversation")
+	if ok, err := storage.Exists(convDir); err != nil || !ok {
+		return err
 	}
-	return filepath.Walk(convDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".jsonl") {
-			return err
+	return storage.Walk(convDir, func(path string, info storage.FileInfo) error {
+		if !strings.HasSuffix(info.Name, ".jsonl") {
+			return nil
 		}
 		if !matchDateFilter(path, ctx.dateFilter) {
 			return nil
 		}
-		taskID := strings.TrimSuffix(info.Name(), ".jsonl")
+		taskID := strings.TrimSuffix(info.Name, ".jsonl")
 		ctx.convMap[taskID] = path
 		return nil
 	})
 }
 
 func (ctx *checkContext) scanRepos() error {
-	if _, err := os.Stat(ctx.repoDir); os.IsNotExist(err) {
-		return nil
+	if ok, err := storage.Exists(ctx.repoDir); err != nil || !ok {
+		return err
 	}
-	return filepath.Walk(ctx.repoDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
-			return err
+	return storage.Walk(ctx.repoDir, func(path string, info storage.FileInfo) error {
+		if !strings.HasSuffix(info.Name, ".json") {
+			return nil
 		}
 		if !matchDateFilter(path, ctx.dateFilter) {
 			return nil
 		}
-		commitID := strings.TrimSuffix(info.Name(), ".json")
+		commitID := strings.TrimSuffix(info.Name, ".json")
 		ctx.repoFileMap[commitID] = path
 		return nil
 	})
@@ -286,7 +286,7 @@ func (ctx *checkContext) checkSummaries() error {
 		cnt++
 		logx.PromptProgress(cnt, 50)
 
-		data, err := os.ReadFile(path)
+		data, err := storage.ReadFile(path)
 		if err != nil {
 			ctx.addIssue("error", path, taskID, "", "read-failed", "", fmt.Sprintf("读取文件失败: %v", err))
 			continue
@@ -329,7 +329,7 @@ func (ctx *checkContext) checkConversations() error {
 		cnt++
 		logx.PromptProgress(cnt, 50)
 
-		data, err := os.ReadFile(path)
+		data, err := storage.ReadFile(path)
 		if err != nil {
 			ctx.addIssue("error", path, taskID, "", "read-failed", "", fmt.Sprintf("读取文件失败: %v", err))
 			continue
@@ -496,7 +496,7 @@ func (ctx *checkContext) checkRepos() error {
 		cnt++
 		logx.PromptProgress(cnt, 50)
 
-		data, err := os.ReadFile(path)
+		data, err := storage.ReadFile(path)
 		if err != nil {
 			ctx.addIssue("error", path, "", commitID, "read-failed", "", fmt.Sprintf("读取文件失败: %v", err))
 			continue
@@ -570,9 +570,9 @@ func (ctx *checkContext) checkCrossReferences() error {
 				fmt.Sprintf("未找到关联的conversation文件(task_id=%s)，该任务将被视为无对话数据导入", taskID))
 		} else {
 			// 检查路径是否对应（是否在同一天的目录下）
-			summaryDir := filepath.Dir(summaryPath)
+			summaryDir := storage.Dir(summaryPath)
 			convPath := ctx.convMap[taskID]
-			convDir := filepath.Dir(convPath)
+			convDir := storage.Dir(convPath)
 			expectedConvDir := strings.Replace(summaryDir, "/summary/", "/conversation/", 1)
 			expectedConvDir = strings.Replace(expectedConvDir, "\\summary\\", "\\conversation\\", 1)
 			if convDir != expectedConvDir {

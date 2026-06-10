@@ -1,9 +1,9 @@
 package models
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
+
+	"kanban/core/storage"
 )
 
 type PathConfig struct {
@@ -33,8 +33,8 @@ func GetSummaryFilePath(taskDir string, task *Task) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	filePath := filepath.Join(taskDir, "summary", yyyy, mm, dd, task.SessionId+".json")
-	if _, err := os.Stat(filePath); err == nil {
+	filePath := storage.Join(taskDir, "summary", yyyy, mm, dd, task.SessionId+".json")
+	if _, err := storage.Stat(filePath); err == nil {
 		return filePath, true
 	}
 	return "", false
@@ -45,8 +45,8 @@ func GetConversationFilePath(taskDir string, task *Task) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	filePath := filepath.Join(taskDir, "conversation", yyyy, mm, dd, task.SessionId+".jsonl")
-	if _, err := os.Stat(filePath); err == nil {
+	filePath := storage.Join(taskDir, "conversation", yyyy, mm, dd, task.SessionId+".jsonl")
+	if _, err := storage.Stat(filePath); err == nil {
 		return filePath, true
 	}
 	return "", false

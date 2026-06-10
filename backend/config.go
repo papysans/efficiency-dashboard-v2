@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"kanban/core/config"
+	"kanban/core/storage"
 
 	"gopkg.in/yaml.v3"
 )
@@ -24,6 +25,8 @@ type Config struct {
 	} `yaml:"cors"`
 	TraditionalDevLinesPerDay int            `yaml:"traditional_dev_lines_per_day"`
 	DeptSync                  DeptSyncConfig `yaml:"dept_sync"`
+	// Storage 存储后端配置。task_dir 等路径以 s3:// 开头时走 S3 兼容对象存储，否则本地磁盘。
+	Storage storage.Config `yaml:"storage"`
 }
 
 // DeptSyncConfig dept-sync 部门同步服务对接配置（组织树代理 handler 使用）。

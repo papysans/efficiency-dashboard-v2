@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kanban/core/storage"
 	"kanban/kbcli/internal/llm"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -95,7 +95,7 @@ func runAITask(path, op string) error {
 }
 
 func runAICommit(path, op string) error {
-	data, err := os.ReadFile(path)
+	data, err := storage.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("读取commit文件失败: %w", err)
 	}
