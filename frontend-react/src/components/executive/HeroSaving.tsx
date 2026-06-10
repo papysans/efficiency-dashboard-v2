@@ -19,10 +19,10 @@ interface ChatDailyCostRow {
 const FALLBACK_COST_PER_PERSON_DAY = 2000
 
 /**
- * Hero：省人天 & ROI + 综合提效。数据 useDashboardSummary（design-pr1 §1①）。
+ * Hero：省人天 & 净节省 + 综合提效。数据 useDashboardSummary（design-pr1 §1①）。
  * - savedMin = max(0, baseline − actual)；省人天 = savedMin/480；毛节省 = personDays × 单价（/v2/config 下发，缺省 2000）
- * - chat_stats 启用且同区间日汇总拉取成功时升级为 ROI 口径（T8）：
- *   省人天 / 毛节省 / AI 花费（全平台口径，按价格表估算）/ 净节省（毛−AI，负数标红）/ ROI（毛÷AI）/ 综合提效
+ * - chat_stats 启用且同区间日汇总拉取成功时升级为净节省口径（T8）：
+ *   省人天 / AI 花费（全平台口径，按价格表估算）/ 净节省（毛−AI，负数标红）/ 综合提效（毛节省只参与计算不展示）
  * - chat 未启用 / 加载中 / 失败：降级回三格（省人天 / 折合节省成本 / 综合提效），chat 请求绝不拖垮主数据
  * - 大数字用 useCountUp 滚动（reduce-motion 时直接显终值）
  */
@@ -55,7 +55,6 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
   const savedDays = savedMin / PERSON_DAY_MINUTES
   const grossSaving = personDaysValue(savedMin) * costPerPersonDay
   const netSaving = grossSaving - aiCost
-  const roi = aiCost > 0 ? grossSaving / aiCost : null
   // 综合日历提效（小数口径）→ 百分比数值用于滚动；null 时按 0 处理但展示加保护
   const ratio = data?.need_calendar_ratio
   const ratioPct = ratio == null ? 0 : ratio * 100
@@ -65,7 +64,6 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
   const grossCount = useCountUp(Math.round(grossSaving))
   const aiCount = useCountUp(Math.round(aiCost))
   const netCount = useCountUp(Math.round(netSaving))
-  const roiCount = useCountUp(roi ?? 0)
   const ratioCount = useCountUp(ratioPct)
 
   const period = useMemo(() => fmtPeriod(startDate, endDate), [startDate, endDate])
@@ -113,16 +111,9 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
       </div>
 
       {aiAvailable ? (
-        // ROI 口径六格：两行 × 三列，数字略收一档保持呼吸感
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-8 gap-y-6 flex-1">
+        // 净节省口径四格：省人天 / AI 花费 / 净节省（毛−AI）/ 综合提效
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-8 gap-y-6 flex-1">
           <BigStat label="为团队节省" value={savedDays > 0 ? daysCount.toFixed(1) : '-'} unit="人天" tone={emerald} compact />
-          <BigStat
-            label="毛节省"
-            value={grossSaving > 0 ? `¥${formatNumber(Math.round(grossCount))}` : '-'}
-            unit=""
-            tone={emerald}
-            compact
-          />
           <BigStat label="AI 花费" value={`¥${formatNumber(Math.round(aiCount))}`} unit="" tone={neutral} compact />
           <BigStat
             label="净节省"
@@ -131,7 +122,6 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
             tone={netSaving < 0 ? rose : emerald}
             compact
           />
-          <BigStat label="ROI 倍数" value={roi != null ? `${roiCount.toFixed(1)}×` : '—'} unit="" tone={emerald} compact />
           <BigStat label="综合日历提效" value={ratioAvailable ? `${ratioCount.toFixed(1)}%` : '-'} unit="" tone={ratioTone} compact />
         </div>
       ) : (
