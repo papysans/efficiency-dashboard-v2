@@ -23,21 +23,22 @@ import (
 
 // RepoCommitData 表示单个 commit JSON 文件的数据结构，对应客户端上报的代码提交信息
 type RepoCommitData struct {
-	CommitId     string   `json:"commit_id"`           // Git commit hash
-	CommitTime   string   `json:"commit_time"`         // 提交时间，RFC3339 格式
-	RepoAddr     string   `json:"repo_addr"`           // 仓库地址
-	RepoBranch   string   `json:"repo_branch"`         // 分支名称
-	GitUserName  string   `json:"git_user_name"`       // Git 用户名
-	GitUserEmail string   `json:"git_user_email"`      // Git 邮箱
-	UserId       string   `json:"user_id"`             // 系统用户ID
-	UserName     string   `json:"user_name"`           // 系统用户名
-	ClientId     string   `json:"client_id"`           // 客户端ID
-	WorkPath     string   `json:"work_path,omitempty"` // 工作路径（旧字段，兼容用）
-	WorkDir      string   `json:"work_dir,omitempty"`  // 工作目录（新字段）
-	Comment      string   `json:"comment"`             // 提交注释
-	DiffLines    int      `json:"diff_lines"`          // 新增代码行数
-	Diff         string   `json:"diff"`                // 完整的 diff 文本
-	Files        []string `json:"files,omitempty"`     // 本次提交涉及的文件路径
+	CommitId     string   `json:"commit_id"`            // Git commit hash
+	CommitTime   string   `json:"commit_time"`          // 提交时间，RFC3339 格式
+	RepoAddr     string   `json:"repo_addr"`            // 仓库地址
+	RepoBranch   string   `json:"repo_branch"`          // 分支名称
+	GitUserName  string   `json:"git_user_name"`        // Git 用户名
+	GitUserEmail string   `json:"git_user_email"`       // Git 邮箱
+	UserId       string   `json:"user_id"`              // 系统用户ID
+	UserName     string   `json:"user_name"`            // 系统用户名
+	ClientId     string   `json:"client_id"`            // 客户端ID
+	WorkPath     string   `json:"work_path,omitempty"`  // 工作路径（旧字段，兼容用）
+	WorkDir      string   `json:"work_dir,omitempty"`   // 工作目录（新字段）
+	Comment      string   `json:"comment"`              // 提交注释
+	DiffLines    int      `json:"diff_lines"`           // 新增代码行数
+	Diff         string   `json:"diff"`                 // 完整的 diff 文本
+	Files        []string `json:"files,omitempty"`      // 本次提交涉及的文件路径
+	ParentIds    []string `json:"parent_ids,omitempty"` // 父 commit 列表，len>1 即 merge commit
 }
 
 // repoFileMeta 记录扫描到的单个 commit JSON 文件的元信息，用于后续解析路径和去重
@@ -257,6 +258,7 @@ func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commit
 		Comment:                commitData.Comment,
 		DiffLines:              commitData.DiffLines,
 		TouchedFiles:           efficiencyv2.EfficiencyV2StringJSON(efficiencyv2.EfficiencyV2SortedUnique(commitData.Files)),
+		IsMerge:                len(commitData.ParentIds) > 1,
 		Silica:                 p.totalSilica,
 		CommitRealAiMinutes:    p.aiMinutes,
 		CommitRealNonAiMinutes: p.nonAiMinutes,
@@ -275,7 +277,7 @@ func saveCommit(db *gorm.DB, commitData *RepoCommitData, p *commitParser, commit
 			"commit_time", "repo_addr", "repo_branch",
 			"git_user_name", "git_user_email", "user_id", "user_name",
 			"client_id", "work_dir", "work_dir_id", "comment", "diff_lines", "updated_at",
-			"touched_files",
+			"touched_files", "is_merge",
 			"commit_ancient_minutes", "commit_ancient_reason",
 			"silica",
 			"commit_real_ai_minutes", "commit_real_non_ai_minutes", "commit_real_minutes", "commit_real_reason",
