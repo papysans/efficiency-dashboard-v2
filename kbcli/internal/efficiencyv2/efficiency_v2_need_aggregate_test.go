@@ -465,6 +465,75 @@ func TestNormalizeEfficiencyV2AlgoConfigCommitMinutesPerLineOverridesLineRate(t 
 	}
 }
 
+// --- 并行 session 人时去重（parallel_session_union，默认开启） ---
+
+func TestEfficiencyV2ParallelSessionUnion_FullOverlap(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	// 同一 user 两个完全重叠的 session：sum=120，并集=60 → 人时封顶 60。
+	sessionA := efficiencyV2AggTestMetric("s-a", "u-alice", base, base.Add(60*time.Minute), 60)
+	sessionB := efficiencyV2AggTestMetric("s-b", "u-alice", base, base.Add(60*time.Minute), 60)
+	need := efficiencyV2AggTestNeed("need-pu-full", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
+
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, EfficiencyV2Config{}, estimator.EstimateConfig{})
+	if got := updated[0].TotalSessionActivePersonMin; got != 60 {
+		t.Fatalf("person_min = %.2f, want 60 (完全重叠按并集封顶)", got)
+	}
+}
+
+func TestEfficiencyV2ParallelSessionUnion_PartialOverlap(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	// 同一 user [0,60] 与 [30,90]：sum=120，并集=90 → 90。
+	sessionA := efficiencyV2AggTestMetric("s-a", "u-alice", base, base.Add(60*time.Minute), 60)
+	sessionB := efficiencyV2AggTestMetric("s-b", "u-alice", base.Add(30*time.Minute), base.Add(90*time.Minute), 60)
+	need := efficiencyV2AggTestNeed("need-pu-partial", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
+
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, EfficiencyV2Config{}, estimator.EstimateConfig{})
+	if got := updated[0].TotalSessionActivePersonMin; got != 90 {
+		t.Fatalf("person_min = %.2f, want 90 (部分重叠按并集封顶)", got)
+	}
+}
+
+func TestEfficiencyV2ParallelSessionUnion_NoOverlap(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	// 同一 user 两个不重叠 session：sum=120，并集=120 → 不受影响。
+	sessionA := efficiencyV2AggTestMetric("s-a", "u-alice", base, base.Add(60*time.Minute), 60)
+	sessionB := efficiencyV2AggTestMetric("s-b", "u-alice", base.Add(2*time.Hour), base.Add(3*time.Hour), 60)
+	need := efficiencyV2AggTestNeed("need-pu-none", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
+
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, EfficiencyV2Config{}, estimator.EstimateConfig{})
+	if got := updated[0].TotalSessionActivePersonMin; got != 120 {
+		t.Fatalf("person_min = %.2f, want 120 (无重叠不封顶)", got)
+	}
+}
+
+func TestEfficiencyV2ParallelSessionUnion_MissingEndpoints(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	// 同一 user：一个带区间的 session（active 60）+ 一个端点缺失的 session（active 45）。
+	// 端点缺失不参与 union，直接累加 → min(60, 60) + 45 = 105。
+	sessionA := efficiencyV2AggTestMetric("s-a", "u-alice", base, base.Add(60*time.Minute), 60)
+	sessionB := models.SessionStageMetric{SessionId: "s-b", UserId: "u-alice", TotalActiveMin: 45}
+	need := efficiencyV2AggTestNeed("need-pu-noend", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
+
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, EfficiencyV2Config{}, estimator.EstimateConfig{})
+	if got := updated[0].TotalSessionActivePersonMin; got != 105 {
+		t.Fatalf("person_min = %.2f, want 105 (端点缺失 session 直接累加 active)", got)
+	}
+}
+
+func TestEfficiencyV2ParallelSessionUnion_DisabledKeepsPlainSum(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	sessionA := efficiencyV2AggTestMetric("s-a", "u-alice", base, base.Add(60*time.Minute), 60)
+	sessionB := efficiencyV2AggTestMetric("s-b", "u-alice", base, base.Add(60*time.Minute), 60)
+	need := efficiencyV2AggTestNeed("need-pu-off", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-a", "s-b"}, nil)
+
+	disabled := false
+	cfg := EfficiencyV2Config{ParallelSessionUnion: &disabled}
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{need}, []models.SessionStageMetric{sessionA, sessionB}, nil, cfg, estimator.EstimateConfig{})
+	if got := updated[0].TotalSessionActivePersonMin; got != 120 {
+		t.Fatalf("person_min = %.2f, want 120 (显式关闭保持直接求和)", got)
+	}
+}
+
 func efficiencyV2AggTestMetric(sessionID, userID string, start, end time.Time, activeMin float64) models.SessionStageMetric {
 	startCopy := start
 	endCopy := end

@@ -238,10 +238,9 @@ func computeEfficiencyV2DevCalendarMinutes(devStart, devEnd *time.Time, sessions
 }
 
 func aggregateEfficiencyV2NeedTime(need *models.Need, sessions []models.SessionStageMetric, cfg EfficiencyV2Config) {
-	var personMin, think, exec, verify, other float64
+	var think, exec, verify, other float64
 	intervals := make([][2]time.Time, 0, len(sessions))
 	for _, s := range sessions {
-		personMin += s.TotalActiveMin
 		think += s.ThinkActiveMin
 		exec += s.ExecutionActiveMin
 		verify += s.VerificationActiveMin
@@ -252,7 +251,7 @@ func aggregateEfficiencyV2NeedTime(need *models.Need, sessions []models.SessionS
 		intervals = append(intervals, [2]time.Time{*s.SessionStartTs, *s.SessionEndTs})
 	}
 
-	need.TotalSessionActivePersonMin = personMin
+	need.TotalSessionActivePersonMin = efficiencyV2NeedPersonMinutes(sessions, cfg)
 	need.ThinkActiveMin = think
 	need.ExecutionActiveMin = exec
 	need.VerificationActiveMin = verify
@@ -266,6 +265,60 @@ func aggregateEfficiencyV2NeedTime(need *models.Need, sessions []models.SessionS
 	need.TotalWallMin = wallMin
 	// total_calendar_min is set in aggregateOneEfficiencyV2Need after commits
 	// are aggregated, using dev_start_ts/dev_end_ts per design.
+}
+
+// efficiencyV2NeedPersonMinutes 计算 need 级人时（total_session_active_person_min）。
+// 开启 parallel_session_union（yaml 未写默认 true）时按 user 分组做并行 session 去重：
+// 同一 user 多个 session 时间窗重叠（同时开多个 IDE 会话）会把 active 人时重复计数，
+// 因此每个 user 的贡献 = min(sum(total_active_min), 该 user session [start,end] 区间并集时长)，
+// need 人时 = 各 user 贡献之和；起止端点缺失的 session 无法参与 union，直接累加 active。
+// 关闭时保持原口径（全部 session 的 total_active_min 直接求和）。
+func efficiencyV2NeedPersonMinutes(sessions []models.SessionStageMetric, cfg EfficiencyV2Config) float64 {
+	if cfg.ParallelSessionUnion != nil && !*cfg.ParallelSessionUnion {
+		var total float64
+		for _, s := range sessions {
+			total += s.TotalActiveMin
+		}
+		return total
+	}
+	type userAccum struct {
+		boundedActive float64 // 有起止区间的 session active 之和（受并集时长封顶）
+		freeActive    float64 // 端点缺失的 session active（不参与 union，直接累加）
+		intervals     [][2]time.Time
+	}
+	byUser := make(map[string]*userAccum)
+	for _, s := range sessions {
+		acc := byUser[s.UserId]
+		if acc == nil {
+			acc = &userAccum{}
+			byUser[s.UserId] = acc
+		}
+		if s.SessionStartTs == nil || s.SessionEndTs == nil {
+			acc.freeActive += s.TotalActiveMin
+			continue
+		}
+		acc.boundedActive += s.TotalActiveMin
+		acc.intervals = append(acc.intervals, [2]time.Time{*s.SessionStartTs, *s.SessionEndTs})
+	}
+	userIDs := make([]string, 0, len(byUser))
+	for userID := range byUser {
+		userIDs = append(userIDs, userID)
+	}
+	sort.Strings(userIDs) // 固定累加顺序，保证浮点结果确定性
+	var total float64
+	for _, userID := range userIDs {
+		acc := byUser[userID]
+		unionWall := 0.0
+		for _, iv := range mergeEfficiencyV2Intervals(acc.intervals) {
+			unionWall += iv[1].Sub(iv[0]).Minutes()
+		}
+		contribution := acc.boundedActive
+		if contribution > unionWall {
+			contribution = unionWall
+		}
+		total += contribution + acc.freeActive
+	}
+	return total
 }
 
 func aggregateEfficiencyV2NeedCommits(need *models.Need, sessions []models.SessionStageMetric, commits []models.Commit, cfg EfficiencyV2Config, algo estimator.EstimateConfig) {
