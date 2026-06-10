@@ -124,7 +124,74 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 			return nil, err
 		}
 	}
+	if err := cleanupEfficiencyV2FullyExcludedNeeds(db); err != nil {
+		return nil, err
+	}
 	return needs, nil
+}
+
+// cleanupEfficiencyV2FullyExcludedNeeds 清理"内容物已被治理全量排除"的残留 need：
+// 无任何 session 且 commit 全部 excluded_flag=true 的 need，本轮边界重算不会再生成它
+// （排除的 commit 不进候选），旧行会带着治理前的统计永久残留在列表里。
+// 删除幂等且可恢复：若黑名单回滚（commit 不再 excluded），下轮重算会原样重建该 need。
+// 保护条件：必须有 commit（纯会话 need 不碰）、session_ids 为空、所有 commit 均被排除。
+func cleanupEfficiencyV2FullyExcludedNeeds(db *gorm.DB) error {
+	var candidates []models.Need
+	if err := db.Where("jsonb_array_length(session_ids) = 0").
+		Where("jsonb_array_length(commit_ids) > 0").
+		Find(&candidates).Error; err != nil {
+		return fmt.Errorf("query commit-only needs: %w", err)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	commitIDs := make(map[string]bool)
+	for _, need := range candidates {
+		for _, id := range EfficiencyV2StringsFromJSON(need.CommitIds) {
+			commitIDs[id] = true
+		}
+	}
+	var excludedIDs []string
+	if err := db.Model(&models.Commit{}).
+		Where("commit_id IN ? AND excluded_flag = true", efficiencyV2SortedMapKeys(commitIDs)).
+		Pluck("commit_id", &excludedIDs).Error; err != nil {
+		return fmt.Errorf("query excluded commits: %w", err)
+	}
+	excludedSet := make(map[string]bool, len(excludedIDs))
+	for _, id := range excludedIDs {
+		excludedSet[id] = true
+	}
+	staleIDs := selectFullyExcludedNeedIDs(candidates, excludedSet)
+	if len(staleIDs) == 0 {
+		return nil
+	}
+	if err := db.Where("need_id IN ?", staleIDs).Delete(&models.Need{}).Error; err != nil {
+		return fmt.Errorf("delete fully-excluded needs: %w", err)
+	}
+	return nil
+}
+
+// selectFullyExcludedNeedIDs 从候选 need 中挑出 commit 全部在 excludedSet 里的，返回排序后的 need_id。
+func selectFullyExcludedNeedIDs(candidates []models.Need, excludedSet map[string]bool) []string {
+	var staleIDs []string
+	for _, need := range candidates {
+		ids := EfficiencyV2StringsFromJSON(need.CommitIds)
+		if len(ids) == 0 {
+			continue
+		}
+		allExcluded := true
+		for _, id := range ids {
+			if !excludedSet[id] {
+				allExcluded = false
+				break
+			}
+		}
+		if allExcluded {
+			staleIDs = append(staleIDs, need.NeedId)
+		}
+	}
+	sort.Strings(staleIDs)
+	return staleIDs
 }
 
 // cleanupEfficiencyV2PreCanonNeeds 清理 repo 地址归一前残留的旧 need 行。

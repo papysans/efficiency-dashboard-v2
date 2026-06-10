@@ -333,3 +333,21 @@ func efficiencyV2NeedTestCommit(commitID, userID, repoAddr, branch string, commi
 		Comment:    comment,
 	}
 }
+
+func TestSelectFullyExcludedNeedIDs(t *testing.T) {
+	mk := func(id string, commitIDs ...string) models.Need {
+		return models.Need{NeedId: id, CommitIds: EfficiencyV2StringJSON(commitIDs)}
+	}
+	excluded := map[string]bool{"c1": true, "c2": true}
+	got := selectFullyExcludedNeedIDs([]models.Need{
+		mk("n-all-excluded", "c1", "c2"),   // 全排除 → 清理
+		mk("n-partial", "c1", "c3"),        // 还有存活 commit → 保留
+		mk("n-alive", "c3"),                // 无排除 → 保留
+		mk("n-empty"),                      // 无 commit（防御：上游查询已过滤）→ 保留
+		mk("n-single-excluded", "c2"),      // 单 commit 全排除 → 清理
+	}, excluded)
+	want := []string{"n-all-excluded", "n-single-excluded"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("selectFullyExcludedNeedIDs = %v, want %v", got, want)
+	}
+}

@@ -28,7 +28,13 @@ func TestJudgeIdentityMatrix(t *testing.T) {
 		{"noreply邮箱", "noreply@github.com", "GitHub", "u1", true, "identity:bot"},
 		{"no-reply邮箱", "no-reply@gitee.com", "Gitee", "u1", true, "identity:bot"},
 		{"actions邮箱", "github-actions@github.com", "Actions", "u1", true, "identity:bot"},
+		{"actions[bot]隐私域", "41898282+github-actions[bot]@users.noreply.github.com", "github-actions[bot]", "u1", true, "identity:bot"},
 		{"ROBOT大写", "ROBOT@SANGFOR.COM", "Robot", "u1", true, "identity:bot"},
+		// GitHub 隐私邮箱是真人提交特性（12345+name@users.noreply.github.com），
+		// noreply 锚定 local-part 开头，域名含 noreply 不算 bot（实测子串匹配误排 28 人 300 个 commit）
+		{"GitHub隐私邮箱不误伤", "12345+zhangsan@users.noreply.github.com", "zhangsan", "u1", false, ""},
+		// \b 锚定不误伤拼音
+		{"拼音bot不误伤", "zhangbotao@sangfor.com.cn", "张博韬", "u1", false, ""},
 		// b. 精确黑名单（大小写不敏感；test@example.com 内网实测 18 个 commit/17.1 万行）
 		{"精确黑名单", "test@example.com", "tester", "u1", true, "identity:blocked_email"},
 		{"精确黑名单大小写", "Test@Example.COM", "tester", "u1", true, "identity:blocked_email"},

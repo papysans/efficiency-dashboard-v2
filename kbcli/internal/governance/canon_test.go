@@ -23,6 +23,10 @@ func TestCanonRepoAddr(t *testing.T) {
 		{"空串原样返回", "", ""},
 		{"双写法归一相等-1", "git@10.2.3.4:mom/momproject.git", "10.2.3.4/mom/momproject"},
 		{"双写法归一相等-2", "https://10.2.3.4/mom/momproject", "10.2.3.4/mom/momproject"},
+		// URL userinfo（含凭据）必须剥离：token 不属于仓库身份，更不能进 need 边界 key
+		{"内嵌 token", "http://oauth2:glpat-abc.01.xyz@gitlab/root/scan-repo.git", "gitlab/root/scan-repo"},
+		{"内嵌用户名", "https://deploy@github.com/acme/repo.git", "github.com/acme/repo"},
+		{"带 token 与裸地址归一", "http://oauth2:tok@gitlab.example.com/g/r", "gitlab.example.com/g/r"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -20,6 +20,18 @@ func CanonRepoAddr(addr string) string {
 			break
 		}
 	}
+	// 剥离 URL userinfo（user[:password]@host，如 http://oauth2:glpat-xxx@gitlab/...）：
+	// 凭据不属于仓库身份，带 token 与不带 token 是同一仓库；token 也绝不能进 need 边界 key。
+	// 只看第一个 "/" 之前的 authority 段，取最后一个 "@" 之后的部分。
+	if slash := strings.IndexByte(s, '/'); slash != 0 {
+		authority := s
+		if slash > 0 {
+			authority = s[:slash]
+		}
+		if at := strings.LastIndexByte(authority, '@'); at >= 0 {
+			s = s[at+1:]
+		}
+	}
 	// host 后（第一个 "/" 之前）的冒号：scp 风格换成 "/"；冒号后第一段是纯数字端口则保留。
 	slash := strings.IndexByte(s, '/')
 	colon := strings.IndexByte(s, ':')

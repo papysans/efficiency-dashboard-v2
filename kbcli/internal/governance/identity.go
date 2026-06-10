@@ -14,8 +14,10 @@ import (
 // builtinBotEmailRe 内置 bot 邮箱正则（builtin_bot_patterns=true 时启用），
 // 命中即视为机器人身份（noreply/CI bot 等非真人交付）。
 // bot/actions/robot 用 \b 锚定，避免误伤 zhangbotao@、abbot@ 这类真人拼音邮箱；
-// noreply/no-reply 无误伤面，保持子串匹配。
-var builtinBotEmailRe = regexp.MustCompile(`(?i)\bbot\b|noreply|no-reply|\bactions\b|\brobot\b`)
+// noreply/no-reply/donotreply 锚定 local-part 开头：noreply@github.com（系统发件人）命中，
+// 但 12345+name@users.noreply.github.com 是 GitHub 隐私邮箱、真人提交特性，
+// 域名含 noreply 不能视为 bot（实测子串匹配会误排 28 人 300 个真人 commit）。
+var builtinBotEmailRe = regexp.MustCompile(`(?i)\bbot\b|\brobot\b|\bactions\b|^no-?reply@|^do-?not-?reply`)
 
 // governanceGlobMatch 大小写不敏感的通配符匹配（* 匹配任意串，glob 语法）；
 // 模式非法时视为不命中，不报错。
