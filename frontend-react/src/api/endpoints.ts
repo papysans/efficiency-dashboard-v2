@@ -2,8 +2,21 @@
 // 丢弃 es.js legacy 死端点（/requests、/aggregate*、/analysis/*、/favorites、/virtual-groups）。
 // PR0 覆盖 dashboard/config + 各维度 list/detail（GET）；mutation 在对应 PR 补。
 
-import { apiDelete, apiGet, apiPost, apiPut } from './client'
+import { apiDelete, apiGet, apiPost, apiPut, chatDelete, chatGet, chatPost, chatPut } from './client'
 import type {
+  ChatDatasource,
+  ChatDatasourceTestResult,
+  ChatDatasourceUpsert,
+  ChatDetailQueryReq,
+  ChatDetailQueryResponse,
+  ChatRealtimeResponse,
+  ChatSyncSubmitReq,
+  ChatSyncSubmitResponse,
+  ChatSyncTaskListResponse,
+  ChatSyncTaskStatus,
+  ChatSystemConfig,
+  ModelPricing,
+  ModelPricingUpsert,
   AddRepoRequest,
   AddTasksRequest,
   ApiData,
@@ -273,4 +286,76 @@ export function getUserGroupDetail(groupId: string, params: { startDate?: string
 /** 删除用户组：DELETE /v2/user-groups/{groupId}（删除后跳回用户列表）。 */
 export function deleteUserGroup(groupId: string) {
   return apiDelete<{ status?: string }>(`/v2/user-groups/${encodeURIComponent(groupId)}`)
+}
+
+// ---- Chat Stats（chat-indicator-statistics 代理，/api/v2/chat/*） ----
+// ⚠️ 全部走 chatGet/chatPost/...（信封 {success,code,data} 解包），不要混用 apiGet。
+// chat_stats_enabled=false 时后端 503，调用方应先看 GlobalConfig 开关再发请求。
+export const chatStats = {
+  /** 实时态势聚合（直查源库，服务端 10 秒限频；range ∈ 30m|1h|3h）。 */
+  getRealtime(params: { range: '30m' | '1h' | '3h'; datasource_id?: string; max_rows?: number }) {
+    return chatGet<ChatRealtimeResponse>('/stats/realtime', params)
+  },
+
+  /** 明细点查（最多 100 条；时间 ISO 8601 必填）。 */
+  queryDetail(body: ChatDetailQueryReq) {
+    return chatPost<ChatDetailQueryResponse>('/stats/detail/query', body)
+  },
+
+  // -- 模型价格 CRUD --
+  listPricing() {
+    return chatGet<ModelPricing[]>('/pricing/models')
+  },
+  createPricing(body: ModelPricingUpsert) {
+    return chatPost<ModelPricing>('/pricing/models', body)
+  },
+  updatePricing(id: number, body: ModelPricingUpsert) {
+    return chatPut<ModelPricing>(`/pricing/models/${id}`, body)
+  },
+  deletePricing(id: number) {
+    return chatDelete<void>(`/pricing/models/${id}`)
+  },
+
+  // -- 数据源管理 --
+  listDatasources() {
+    return chatGet<ChatDatasource[]>('/datasources')
+  },
+  createDatasource(body: ChatDatasourceUpsert) {
+    return chatPost<ChatDatasource>('/datasources', body)
+  },
+  updateDatasource(id: number, body: ChatDatasourceUpsert) {
+    return chatPut<ChatDatasource>(`/datasources/${id}`, body)
+  },
+  deleteDatasource(id: number) {
+    return chatDelete<void>(`/datasources/${id}`)
+  },
+  /** 连接测试（⚠️ 失败也是 HTTP 200，看返回的 success/message）。 */
+  testDatasource(id: number) {
+    return chatPost<ChatDatasourceTestResult>(`/datasources/${id}/test`)
+  },
+
+  // -- 同步任务 --
+  listSyncTasks() {
+    return chatGet<ChatSyncTaskListResponse>('/sync/tasks')
+  },
+  getSyncTask(taskId: string) {
+    return chatGet<ChatSyncTaskStatus>(`/sync/tasks/${encodeURIComponent(taskId)}`)
+  },
+  submitSyncTask(body: ChatSyncSubmitReq) {
+    return chatPost<ChatSyncSubmitResponse>('/sync/tasks', body)
+  },
+  retrySyncTask(taskId: string) {
+    return chatPost<{ task_id: string; status: string }>(`/sync/tasks/${encodeURIComponent(taskId)}/retry`)
+  },
+  cancelSyncTask(taskId: string) {
+    return chatPost<{ task_id: string; status: string }>(`/sync/tasks/${encodeURIComponent(taskId)}/cancel`)
+  },
+
+  // -- 系统配置（KV：system_currency 等） --
+  getConfig() {
+    return chatGet<ChatSystemConfig>('/config')
+  },
+  updateConfig(body: ChatSystemConfig) {
+    return chatPut<void>('/config', body)
+  },
 }

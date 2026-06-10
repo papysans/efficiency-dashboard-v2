@@ -1,0 +1,43 @@
+# chat-indicator-statistics 服务配置（挂载到容器 /app/config.yaml，改配置不用重建镜像）
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+# 目标库（汇总表 + 价格/数据源/同步任务等配置表，全在这一个库里）：
+# 复用栈内 postgres 容器，新库 chat_summary。
+# - 全新部署：postgres/initdb.d/30-create-chat-summary-db.sql 首次初始化自动建库；
+# - 已有部署（数据卷非空，initdb 不再执行）：手动建库一次（命令见 compose/README.md）。
+# 表由服务启动时 GORM AutoMigrate 自动建；password 与 compose/.env 的 PASSWORD_POSTGRES 保持一致。
+target_db:
+  driver: "postgres"            # postgres 或 sqlite
+  host: "postgres"
+  port: 5432
+  database: "chat_summary"
+  schema: "public"
+  username: "postgres"
+  password: "1"
+  ssl_mode: "disable"
+  # driver=sqlite 时才使用（需另挂数据卷持久化，本栈默认走 postgres，不用）
+  sqlite_path: "./data/summary.db"
+
+# 注意：source 源数据源（内网 chat_metrics 源库，PG / ES）不在本文件配置——
+# 它存在目标库的数据源表里。服务起来后，在看板「设置 → 数据源管理」页
+# （或直接调 chat 服务 /chat-indicator-statistics/api/v1/datasources API）添加内网源库并测试连接。
+
+# 同步参数
+sync:
+  batch_size: 5000              # 每批从数据源拉取行数（PG 游标 / ES Scroll）
+  gap_max_hours: 24             # 单子任务最大时间跨度
+  max_retry: 3                  # 最大重试次数
+
+# 加密（可选）：是否加密数据源表中的密码
+encryption:
+  enabled: false
+  secret_key: ""                # AES 密钥（留空则自动生成，重启后需重新配置数据源密码）
+
+# 日志（容器场景输出到 console，由 docker logs 收集）
+logger:
+  level: "info"                 # debug / info / warn / error
+  format: "console"             # json / console
+  output: "console"             # console / file / both

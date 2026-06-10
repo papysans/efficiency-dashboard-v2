@@ -18,6 +18,8 @@ export interface ApiData<T> {
 export interface GlobalConfig {
   traditional_dev_lines_per_day: number
   dashboard_title_prefix: string
+  /** chat-indicator-statistics 代理是否启用（backend chat_stats.base_url 非空）。false/缺省时「平台」导航组不渲染。 */
+  chat_stats_enabled?: boolean
 }
 
 /** /v2/dashboard/summary（§2.9 / §5） */
@@ -902,3 +904,251 @@ export interface CreateProjectResponse {
   name?: string
   [k: string]: unknown
 }
+
+// ============================================================
+// chat-indicator-statistics 代理类型（/api/v2/chat/* → chat 服务 /chat-indicator-statistics/api/v1/*）
+// 字段对照其源码 pkg/model/models.go + pkg/http/handler/{realtime,handler}.go 的 json tag，勿凭空增删。
+// ⚠️ chat 侧响应信封是 {success,code,data}（错误 400 + {error:{code,message,type}}），
+//    与看板「裸数据 + {error:string}」不同 —— 走 client.ts 的 chatGet/chatPost/... 解包，不要混用 apiGet。
+// ============================================================
+
+/** GET /v2/chat/stats/realtime 响应 summary（realtime.go aggregateRealtime）。 */
+export interface ChatRealtimeSummary {
+  total_requests: number
+  total_users: number
+  total_prompt_tokens: number
+  total_completion_tokens: number
+  total_cache_tokens: number
+  total_error_requests: number
+  total_cost: number
+}
+
+/** token 分钟趋势项（time 形如 "HH:mm"）。 */
+export interface ChatTokenTrendItem {
+  time: string
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+}
+
+/** 缓存命中率分钟趋势项（rate 为百分比 0-100）。 */
+export interface ChatCacheRateItem {
+  time: string
+  cache_tokens: number
+  prompt_tokens: number
+  rate: number
+}
+
+/** 模型请求分布项。 */
+export interface ChatModelRequestItem {
+  model: string
+  request_count: number
+  user_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_cost: number
+}
+
+/** Auto 路由细分项（percentage 为百分比 0-100，保留 1 位）。 */
+export interface ChatAutoRouterItem {
+  routed_model: string
+  request_count: number
+  percentage: number
+}
+
+/** 请求量分钟趋势项。 */
+export interface ChatRequestTrendItem {
+  time: string
+  request_count: number
+}
+
+/** Top50 用户项。 */
+export interface ChatTopUserItem {
+  universal_id: string
+  username: string
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
+/** GET /v2/chat/stats/realtime（range=30m|1h|3h；服务端 10 秒限频）。 */
+export interface ChatRealtimeResponse {
+  summary: ChatRealtimeSummary
+  token_trend: ChatTokenTrendItem[]
+  cache_hit_rate: ChatCacheRateItem[]
+  model_requests: ChatModelRequestItem[]
+  auto_router_breakdown: ChatAutoRouterItem[]
+  request_trend: ChatRequestTrendItem[]
+  top_users: ChatTopUserItem[]
+}
+
+/** POST /v2/chat/stats/detail/query 请求体（realtime.go RawDataQuery；时间 ISO 8601，必填）。 */
+export interface ChatDetailQueryReq {
+  datasource_id?: string
+  start_time: string
+  end_time: string
+  universal_id?: string
+  request_id?: string
+  /** true=仅错误，false=仅成功，缺省=全部 */
+  has_error?: boolean
+  model?: string
+  routed_model?: string
+  /** 默认/最大 100 */
+  limit?: number
+  /** 'asc' | 'desc'（默认 desc） */
+  order?: string
+}
+
+/** 明细行（rawMetricItem；指针字段可为 null）。 */
+export interface ChatDetailRow {
+  id: number
+  request_id: string
+  user_id: string
+  username: string | null
+  universal_id: string | null
+  ts: string
+  prompt_tokens: number | null
+  completion_tokens: number | null
+  cache_tokens: number | null
+  error_code: string | null
+  model: string | null
+  routed_model: string | null
+  mode: string | null
+  duration: number | null
+  first_token_duration: number | null
+  slow_chunk: number | null
+  system_tokens: number | null
+  user_tokens: number | null
+  request_time: string | null
+  end_time: string | null
+}
+
+export interface ChatDetailQueryResponse {
+  total: number
+  items: ChatDetailRow[]
+}
+
+/** model_pricing 行（models.go ModelPricing；pricing_mode ∈ token|request|hybrid）。 */
+export interface ModelPricing {
+  id: number
+  model_name: string
+  pricing_mode: string
+  input_price_per_token: number | null
+  output_price_per_token: number | null
+  cache_price_per_token: number | null
+  request_price: number | null
+  currency: string
+  exchange_rate: number | null
+  original_currency: string | null
+  original_input_price: number | null
+  original_output_price: number | null
+  original_cache_price: number | null
+  original_request_price: number | null
+  effective_date: string
+  end_date: string | null
+  notes: string | null
+  created_at: string
+}
+
+/** 创建/编辑价格请求体（id/created_at 服务端生成）。 */
+export type ModelPricingUpsert = Omit<ModelPricing, 'id' | 'created_at'> & { id?: number }
+
+/** source_datasource 行（models.go SourceDatasource；source_type ∈ postgres|elasticsearch）。 */
+export interface ChatDatasource {
+  id: number
+  name: string
+  source_type: string
+  is_enabled: boolean
+  pg_host: string | null
+  pg_port: number | null
+  pg_database: string | null
+  pg_schema: string | null
+  pg_table: string | null
+  pg_username: string | null
+  pg_password: string | null
+  pg_ssl_mode: string | null
+  es_hosts: string | null
+  es_username: string | null
+  es_password: string | null
+  es_index: string | null
+  es_verify_certs: boolean | null
+  es_scroll_duration: string | null
+  max_open_conns: number | null
+  max_idle_conns: number | null
+  notes: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+/** 创建/编辑数据源请求体。 */
+export type ChatDatasourceUpsert = Partial<Omit<ChatDatasource, 'id' | 'created_at' | 'updated_at'>> &
+  Pick<ChatDatasource, 'name' | 'source_type'>
+
+/** POST /v2/chat/datasources/{id}/test 结果（注意：连接失败也是 HTTP 200，看 success）。 */
+export interface ChatDatasourceTestResult {
+  success: boolean
+  message: string
+  ping_ms: number
+}
+
+/** sync_task 行（models.go SyncTask；status ∈ pending|running|completed|failed|retrying）。 */
+export interface ChatSyncTask {
+  id: number
+  task_id: string
+  status: string
+  req_start_time: string
+  req_end_time: string
+  total_gaps: number
+  completed_gaps: number
+  total_rows_processed: number
+  total_rows_written: number
+  error_message: string | null
+  retry_count: number
+  source_name: string
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+}
+
+/** GET /v2/chat/sync/tasks 响应。 */
+export interface ChatSyncTaskListResponse {
+  total: number
+  tasks: ChatSyncTask[]
+}
+
+/** POST /v2/chat/sync/tasks 请求体（时间 ISO 8601）。 */
+export interface ChatSyncSubmitReq {
+  start_time: string
+  end_time: string
+  source_id?: number
+  /** 强制覆盖：预删该范围日期的汇总数据 */
+  force?: boolean
+}
+
+/** POST /v2/chat/sync/tasks 响应（⚠️ 该端点信封是 {code:0,data}，chatPost 仍按 data 解包）。 */
+export interface ChatSyncSubmitResponse {
+  task_id: string
+  status: string
+  gaps: unknown[]
+  source_id: number
+  source_name: string
+}
+
+/** GET /v2/chat/sync/tasks/{task_id} 响应（progress 为百分比 0-100）。 */
+export interface ChatSyncTaskStatus {
+  task_id: string
+  status: string
+  progress: number
+  total_gaps: number
+  completed_gaps: number
+  total_rows_processed: number
+  total_rows_written: number
+  error_message: string | null
+  source_name: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+/** GET/PUT /v2/chat/config —— KV 扁平 map（如 system_currency / exchange_rate_usd_cny）。 */
+export type ChatSystemConfig = Record<string, string>
+

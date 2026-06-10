@@ -1,6 +1,7 @@
 # efficiency-dashboard 内网部署（docker-compose）
 
 四个服务：`postgres`（库）、`server`（Go 后端 :9990）、`portal`（nginx + 前端 :80）、`kbcli`（取数/定时 serve :8080）。
+另有可选第五服务 `chat-stats`（平台客观指标，默认不启动，见下文「可选服务：chat-stats」）。
 `portal` 反代 `/api/` → `server:9990`；前端 dist + nginx.conf 已打进 portal 镜像。
 配置全部**挂载**进容器（不打进镜像），所以改配置/数据路径**不用重建镜像**。
 
@@ -63,6 +64,47 @@ docker compose exec kbcli /app/bin/kbcli import        --config /app/config.yaml
 docker compose exec kbcli /app/bin/kbcli efficiency-v2 --config /app/config.yaml
 ```
 > `import` 只到 v1；**v2 看板必须 `efficiency-v2`**。`-f` 强制重扫（否则 analysed 的 silica 缓存会跳过已扫的）。
+
+## 可选服务：chat-stats（平台客观指标）
+
+第五个服务 `chat-stats`（chat-indicator-statistics：每次 LLM 请求的 token/成本/时延/错误指标）。
+默认**不启动**（compose profile 开关）、**不对外 publish 端口**——仅 efficiency 网络内可达，由 `server` 的 `/api/v2/chat/*` 反代对外；`server/config.yaml` 的 `chat_stats.base_url` 默认注释 = 功能关闭（前端「平台」分组隐藏）。
+
+### 镜像构建（无 ghcr CI，手动 build）
+
+源码在独立仓库 chat-indicator-statistics（与本仓同级）。在有网机器上：
+
+```bash
+cd /path/to/chat-indicator-statistics
+docker build --platform linux/amd64 -t chat-indicator-statistics:local .
+```
+
+或用 build.sh 顺带构建（chat 仓库在本仓同级目录时）：
+
+```bash
+cd compose
+CHAT_STATS_SRC=../chat-indicator-statistics ./build.sh
+```
+
+镜像名/tag 要与 `.env` 的 `IMAGE_CHAT_STATS` 一致（默认 `chat-indicator-statistics:local`）。
+离线导出时把它并进 tar：`INCLUDE_CHAT_STATS=1 ./save.sh`。
+
+### 启用步骤（内网）
+
+1. 检查 `compose/chat-stats/config.yaml`：`target_db.password` 与 `.env` 的 `PASSWORD_POSTGRES` 一致（目标库走栈内 postgres 的 `chat_summary` 库，表由服务启动时自动建）。
+2. 建库：全新部署由 `postgres/initdb.d/30-create-chat-summary-db.sql` 首次初始化自动建；**已有部署**（数据卷非空，initdb 不再执行）手动跑一次（重复执行报 already exists，无害）：
+   ```bash
+   docker compose exec postgres psql -U postgres -c "CREATE DATABASE chat_summary;"
+   ```
+3. 打开 `compose/server/config.yaml` 末尾的 `chat_stats` 注释块（`base_url: "http://chat-stats:8080"`），重启 server 生效：
+   ```bash
+   docker compose up -d --force-recreate server
+   ```
+4. 启动 chat-stats（或在 `.env` 打开 `COMPOSE_PROFILES=chat-stats` 后照常 `docker compose up -d`）：
+   ```bash
+   docker compose --profile chat-stats up -d
+   ```
+5. 配置源数据源 + 同步：chat 的 `chat_metrics` 源库（PG/ES）不在 config.yaml 里，服务起来后在看板「设置 → 数据源管理」页添加并测试连接，再到「设置 → 同步任务」按时间范围手动触发同步。
 
 ## 发包与内网拉取（papysans/efficiency-dashboard-v2 → ghcr）
 

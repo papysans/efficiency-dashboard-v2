@@ -17,6 +17,12 @@ import CommitDetail from '@/pages/commits/CommitDetail'
 import WorkDirDetail from '@/pages/workdir/WorkDirDetail'
 import ProjectList from '@/pages/projects/ProjectList'
 import ProjectDetail from '@/pages/projects/ProjectDetail'
+import RealtimeReport from '@/pages/platform/RealtimeReport'
+import RealtimeQuery from '@/pages/platform/RealtimeQuery'
+import Pricing from '@/pages/settings/Pricing'
+import Datasources from '@/pages/settings/Datasources'
+import SyncTasks from '@/pages/settings/SyncTasks'
+import SystemConfig from '@/pages/settings/SystemConfig'
 
 // 路由表对齐 Vue frontend/src/router/index.js（见 research/api-contract.md §6）。
 // PR0：总览页真实落地，其余 24 路由先用 Placeholder 占位（可点不 404），后续 PR 替换。
@@ -56,6 +62,14 @@ export const router = createBrowserRouter([
       { path: 'commit-v2', element: <CommitList /> },
       { path: 'commit/:commitId', element: <CommitDetail /> },
       { path: 'workdir/:workDirId', element: <WorkDirDetail /> },
+
+      // 平台客观指标（chat-indicator-statistics 代理）+ 设置区（占位骨架，T3/T4 填充）
+      { path: 'platform/realtime', element: <RealtimeReport /> },
+      { path: 'platform/realtime/query', element: <RealtimeQuery /> },
+      { path: 'settings/pricing', element: <Pricing /> },
+      { path: 'settings/datasources', element: <Datasources /> },
+      { path: 'settings/sync', element: <SyncTasks /> },
+      { path: 'settings/config', element: <SystemConfig /> },
 
       // 旧路由重定向（保留 query/search，兼容旧 opencode 链接，api-contract.md §6）
       { path: 'cloud/kanban', element: <RedirectWithQuery to="/needs-v2" /> },

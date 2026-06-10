@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"kanban/backend/internal/appconfig"
@@ -10,6 +12,8 @@ import (
 type ConfigResponse struct {
 	TraditionalDevLinesPerDay int    `json:"traditional_dev_lines_per_day" example:"100"`
 	DashboardTitlePrefix      string `json:"dashboard_title_prefix" example:"Costrict"`
+	// ChatStatsEnabled chat-indicator-statistics 代理是否启用（chat_stats.base_url 非空）；前端据此显隐「平台」分组。
+	ChatStatsEnabled bool `json:"chat_stats_enabled" example:"false"`
 }
 
 // getConfigV2 返回前端所需的全局配置
@@ -24,5 +28,6 @@ func getConfigV2(c *gin.Context) {
 	c.JSON(200, ConfigResponse{
 		TraditionalDevLinesPerDay: appconfig.Cfg.TraditionalDevLinesPerDay,
 		DashboardTitlePrefix:      appconfig.Cfg.DashboardTitlePrefix,
+		ChatStatsEnabled:          strings.TrimSpace(appconfig.Cfg.ChatStats.BaseURL) != "",
 	})
 }

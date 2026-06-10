@@ -1,0 +1,21 @@
+services:
+  # chat-indicator-statistics 平台客观指标服务（LLM 请求 token/成本/时延/错误）。
+  # 不 publish 端口：仅 efficiency 网络内可达，由 server 的 /api/v2/chat/* 反代对外。
+  # 镜像无 ghcr CI，需手动构建（见 compose/README.md「可选服务：chat-stats」一节）。
+  chat-stats:
+    image: ${IMAGE_CHAT_STATS}
+    restart: always
+    volumes:
+      # 服务硬编码读取工作目录下的 config.yaml（WORKDIR=/app）
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      - efficiency
+    healthcheck:
+      # 运行时镜像是 alpine（无 curl），用 busybox wget 打自带的 /health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

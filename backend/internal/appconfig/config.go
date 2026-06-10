@@ -22,9 +22,10 @@ type Config struct {
 	CORS         struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
-	TraditionalDevLinesPerDay int            `yaml:"traditional_dev_lines_per_day"`
-	DashboardTitlePrefix      string         `yaml:"dashboard_title_prefix"`
-	DeptSync                  DeptSyncConfig `yaml:"dept_sync"`
+	TraditionalDevLinesPerDay int             `yaml:"traditional_dev_lines_per_day"`
+	DashboardTitlePrefix      string          `yaml:"dashboard_title_prefix"`
+	DeptSync                  DeptSyncConfig  `yaml:"dept_sync"`
+	ChatStats                 ChatStatsConfig `yaml:"chat_stats"`
 }
 
 // DeptSyncConfig dept-sync 部门同步服务对接配置（组织树代理 handler 使用）。
@@ -40,6 +41,17 @@ type DeptSyncConfig struct {
 
 // DefaultRootDeptName 组织树单根公司默认名（dept-sync /department/tree 返回森林时据此找真正的公司根）。
 const DefaultRootDeptName = "深信服科技股份有限公司"
+
+// ChatStatsConfig chat-indicator-statistics 平台客观指标服务对接配置（chat 代理 handler 使用）。
+// base_url 不含路由前缀（/chat-indicator-statistics/api/v1 由代理层拼接）；空 = 功能关闭，
+// /api/v2/chat/* 返回 503，前端「平台」分组隐藏。
+type ChatStatsConfig struct {
+	BaseURL string `yaml:"base_url"` // chat-indicator-statistics 服务地址，如 http://chat-indicator-statistics:8080
+	// Username/Password 上游 HTTP Basic Auth 账号（外网实例 https://zgsm.sangfor.com 由 nginx 401 保护）。
+	// 两者均非空时代理注入 Authorization: Basic；留空 = 不注入（内网栈内 chat-stats 无鉴权场景）。
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
 
 var Cfg Config
 
