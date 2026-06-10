@@ -238,7 +238,6 @@ export default function NeedDetail() {
           <Kv label="协作人数">{contributorCount}</Kv>
           <Kv label="开始时间">{formatLocalTime(need.dev_start_ts)}</Kv>
           <Kv label="结束时间">{formatLocalTime(need.dev_end_ts)}</Kv>
-          <Kv label="合并时间">{formatLocalTime(need.merge_ts)}</Kv>
           <Kv label="开发跨度">{formatDuration(need.dev_duration_min)}</Kv>
         </KvGrid>
       </Panel>

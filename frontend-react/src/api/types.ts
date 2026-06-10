@@ -64,7 +64,6 @@ export interface NeedsV2Summary {
   primary_user_id: string
   dev_start_ts: string
   dev_end_ts: string
-  merge_ts: string
   total_calendar_min: number
   baseline_calendar_min: number | null
   total_active_work_corrected_min: number
@@ -105,9 +104,7 @@ export interface NeedDetail {
   team_profile_used?: string
   dev_start_ts?: string | null
   dev_end_ts?: string | null
-  merge_ts?: string | null
   dev_duration_min?: number | null
-  wait_for_review_min?: number | null
   total_session_active_person_min?: number | null
   estimate_uncovered_human_min?: number | null
   total_active_work_corrected_min?: number | null

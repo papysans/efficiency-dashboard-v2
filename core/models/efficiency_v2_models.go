@@ -146,15 +146,12 @@ type Need struct {
 	TouchedFiles                    StringJSON `gorm:"type:jsonb;default:'[]'" json:"touched_files"`
 	DevStartTs                      *time.Time `gorm:"column:dev_start_ts;type:timestamptz;index" json:"dev_start_ts"`
 	DevEndTs                        *time.Time `gorm:"column:dev_end_ts;type:timestamptz;index" json:"dev_end_ts"`
-	MergeTs                         *time.Time `gorm:"column:merge_ts;type:timestamptz" json:"merge_ts"`
 	DevDurationMin                  float64    `gorm:"type:float8;default:0" json:"dev_duration_min"`
-	CycleDurationMin                *float64   `gorm:"type:float8" json:"cycle_duration_min"`
 	TotalSessionActivePersonMin     float64    `gorm:"type:float8;default:0" json:"total_session_active_person_min"`
 	EstimateUncoveredHumanMin       float64    `gorm:"type:float8;default:0" json:"estimate_uncovered_human_min"`
 	TotalActiveWorkCorrectedMin     float64    `gorm:"type:float8;default:0" json:"total_active_work_corrected_min"`
 	TotalWallMin                    float64    `gorm:"type:float8;default:0" json:"total_wall_min"`
 	TotalCalendarMin                float64    `gorm:"type:float8;default:0" json:"total_calendar_min"`
-	WaitForReviewMin                float64    `gorm:"type:float8;default:0" json:"wait_for_review_min"`
 	ThinkActiveMin                  float64    `gorm:"column:total_think_min;type:float8;default:0" json:"total_think_min"`
 	ExecutionActiveMin              float64    `gorm:"column:total_exec_min;type:float8;default:0" json:"total_exec_min"`
 	VerificationActiveMin           float64    `gorm:"column:total_verify_min;type:float8;default:0" json:"total_verify_min"`

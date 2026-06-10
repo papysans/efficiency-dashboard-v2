@@ -26,8 +26,7 @@ function aggregateByWeek(rows: NeedsV2Summary[]): WeekPoint[] {
   const buckets = new Map<string, { sum: number; count: number; label: string; monday: number }>()
   for (const r of rows) {
     if (!r.coverage_eligible || r.efficiency_ratio == null) continue
-    // merge_ts 多为 null，回退到 dev_end_ts 以保证有时间锚点
-    const ts = r.merge_ts || r.dev_end_ts
+    const ts = r.dev_end_ts
     const wk = isoWeekOf(ts)
     if (!wk) continue
     const cur = buckets.get(wk.key) || { sum: 0, count: 0, label: weekLabel(wk.monday), monday: wk.monday.getTime() }

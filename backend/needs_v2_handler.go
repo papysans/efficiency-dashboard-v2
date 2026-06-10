@@ -29,7 +29,6 @@ type NeedsV2Summary struct {
 	PrimaryUserId        string     `json:"primary_user_id"`
 	DevStartTs           *time.Time `json:"dev_start_ts"`
 	DevEndTs             *time.Time `json:"dev_end_ts"`
-	MergeTs              *time.Time `json:"merge_ts"`
 	TotalCalendarMin     float64    `json:"total_calendar_min"`
 	BaselineCalendarMin  *float64   `json:"baseline_calendar_min"`
 	TotalActiveWorkMin   float64    `json:"total_active_work_corrected_min"`
@@ -317,7 +316,7 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 	}
 	q := db.Model(&models.Need{})
 	if start, err := parseStartDate(filter.StartDate); err == nil && start != nil {
-		q = q.Where("dev_end_ts >= ? OR merge_ts >= ?", *start, *start)
+		q = q.Where("dev_end_ts >= ?", *start)
 	}
 	if end, err := parseEndDate(filter.EndDate); err == nil && end != nil {
 		q = q.Where("dev_start_ts <= ? OR dev_end_ts <= ?", *end, *end)
@@ -436,7 +435,6 @@ func summarizeNeed(n models.Need) NeedsV2Summary {
 		PrimaryUserId:        n.PrimaryUserId,
 		DevStartTs:           n.DevStartTs,
 		DevEndTs:             n.DevEndTs,
-		MergeTs:              n.MergeTs,
 		TotalCalendarMin:     n.TotalCalendarMin,
 		BaselineCalendarMin:  n.BaselineCalendarMin,
 		TotalActiveWorkMin:   n.TotalActiveWorkCorrectedMin,

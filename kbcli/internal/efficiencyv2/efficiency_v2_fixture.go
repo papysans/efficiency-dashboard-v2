@@ -59,7 +59,6 @@ type EfficiencyV2FixtureScenario struct {
 	HasLowAIParticipation    bool
 	HasMultiContributor      bool
 	HasLongIdleGap           bool
-	HasWaitForReview         bool
 	HasBaselineFailure       bool
 	HasHighEfficiencyOutlier bool
 	HasLowEfficiencyOutlier  bool
@@ -140,7 +139,6 @@ func BuildEfficiencyV2Fixture() EfficiencyV2Fixture {
 				MockFiles:        []string{"backend/auth/reset.go", "frontend/auth/reset.ts"},
 				BaselineVariant:  baselineVariant("seeded", "success", []string{"A", "B", "C"}, efficiencyV2ConfidenceHigh),
 				HasEditTestEdit:  true,
-				HasWaitForReview: true,
 			},
 			{
 				Name:               "branch-low-ai-uncovered",
@@ -316,7 +314,7 @@ func (f EfficiencyV2Fixture) Validate() error {
 		efficiencyV2BoundaryFileCluster: false,
 		efficiencyV2BoundaryOrphan:      false,
 	}
-	var hasNoEdit, hasEditTestEdit, hasUncovered, hasLowAI, hasMulti, hasIdle, hasWait, hasBaselineFailure, hasHighOutlier, hasLowOutlier bool
+	var hasNoEdit, hasEditTestEdit, hasUncovered, hasLowAI, hasMulti, hasIdle, hasBaselineFailure, hasHighOutlier, hasLowOutlier bool
 	var hasSeededAnchor, hasEmptyAnchor, hasLLMSuccess, hasLLMDisabled, hasLLMFailed, hasAOnly, hasAB, hasABC bool
 	for _, s := range f.Scenarios {
 		if s.Name == "" || s.NeedID == "" || s.PrimaryUserID == "" {
@@ -331,7 +329,6 @@ func (f EfficiencyV2Fixture) Validate() error {
 		hasLowAI = hasLowAI || s.HasLowAIParticipation
 		hasMulti = hasMulti || s.HasMultiContributor
 		hasIdle = hasIdle || s.HasLongIdleGap
-		hasWait = hasWait || s.HasWaitForReview
 		hasBaselineFailure = hasBaselineFailure || s.HasBaselineFailure
 		hasHighOutlier = hasHighOutlier || s.HasHighEfficiencyOutlier
 		hasLowOutlier = hasLowOutlier || s.HasLowEfficiencyOutlier
@@ -359,7 +356,6 @@ func (f EfficiencyV2Fixture) Validate() error {
 		"low-ai":            hasLowAI,
 		"multi-contributor": hasMulti,
 		"long-idle":         hasIdle,
-		"wait-for-review":   hasWait,
 		"baseline-failure":  hasBaselineFailure,
 		"high-outlier":      hasHighOutlier,
 		"low-outlier":       hasLowOutlier,

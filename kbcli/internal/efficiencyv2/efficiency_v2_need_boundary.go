@@ -34,8 +34,6 @@ type efficiencyV2BoundaryCandidate struct {
 	branch     string
 	start      time.Time
 	end        time.Time
-	mergeTs    *time.Time
-	mergeOnly  bool
 	needID     string
 	source     string
 	confidence string
@@ -104,9 +102,7 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 			"touched_files",
 			"dev_start_ts",
 			"dev_end_ts",
-			"merge_ts",
 			"dev_duration_min",
-			"wait_for_review_min",
 			"coverage_eligible",
 			"reason",
 			"updated_at",
@@ -298,11 +294,6 @@ func efficiencyV2CandidateFromCommit(commit models.Commit) efficiencyV2BoundaryC
 	if candidate.issueID == "" {
 		candidate.issueID = efficiencyV2ExtractIssueID(commit.RepoBranch)
 	}
-	if candidate.prID != "" && efficiencyV2IsMergeCommitComment(commit.Comment) {
-		mergeTs := commit.CommitTime
-		candidate.mergeTs = &mergeTs
-		candidate.mergeOnly = true
-	}
 	return candidate
 }
 
@@ -361,7 +352,6 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 	var repoAddr, branch, primaryUser string
 	status := "active"
 	var devStart, devEnd time.Time
-	var mergeTs *time.Time
 
 	for _, candidate := range bucket.candidates {
 		if repoAddr == "" {
@@ -394,14 +384,10 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 				files[file] = true
 			}
 		}
-		if candidate.mergeTs != nil && (mergeTs == nil || candidate.mergeTs.After(*mergeTs)) {
-			merge := *candidate.mergeTs
-			mergeTs = &merge
-		}
-		if !candidate.mergeOnly && !candidate.start.IsZero() && (devStart.IsZero() || candidate.start.Before(devStart)) {
+		if !candidate.start.IsZero() && (devStart.IsZero() || candidate.start.Before(devStart)) {
 			devStart = candidate.start
 		}
-		if !candidate.mergeOnly && !candidate.end.IsZero() && (devEnd.IsZero() || candidate.end.After(devEnd)) {
+		if !candidate.end.IsZero() && (devEnd.IsZero() || candidate.end.After(devEnd)) {
 			devEnd = candidate.end
 		}
 	}
@@ -445,11 +431,7 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		SessionIds:         EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(sessions)),
 		CommitIds:          EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(commits)),
 		TouchedFiles:       EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(files)),
-		MergeTs:            mergeTs,
 		CoverageEligible:   status == "merged" && (bucket.confidence == efficiencyV2ConfidenceHigh || bucket.confidence == efficiencyV2ConfidenceMedium),
-	}
-	if mergeTs != nil && !devEnd.IsZero() && mergeTs.After(devEnd) {
-		need.WaitForReviewMin = mergeTs.Sub(devEnd).Minutes()
 	}
 	if !devStart.IsZero() {
 		start := devStart
@@ -480,11 +462,6 @@ func efficiencyV2ExtractPRID(text string) string {
 
 func efficiencyV2ExtractIssueID(text string) string {
 	return efficiencyV2IssuePattern.FindString(strings.ToUpper(text))
-}
-
-func efficiencyV2IsMergeCommitComment(text string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(text))
-	return strings.Contains(normalized, "merge pull request") || strings.HasPrefix(normalized, "merge pr")
 }
 
 func efficiencyV2ConfidenceForBoundarySource(source string) string {

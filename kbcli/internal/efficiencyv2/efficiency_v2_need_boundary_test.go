@@ -203,27 +203,21 @@ func TestResolveEfficiencyV2NeedOverMaxSpanFlag(t *testing.T) {
 	}
 }
 
-func TestResolveEfficiencyV2NeedMergeWaitSeparatedFromDevEnd(t *testing.T) {
+func TestResolveEfficiencyV2NeedCommitExtendsDevEnd(t *testing.T) {
 	base := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	metric := efficiencyV2NeedTestMetric("s-review", "u-review", "git@example.com/acme/app.git", "feature/review-wait", base, base.Add(time.Hour))
-	mergeCommit := efficiencyV2NeedTestCommit("c-review-merge", "u-review", "git@example.com/acme/app.git", "feature/review-wait", base.Add(3*time.Hour), "Merge pull request #88 from feature/review-wait")
+	lateCommit := efficiencyV2NeedTestCommit("c-review-late", "u-review", "git@example.com/acme/app.git", "feature/review-wait", base.Add(3*time.Hour), "Merge pull request #88 from feature/review-wait")
 
-	needs := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{mergeCommit}, EfficiencyV2Config{})
+	needs := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{lateCommit}, EfficiencyV2Config{})
 	if len(needs) != 1 {
 		t.Fatalf("need count: want 1, got %d", len(needs))
 	}
 	need := needs[0]
-	if need.MergeTs == nil || !need.MergeTs.Equal(mergeCommit.CommitTime) {
-		t.Fatalf("merge_ts = %v, want %v", need.MergeTs, mergeCommit.CommitTime)
+	if need.DevEndTs == nil || !need.DevEndTs.Equal(lateCommit.CommitTime) {
+		t.Fatalf("dev_end_ts = %v, want commit time %v", need.DevEndTs, lateCommit.CommitTime)
 	}
-	if need.DevEndTs == nil || !need.DevEndTs.Equal(base.Add(time.Hour)) {
-		t.Fatalf("dev_end_ts = %v, want session end %v", need.DevEndTs, base.Add(time.Hour))
-	}
-	if need.WaitForReviewMin != 120 {
-		t.Fatalf("wait_for_review_min = %.2f, want 120", need.WaitForReviewMin)
-	}
-	if need.DevDurationMin != 60 {
-		t.Fatalf("dev_duration_min = %.2f, want 60", need.DevDurationMin)
+	if need.DevDurationMin != 180 {
+		t.Fatalf("dev_duration_min = %.2f, want 180", need.DevDurationMin)
 	}
 }
 
