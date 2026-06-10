@@ -17,6 +17,9 @@ cors:
 
 dashboard_title_prefix: "Costrict"
 
+# 人天单价（¥/人天），高管大屏把节省人天折算成节省成本用；缺省默认 2000。
+# cost_per_person_day: 2000
+
 ai_estimation:
   enabled: true
   api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"

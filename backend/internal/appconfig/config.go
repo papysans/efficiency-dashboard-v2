@@ -23,6 +23,7 @@ type Config struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
 	TraditionalDevLinesPerDay int             `yaml:"traditional_dev_lines_per_day"`
+	CostPerPersonDay          float64         `yaml:"cost_per_person_day"`
 	DashboardTitlePrefix      string          `yaml:"dashboard_title_prefix"`
 	DeptSync                  DeptSyncConfig  `yaml:"dept_sync"`
 	ChatStats                 ChatStatsConfig `yaml:"chat_stats"`
@@ -70,6 +71,7 @@ func loadConfig(path string) (*Config, error) {
 	cfg.AnalysedDir = "../task"
 	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}
 	cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay
+	cfg.CostPerPersonDay = DefaultCostPerPersonDay
 	cfg.DeptSync.RootDeptName = DefaultRootDeptName
 
 	data, err := os.ReadFile(path)

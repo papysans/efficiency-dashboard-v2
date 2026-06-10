@@ -17,6 +17,8 @@ export interface ApiData<T> {
 /** /v2/config */
 export interface GlobalConfig {
   traditional_dev_lines_per_day: number
+  /** 人天单价（¥/人天），高管大屏节省成本折算用；缺省时前端兜底 2000。 */
+  cost_per_person_day?: number
   dashboard_title_prefix: string
   /** chat-indicator-statistics 代理是否启用（backend chat_stats.base_url 非空）。false/缺省时「平台」导航组不渲染。 */
   chat_stats_enabled?: boolean
