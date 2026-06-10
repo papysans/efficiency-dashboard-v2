@@ -5,6 +5,7 @@ import (
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/efficiencyv2"
 	"kanban/kbcli/internal/estimator"
+	"kanban/kbcli/internal/governance"
 	"kanban/kbcli/internal/llm"
 	"kanban/kbcli/internal/logx"
 	"kanban/kbcli/internal/util"
@@ -112,6 +113,15 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 	}
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
+	// commit governance pass：管线取数前先按治理配置重判 commits 排除标记（改名单→重跑即生效）。
+	govCfg, err := governance.Load(appconfig.Cfg.GovernanceFile)
+	if err != nil {
+		return fmt.Errorf("加载治理配置失败: %w", err)
+	}
+	logx.Infof("efficiency-v2: commit governance pass (governance_file=%q, window=[%s,%s])", appconfig.Cfg.GovernanceFile, start, end)
+	if err := governance.ApplyCommitGovernance(db, govCfg, start, end); err != nil {
+		return fmt.Errorf("commit governance pass 失败: %w", err)
+	}
 	return RunEfficiencyV2Pipeline(db, EfficiencyV2PipelineArgs{
 		StartDate:      start,
 		EndDate:        end,

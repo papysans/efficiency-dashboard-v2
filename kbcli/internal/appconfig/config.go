@@ -74,6 +74,9 @@ type Config struct {
 	// 未显式传 --start-date / start_date（且未传 date）时，按日期取数/计算的命令自动用它作为
 	// 起始下界，从而永不处理该日期之前的数据。显式传 start-date 时以显式为准，不被覆盖。
 	AnalysisStartDate string `yaml:"analysis_start_date"`
+	// GovernanceFile commit 治理配置文件路径（独立 YAML，schema 见 config/governance.example.yaml）。
+	// 空或文件不存在 = 使用内置默认治理规则，不报错。
+	GovernanceFile string `yaml:"governance_file"`
 }
 
 // DeptSyncConfig dept-sync 部门同步服务对接配置（import-dept 使用）

@@ -105,11 +105,30 @@ type Commit struct {
 	CommitRealMinutesManual    *float64   `gorm:"type:float8" json:"commit_real_minutes_manual"`
 	CommitRealReasonManual     string     `gorm:"type:text" json:"commit_real_minutes_reason_manual"`
 	Comment                    string     `gorm:"type:text" json:"comment"`
-	CreatedAt                  time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt                  time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	// 治理列（commit governance pass 写入，排除=打标记不删数据）
+	ExcludedFlag       bool      `gorm:"default:false;index" json:"excluded_flag"` // 是否被治理排除（聚合口径处过滤）
+	ExcludedReason     string    `gorm:"type:text" json:"excluded_reason"`         // 排除原因（命中的规则说明）
+	IsMerge            bool      `gorm:"default:false" json:"is_merge"`            // 是否 merge commit
+	ReplayOf           string    `gorm:"type:varchar(255)" json:"replay_of"`       // 重放（rebase/cherry-pick）的原 commit_id
+	EffectiveDiffLines *int64    `json:"effective_diff_lines"`                     // 治理后的有效行数（nil=未治理，回退 DiffLines）
+	CreatedAt          time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Commit) TableName() string { return "commits" }
+
+// GetEffectiveDiffLines 返回治理后的有效代码行数：被排除的 commit 记 0；
+// 治理 pass 写入了 effective_diff_lines（软上限/降权/去重折算）则用之；否则回退原始 DiffLines。
+// loc/估时聚合统一走本方法取行数。
+func (c Commit) GetEffectiveDiffLines() int64 {
+	if c.ExcludedFlag {
+		return 0
+	}
+	if c.EffectiveDiffLines != nil {
+		return *c.EffectiveDiffLines
+	}
+	return int64(c.DiffLines)
+}
 
 type Task struct {
 	TaskId                   string    `gorm:"primaryKey;type:varchar(500)" json:"task_id"`

@@ -1,0 +1,48 @@
+# commit 治理配置样例（kbcli 主 config 用 governance_file 字段引用本文件）：
+#   governance_file: "config/governance.yaml"
+# 未配置 governance_file 或文件不存在时，kbcli 使用内置默认规则（黑名单为空，不报错）。
+# 排除 = 打标记不删数据：命中规则的 commit 写 commits.excluded_flag / excluded_reason /
+# is_merge / replay_of / effective_diff_lines 治理列。
+# 重判入口在 efficiency-v2 主流程开头：改名单后重跑 kbcli efficiency-v2 即生效。
+
+identity:
+  # 启用内置 bot 邮箱正则：bot|noreply|no-reply|actions|robot
+  builtin_bot_patterns: true
+  # 精确匹配的黑名单 git 邮箱（测试身份伪造交付，按部署环境维护）
+  blocked_emails:
+    - test@example.com
+    - xjm@test.com
+    - yaajun@example.com
+    - lisama@example.com
+    - incremental@test.local
+  # 通配符邮箱模式（* 匹配任意串）
+  blocked_email_patterns:
+    - "*@example.com"
+    - "*@test.*"
+    - "*@*.local"
+  # git user name 黑名单模式
+  blocked_name_patterns:
+    - "Test User"
+    - "Incremental Tester"
+  # user_id → 允许的 git emails 映射；enforce: true 且有条目时，
+  # 映射内 user_id 下使用映射外邮箱的 commit 才会被硬排。
+  identity_map:
+    enforce: false
+    users: {}
+    # users:
+    #   user-id-123:
+    #     - zhangsan@sangfor.com.cn
+
+commit_rules:
+  # 巨型批量提交软上限：diff_lines 超过该值按治理规则折算（写 effective_diff_lines）
+  diff_lines_softcap: 3000
+  # 低价值 comment 降权：commit comment 命中正则（Go 正则语法）时，diff_lines 乘以 factor
+  downweight_comment_patterns:
+    - pattern: "(?i)merge|sync|format|style|scaffold|init"
+      factor: 0.2
+  # merge/rebase/cherry-pick 重放去重（重复计数的 commit 标 replay_of，排除重复贡献）
+  replay_dedup: true
+
+normalization:
+  # repo 地址写法归一（http/ssh 协议、大小写、.git 后缀等写法分裂合并统计）
+  repo_addr_canon: true
