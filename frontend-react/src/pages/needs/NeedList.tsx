@@ -441,7 +441,23 @@ export default function NeedList() {
                     <td className={TD}><RatioPill value={row.ai_code_ratio} /></td>
                     <td className={TD}><Ellipsis text={row.repo_addr} /></td>
                     <td className={TD}><Ellipsis text={row.repo_branch} /></td>
-                    <td className={TD}><Ellipsis text={resolveName(row.primary_user_id)} /></td>
+                    <td className={TD}>
+                      {row.primary_user_id ? (
+                        <button
+                          type="button"
+                          className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 max-w-[280px] truncate inline-block align-bottom text-left focus:outline-none focus-visible:underline"
+                          title={resolveName(row.primary_user_id)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/user/${encodeURIComponent(row.primary_user_id)}`)
+                          }}
+                        >
+                          {resolveName(row.primary_user_id)}
+                        </button>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                     <td className={TD_NUM}>{formatDuration(row.total_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.baseline_calendar_min)}</td>
                     <td className={TD_NUM}>{formatDuration(row.total_active_work_corrected_min)}</td>

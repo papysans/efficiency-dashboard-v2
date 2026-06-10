@@ -12,6 +12,7 @@ import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useRepoDetail } from '@/api/queries'
 import type { RepoCommitItem, TaskListItem } from '@/api/types'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { formatLocalTime, formatNumber, formatV2Ratio } from '@/lib/formatters'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
@@ -43,6 +44,8 @@ export default function WorkDirDetail() {
 
   // 复用 repo 详情 API，branch 传空字符串。
   const { data: detailData, isLoading, error } = useRepoDetail({ repoAddr: workDirId, repoBranch: '' })
+  // user_name 可能是 UUID，统一走姓名映射。
+  const { resolveName } = useUserNameMap()
 
   const commits: WorkDirCommit[] = useMemo(() => (detailData?.commits || []) as WorkDirCommit[], [detailData?.commits])
   const tasks: TaskListItem[] = useMemo(() => detailData?.tasks || [], [detailData?.tasks])
@@ -253,7 +256,7 @@ export default function WorkDirDetail() {
                                     >
                                       {mt.task_id}
                                     </button>
-                                    <span className="text-gray-500 dark:text-gray-400">{mt.user_name || mt.user_id || '-'}</span>
+                                    <span className="text-gray-500 dark:text-gray-400">{resolveName(mt.user_id || mt.user_name)}</span>
                                     <span className="tabular-nums text-gray-500 dark:text-gray-400">{formatV2Ratio(mt.silica, 0)}</span>
                                   </div>
                                 ))}
@@ -300,7 +303,7 @@ export default function WorkDirDetail() {
                         className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
                         onClick={() => navigate(`/user/${encodeURIComponent(p.user_id)}`)}
                       >
-                        {p.user_name}
+                        {resolveName(p.user_id)}
                       </button>
                     </td>
                     <td className={TD_NUM}>{p.task_count}</td>

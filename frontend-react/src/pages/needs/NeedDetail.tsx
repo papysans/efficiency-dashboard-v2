@@ -5,6 +5,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useNeedDetail } from '@/api/queries'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import type { NeedBaselineComponents, NeedCommit, NeedDetail as NeedDetailModel, NeedSession } from '@/api/types'
 import {
   formatDuration,
@@ -102,6 +103,8 @@ export default function NeedDetail() {
   const { needId } = useParams<{ needId: string }>()
   const navigate = useNavigate()
   const { data, isLoading, error } = useNeedDetail(needId)
+  // 主用户/Session 用户/Commit 用户均可能是 UUID，统一走姓名映射（与 NeedList 同口径）。
+  const { resolveName } = useUserNameMap()
 
   const need: NeedDetailModel = (data?.need as NeedDetailModel) || ({ need_id: needId || '' } as NeedDetailModel)
   const sessions: NeedSession[] = data?.sessions || data?.stage_metrics || []
@@ -201,9 +204,37 @@ export default function NeedDetail() {
           <Kv label="边界来源">{need.boundary_source || '-'}</Kv>
           <Kv label="边界置信"><Tag tone={confidenceTagClass(need.boundary_confidence)}>{need.boundary_confidence || '-'}</Tag></Kv>
           <Kv label="边界标识" wide mono>{need.boundary_key || '-'}</Kv>
-          <Kv label="仓库" wide mono>{need.repo_addr || '-'}</Kv>
+          <Kv label="仓库" wide mono>
+            {need.repo_addr ? (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/repo/${encodeURIComponent(need.repo_addr as string)}${need.repo_branch ? `/${encodeURIComponent(need.repo_branch)}` : ''}`,
+                  )
+                }
+                className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 text-left break-all font-mono focus:outline-none focus-visible:underline"
+              >
+                {need.repo_addr}
+              </button>
+            ) : (
+              '-'
+            )}
+          </Kv>
           <Kv label="分支" mono>{need.repo_branch || '-'}</Kv>
-          <Kv label="主用户">{need.primary_user_id || '-'}</Kv>
+          <Kv label="主用户">
+            {need.primary_user_id ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/user/${encodeURIComponent(need.primary_user_id as string)}`)}
+                className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 text-left focus:outline-none focus-visible:underline"
+              >
+                {resolveName(need.primary_user_id)}
+              </button>
+            ) : (
+              '-'
+            )}
+          </Kv>
           <Kv label="协作人数">{contributorCount}</Kv>
           <Kv label="开始时间">{formatLocalTime(need.dev_start_ts)}</Kv>
           <Kv label="结束时间">{formatLocalTime(need.dev_end_ts)}</Kv>
@@ -332,7 +363,20 @@ export default function NeedDetail() {
               sessions.map((s) => (
                 <tr key={s.session_id} className="border-b border-gray-100/50 dark:border-white/5">
                   <td className="px-3 py-2 font-mono text-gray-700 dark:text-gray-200">{shortId(s.session_id)}</td>
-                  <td className="px-3 py-2 text-gray-700 dark:text-gray-200"><div className="max-w-[220px] truncate" title={s.user_id}>{s.user_id || '-'}</div></td>
+                  <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                    {s.user_id ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/user/${encodeURIComponent(s.user_id as string)}`)}
+                        className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 max-w-[220px] truncate inline-block align-bottom text-left focus:outline-none focus-visible:underline"
+                        title={resolveName(s.user_id)}
+                      >
+                        {resolveName(s.user_id)}
+                      </button>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatLocalTime(s.session_start_ts)}</td>
                   <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatLocalTime(s.session_end_ts)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{formatDuration(s.total_active_min)}</td>
@@ -386,7 +430,8 @@ export default function NeedDetail() {
                         </button>
                       </td>
                       <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatLocalTime(c.commit_time)}</td>
-                      <td className="px-3 py-2 text-gray-700 dark:text-gray-200"><div className="max-w-[180px] truncate" title={c.user_name}>{c.user_name || '-'}</div></td>
+                      {/* user_name 可能是 UUID，resolveName 命中映射则显真名，否则原样回显 */}
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-200"><div className="max-w-[180px] truncate" title={resolveName(c.user_name)}>{c.user_name ? resolveName(c.user_name) : '-'}</div></td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtInt(c.diff_lines)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtPct(c.silica)}</td>
                       <td className="px-3 py-2 text-gray-700 dark:text-gray-200"><div className="max-w-[280px] truncate" title={c.comment}>{c.comment || '-'}</div></td>

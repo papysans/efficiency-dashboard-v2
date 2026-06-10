@@ -333,7 +333,15 @@ export default function ProjectDetail() {
             <tbody>
               {userStats.map((s) => (
                 <tr key={s.user_id} className="border-b border-gray-100/50 dark:border-white/5 hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors">
-                  <td className={TD} title={resolveName(s.user_id)}>{resolveName(s.user_id)}</td>
+                  <td className={TD} title={resolveName(s.user_id)}>
+                    {s.user_id && s.user_id !== '未知' ? (
+                      <LinkBtn onClick={() => navigate(`/user/${encodeURIComponent(s.user_id)}`)}>
+                        {resolveName(s.user_id)}
+                      </LinkBtn>
+                    ) : (
+                      resolveName(s.user_id)
+                    )}
+                  </td>
                   <td className={TD_NUM}>{s.task_count}</td>
                   <td className={TD_NUM}>{s.commit_count}</td>
                   <td className={TD_NUM}>{s.commit_diff_lines.toLocaleString()}</td>

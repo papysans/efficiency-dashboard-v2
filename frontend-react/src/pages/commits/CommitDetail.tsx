@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCommitDetail } from '@/api/queries'
 import { updateCommitManualV2 } from '@/api/endpoints'
 import type { CommitDetail as CommitDetailType, RelatedTask, UpdateCommitManualRequest } from '@/api/types'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { fmtCost, formatDuration, formatLocalTime, formatV2Ratio } from '@/lib/formatters'
 import { Tag } from '@/components/ui/Tag'
 import { percentTextClass } from '@/components/ui/PercentPill'
@@ -27,6 +28,8 @@ export default function CommitDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data, isLoading, error } = useCommitDetail(commitId)
+  // user_name 可能是 UUID，统一走姓名映射（与列表页同口径）。
+  const { resolveName } = useUserNameMap()
 
   // 顶层 efficiency_ratio 覆盖进 commit（§1.2，顶层优先）。
   const commit: CommitDetailType = useMemo(() => {
@@ -107,10 +110,10 @@ export default function CommitDetail() {
           <Kv label="用户">
             {commit.user_id ? (
               <LinkBtn onClick={() => navigate(`/user/${encodeURIComponent(commit.user_id as string)}`)}>
-                {commit.user_name || commit.user_id}
+                {resolveName(commit.user_id)}
               </LinkBtn>
             ) : (
-              commit.user_name || '-'
+              (commit.user_name && resolveName(commit.user_name)) || '-'
             )}
           </Kv>
           <Kv label="Git 用户">
@@ -210,7 +213,7 @@ export default function CommitDetail() {
                         {t.task_id}
                       </button>
                     </td>
-                    <td className={TD}>{t.user_name || '-'}</td>
+                    <td className={TD}>{t.user_name ? resolveName(t.user_name) : '-'}</td>
                     <td className={TD}>{formatLocalTime(t.start_time)}</td>
                     <td className={TD_NUM}>{t.diff_lines ?? '-'}</td>
                     <td className={TD_NUM}>{formatDuration(t.task_real_minutes)}</td>
