@@ -340,6 +340,32 @@ func TestAggregateEfficiencyV2NeedActuals_NoSessionsAllUncovered(t *testing.T) {
 	}
 }
 
+func TestAggregateEfficiencyV2NeedActuals_CommitOnlyNeedNotEligible(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	commits := []models.Commit{
+		{CommitId: "c1", UserId: "u-alice", RepoAddr: "r", RepoBranch: "feature/x", CommitTime: base, DiffLines: 50},
+		{CommitId: "c2", UserId: "u-alice", RepoAddr: "r", RepoBranch: "feature/x", CommitTime: base.Add(120 * time.Minute), DiffLines: 80},
+	}
+	commitOnly := efficiencyV2AggTestNeed("need-commit-only", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", nil, []string{"c1", "c2"})
+	commitOnly.CoverageEligible = true
+	withSession := efficiencyV2AggTestNeed("need-with-session", efficiencyV2BoundaryBranch, efficiencyV2ConfidenceHigh, "u-alice", []string{"s-1"}, []string{"c1"})
+	withSession.CoverageEligible = true
+	metrics := []models.SessionStageMetric{
+		efficiencyV2AggTestMetric("s-1", "u-alice", base, base.Add(60*time.Minute), 60),
+	}
+
+	updated := AggregateEfficiencyV2NeedActuals([]models.Need{commitOnly, withSession}, metrics, commits, EfficiencyV2Config{}, estimator.EstimateConfig{CommitLinePerMinutes: 100.0 / 480.0, MinMinutes: 5})
+	if updated[0].TotalCalendarMin <= 0 {
+		t.Fatalf("commit-only need total_calendar_min = %v, want >0 (multi-commit span)", updated[0].TotalCalendarMin)
+	}
+	if updated[0].CoverageEligible {
+		t.Fatalf("commit-only need should be demoted to coverage_eligible=false")
+	}
+	if !updated[1].CoverageEligible {
+		t.Fatalf("need with session should stay coverage_eligible=true")
+	}
+}
+
 func TestAggregateEfficiencyV2NeedActuals_RevertChinese(t *testing.T) {
 	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
 	session := efficiencyV2AggTestMetric("s-1", "u-alice", base, base.Add(60*time.Minute), 60)

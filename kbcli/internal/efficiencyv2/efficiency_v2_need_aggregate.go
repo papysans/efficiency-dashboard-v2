@@ -150,6 +150,11 @@ func aggregateOneEfficiencyV2Need(need models.Need, metricsBySession map[string]
 	if need.CoverageEligible && need.TotalCalendarMin <= 0 {
 		need.CoverageEligible = false
 	}
+	// commit-only Need（有 commit、无任何 session）同样排除：时间侧零上报，日历只剩
+	// uncovered margin 或 commit 间隔合成的跨度，不构成可信的提效比分母。
+	if need.CoverageEligible && len(sessionIDs) == 0 {
+		need.CoverageEligible = false
+	}
 	return need
 }
 
