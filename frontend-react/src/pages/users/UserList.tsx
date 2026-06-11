@@ -15,7 +15,6 @@ import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { MetricCard } from '@/components/ui/MetricCard'
-import { Tag } from '@/components/ui/Tag'
 
 // ---- 纯函数（移植 UserViewV2）----
 
@@ -23,34 +22,6 @@ import { Tag } from '@/components/ui/Tag'
 function shortName(name: string): string {
   const n = name || '-'
   return n.length > 20 ? `${n.slice(0, 20)}…` : n
-}
-
-// 受限原因码翻译（confidence_reason），供「受限」tag 展示/悬浮。
-function confidenceReasonText(reason?: string): string {
-  if (!reason) return '受限：数据置信度不足'
-  const rules: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
-    [/no_eligible_baseline/, () => '无可计入需求（没有 merged + 高/中置信 + 可测日历 的需求）'],
-    [/high_confidence_ratio=([0-9.]+)/, (m) => `高置信需求工作量占比过低（${(Number(m[1]) * 100).toFixed(1)}%）`],
-    [/low_unreported_ratio=([0-9.]+)/, (m) => `低/未上报需求工作量占比过高（${(Number(m[1]) * 100).toFixed(1)}%）`],
-  ]
-  const parts: string[] = []
-  reason
-    .split(';')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .forEach((tok) => {
-      let hit = false
-      for (const [re, label] of rules) {
-        const m = tok.match(re)
-        if (m) {
-          parts.push(label(m))
-          hit = true
-          break
-        }
-      }
-      if (!hit) parts.push(tok)
-    })
-  return '受限原因：' + parts.join('；')
 }
 
 // 数值列字段集合（排序时数值化；非数值列 org_name/user 走文本）。snake_case，与 native 一致（不传后端）。
@@ -63,6 +34,7 @@ const NUMERIC_FIELDS = new Set<string>([
   'calendar_ratio',
   'actual_work_min',
   'work_ratio',
+  'ai_code_ratio',
   'commit_count',
   'commit_diff_lines',
   'week_count',
@@ -260,7 +232,7 @@ export default function UserList() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户看板</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            按用户聚合需求提效，提效比为小数口径（已 ×100 展示为百分比）。
+            按用户聚合需求提效，日历提效看交付周期缩短了多少，人力提效看人工投入节省了多少。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -301,7 +273,7 @@ export default function UserList() {
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">用户列表</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">提效比按百分比展示（小数口径 ×100）</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">按用户汇总可计入需求</span>
         </div>
 
         {errMsg && (
@@ -330,12 +302,12 @@ export default function UserList() {
                 </th>
                 <th className={TH_NUM}>
                   <span className="inline-flex justify-end w-full">
-                    <SortableTh field="actual_calendar_min" label="实际日历" numeric active={isSortActive('actual_calendar_min')} desc={isSortDesc('actual_calendar_min')} onSort={onSortChange} />
+                    <SortableTh field="actual_calendar_min" label="实际周期" numeric active={isSortActive('actual_calendar_min')} desc={isSortDesc('actual_calendar_min')} onSort={onSortChange} />
                   </span>
                 </th>
                 <th className={TH_NUM}>
                   <span className="inline-flex justify-end w-full">
-                    <SortableTh field="baseline_calendar_min" label="基线日历" numeric active={isSortActive('baseline_calendar_min')} desc={isSortDesc('baseline_calendar_min')} onSort={onSortChange} />
+                    <SortableTh field="baseline_calendar_min" label="传统周期预估" numeric active={isSortActive('baseline_calendar_min')} desc={isSortDesc('baseline_calendar_min')} onSort={onSortChange} />
                   </span>
                 </th>
                 <th className={TH}>
@@ -343,11 +315,14 @@ export default function UserList() {
                 </th>
                 <th className={TH_NUM}>
                   <span className="inline-flex justify-end w-full">
-                    <SortableTh field="actual_work_min" label="实际工作量" numeric active={isSortActive('actual_work_min')} desc={isSortDesc('actual_work_min')} onSort={onSortChange} />
+                    <SortableTh field="actual_work_min" label="实际人力" numeric active={isSortActive('actual_work_min')} desc={isSortDesc('actual_work_min')} onSort={onSortChange} />
                   </span>
                 </th>
                 <th className={TH}>
-                  <SortableTh field="work_ratio" label="工作量提效" active={isSortActive('work_ratio')} desc={isSortDesc('work_ratio')} onSort={onSortChange} />
+                  <SortableTh field="work_ratio" label="人力提效" active={isSortActive('work_ratio')} desc={isSortDesc('work_ratio')} onSort={onSortChange} />
+                </th>
+                <th className={TH}>
+                  <SortableTh field="ai_code_ratio" label="AI 代码占比" active={isSortActive('ai_code_ratio')} desc={isSortDesc('ai_code_ratio')} onSort={onSortChange} />
                 </th>
                 <th className={TH_NUM}>
                   <span className="inline-flex justify-end w-full">
@@ -364,7 +339,6 @@ export default function UserList() {
                     <SortableTh field="week_count" label="活跃周" numeric active={isSortActive('week_count')} desc={isSortDesc('week_count')} onSort={onSortChange} />
                   </span>
                 </th>
-                <th className={TH}>置信</th>
               </tr>
             </thead>
             <tbody>
@@ -410,23 +384,10 @@ export default function UserList() {
                     <td className={TD}><RatioPill value={row.calendar_ratio} /></td>
                     <td className={TD_NUM}>{formatDuration(row.actual_work_min)}</td>
                     <td className={TD}><RatioPill value={row.work_ratio} /></td>
+                    <td className={TD}><RatioPill value={row.ai_code_ratio} /></td>
                     <td className={TD_NUM}>{row.commit_count}</td>
                     <td className={TD_NUM}>{formatNumber(row.commit_diff_lines, 0)}</td>
                     <td className={TD_NUM}>{row.week_count}</td>
-                    <td className={TD}>
-                      {row.confidence_limited ? (
-                        <span className="inline-flex flex-col gap-0.5">
-                          <span className="inline-flex">
-                            <Tag tone="warning" title={confidenceReasonText(row.confidence_reason)}>受限</Tag>
-                          </span>
-                          <span className="text-[0.7rem] text-gray-400 dark:text-gray-500 max-w-[200px] truncate" title={confidenceReasonText(row.confidence_reason)}>
-                            {confidenceReasonText(row.confidence_reason)}
-                          </span>
-                        </span>
-                      ) : (
-                        <Tag tone="success">正常</Tag>
-                      )}
-                    </td>
                   </tr>
                 ))
               )}

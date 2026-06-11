@@ -18,15 +18,16 @@ function normalizeDateQuery(value: string | null): string {
   return ''
 }
 
-// 取根 → 首条有子节点分支的所有 dept_id（默认展开第一条分支，方便一进页面就看到层级）。
-function firstBranchIds(nodes: DeptTreeNode[]): string[] {
-  const root = nodes.find((n) => n.children && n.children.length > 0) || nodes[0]
+// 初始态：第一层全部展开、第二层全部闭合。
+// 单根（公司根节点）时展开根 + 根的直接子部门；多根（森林）时展开所有顶层部门。
+function initialExpandedIds(nodes: DeptTreeNode[]): string[] {
   const ids: string[] = []
-  let cur: DeptTreeNode | undefined = root
-  while (cur) {
-    ids.push(cur.dept_id)
-    cur = cur.children?.[0]
+  let firstLevel = nodes
+  if (nodes.length === 1 && nodes[0].children?.length) {
+    ids.push(nodes[0].dept_id)
+    firstLevel = nodes[0].children
   }
+  for (const n of firstLevel) ids.push(n.dept_id)
   return ids
 }
 
@@ -135,12 +136,12 @@ export default function OrgTree() {
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  // 默认展开第一条有子部门的分支（只在首次树到达时设一次）。
+  // 默认第一层全展开、第二层闭合（只在首次树到达时设一次）。
   useEffect(() => {
     if (!nodes.length) return
     setExpanded((prev) => {
       if (prev.size > 0) return prev
-      return new Set<string>(firstBranchIds(nodes))
+      return new Set<string>(initialExpandedIds(nodes))
     })
   }, [nodes])
 

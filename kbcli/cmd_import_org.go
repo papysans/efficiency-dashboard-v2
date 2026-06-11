@@ -1,14 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/csv"
 	"fmt"
 	"kanban/core/models"
+	"kanban/core/storage"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
 	"kanban/kbcli/internal/util"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -46,7 +47,7 @@ func extractDBName(dsn string) string {
 }
 
 func loadUserOrgsFromCSV(csvFile string) ([]models.UserOrg, error) {
-	f, err := os.Open(csvFile)
+	f, err := storage.Open(csvFile)
 	if err != nil {
 		return nil, fmt.Errorf("打开CSV文件失败: %w", err)
 	}
@@ -256,14 +257,9 @@ func loadDefaultUserOrgsFromLocalData(db *gorm.DB) ([]models.UserOrg, error) {
 }
 
 func writeOrgCSV(path string, rows []models.UserOrg) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-	defer w.Flush()
+	// 先写入内存缓冲，再经 storage 一次性落盘/上传（兼容 s3 后端）
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
 
 	if err := w.Write([]string{"user_id", "user_name", "org1", "org2", "org3", "org4", "org5", "org6", "org7", "org8", "org9", "git_user_name", "git_user_email"}); err != nil {
 		return err
@@ -275,7 +271,11 @@ func writeOrgCSV(path string, rows []models.UserOrg) error {
 		}
 	}
 
-	return w.Error()
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return err
+	}
+	return storage.WriteFile(path, buf.Bytes())
 }
 
 func saveUserOrgs(db *gorm.DB, rows []models.UserOrg) error {
@@ -419,7 +419,9 @@ var importOrgCmd = &cobra.Command{
 			fromDSN = appconfig.Cfg.OrgDSN
 		}
 
-		return runImportOrg(fromDSN, fromCSV, toCSV)
+		return withImportAdvisoryLock("import-org", func() error {
+			return runImportOrg(fromDSN, fromCSV, toCSV)
+		})
 	},
 }
 

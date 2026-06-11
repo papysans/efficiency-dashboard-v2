@@ -262,12 +262,6 @@ func PersistEfficiencyV2BaselineCOnNeed(need *models.Need, result EfficiencyV2LL
 
 func extractEfficiencyV2KeyDecisions(need models.Need) []string {
 	var decisions []string
-	if need.MergeTs != nil {
-		decisions = append(decisions, "merged_pr")
-	}
-	if need.WaitForReviewMin > 0 {
-		decisions = append(decisions, fmt.Sprintf("review_wait=%.1fmin", need.WaitForReviewMin))
-	}
 	if need.UncoveredLoc > 0 {
 		decisions = append(decisions, fmt.Sprintf("uncovered_loc=%d", need.UncoveredLoc))
 	}

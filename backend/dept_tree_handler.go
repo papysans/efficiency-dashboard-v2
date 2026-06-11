@@ -79,6 +79,7 @@ type DeptMember struct {
 	CommitCount         int64    `json:"commit_count"`
 	CommitDiffLines     int64    `json:"commit_diff_lines"`
 	Cost                float64  `json:"cost"`
+	AICodeRatio         *float64 `json:"ai_code_ratio"`
 }
 
 // DeptMembersSummary 该部门直属成员的合计（仅匹配到看板数据的计入指标合计；提效比按合计基线/实际重算）。
@@ -94,6 +95,7 @@ type DeptMembersSummary struct {
 	CommitCount         int64    `json:"commit_count"`
 	CommitDiffLines     int64    `json:"commit_diff_lines"`
 	Cost                float64  `json:"cost"`
+	AICodeRatio         *float64 `json:"ai_code_ratio"`
 }
 
 type DeptMembersResponse struct {
@@ -295,6 +297,7 @@ func getDeptTreeMembersV2(c *gin.Context) {
 	members := make([]DeptMember, 0, len(membersResp.Data))
 	summary := DeptMembersSummary{DeptId: deptID}
 	var totalActualWork, totalBaselineWork float64
+	var totalAICoveredLoc, totalLocNet int64
 	for _, src := range membersResp.Data {
 		m := DeptMember{
 			UniversalId: src.UniversalId,
@@ -314,6 +317,7 @@ func getDeptTreeMembersV2(c *gin.Context) {
 				m.CommitCount = row.CommitCount
 				m.CommitDiffLines = row.CommitDiffLines
 				m.Cost = row.Cost
+				m.AICodeRatio = row.AICodeRatio
 
 				summary.KanbanMemberCount++
 				summary.MergedNeedCount += row.MergedNeedCount
@@ -324,6 +328,8 @@ func getDeptTreeMembersV2(c *gin.Context) {
 				summary.Cost += row.Cost
 				totalActualWork += row.ActualWorkMin
 				totalBaselineWork += row.BaselineWorkMin
+				totalAICoveredLoc += row.aiCoveredLoc
+				totalLocNet += row.totalLocNet
 			}
 		}
 		members = append(members, m)
@@ -332,6 +338,7 @@ func getDeptTreeMembersV2(c *gin.Context) {
 	// 合计提效比按汇总基线/实际重算（小数口径，与 listOrgsV2Native / aggregateUsersV2 一致）。
 	summary.CalendarRatio = efficiencyV2Ratio(summary.BaselineCalendarMin, summary.ActualCalendarMin)
 	summary.WorkRatio = efficiencyV2Ratio(totalBaselineWork, totalActualWork)
+	summary.AICodeRatio = calcNeedAICodeRatio(totalAICoveredLoc, totalLocNet)
 
 	// 有看板活动的成员上提、无活动的下沉；活跃组内按合并需求数→提交数→实际日历分钟降序（活跃在前，
 	// 与 aggregateUsersV2 的"活跃在前"口径一致）；无活动组内按真名升序（RealName 为空退用 EmpNo）。

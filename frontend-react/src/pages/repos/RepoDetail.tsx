@@ -11,7 +11,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRepoBranches, useRepoDetail } from '@/api/queries'
 import { addRepoToProject, checkProjectConflicts, createProject, getProjects } from '@/api/endpoints'
 import type { ProjectConflict, ProjectListItem, RepoCommitItem, TaskListItem } from '@/api/types'
-import { formatDuration, formatLocalTime, formatNumber } from '@/lib/formatters'
+import { formatDuration, formatLocalTime, formatNumber, formatV2Ratio } from '@/lib/formatters'
 import { getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { PercentPill, percentTextClass } from '@/components/ui/PercentPill'
@@ -49,10 +49,10 @@ function tokenSum(up?: number | null, down?: number | null): number {
   return (up || 0) + (down || 0)
 }
 
-/** 硅含量 tag tone（>=80 success / >=50 primary / 其余 info）。 */
-function silicaTone(v: number): 'success' | 'primary' | 'info' {
-  if (v >= 80) return 'success'
-  if (v >= 50) return 'primary'
+/** Commit 级 AI 代码占比 tag tone（小数口径）。 */
+function aiCodeRatioTone(v: number): 'success' | 'primary' | 'info' {
+  if (v >= 0.8) return 'success'
+  if (v >= 0.5) return 'primary'
   return 'info'
 }
 
@@ -293,6 +293,12 @@ export default function RepoDetail() {
               {efficiency?.efficiency_ratio != null ? `${Math.round(efficiency.efficiency_ratio)}%` : '-'}
             </div>
           </div>
+          <div>
+            <div className="text-gray-500 dark:text-gray-400 mb-1">AI 代码占比</div>
+            <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+              {formatV2Ratio(data?.summary?.ai_code_ratio)}
+            </div>
+          </div>
           <KV label="代码行数" value={`${totalDiffLines.toLocaleString()} 行`} />
           <KV label="总费用（Tasks）" value={totalCost > 0 ? `${totalCost.toFixed(2)} 元` : '-'} />
           <KV label="贡献者" value={`${contributorCount} 人`} />
@@ -326,7 +332,7 @@ export default function RepoDetail() {
                 </th>
                 <th className={TH_CENTER}>
                   <span className="inline-flex justify-center">
-                    <SortableTh field="silica" label="硅含量" active={parsedCommitOrder?.field === 'silica'} desc={parsedCommitOrder?.field === 'silica' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
+                    <SortableTh field="silica" label="AI 代码占比" active={parsedCommitOrder?.field === 'silica'} desc={parsedCommitOrder?.field === 'silica' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
                   </span>
                 </th>
                 <th className={TH_CENTER}>
@@ -379,7 +385,7 @@ export default function RepoDetail() {
                       <td className={TD_NUM}>{formatDuration(commitReal(c))}</td>
                       <td className={TD_NUM}>{formatDuration(commitAncient(c))}</td>
                       <td className="px-3 py-2 align-middle text-center">
-                        {c.silica != null ? <Tag tone={silicaTone(c.silica)}>{c.silica.toFixed(1)}%</Tag> : '-'}
+                        {c.silica != null ? <Tag tone={aiCodeRatioTone(c.silica)}>{formatV2Ratio(c.silica)}</Tag> : '-'}
                       </td>
                       <td className="px-3 py-2 align-middle text-center">
                         {eff > 0 ? <PercentPill value={eff} /> : '-'}

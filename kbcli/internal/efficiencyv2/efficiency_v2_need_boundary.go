@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"regexp"
 	"sort"
 	"strings"
@@ -35,8 +36,6 @@ type efficiencyV2BoundaryCandidate struct {
 	branch     string
 	start      time.Time
 	end        time.Time
-	mergeTs    *time.Time
-	mergeOnly  bool
 	needID     string
 	source     string
 	confidence string
@@ -63,9 +62,16 @@ type efficiencyV2PayloadBoundary struct {
 	MockFiles          []string                     `json:"mock_files"`
 }
 
-func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, startDate, endDate string) ([]models.Need, error) {
-	// blocked user（治理配置 identity.blocked_user_ids）的 session/事件不进边界构建：
-	// 全表扫描会捞到历史轮残留行，本轮源头过滤后这里还要再挡一道。
+// ResolveAndUpsertEfficiencyV2Needs 解析并落库全量 Need 边界，返回 needs 与
+// prune 删除的旧 need 行数。删除数 >0 说明 key 换代，调用方必须全量重写
+// user_productivity_v2（见 RebuildEfficiencyV2UserProductivityAll）：窗口化重算
+// 只重写窗口内的周，窗口外历史周的 need_ids 会悬挂引用已删 need。
+// commits 必须全量加载、不带日期窗：边界解析要看全量历史，否则分析窗切到
+// episode 中间会让段首日期漂移、产生重复 need 行；日期窗只约束下游聚合。
+// 治理过滤在源头挡住 blocked user 的 session/事件与 excluded commit，不让它们
+// 形成 need；本轮未重新生成的旧 need 行统一由 pruneEfficiencyV2StaleNeeds 删除。
+func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config) ([]models.Need, int, error) {
+	// blocked user（治理配置 identity.blocked_user_ids）的 session/事件不进边界构建。
 	blockedUserIDs := EfficiencyV2SortedUnique(cfg.BlockedUserIds)
 	metricsQuery := db.Order("session_id ASC")
 	eventsQuery := db.Order("session_id ASC").Order("event_start_ts ASC").Order("event_id ASC")
@@ -75,36 +81,22 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 	}
 	var metrics []models.SessionStageMetric
 	if err := metricsQuery.Find(&metrics).Error; err != nil {
-		return nil, fmt.Errorf("query session stage metrics: %w", err)
+		return nil, 0, fmt.Errorf("query session stage metrics: %w", err)
 	}
 	var events []models.ConversationEvent
 	if err := eventsQuery.Find(&events).Error; err != nil {
-		return nil, fmt.Errorf("query conversation events: %w", err)
+		return nil, 0, fmt.Errorf("query conversation events: %w", err)
 	}
-	// 治理排除的 commit 不参与 Need 边界构建（双保险：聚合口径处也按 effective 记 0）
-	commitsQuery := db.Where("excluded_flag = false").Order("commit_time ASC").Order("commit_id ASC")
-	if startDate != "" {
-		commitsQuery = commitsQuery.Where("DATE(commit_time) >= ?", startDate)
-	}
-	if endDate != "" {
-		commitsQuery = commitsQuery.Where("DATE(commit_time) <= ?", endDate)
-	}
+	// 治理排除的 commit 不参与 Need 边界构建（双保险：聚合口径处也按 effective 记 0）。
+	// 绝不加日期窗：episode 分桶要看全量历史。
 	var commits []models.Commit
-	if err := commitsQuery.Find(&commits).Error; err != nil {
-		return nil, fmt.Errorf("query commits: %w", err)
+	if err := db.Where("excluded_flag = false").Order("commit_time ASC").Order("commit_id ASC").Find(&commits).Error; err != nil {
+		return nil, 0, fmt.Errorf("query commits: %w", err)
 	}
 
 	needs := ResolveEfficiencyV2Needs(metrics, events, commits, cfg)
 	if len(needs) == 0 {
-		// 窗口内候选可能被治理全量排除（excluded commit 不进查询）：本轮零产出
-		// 也要清扫"内容物全被排除"的残留 need，否则旧行带着治理前统计永久残留。
-		if err := cleanupEfficiencyV2FullyExcludedNeeds(db); err != nil {
-			return nil, err
-		}
-		if err := cleanupEfficiencyV2BlockedUserNeeds(db, blockedUserIDs); err != nil {
-			return nil, err
-		}
-		return needs, nil
+		return needs, 0, nil
 	}
 	if err := db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "need_id"}},
@@ -123,212 +115,72 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 			"touched_files",
 			"dev_start_ts",
 			"dev_end_ts",
-			"merge_ts",
 			"dev_duration_min",
-			"wait_for_review_min",
 			"coverage_eligible",
 			"reason",
 			"updated_at",
 		}),
 	}).CreateInBatches(&needs, 500).Error; err != nil {
-		return nil, fmt.Errorf("upsert needs: %w", err)
+		return nil, 0, fmt.Errorf("upsert needs: %w", err)
 	}
 	if err := updateEfficiencyV2StageMetricNeedIDs(db, needs); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if cfg.RepoAddrCanon {
-		if err := cleanupEfficiencyV2PreCanonNeeds(db, needs); err != nil {
-			return nil, err
-		}
+	pruned, err := pruneEfficiencyV2StaleNeeds(db, needs)
+	if err != nil {
+		return nil, 0, err
 	}
-	if err := cleanupEfficiencyV2FullyExcludedNeeds(db); err != nil {
-		return nil, err
-	}
-	if err := cleanupEfficiencyV2BlockedUserNeeds(db, blockedUserIDs); err != nil {
-		return nil, err
-	}
-	return needs, nil
+	return needs, pruned, nil
 }
 
-// cleanupEfficiencyV2BlockedUserNeeds 删除 primary_user_id 命中 user_id 黑名单的残留 need 行。
-// blocked user 的 session/commit 已不进边界构建，旧 need 行不会被本轮重算覆盖，
-// 不删则带着治理前统计永久残留（如纯测试账号的 orphan need）。删除幂等且可恢复：
-// 解黑后重跑全量会原样重建。贡献者含 blocked 但 primary 不是 blocked 的 need 不动
-// （其 session 成员已被过滤，下轮重算自然收缩）。
-func cleanupEfficiencyV2BlockedUserNeeds(db *gorm.DB, blockedUserIDs []string) error {
-	if len(blockedUserIDs) == 0 {
-		return nil
+// pruneEfficiencyV2StaleNeeds 删除本轮重算未重新生成的 need 行并返回删除数：
+// key 方案变更（如 episode 后缀）后旧 need_id 残留——upsert 只增改不删。
+// 幂等：第二次跑 stale 集为空。session_stage_metrics.need_id 已由
+// updateEfficiencyV2StageMetricNeedIDs 全量覆盖刷新（每个 session 必然落入本轮
+// 某个 need），不会留下悬挂引用。调用方保证 needs 非空，不会出现"空轮清空全表"。
+func pruneEfficiencyV2StaleNeeds(db *gorm.DB, current []models.Need) (int, error) {
+	var existing []string
+	if err := db.Model(&models.Need{}).Pluck("need_id", &existing).Error; err != nil {
+		return 0, fmt.Errorf("list need ids for prune: %w", err)
 	}
-	if err := db.Where("primary_user_id IN ?", blockedUserIDs).Delete(&models.Need{}).Error; err != nil {
-		return fmt.Errorf("delete blocked-user needs: %w", err)
+	currentIDs := make([]string, 0, len(current))
+	for _, need := range current {
+		currentIDs = append(currentIDs, need.NeedId)
 	}
-	return nil
+	stale := efficiencyV2StaleIDs(existing, currentIDs)
+	if len(stale) == 0 {
+		log.Printf("efficiency-v2 prune: no stale need rows")
+		return 0, nil
+	}
+	const batch = 500
+	for i := 0; i < len(stale); i += batch {
+		end := i + batch
+		if end > len(stale) {
+			end = len(stale)
+		}
+		if err := db.Where("need_id IN ?", stale[i:end]).Delete(&models.Need{}).Error; err != nil {
+			return 0, fmt.Errorf("prune stale needs: %w", err)
+		}
+	}
+	log.Printf("efficiency-v2 prune: deleted %d stale need rows", len(stale))
+	return len(stale), nil
 }
 
-// cleanupEfficiencyV2FullyExcludedNeeds 清理"内容物已被治理全量排除"的残留 need：
-// 无任何 session 且 commit 全部 excluded_flag=true 的 need，本轮边界重算不会再生成它
-// （排除的 commit 不进候选），旧行会带着治理前的统计永久残留在列表里。
-// 删除幂等且可恢复：若黑名单回滚（commit 不再 excluded），下轮重算会原样重建该 need。
-// 保护条件：必须有 commit（纯会话 need 不碰）、session_ids 为空、所有 commit 均被排除。
-func cleanupEfficiencyV2FullyExcludedNeeds(db *gorm.DB) error {
-	var candidates []models.Need
-	if err := db.Where("jsonb_array_length(session_ids) = 0").
-		Where("jsonb_array_length(commit_ids) > 0").
-		Find(&candidates).Error; err != nil {
-		return fmt.Errorf("query commit-only needs: %w", err)
+// efficiencyV2StaleIDs 返回 existing 中不在 current 里的 id（排序稳定）。
+// 供 need 表与 user_productivity_v2 表的 prune 共用。
+func efficiencyV2StaleIDs(existing, current []string) []string {
+	keep := make(map[string]bool, len(current))
+	for _, id := range current {
+		keep[id] = true
 	}
-	if len(candidates) == 0 {
-		return nil
-	}
-	commitIDs := make(map[string]bool)
-	for _, need := range candidates {
-		for _, id := range EfficiencyV2StringsFromJSON(need.CommitIds) {
-			commitIDs[id] = true
+	stale := make([]string, 0)
+	for _, id := range existing {
+		if !keep[id] {
+			stale = append(stale, id)
 		}
 	}
-	var excludedIDs []string
-	if err := db.Model(&models.Commit{}).
-		Where("commit_id IN ? AND excluded_flag = true", efficiencyV2SortedMapKeys(commitIDs)).
-		Pluck("commit_id", &excludedIDs).Error; err != nil {
-		return fmt.Errorf("query excluded commits: %w", err)
-	}
-	excludedSet := make(map[string]bool, len(excludedIDs))
-	for _, id := range excludedIDs {
-		excludedSet[id] = true
-	}
-	staleIDs := selectFullyExcludedNeedIDs(candidates, excludedSet)
-	if len(staleIDs) == 0 {
-		return nil
-	}
-	if err := db.Where("need_id IN ?", staleIDs).Delete(&models.Need{}).Error; err != nil {
-		return fmt.Errorf("delete fully-excluded needs: %w", err)
-	}
-	return nil
-}
-
-// selectFullyExcludedNeedIDs 从候选 need 中挑出 commit 全部在 excludedSet 里的，返回排序后的 need_id。
-func selectFullyExcludedNeedIDs(candidates []models.Need, excludedSet map[string]bool) []string {
-	var staleIDs []string
-	for _, need := range candidates {
-		ids := EfficiencyV2StringsFromJSON(need.CommitIds)
-		if len(ids) == 0 {
-			continue
-		}
-		allExcluded := true
-		for _, id := range ids {
-			if !excludedSet[id] {
-				allExcluded = false
-				break
-			}
-		}
-		if allExcluded {
-			staleIDs = append(staleIDs, need.NeedId)
-		}
-	}
-	sort.Strings(staleIDs)
-	return staleIDs
-}
-
-// cleanupEfficiencyV2PreCanonNeeds 清理 repo 地址归一前残留的旧 need 行。
-// 背景：branch 边界 key 内嵌 repo_addr（branch:{repo}:{branch}），开启 repo_addr_canon 后
-// 同一边界的 key 变成归一写法，needs 表的 (boundary_source, boundary_key) 唯一索引
-// 不会覆盖旧 key 行，留下 canon 前的旧行与新行重复统计同一边界。
-// 保护条件（全部满足才删，缺一不可，防止误删正常 need）：
-//  1. boundary_source 相同且仅限 lv2_branch——其他 source 的 key 不含 repo_addr，不受归一影响；
-//  2. repo_branch 与新 need 相同——同仓库不同分支是不同 need，绝不能互删；
-//  3. 旧行 repo_addr 经 Canon 后重构出的边界 key == 本轮某个新 need 的 boundary_key
-//     （即 canon 后 repo_addr 相同、boundary_key 不同的 pre-canon 旧写法行），
-//     且旧行自身 key 不等于该 canon key——新行本轮已聚合落库，删除旧行不丢数据。
-//
-// 采用 DELETE 而非 UPDATE 旧行 key 迁移：canon key 的新行本轮已存在，UPDATE 必撞唯一索引；
-// 旧行的会话/commit 归属已被新行重新聚合吸收，删除幂等且无信息损失。
-func cleanupEfficiencyV2PreCanonNeeds(db *gorm.DB, needs []models.Need) error {
-	newKeys := make(map[string]bool)
-	branches := make(map[string]bool)
-	for _, need := range needs {
-		if need.BoundarySource != efficiencyV2BoundaryBranch {
-			continue
-		}
-		newKeys[need.BoundaryKey] = true
-		if need.RepoBranch != "" {
-			branches[need.RepoBranch] = true
-		}
-	}
-	if len(newKeys) == 0 {
-		return nil
-	}
-	var existing []models.Need
-	if err := db.Where("boundary_source = ?", efficiencyV2BoundaryBranch).
-		Where("repo_branch IN ?", efficiencyV2SortedMapKeys(branches)).
-		Find(&existing).Error; err != nil {
-		return fmt.Errorf("query pre-canon needs: %w", err)
-	}
-	// 本轮新行（按分支）接管的 session/commit 归属，用于内容覆盖判定。
-	ownedSessions := make(map[string]map[string]bool) // repo_branch → session_id 集合
-	ownedCommits := make(map[string]map[string]bool)  // repo_branch → commit_id 集合
-	for _, need := range needs {
-		if need.BoundarySource != efficiencyV2BoundaryBranch || need.RepoBranch == "" {
-			continue
-		}
-		if ownedSessions[need.RepoBranch] == nil {
-			ownedSessions[need.RepoBranch] = make(map[string]bool)
-			ownedCommits[need.RepoBranch] = make(map[string]bool)
-		}
-		for _, id := range EfficiencyV2StringsFromJSON(need.SessionIds) {
-			ownedSessions[need.RepoBranch][id] = true
-		}
-		for _, id := range EfficiencyV2StringsFromJSON(need.CommitIds) {
-			ownedCommits[need.RepoBranch][id] = true
-		}
-	}
-	var staleIDs []string
-	for _, old := range existing {
-		if newKeys[old.BoundaryKey] {
-			continue // 本轮新行自身，不动
-		}
-		canonKey := efficiencyV2ClampNeedKey(fmt.Sprintf("branch:%s:%s", governance.CanonRepoAddr(old.RepoAddr), old.RepoBranch))
-		if canonKey != old.BoundaryKey && newKeys[canonKey] {
-			// 判据一：canon 重构旧行 key 命中本轮新行 → 典型 pre-canon 旧写法行。
-			staleIDs = append(staleIDs, old.NeedId)
-			continue
-		}
-		// 判据二（内容覆盖）：旧行的 session 与 commit 已全部被本轮同分支新行接管 →
-		// 旧行是被取代的残留（覆盖 canon 规则演进留下的畸形地址行——这类行 canon 自查
-		// "幂等"无法识别，如 userinfo 剥离上线前被冒号规则搅碎的 token 地址）。
-		// 空内容（无 session 也无 commit）不参与，避免误删占位行。
-		if efficiencyV2NeedContentOwnedBy(old, ownedSessions[old.RepoBranch], ownedCommits[old.RepoBranch]) {
-			staleIDs = append(staleIDs, old.NeedId)
-		}
-	}
-	if len(staleIDs) == 0 {
-		return nil
-	}
-	sort.Strings(staleIDs)
-	if err := db.Where("need_id IN ?", staleIDs).Delete(&models.Need{}).Error; err != nil {
-		return fmt.Errorf("delete pre-canon needs: %w", err)
-	}
-	return nil
-}
-
-// efficiencyV2NeedContentOwnedBy 判定 need 的全部 session 与 commit 是否都已被
-// 给定的归属集合接管（至少要有一项内容，空 need 返回 false）。
-func efficiencyV2NeedContentOwnedBy(need models.Need, sessions, commits map[string]bool) bool {
-	sessIDs := EfficiencyV2StringsFromJSON(need.SessionIds)
-	commitIDs := EfficiencyV2StringsFromJSON(need.CommitIds)
-	if len(sessIDs) == 0 && len(commitIDs) == 0 {
-		return false
-	}
-	for _, id := range sessIDs {
-		if !sessions[id] {
-			return false
-		}
-	}
-	for _, id := range commitIDs {
-		if !commits[id] {
-			return false
-		}
-	}
-	return true
+	stale = EfficiencyV2SortedUnique(stale)
+	return stale
 }
 
 func updateEfficiencyV2StageMetricNeedIDs(db *gorm.DB, needs []models.Need) error {
@@ -394,11 +246,74 @@ func ResolveEfficiencyV2Needs(stageMetrics []models.SessionStageMetric, events [
 	}
 	sort.Strings(bucketKeys)
 
+	idleThreshold := efficiencyV2IdleThreshold(cfg)
 	needs := make([]models.Need, 0, len(bucketKeys))
 	for _, key := range bucketKeys {
-		needs = append(needs, efficiencyV2BuildNeed(*bucketsByKey[key], cfg))
+		for _, episode := range efficiencyV2SplitBucketEpisodes(*bucketsByKey[key], idleThreshold) {
+			needs = append(needs, efficiencyV2BuildNeed(episode, cfg))
+		}
 	}
 	return needs
+}
+
+// efficiencyV2SplitBucketEpisodes 把一个静态身份桶（branch/PR/issue/cluster/orphan）
+// 按活动间隙二级切分成多个 episode 段，一段 = 一个 need：候选按 start 升序扫描，
+// 下一候选 start 与当前段 max(end) 的间隙超过 idleThreshold 即切新段。
+// 单段桶原样返回（need_id 不加后缀，保持存量兼容）；多段时每段 key 追加
+// "@YYYY-MM-DD"（段首候选 start 的 UTC 日期，段间间隙 > idleThreshold 保证日期互异）。
+// start 为零值的候选无法排序，归入第一段（cluster/orphan 的零值候选已在 key 层
+// 分流到独立 undated 桶，不会进入多段切分）。
+func efficiencyV2SplitBucketEpisodes(bucket efficiencyV2NeedBucket, idleThreshold time.Duration) []efficiencyV2NeedBucket {
+	var undated, timed []efficiencyV2BoundaryCandidate
+	for _, candidate := range bucket.candidates {
+		if candidate.start.IsZero() {
+			undated = append(undated, candidate)
+		} else {
+			timed = append(timed, candidate)
+		}
+	}
+	if len(timed) == 0 {
+		return []efficiencyV2NeedBucket{bucket}
+	}
+	sort.SliceStable(timed, func(i, j int) bool { return timed[i].start.Before(timed[j].start) })
+
+	var segments [][]efficiencyV2BoundaryCandidate
+	var current []efficiencyV2BoundaryCandidate
+	var maxEnd time.Time
+	for _, candidate := range timed {
+		if len(current) > 0 && candidate.start.Sub(maxEnd) > idleThreshold {
+			segments = append(segments, current)
+			current = nil
+			// 重置间隙基准：新段的 max(end) 只看本段候选，防止脏数据
+			// （end 早于 start 的候选）让上一段的 maxEnd 残留进新段。
+			maxEnd = time.Time{}
+		}
+		current = append(current, candidate)
+		end := candidate.end
+		if end.IsZero() {
+			end = candidate.start
+		}
+		if end.After(maxEnd) {
+			maxEnd = end
+		}
+	}
+	segments = append(segments, current)
+
+	if len(segments) == 1 {
+		return []efficiencyV2NeedBucket{bucket}
+	}
+
+	episodes := make([]efficiencyV2NeedBucket, 0, len(segments))
+	for i, segment := range segments {
+		episode := bucket
+		episode.key = bucket.key + "@" + segment[0].start.UTC().Format("2006-01-02")
+		if i == 0 && len(undated) > 0 {
+			segment = append(append([]efficiencyV2BoundaryCandidate(nil), undated...), segment...)
+		}
+		episode.candidates = segment
+		episodes = append(episodes, episode)
+	}
+	return episodes
 }
 
 func efficiencyV2PropagateCommitBoundaryClues(candidates []efficiencyV2BoundaryCandidate) {
@@ -519,11 +434,6 @@ func efficiencyV2CandidateFromCommit(commit models.Commit) efficiencyV2BoundaryC
 	if candidate.issueID == "" {
 		candidate.issueID = efficiencyV2ExtractIssueID(commit.RepoBranch)
 	}
-	if candidate.prID != "" && efficiencyV2IsMergeCommitComment(commit.Comment) {
-		mergeTs := commit.CommitTime
-		candidate.mergeTs = &mergeTs
-		candidate.mergeOnly = true
-	}
 	return candidate
 }
 
@@ -568,7 +478,12 @@ func efficiencyV2ResolveNaturalBoundary(candidate efficiencyV2BoundaryCandidate)
 	}
 	files := EfficiencyV2SortedUnique(candidate.files)
 	if len(files) >= 2 {
-		return efficiencyV2BoundaryFileCluster, efficiencyV2ConfidenceLow, efficiencyV2FileClusterKey(candidate.userID, candidate.start, files)
+		confidence := efficiencyV2ConfidenceLow
+		if candidate.start.IsZero() {
+			// 无任何时间信号的候选进独立 undated 桶，置信度再降一档。
+			confidence = efficiencyV2ConfidenceVeryLow
+		}
+		return efficiencyV2BoundaryFileCluster, confidence, efficiencyV2FileClusterKey(candidate.userID, candidate.start, files)
 	}
 	return efficiencyV2BoundaryOrphan, efficiencyV2ConfidenceVeryLow, efficiencyV2OrphanKey(candidate.userID, candidate.start)
 }
@@ -582,7 +497,6 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 	var repoAddr, branch, primaryUser string
 	status := "active"
 	var devStart, devEnd time.Time
-	var mergeTs *time.Time
 
 	for _, candidate := range bucket.candidates {
 		if repoAddr == "" {
@@ -615,16 +529,23 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 				files[file] = true
 			}
 		}
-		if candidate.mergeTs != nil && (mergeTs == nil || candidate.mergeTs.After(*mergeTs)) {
-			merge := *candidate.mergeTs
-			mergeTs = &merge
-		}
-		if !candidate.mergeOnly && !candidate.start.IsZero() && (devStart.IsZero() || candidate.start.Before(devStart)) {
+		if !candidate.start.IsZero() && (devStart.IsZero() || candidate.start.Before(devStart)) {
 			devStart = candidate.start
 		}
-		if !candidate.mergeOnly && !candidate.end.IsZero() && (devEnd.IsZero() || candidate.end.After(devEnd)) {
+		if !candidate.end.IsZero() && (devEnd.IsZero() || candidate.end.After(devEnd)) {
 			devEnd = candidate.end
 		}
+	}
+
+	// 采集侧存在把本地时间误标 UTC 的 commit（实测多用户 +8h 的「未来」时间戳），
+	// 会把 dev span 顶到未来：仅对超过当前时刻的端点 clamp，不做全量纠偏（历史时段内的偏移无法区分）。
+	now := time.Now()
+	if !devEnd.IsZero() && devEnd.After(now) {
+		log.Printf("efficiency-v2 need %s: dev_end %s 晚于当前时刻，已 clamp 到 now（疑似上游时区双偏移）", bucket.key, devEnd.Format(time.RFC3339))
+		devEnd = now
+	}
+	if !devStart.IsZero() && devStart.After(now) {
+		devStart = now
 	}
 
 	contributorIDs := efficiencyV2SortedMapKeys(contributors)
@@ -641,6 +562,20 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		spanExceeded = devEnd.Sub(devStart) > time.Duration(cfg.MaxNeedSpanDays)*24*time.Hour
 	}
 
+	// 多人集成流降级：episode 切分后仍然跨度长且多人贡献的段（如长命集成分支）
+	// 不是单个可归属的需求，个体提效比不可解释——confidence 降为 low，
+	// 由既有 eligible 规则（仅 high/medium 可入）自动踢出，不加新 flag。
+	confidence := bucket.confidence
+	integrationFlow := false
+	if (confidence == efficiencyV2ConfidenceHigh || confidence == efficiencyV2ConfidenceMedium) &&
+		cfg.IntegrationFlowSpanDays > 0 && cfg.IntegrationFlowMinContributors > 0 &&
+		!devStart.IsZero() && !devEnd.IsZero() &&
+		devEnd.Sub(devStart) > time.Duration(cfg.IntegrationFlowSpanDays)*24*time.Hour &&
+		len(contributorIDs) >= cfg.IntegrationFlowMinContributors {
+		confidence = efficiencyV2ConfidenceLow
+		integrationFlow = true
+	}
+
 	evidence := map[string]interface{}{
 		"source":          bucket.source,
 		"key":             bucket.key,
@@ -650,12 +585,15 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 	if spanExceeded {
 		evidence["max_need_span_days"] = cfg.MaxNeedSpanDays
 	}
+	if integrationFlow {
+		evidence["integration_flow"] = true
+	}
 
 	needKey := efficiencyV2ClampNeedKey(bucket.key)
 	need := models.Need{
 		NeedId:             needKey,
 		BoundarySource:     bucket.source,
-		BoundaryConfidence: bucket.confidence,
+		BoundaryConfidence: confidence,
 		BoundaryKey:        needKey,
 		BoundaryEvidence:   efficiencyV2NeedObjectJSON(evidence),
 		Status:             status,
@@ -666,11 +604,7 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		SessionIds:         EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(sessions)),
 		CommitIds:          EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(commits)),
 		TouchedFiles:       EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(files)),
-		MergeTs:            mergeTs,
-		CoverageEligible:   status == "merged" && (bucket.confidence == efficiencyV2ConfidenceHigh || bucket.confidence == efficiencyV2ConfidenceMedium),
-	}
-	if mergeTs != nil && !devEnd.IsZero() && mergeTs.After(devEnd) {
-		need.WaitForReviewMin = mergeTs.Sub(devEnd).Minutes()
+		CoverageEligible:   status == "merged" && (confidence == efficiencyV2ConfidenceHigh || confidence == efficiencyV2ConfidenceMedium),
 	}
 	if !devStart.IsZero() {
 		start := devStart
@@ -683,9 +617,15 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 	if need.DevStartTs != nil && need.DevEndTs != nil {
 		need.DevDurationMin = need.DevEndTs.Sub(*need.DevStartTs).Minutes()
 	}
+	reasons := make([]string, 0, 2)
 	if spanExceeded {
-		need.Reason = fmt.Sprintf("need span exceeds max_need_span_days=%d", cfg.MaxNeedSpanDays)
+		reasons = append(reasons, fmt.Sprintf("need span exceeds max_need_span_days=%d", cfg.MaxNeedSpanDays))
 	}
+	if integrationFlow {
+		reasons = append(reasons, fmt.Sprintf("integration flow: span exceeds %dd with >=%d contributors, confidence downgraded to low",
+			cfg.IntegrationFlowSpanDays, cfg.IntegrationFlowMinContributors))
+	}
+	need.Reason = strings.Join(reasons, "; ")
 	return need
 }
 
@@ -703,11 +643,6 @@ func efficiencyV2ExtractIssueID(text string) string {
 	return efficiencyV2IssuePattern.FindString(strings.ToUpper(text))
 }
 
-func efficiencyV2IsMergeCommitComment(text string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(text))
-	return strings.Contains(normalized, "merge pull request") || strings.HasPrefix(normalized, "merge pr")
-}
-
 func efficiencyV2ConfidenceForBoundarySource(source string) string {
 	switch source {
 	case efficiencyV2BoundaryPR, efficiencyV2BoundaryBranch:
@@ -723,38 +658,48 @@ func efficiencyV2ConfidenceForBoundarySource(source string) string {
 
 func efficiencyV2IsMainlineBranch(branch string) bool {
 	branch = strings.TrimSpace(strings.ToLower(branch))
-	return branch == "main" || branch == "master" || branch == "develop" || branch == "release" || strings.HasPrefix(branch, "release/")
+	return branch == "main" || branch == "master" || branch == "develop" || branch == "release" ||
+		strings.HasPrefix(branch, "release/") || strings.HasPrefix(branch, "develop/")
 }
+
+// efficiencyV2EpisodeKeySuffixPattern 匹配 episode 切分追加的 "@YYYY-MM-DD" 段后缀。
+var efficiencyV2EpisodeKeySuffixPattern = regexp.MustCompile(`@\d{4}-\d{2}-\d{2}$`)
 
 // efficiencyV2ClampNeedKey 把 need 边界 key 截断到 100 字符以内，用作 need_id / boundary_key。
-// 超长（如 file-cluster 把大量顶层目录拼接）时，保留可读前缀 + 全量 key 的短哈希后缀，
+// 超长（如 file-cluster 把大量顶层目录拼接）时，保留可读前缀 + 全量 key 的短哈希，
 // 避免不同长 key 截断成同一前缀后发生主键碰撞、把不同 need 错误合并。
+// episode 的 "@YYYY-MM-DD" 后缀必须保住（放在 hash 段之后）：截断把后缀截掉的话，
+// 超长桶的多个段会塌缩成同一个 need_id 互相覆盖。
 func efficiencyV2ClampNeedKey(key string) string {
 	const maxRunes = 100
-	runes := []rune(key)
-	if len(runes) <= maxRunes {
+	if len([]rune(key)) <= maxRunes {
 		return key
 	}
+	suffix := efficiencyV2EpisodeKeySuffixPattern.FindString(key)
+	base := strings.TrimSuffix(key, suffix)
 	sum := sha1.Sum([]byte(key))
 	hash := hex.EncodeToString(sum[:])[:12]
-	prefix := string(runes[:maxRunes-1-len(hash)]) // 87 runes + "~" + 12 hash = 100
-	return prefix + "~" + hash
+	// 后缀是纯 ASCII，len 即 rune 数；prefix + "~" + hash + suffix = 100。
+	prefixLen := maxRunes - len(suffix) - 1 - len(hash)
+	prefix := string([]rune(base)[:prefixLen])
+	return prefix + "~" + hash + suffix
 }
 
+// cluster/orphan key 已去掉 ISO 周组件：跨周硬切与周内乱合改由 episode 二级
+// 切分自然分段。start 为零值（无任何时间信号）的候选无法参与 episode 排序，
+// 单独归入独立 undated 桶。
 func efficiencyV2FileClusterKey(userID string, start time.Time, files []string) string {
-	return fmt.Sprintf("cluster:%s:%s:%s", userID, efficiencyV2WeekKey(start), efficiencyV2ClusterSlug(files))
+	if start.IsZero() {
+		return fmt.Sprintf("cluster:%s:undated:%s", userID, efficiencyV2ClusterSlug(files))
+	}
+	return fmt.Sprintf("cluster:%s:%s", userID, efficiencyV2ClusterSlug(files))
 }
 
 func efficiencyV2OrphanKey(userID string, start time.Time) string {
-	return fmt.Sprintf("orphan:%s:%s", userID, efficiencyV2WeekKey(start))
-}
-
-func efficiencyV2WeekKey(ts time.Time) string {
-	if ts.IsZero() {
-		return "unknown"
+	if start.IsZero() {
+		return fmt.Sprintf("orphan:%s:undated", userID)
 	}
-	year, week := ts.ISOWeek()
-	return fmt.Sprintf("%04dw%02d", year, week)
+	return fmt.Sprintf("orphan:%s", userID)
 }
 
 func efficiencyV2ClusterSlug(files []string) string {

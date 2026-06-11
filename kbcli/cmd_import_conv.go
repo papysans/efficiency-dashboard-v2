@@ -11,15 +11,17 @@ import (
 	"kanban/kbcli/internal/logx"
 	"kanban/kbcli/internal/util"
 	"math"
-	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/storage"
 	"kanban/core/utils"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -77,6 +79,13 @@ type taskConversation struct {
 	startTime  time.Time
 	endTime    time.Time
 }
+
+const (
+	importConvTaskBatchSize         = 200
+	importConvSessionSQLBatchSize   = 200
+	importConvConversationBatchSize = 100
+	importConvDBRetryMax            = 5
+)
 
 // flexString 是一个灵活的字符串类型，用于兼容 JSON 中字段可能为字符串或数字的场景。
 type flexString string
@@ -155,7 +164,7 @@ func (f *flexInt64) UnmarshalJSON(data []byte) error {
 var errSkipTask = errors.New("task skipped by date filter")
 
 func extractDateFromPath(baseDir, filePath string) string {
-	relPath, err := filepath.Rel(baseDir, filePath)
+	relPath, err := storage.Rel(baseDir, filePath)
 	if err != nil {
 		return ""
 	}
@@ -167,6 +176,18 @@ func extractDateFromPath(baseDir, filePath string) string {
 }
 
 func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate string) error {
+	rec := buildSessionRecord(ss, sessionDate, conversationDate)
+
+	// 使用 UPSERT 写入 sessions 表：session_id 冲突时更新除主键外的业务字段
+	result := db.Clauses(sessionUpsertClause()).Create(&rec)
+	if result.Error != nil {
+		logx.Errorf("session [%s] 保存失败: %v", ss.SessionId, result.Error)
+		return fmt.Errorf("写入session表失败: %w", result.Error)
+	}
+	return nil
+}
+
+func buildSessionRecord(ss *taskSession, sessionDate, conversationDate string) models.Session {
 	var startTime time.Time = time.Now().UTC()
 	var err error
 	if ss.StartTime != "" {
@@ -174,8 +195,7 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 			logx.Warnf("session [%s] 缺少start_time字段", ss.SessionId)
 		}
 	}
-	// 初始化 Task 基础字段，WorkDirId 通过工具函数根据 ClientId 和 WorkDir 生成唯一标识
-	rec := models.Session{
+	return models.Session{
 		SessionId:        ss.SessionId,
 		CreateTime:       startTime,
 		UserId:           ss.UserId,
@@ -188,9 +208,10 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 		SessionDate:      sessionDate,
 		ConversationDate: conversationDate,
 	}
+}
 
-	// 使用 UPSERT 写入 tasks 表：task_id 冲突时更新除主键外的业务字段
-	result := db.Clauses(clause.OnConflict{
+func sessionUpsertClause() clause.OnConflict {
+	return clause.OnConflict{
 		Columns: []clause.Column{{Name: "session_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"user_id", "user_name", "create_time",
@@ -199,10 +220,19 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 			"session_date", "conversation_date",
 			"updated_at",
 		}),
-	}).Create(&rec)
-	if result.Error != nil {
-		logx.Errorf("session [%s] 保存失败: %v", ss.SessionId, result.Error)
-		return fmt.Errorf("写入session表失败: %w", result.Error)
+	}
+}
+
+func saveSessions(db *gorm.DB, batch []*preparedImportTask) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	records := make([]models.Session, 0, len(batch))
+	for _, p := range batch {
+		records = append(records, buildSessionRecord(p.ss, p.sessionDate, p.conversationDate))
+	}
+	if err := db.Clauses(sessionUpsertClause()).CreateInBatches(&records, importConvSessionSQLBatchSize).Error; err != nil {
+		return fmt.Errorf("写入session表失败: %w", err)
 	}
 	return nil
 }
@@ -280,7 +310,7 @@ type preparedImportTask struct {
 // prepareImportTask 读取并解析单个任务的 summary 与 conversation 文件，算好待写入的记录。
 // 仅做文件 IO 与解析、不触库；这样所有易失败的解析步骤都在事务外，不会污染批量事务。
 func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*preparedImportTask, error) {
-	data, err := os.ReadFile(summaryPath)
+	data, err := storage.ReadFile(summaryPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取summary文件失败: %w", err)
 	}
@@ -305,11 +335,11 @@ func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*prepa
 	}
 
 	// 根据 ss 和 conversations 计算完整的 Task 记录
-	summaryDir := filepath.Dir(filepath.Dir(summaryPath))
-	summaryDir = filepath.Dir(filepath.Dir(summaryDir))
+	summaryDir := storage.Dir(storage.Dir(summaryPath))
+	summaryDir = storage.Dir(storage.Dir(summaryDir))
 	sessionDate := extractDateFromPath(summaryDir, summaryPath)
-	conversationDir := filepath.Dir(filepath.Dir(conversationPath))
-	conversationDir = filepath.Dir(filepath.Dir(conversationDir))
+	conversationDir := storage.Dir(storage.Dir(conversationPath))
+	conversationDir = storage.Dir(storage.Dir(conversationDir))
 	conversationDate := extractDateFromPath(conversationDir, conversationPath)
 
 	// 解析对话内的时间/指标；saveConversations 依赖此处填充的 startTime/endTime
@@ -337,6 +367,16 @@ func writeImportTask(tx *gorm.DB, p *preparedImportTask) error {
 	return nil
 }
 
+func writeImportTaskBatch(tx *gorm.DB, batch []*preparedImportTask) error {
+	if err := saveSessions(tx, batch); err != nil {
+		return err
+	}
+	if err := saveConversationBatch(tx, batch); err != nil {
+		return fmt.Errorf("保存conversations失败: %w", err)
+	}
+	return nil
+}
+
 // finalizeImportTaskSilica 写库成功后生成 task silica 文件（用于下次增量检测）；失败仅告警，不阻断。
 func finalizeImportTaskSilica(p *preparedImportTask) {
 	if err := generateTaskSilicaFile(p.ss, p.conversations, p.conversationPath, p.silicaPath); err != nil {
@@ -351,13 +391,10 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	if len(batch) == 0 {
 		return 0, 0
 	}
-	err := db.Transaction(func(tx *gorm.DB) error {
-		for _, p := range batch {
-			if err := writeImportTask(tx, p); err != nil {
-				return err
-			}
-		}
-		return nil
+	err := withImportConvDBRetry(func() error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			return writeImportTaskBatch(tx, batch)
+		})
 	})
 	if err == nil {
 		for _, p := range batch {
@@ -369,7 +406,9 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	// 整批失败（多为 DB/schema 级错误）：逐条单事务重试，定位并隔离坏记录
 	logx.Warnf("批量写入失败，回退逐条重试: %v", err)
 	for _, p := range batch {
-		if e := db.Transaction(func(tx *gorm.DB) error { return writeImportTask(tx, p) }); e != nil {
+		if e := withImportConvDBRetry(func() error {
+			return db.Transaction(func(tx *gorm.DB) error { return writeImportTask(tx, p) })
+		}); e != nil {
 			logx.Warnf("导入失败 [%s]: %v", p.ss.SessionId, e)
 			fail++
 			continue
@@ -380,60 +419,113 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	return success, fail
 }
 
-// saveConversations 将任务对话列表批量保存到数据库，使用事务保证原子性。
+func withImportConvDBRetry(fn func() error) error {
+	var err error
+	for attempt := 1; attempt <= importConvDBRetryMax; attempt++ {
+		err = fn()
+		if err == nil || !isRetriablePostgresError(err) {
+			return err
+		}
+		if attempt == importConvDBRetryMax {
+			break
+		}
+		delay := time.Duration(attempt*attempt) * 200 * time.Millisecond
+		logx.Warnf("数据库写入遇到可重试错误，第 %d/%d 次重试，等待 %s: %v", attempt, importConvDBRetryMax, delay, err)
+		time.Sleep(delay)
+	}
+	return err
+}
+
+func isRetriablePostgresError(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch pgErr.Code {
+	case "40P01", // deadlock_detected
+		"40001": // serialization_failure
+		return true
+	default:
+		return false
+	}
+}
+
+// saveConversations 将任务对话列表批量保存到数据库。
 // 功能：逐条将 taskConversation 转换为 models.Conversation 后插入，冲突时忽略（DoNothing）。
 // 参数：
 //   - db: GORM 数据库连接。
 //   - conversations: 需要保存的对话列表。
 //
-// 返回值：事务执行过程中发生的错误。
-// 关键技术原理：通过 db.Transaction 开启事务，确保一批对话要么全部写入成功，要么全部回滚；
-// 复合唯一键 (task_id, request_id) 冲突时忽略插入，避免重复数据报错。
+// 返回值：写库过程中发生的错误。
+// 关键技术原理：调用方负责事务边界；复合唯一键 (session_id, request_id) 冲突时忽略插入，避免重复数据报错。
 func saveConversations(db *gorm.DB, conversations []taskConversation) error {
 	if len(conversations) == 0 {
 		return nil
 	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		for _, conv := range conversations {
-			// 转换字段并对文本内容进行清洗，防止非法字符入库
-			tc := models.Conversation{
-				TaskId:           "",
-				SessionId:        conv.sessionId,
-				RequestId:        conv.RequestId,
-				Sender:           conv.Sender,
-				PromptMode:       conv.PromptMode,
-				Mode:             conv.Mode,
-				Model:            conv.Model,
-				StartTime:        conv.startTime,
-				EndTime:          conv.endTime,
-				ProcessTime:      int64(conv.ProcessTime),
-				ProcessTtft:      int64(conv.ProcessTtft),
-				UpstreamTokens:   conv.UpstreamTokens,
-				DownstreamTokens: conv.DownstreamTokens,
-				Cost:             conv.Cost,
-				RequestContent:   utils.SanitizeText(conv.RequestContent),
-				ResponseContent:  utils.SanitizeText(conv.ResponseContent),
-				UserInput:        utils.SanitizeText(conv.UserInput),
-				DiffLines:        conv.DiffLines,
-				ErrorCode:        string(conv.ErrorCode),
-				ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
-				RepoAddr:         conv.RepoAddr,
-				RepoBranch:       conv.RepoBranch,
-				WorkDir:          conv.WorkDir,
-				WorkDirId:        conv.workDirId,
-			}
+	records := makeConversationRecords(conversations)
+	return saveConversationRecords(db, records)
+}
 
-			// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败
-			result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "session_id"}, {Name: "request_id"}},
-				DoNothing: true,
-			}).Create(&tc)
-			if result.Error != nil {
-				return fmt.Errorf("写入task_conversations表失败: %w", result.Error)
-			}
-		}
+func saveConversationBatch(db *gorm.DB, batch []*preparedImportTask) error {
+	total := 0
+	for _, p := range batch {
+		total += len(p.conversations)
+	}
+	if total == 0 {
 		return nil
-	})
+	}
+	records := make([]models.Conversation, 0, total)
+	for _, p := range batch {
+		records = append(records, makeConversationRecords(p.conversations)...)
+	}
+	return saveConversationRecords(db, records)
+}
+
+func makeConversationRecords(conversations []taskConversation) []models.Conversation {
+	records := make([]models.Conversation, 0, len(conversations))
+	for _, conv := range conversations {
+		records = append(records, models.Conversation{
+			TaskId:           "",
+			SessionId:        conv.sessionId,
+			RequestId:        conv.RequestId,
+			Sender:           conv.Sender,
+			PromptMode:       conv.PromptMode,
+			Mode:             conv.Mode,
+			Model:            conv.Model,
+			StartTime:        conv.startTime,
+			EndTime:          conv.endTime,
+			ProcessTime:      int64(conv.ProcessTime),
+			ProcessTtft:      int64(conv.ProcessTtft),
+			UpstreamTokens:   conv.UpstreamTokens,
+			DownstreamTokens: conv.DownstreamTokens,
+			Cost:             conv.Cost,
+			RequestContent:   utils.SanitizeText(conv.RequestContent),
+			ResponseContent:  utils.SanitizeText(conv.ResponseContent),
+			UserInput:        utils.SanitizeText(conv.UserInput),
+			DiffLines:        conv.DiffLines,
+			ErrorCode:        string(conv.ErrorCode),
+			ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
+			RepoAddr:         conv.RepoAddr,
+			RepoBranch:       conv.RepoBranch,
+			WorkDir:          conv.WorkDir,
+			WorkDirId:        conv.workDirId,
+		})
+	}
+	return records
+}
+
+func saveConversationRecords(db *gorm.DB, records []models.Conversation) error {
+	if len(records) == 0 {
+		return nil
+	}
+	// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败
+	if err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "session_id"}, {Name: "request_id"}},
+		DoNothing: true,
+	}).CreateInBatches(&records, importConvConversationBatchSize).Error; err != nil {
+		return fmt.Errorf("写入task_conversations表失败: %w", err)
+	}
+	return nil
 }
 
 // parseUserInput 解析并提取用户输入中的实际内容。
@@ -552,7 +644,7 @@ func parseConversation(path string, lineNum int, content []byte, ignoreUnmarshal
 //  2. 容错机制：当单行整体验证失败时，尝试调用 splitConversations 将连续拼接的 JSON 对象（如 {"a":1}{"a":2}）拆分为多个对象分别解析。
 //  3. scanner.Buffer 显式设置缓冲区初始大小和最大大小，防止超长行导致扫描器默认缓冲区溢出。
 func parseConversationFile(path string) ([]taskConversation, error) {
-	f, err := os.Open(path)
+	f, err := storage.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -687,8 +779,8 @@ func splitConversations(line string) ([]string, error) {
 func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, conversationPath, silicaPath string) error {
 	// 获取 conversation 文件大小，用于后续增量导入时判断是否需要更新
 	var fileSize int64
-	if info, err := os.Stat(conversationPath); err == nil {
-		fileSize = info.Size()
+	if info, err := storage.Stat(conversationPath); err == nil {
+		fileSize = info.Size
 	}
 
 	// 组装 taskSilicaData 基础信息
@@ -725,20 +817,14 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 		tsd.Conversations = append(tsd.Conversations, tsc)
 	}
 
-	// 确保目标目录存在
-	dir := filepath.Dir(silicaPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
-	}
-
 	// 序列化为 JSON
 	data, err := json.Marshal(tsd)
 	if err != nil {
 		return fmt.Errorf("序列化taskSilicaData失败: %w", err)
 	}
 
-	// 写入 silica 文件
-	if err := os.WriteFile(silicaPath, data, 0644); err != nil {
+	// 写入 silica 文件（本地后端自动创建父目录）
+	if err := storage.WriteFile(silicaPath, data); err != nil {
 		return fmt.Errorf("写入task silica文件失败: %w", err)
 	}
 
@@ -757,18 +843,17 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 func scanConversationFiles(conversationDir string, startDate, endDate *time.Time) (map[string]string, error) {
 	convMap := make(map[string]string)
 	// 目录不存在时返回空映射，不做报错处理
-	if _, err := os.Stat(conversationDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(conversationDir); err != nil {
+		return nil, err
+	} else if !ok {
 		return convMap, nil
 	}
 
-	err := filepath.Walk(conversationDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	err := storage.Walk(conversationDir, func(path string, info storage.FileInfo) error {
 		// 仅处理 .jsonl 文件
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".jsonl") {
+		if strings.HasSuffix(info.Name, ".jsonl") {
 			// 从相对路径中提取日期信息 YYYY/MM/DD
-			relPath, err := filepath.Rel(conversationDir, path)
+			relPath, err := storage.Rel(conversationDir, path)
 			if err != nil {
 				return err
 			}
@@ -783,7 +868,7 @@ func scanConversationFiles(conversationDir string, startDate, endDate *time.Time
 				return nil
 			}
 
-			sessionId := strings.TrimSuffix(info.Name(), ".jsonl")
+			sessionId := strings.TrimSuffix(info.Name, ".jsonl")
 			// 若存在同名 sessionId 的多个文件，保留字典序更大的路径（通常表示更晚生成或更优先的版本）
 			if existing, ok := convMap[sessionId]; !ok || path > existing {
 				convMap[sessionId] = path
@@ -806,16 +891,15 @@ func scanConversationFiles(conversationDir string, startDate, endDate *time.Time
 func scanSessionFiles(summaryDir string) (map[string]string, error) {
 	sessionMap := make(map[string]string)
 	// 目录不存在时返回空映射
-	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(summaryDir); err != nil {
+		return nil, err
+	} else if !ok {
 		return sessionMap, nil
 	}
-	err := filepath.Walk(summaryDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	err := storage.Walk(summaryDir, func(path string, info storage.FileInfo) error {
 		// 仅处理 .json 文件
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
-			sessionId := strings.TrimSuffix(info.Name(), ".json")
+		if strings.HasSuffix(info.Name, ".json") {
+			sessionId := strings.TrimSuffix(info.Name, ".json")
 			// 同名冲突时保留字典序更大的路径
 			if existing, ok := sessionMap[sessionId]; !ok || path > existing {
 				sessionMap[sessionId] = path
@@ -843,7 +927,7 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 		return true
 	}
 	// 读取并解析已有的 silica 文件
-	data, err := os.ReadFile(silicaPath)
+	data, err := storage.ReadFile(silicaPath)
 	if err != nil {
 		return true
 	}
@@ -852,11 +936,11 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 		return true
 	}
 	// 获取当前 conversation 文件大小并与 silica 中记录的值比较
-	info, err := os.Stat(conversationPath)
+	info, err := storage.Stat(conversationPath)
 	if err != nil {
 		return true
 	}
-	return info.Size() != tsd.Size
+	return info.Size != tsd.Size
 }
 
 // runImportConv 执行完整的 task 批量导入流程。
@@ -874,13 +958,17 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 //  4. 通过 util.RecordCommandRun 记录命令执行结果，便于运维监控和审计。
 func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string, createPseudo bool) error {
 	startTime := time.Now()
-	summaryDir := filepath.Join(taskDir, "summary")
-	conversationDir := filepath.Join(taskDir, "conversation")
+	summaryDir := storage.Join(taskDir, "summary")
+	conversationDir := storage.Join(taskDir, "conversation")
 
 	// 校验 summary 目录必须存在
-	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+	if ok, err := storage.Exists(summaryDir); err != nil {
 		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
-		return fmt.Errorf("summary目录不存在: %s", summaryDir)
+		return fmt.Errorf("检查summary目录失败: %w", err)
+	} else if !ok {
+		err := fmt.Errorf("summary目录不存在: %s", summaryDir)
+		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+		return err
 	}
 
 	// 解析日期范围
@@ -926,17 +1014,22 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	// 遍历所有 conversation 文件，匹配 summary 并执行导入
 	totalConv := len(convMap)
 	processed := 0
-	// 累积成批写入：每 importConvBatchSize 个 session 合并到一个事务提交，
+	// 累积成批写入：每 importConvTaskBatchSize 个 session 合并到一个事务提交，
 	// 把「单 session 一次 fsync」摊薄成「每批一次」，显著提速大批量导入。
-	const importConvBatchSize = 200
-	batch := make([]*preparedImportTask, 0, importConvBatchSize)
+	batch := make([]*preparedImportTask, 0, importConvTaskBatchSize)
 	flush := func() {
 		s, f := flushImportConvBatch(db, batch)
 		successCount += s
 		failCount += f
 		batch = batch[:0]
 	}
-	for sessionId, conversationPath := range convMap {
+	sessionIDs := make([]string, 0, len(convMap))
+	for sessionID := range convMap {
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+	sort.Strings(sessionIDs)
+	for _, sessionId := range sessionIDs {
+		conversationPath := convMap[sessionId]
 		processed++
 		logx.Progress("[import-conv] 导入对话", processed, totalConv, 50)
 		summaryPath, ok := sessionMap[sessionId]
@@ -947,7 +1040,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 		}
 
 		// 构造 silica 文件路径并判断是否需要增量更新
-		silicaPath := filepath.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
+		silicaPath := storage.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
 		if !needUpdateConversations(conversationPath, silicaPath, force) {
 			logx.Debugf("跳过(conversation未更新): %s", sessionId)
 			skipCount++
@@ -967,7 +1060,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 			continue
 		}
 		batch = append(batch, p)
-		if len(batch) >= importConvBatchSize {
+		if len(batch) >= importConvTaskBatchSize {
 			flush()
 		}
 	}
@@ -1028,7 +1121,9 @@ var importConvCmd = &cobra.Command{
 			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
 
-		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+		return withImportAdvisoryLock("import-conv", func() error {
+			return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+		})
 	},
 }
 

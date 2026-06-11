@@ -32,6 +32,18 @@ services:
       file: ./postgres/postgres.yml
       service: postgres
 
+  # 可选：平台客观指标服务（LLM 请求 token/成本/时延），server 的 /api/v2/chat/* 反代它。
+  # 默认不启动（profile 开关）；启用：docker compose --profile chat-stats up -d
+  # 并打开 server/config.yaml 的 chat_stats.base_url（见 README「可选服务：chat-stats」）。
+  chat-stats:
+    extends:
+      file: ./chat-stats/chat-stats.yml
+      service: chat-stats
+    profiles: ["chat-stats"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 networks:
   efficiency:
     driver: bridge

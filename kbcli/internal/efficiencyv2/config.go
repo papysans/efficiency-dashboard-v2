@@ -81,6 +81,10 @@ type EfficiencyV2Config struct {
 	TeamProfile       string `yaml:"team_profile"`
 	IdleThresholdDays int    `yaml:"idle_threshold_days"`
 	MaxNeedSpanDays   int    `yaml:"max_need_span_days"`
+	// IntegrationFlow*：episode 切分后仍然 跨度 > span 天 且 distinct 贡献者 ≥ min
+	// 的段视为多人集成流，confidence 降为 low（被既有规则踢出 eligible）。
+	IntegrationFlowSpanDays        int `yaml:"integration_flow_span_days"`
+	IntegrationFlowMinContributors int `yaml:"integration_flow_min_contributors"`
 	// BaselineCalendarCalibration 缩放基线日历(=融合工作量/团队密度)，仅作用于日历口径提效比。
 	BaselineCalendarCalibration float64                           `yaml:"baseline_calendar_calibration"`
 	VerificationCommandPatterns []string                          `yaml:"verification_command_patterns"`
@@ -102,7 +106,8 @@ type EfficiencyV2Config struct {
 	RepoAddrCanon bool `yaml:"-"`
 	// BlockedUserIds 平台 user_id 黑名单，来自治理配置 identity.blocked_user_ids，
 	// 由 efficiency-v2 管线入口注入（不走本 yaml）。命中账号的 conversation/session
-	// 在数据加载层被过滤，不进任何统计；残留 need 行由 cleanupEfficiencyV2BlockedUserNeeds 清理。
+	// 在数据加载层被过滤，不进任何统计；残留 need 行由 pruneEfficiencyV2StaleNeeds 统一清理
+	// （blocked user 的 need 不在本轮 current 集，prune 一律删除）。
 	BlockedUserIds []string `yaml:"-"`
 }
 
@@ -127,6 +132,12 @@ func ApplyDefaults(cfg *EfficiencyV2Config) {
 	}
 	if cfg.MaxNeedSpanDays == 0 {
 		cfg.MaxNeedSpanDays = 30
+	}
+	if cfg.IntegrationFlowSpanDays == 0 {
+		cfg.IntegrationFlowSpanDays = 7
+	}
+	if cfg.IntegrationFlowMinContributors == 0 {
+		cfg.IntegrationFlowMinContributors = 3
 	}
 	if len(cfg.VerificationCommandPatterns) == 0 {
 		cfg.VerificationCommandPatterns = append([]string(nil), defaultEfficiencyV2VerificationCommandPatterns...)

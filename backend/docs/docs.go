@@ -2291,6 +2291,10 @@ const docTemplate = `{
         "main.ConfigResponse": {
             "type": "object",
             "properties": {
+                "dashboard_title_prefix": {
+                    "type": "string",
+                    "example": "Costrict"
+                },
                 "traditional_dev_lines_per_day": {
                     "type": "integer",
                     "example": 100

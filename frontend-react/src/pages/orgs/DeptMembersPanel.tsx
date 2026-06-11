@@ -100,9 +100,10 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricCard label="成员数" value={formatNumber(summary?.member_count ?? 0)} hint={summary ? `${summary.kanban_member_count} 人有看板数据` : undefined} />
         <MetricCard label="合并需求" value={formatNumber(summary?.merged_need_count ?? 0)} />
-        <MetricCard label="实际日历" value={formatDuration(summary?.actual_calendar_min)} />
+        <MetricCard label="实际周期" value={formatDuration(summary?.actual_calendar_min)} />
         <MetricCard label="日历提效" value={<RatioPill value={summary?.calendar_ratio} />} />
-        <MetricCard label="工作量提效" value={<RatioPill value={summary?.work_ratio} />} />
+        <MetricCard label="人力提效" value={<RatioPill value={summary?.work_ratio} />} />
+        <MetricCard label="AI 代码占比" value={<RatioPill value={summary?.ai_code_ratio} />} />
         <MetricCard label="Commit" value={formatNumber(summary?.commit_count ?? 0)} />
         <MetricCard label="代码行" value={formatNumber(summary?.commit_diff_lines ?? 0)} />
         <MetricCard label="费用" value={fmtCostVal(summary?.cost)} />
@@ -113,7 +114,7 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{deptName || '部门'} · 成员花名册</span>
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            {members.length} 人（直属）· 提效比按百分比展示（小数口径 ×100）
+            {members.length} 人（直属）· 按可计入需求汇总
           </span>
         </div>
         <div className="overflow-x-auto">
@@ -124,9 +125,10 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
                 <th className={TH}>工号</th>
                 <th className={TH}>职级</th>
                 <th className={TH_NUM}>合并需求</th>
-                <th className={TH_NUM}>实际日历</th>
+                <th className={TH_NUM}>实际周期</th>
                 <th className={TH_CENTER}>日历提效</th>
-                <th className={TH_CENTER}>工作量提效</th>
+                <th className={TH_CENTER}>人力提效</th>
+                <th className={TH_CENTER}>AI 代码占比</th>
                 <th className={TH_NUM}>Commit</th>
                 <th className={TH_NUM}>代码行</th>
               </tr>
@@ -135,14 +137,14 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={9}>
+                    <td className={TD} colSpan={10}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : !members.length ? (
                 <tr>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <div className="py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                       该部门无直属成员（可能是中间部门，请下钻到子部门）
                     </div>
@@ -192,6 +194,9 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
                       </td>
                       <td className="px-3 py-2 align-middle text-center">
                         {m.has_kanban_data ? <RatioPill value={m.work_ratio} /> : DASH}
+                      </td>
+                      <td className="px-3 py-2 align-middle text-center">
+                        {m.has_kanban_data ? <RatioPill value={m.ai_code_ratio} /> : DASH}
                       </td>
                       <td className={TD_NUM}>{m.has_kanban_data ? formatNumber(m.commit_count) : DASH}</td>
                       <td className={TD_NUM}>{m.has_kanban_data ? formatNumber(m.commit_diff_lines, 0) : DASH}</td>

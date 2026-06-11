@@ -16,4 +16,11 @@ echo "==> build portal  -> ${IMAGE_NGINX}"
 docker build -f compose/portal/Dockerfile -t "${IMAGE_NGINX}"  .
 echo "==> pull postgres -> ${IMAGE_POSTGRES}"
 docker pull "${IMAGE_POSTGRES}"
+# 可选：chat-stats（源码在独立仓库 chat-indicator-statistics，无 ghcr CI）。
+# 指定其仓库路径才构建，例如：CHAT_STATS_SRC=../chat-indicator-statistics ./build.sh
+if [[ -n "${CHAT_STATS_SRC:-}" ]]; then
+  echo "==> build chat-stats -> ${IMAGE_CHAT_STATS}"
+  docker build --platform "${TARGET_PLATFORM:-linux/amd64}" \
+    -f "${CHAT_STATS_SRC}/Dockerfile" -t "${IMAGE_CHAT_STATS}" "${CHAT_STATS_SRC}"
+fi
 echo "OK. 构建完成。离线交付请运行 ./save.sh 导出 tar。"

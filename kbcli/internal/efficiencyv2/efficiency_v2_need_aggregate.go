@@ -88,6 +88,7 @@ func AggregateAndUpsertEfficiencyV2NeedActuals(db *gorm.DB, needs []models.Need,
 			"ai_code_ratio_signal",
 			"uncovered_work_signal",
 			"coverage_eligible",
+			"reason",
 			"updated_at",
 		}),
 	}).CreateInBatches(&updated, 500).Error; err != nil {
@@ -148,8 +149,17 @@ func aggregateOneEfficiencyV2Need(need models.Need, metricsBySession map[string]
 	// total_calendar_min<=0，标为数据受限、排除出提效计算——不用 commit 估时硬填，
 	// 经仿真验证硬填 30min 对上千分钟 baseline 会产出 40x~700x 的离谱比值。
 	// 多 commit 时间跨度 (>0) 仍保留，是有意义的实际耗时。
+	// 审计：能走到这里的都是 merged（有交付物），写明确 reason 避免段静默消失。
 	if need.CoverageEligible && need.TotalCalendarMin <= 0 {
 		need.CoverageEligible = false
+		const zeroCalendarReason = "episode has deliverable but zero calendar"
+		if !strings.Contains(need.Reason, zeroCalendarReason) {
+			if need.Reason == "" {
+				need.Reason = zeroCalendarReason
+			} else {
+				need.Reason += "; " + zeroCalendarReason
+			}
+		}
 	}
 	// commit-only Need（有 commit、无任何 session）同样排除：时间侧零上报，日历只剩
 	// uncovered margin 或 commit 间隔合成的跨度，不构成可信的提效比分母。

@@ -220,6 +220,28 @@ cd frontend-react && npm run test     # 前端 vitest
 | `compose/*/config.yaml` | compose 各服务配置 |
 | `.local/*`（gitignored）| 个人本地覆盖，复制模板后修改 |
 
+### 存储后端（disk / s3）
+
+`task_dir` / `repo_dir` / `analysed_dir` 等目录路径支持两种存储后端，按路径前缀自动识别，可混搭：
+
+- 本地磁盘：普通路径，如 `/mnt/prod_env/user-indicator/raw/task`（默认，行为不变）
+- S3 兼容对象存储（MinIO 等）：`s3://bucket/prefix` 形式，需同时配置 `storage.s3` 连接参数
+
+```yaml
+storage:
+  s3:
+    endpoint: "minio.intranet:9000"   # 不含 scheme
+    access_key: "xxx"
+    secret_key: "xxx"
+    use_ssl: false
+
+task_dir: "s3://kanban-raw/task"
+repo_dir: "s3://kanban-raw/repo"
+analysed_dir: "./analysed"            # 可与 s3 混搭
+```
+
+配置了 `s3://` 路径但 `storage.s3` 缺失或凭证无效时，kbcli / backend 启动即报错退出（fail-fast）。
+
 ---
 
 ## License

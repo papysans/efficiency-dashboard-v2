@@ -5,18 +5,19 @@
 // ⚠️ 重大 caveat（§6.1）：当前后端 RepoDetailResponse 不返回这些字段，安全降级（**不补后端**）：
 //   summary.user_count / total_cost / task_ancient_minutes → '-'
 //   commit.silica_reason / matched_tasks → 展开区「暂无关联 Task」
-//   silica_entries → 硅比例图表不渲染
-// 本页无 efficiency_ratio 列，唯一比例是 silica（0~1，×100 显示为进度条）。
+//   silica_entries → AI 代码占比图表不渲染
+// 本页无 efficiency_ratio 列，唯一比例是 silica（展示为 AI 代码占比，0~1 小数口径）。
 // 全部客户端排序（client sortRows，null/0 沉底）。
 import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useRepoDetail } from '@/api/queries'
 import type { RepoCommitItem, TaskListItem } from '@/api/types'
-import { formatLocalTime, formatNumber } from '@/lib/formatters'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
+import { formatLocalTime, formatNumber, formatV2Ratio } from '@/lib/formatters'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
 
-/** silica 进度条颜色（silica 0~1 → pct 比 80/50）。 */
+/** AI 代码占比进度条颜色（0~1 小数口径）。 */
 function silicaBarColor(silica: number): string {
   const pct = silica * 100
   if (pct >= 80) return 'bg-emerald-500'
@@ -43,6 +44,8 @@ export default function WorkDirDetail() {
 
   // 复用 repo 详情 API，branch 传空字符串。
   const { data: detailData, isLoading, error } = useRepoDetail({ repoAddr: workDirId, repoBranch: '' })
+  // user_name 可能是 UUID，统一走姓名映射。
+  const { resolveName } = useUserNameMap()
 
   const commits: WorkDirCommit[] = useMemo(() => (detailData?.commits || []) as WorkDirCommit[], [detailData?.commits])
   const tasks: TaskListItem[] = useMemo(() => detailData?.tasks || [], [detailData?.tasks])
@@ -190,7 +193,7 @@ export default function WorkDirDetail() {
                     <SortableTh field="diffLines" label="Diff行数" numeric active={parsedCommitOrder?.field === 'diffLines'} desc={parsedCommitOrder?.field === 'diffLines' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
                   </th>
                   <th className={TH}>
-                    <SortableTh field="silica" label="硅含量" active={parsedCommitOrder?.field === 'silica'} desc={parsedCommitOrder?.field === 'silica' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
+                    <SortableTh field="silica" label="AI 代码占比" active={parsedCommitOrder?.field === 'silica'} desc={parsedCommitOrder?.field === 'silica' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
                   </th>
                   <th className={TH_NUM}>
                     <SortableTh field="matchedTasks" label="关联Task数" numeric active={parsedCommitOrder?.field === 'matchedTasks'} desc={parsedCommitOrder?.field === 'matchedTasks' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
@@ -229,7 +232,7 @@ export default function WorkDirDetail() {
                             <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
                               <div className={`h-full rounded-full ${silicaBarColor(c.silica ?? 0)}`} style={{ width: `${pct}%` }} />
                             </div>
-                            <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-8 text-right">{pct}%</span>
+                            <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-10 text-right">{formatV2Ratio(c.silica, 0)}</span>
                           </div>
                         </td>
                         <td className={TD_NUM}>{matched.length || '-'}</td>
@@ -253,8 +256,8 @@ export default function WorkDirDetail() {
                                     >
                                       {mt.task_id}
                                     </button>
-                                    <span className="text-gray-500 dark:text-gray-400">{mt.user_name || mt.user_id || '-'}</span>
-                                    <span className="tabular-nums text-gray-500 dark:text-gray-400">{Math.round((mt.silica ?? 0) * 100)}%</span>
+                                    <span className="text-gray-500 dark:text-gray-400">{resolveName(mt.user_id || mt.user_name)}</span>
+                                    <span className="tabular-nums text-gray-500 dark:text-gray-400">{formatV2Ratio(mt.silica, 0)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -300,7 +303,7 @@ export default function WorkDirDetail() {
                         className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
                         onClick={() => navigate(`/user/${encodeURIComponent(p.user_id)}`)}
                       >
-                        {p.user_name}
+                        {resolveName(p.user_id)}
                       </button>
                     </td>
                     <td className={TD_NUM}>{p.task_count}</td>
@@ -313,7 +316,7 @@ export default function WorkDirDetail() {
         </section>
       )}
 
-      {/* ⑤ 硅比例图表：silica_entries 后端不返回 → 不渲染（照搬 Vue 现状） */}
+      {/* ⑤ AI 代码占比图表：silica_entries 后端不返回 → 不渲染（照搬 Vue 现状） */}
     </div>
   )
 }

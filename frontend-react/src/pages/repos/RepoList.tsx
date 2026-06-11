@@ -17,9 +17,10 @@ import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { PercentPill } from '@/components/ui/PercentPill'
+import { RatioPill } from '@/components/ui/RatioPill'
 
 // 服务端排序白名单（backend sort.go repoSortFields 子集，本页声明 sortField 的三列）。
-const SERVER_FIELDS = new Set(['commitCount', 'taskCount', 'startTime'])
+const SERVER_FIELDS = new Set(['commitCount', 'taskCount', 'startTime', 'aiCodeRatio'])
 // 客户端列 sortRows getter（按显示值 = 封顶后口径，所见即所排）。
 const CLIENT_GETTERS: Record<string, (r: RepoListItem) => number | null | undefined> = {
   sumAncientMinutes: (r) => r.sum_ancient_minutes,
@@ -220,6 +221,11 @@ export default function RepoList() {
                     <SortableTh field="efficiencyRatio" label="提效比" active={isSortActive('efficiencyRatio')} desc={isSortDesc('efficiencyRatio')} onSort={onSortChange} />
                   </span>
                 </th>
+                <th className={TH_CENTER}>
+                  <span className="inline-flex justify-center">
+                    <SortableTh field="aiCodeRatio" label="AI 代码占比" active={isSortActive('aiCodeRatio')} desc={isSortDesc('aiCodeRatio')} onSort={onSortChange} />
+                  </span>
+                </th>
                 <th className={`${TH} min-w-[150px]`}>
                   <SortableTh field="startTime" label="开始时间" active={isSortActive('startTime')} desc={isSortDesc('startTime')} onSort={onSortChange} />
                 </th>
@@ -229,14 +235,14 @@ export default function RepoList() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={8}>
+                    <td className={TD} colSpan={9}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无仓库数据</div>
                   </td>
                 </tr>
@@ -259,6 +265,9 @@ export default function RepoList() {
                     <td className={TD_NUM}>{formatDuration(row.sum_real_minutes)}</td>
                     <td className="px-3 py-2 align-middle text-center">
                       <PercentPill value={row.efficiency_ratio} />
+                    </td>
+                    <td className="px-3 py-2 align-middle text-center">
+                      <RatioPill value={row.ai_code_ratio} />
                     </td>
                     <td className={TD}>{formatLocalTime(row.start_time)}</td>
                   </tr>

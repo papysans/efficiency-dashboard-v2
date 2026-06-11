@@ -33,6 +33,7 @@ server:
   taskRealMinutes:
     gapThresholdMinutes: 30
     extensionMinutes: 5
+  dashboardTitlePrefix: "Costrict"
   cors:
     allowOrigins:
       - "*"

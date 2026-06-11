@@ -1,8 +1,8 @@
 // Task 列表页（TaskViewV2 的 React + 玻璃拟态迁移）。
 // 逻辑/列/口径/双模式排序 1:1 按 research/pr2-task-pages.md；视觉换玻璃拟态（不照搬 .kanban-native）。
 //
-// ⚠️ Task efficiency_ratio 是**百分比口径**（300=300%，不 ×100），用 PercentPill，绝不用 RatioPill。
-// 双模式排序：服务端列 startTime/diffLines/cost（order camelCase）；客户端列 实际耗时/传统预估/提效比
+// Task 维度不展示提效比（单 Task 大多算不出，提效看 Need/用户/组织层；详情页保留）。
+// 双模式排序：服务端列 startTime/diffLines/cost（order camelCase）；客户端列 实际耗时/传统预估
 // （sortRows，manual 优先值 manual ?? original，null 沉底）。
 // manual 优先：列表显示/排序三处一致用 manual ?? original。
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -17,7 +17,6 @@ import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
-import { PercentPill } from '@/components/ui/PercentPill'
 import { Modal } from '@/components/ui/Modal'
 
 // ---- manual 优先口径（§3.2，显示/排序一致）----
@@ -40,7 +39,6 @@ const SERVER_FIELDS = new Set(['startTime', 'diffLines', 'cost'])
 const CLIENT_GETTERS: Record<string, (r: TaskListItem) => number | null | undefined> = {
   taskRealMinutes: getEffectiveReal,
   taskAncientMinutes: getEffectiveAncient,
-  efficiencyRatio: (r) => r.efficiency_ratio,
 }
 
 function normalizeDateQuery(value: string | null): string {
@@ -118,7 +116,6 @@ function buildParams(s: PageState): Record<string, string | number> {
 
 const TH = 'px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TH_NUM = 'px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
-const TH_CENTER = 'px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
 
@@ -344,9 +341,9 @@ export default function TaskList() {
     <div className="space-y-5">
       <header className="space-y-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">任务 Task 提效</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">任务 Task</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            按任务度量提效比（古法预估 vs 实际耗时），提效比为百分比口径（300 表示提速到 4 倍）。
+            按任务查看 AI 使用明细（耗时、代码量、费用）；提效比请看需求 / 用户 / 组织层。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -412,7 +409,6 @@ export default function TaskList() {
               </svg>
               添加到 Project
             </button>
-            <span className="text-xs text-gray-400 dark:text-gray-500">提效比为百分比口径（不 ×100，300=300%）</span>
           </div>
         </div>
 
@@ -449,11 +445,6 @@ export default function TaskList() {
                 <th className={TH_NUM}>
                   <SortableTh field="taskAncientMinutes" label="传统耗时预估" numeric active={isSortActive('taskAncientMinutes')} desc={isSortDesc('taskAncientMinutes')} onSort={onSortChange} />
                 </th>
-                <th className={TH_CENTER}>
-                  <span className="inline-flex justify-center">
-                    <SortableTh field="efficiencyRatio" label="提效比" active={isSortActive('efficiencyRatio')} desc={isSortDesc('efficiencyRatio')} onSort={onSortChange} />
-                  </span>
-                </th>
                 <th className={TH_NUM}>Tokens消耗</th>
                 <th className={TH_NUM}>费用</th>
               </tr>
@@ -462,14 +453,14 @@ export default function TaskList() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={12}>
+                    <td className={TD} colSpan={11}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={12}>
+                  <td colSpan={11}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无数据</div>
                   </td>
                 </tr>
@@ -524,10 +515,10 @@ export default function TaskList() {
                           <button
                             type="button"
                             className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
-                            title={resolveName(row.user_id)}
+                            title={resolveName(row.user_id || row.user_name)}
                             onClick={(e) => goToUser(row, e)}
                           >
-                            {resolveName(row.user_id)}
+                            {resolveName(row.user_id || row.user_name)}
                           </button>
                         ) : (
                           '-'
@@ -539,9 +530,6 @@ export default function TaskList() {
                       <td className={TD_NUM}>{row.diff_lines ?? '-'}</td>
                       <td className={TD_NUM}>{formatDuration(getEffectiveReal(row))}</td>
                       <td className={TD_NUM}>{formatDuration(getEffectiveAncient(row))}</td>
-                      <td className="px-3 py-2 align-middle text-center">
-                        <PercentPill value={row.efficiency_ratio} />
-                      </td>
                       <td className={TD_NUM}>{tokens > 0 ? tokens.toLocaleString() : '-'}</td>
                       <td className={TD_NUM}>{row.cost != null ? fmtCost(row.cost) : '-'}</td>
                     </tr>
@@ -577,7 +565,7 @@ export default function TaskList() {
 const NEW_PROJECT = '__new__'
 
 /**
- * 批量「添加到 Project」对话框（§4.1）：选已有 Project 或新建（createProject）+ silica 权重。
+ * 批量「添加到 Project」对话框（§4.1）：选已有 Project 或新建（createProject）+ AI 代码权重。
  * Task 入口无冲突检测，直接 addTasksToProject。
  */
 function AddTasksToProjectModal({
@@ -694,7 +682,7 @@ function AddTasksToProjectModal({
             </ModalField>
           </>
         )}
-        <ModalField label="Silica 权重">
+        <ModalField label="AI 代码权重">
           <input
             type="number"
             min={0}

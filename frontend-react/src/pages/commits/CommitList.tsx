@@ -1,20 +1,20 @@
 // Commit 列表页（CommitViewV2 的 React + 玻璃拟态迁移）。
 // 逻辑/列/口径/混合排序 1:1 按 research/pr4-project-commit-workdir.md §1.1；视觉换玻璃拟态。
 //
-// ⚠️ Commit efficiency_ratio 是**百分比口径**（300=300%，不 ×100），用 PercentPill，绝不用 RatioPill。
-// 混合排序：服务端列 commitTime/diffLines/cost（order camelCase）；客户端列 实际耗时/传统预估/提效比
+// Commit 维度不展示提效比（单 Commit 大多算不出，提效看 Need/用户/组织层；详情页保留）。
+// 混合排序：服务端列 commitTime/diffLines/cost（order camelCase）；客户端列 实际耗时/传统预估
 // （sortRows，manual 优先值 manual ?? original，null 沉底）。
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { getCommitsV2 } from '@/api/endpoints'
 import type { CommitListItem } from '@/api/types'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
-import { PercentPill } from '@/components/ui/PercentPill'
 
 // ---- manual 优先口径（§1.1，显示/排序一致）----
 function getEffectiveReal(row: CommitListItem): number | null {
@@ -36,7 +36,6 @@ const SERVER_FIELDS = new Set(['commitTime', 'diffLines', 'cost'])
 const CLIENT_GETTERS: Record<string, (r: CommitListItem) => number | null | undefined> = {
   commitRealMinutes: getEffectiveReal,
   commitAncientMinutes: getEffectiveAncient,
-  efficiencyRatio: (r) => r.efficiency_ratio,
 }
 
 function normalizeDateQuery(value: string | null): string {
@@ -114,13 +113,14 @@ function buildParams(s: PageState): Record<string, string | number> {
 
 const TH = 'px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TH_NUM = 'px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
-const TH_CENTER = 'px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
 
 export default function CommitList() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  // user_name 可能是 UUID，优先 dept-sync/commit 真名映射，再退 git_user_name。
+  const { resolveName } = useUserNameMap()
 
   const state = useMemo(() => stateFromParams(searchParams), [searchParams])
   const parsedOrder = useMemo(() => parseOrder(state.order), [state.order])
@@ -174,12 +174,26 @@ export default function CommitList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
+  // 显示名：user_id 命中映射 → 真名；否则 git_user_name > user_name。
+  const displayUserName = useCallback(
+    (r: CommitListItem): string => {
+      if (r.user_id) {
+        const n = resolveName(r.user_id)
+        if (n !== r.user_id) return n
+      }
+      return r.git_user_name || r.user_name || ''
+    },
+    [resolveName],
+  )
+
   // 客户端筛选（userName / org，§1.3 注：仅日期/org 走服务端 query，userName 此处客户端兜底）。
   const filteredRows = useMemo(() => {
     let out = rows
     if (state.userName) {
       const kw = state.userName.toLowerCase()
-      out = out.filter((r) => (r.user_name || '').toLowerCase().includes(kw))
+      out = out.filter((r) =>
+        `${displayUserName(r)}${r.user_name || ''}`.toLowerCase().includes(kw),
+      )
     }
     const orgs = [state.org1, state.org2, state.org3, state.org4]
     if (orgs.some(Boolean)) {
@@ -189,7 +203,7 @@ export default function CommitList() {
       })
     }
     return out
-  }, [rows, state.userName, state.org1, state.org2, state.org3, state.org4])
+  }, [rows, state.userName, state.org1, state.org2, state.org3, state.org4, displayUserName])
 
   // 客户端列排序（命中 CLIENT_GETTERS 才在前端排；服务端列后端已排，原样）。
   const displayRows = useMemo(() => {
@@ -274,9 +288,9 @@ export default function CommitList() {
     <div className="space-y-5">
       <header className="space-y-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">提交 Commit 提效</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">提交 Commit</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            按提交度量提效比（古法预估 vs 实际耗时），提效比为百分比口径（300 表示提速到 4 倍）。
+            按提交查看代码产出明细（代码量、耗时、费用）；提效比请看需求 / 用户 / 组织层。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -309,7 +323,6 @@ export default function CommitList() {
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Commit 列表</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">提效比为百分比口径（不 ×100，300=300%）</span>
         </div>
 
         {errMsg && (
@@ -337,11 +350,6 @@ export default function CommitList() {
                 <th className={TH_NUM}>
                   <SortableTh field="commitAncientMinutes" label="传统耗时预估" numeric active={isSortActive('commitAncientMinutes')} desc={isSortDesc('commitAncientMinutes')} onSort={onSortChange} />
                 </th>
-                <th className={TH_CENTER}>
-                  <span className="inline-flex justify-center">
-                    <SortableTh field="efficiencyRatio" label="提效比" active={isSortActive('efficiencyRatio')} desc={isSortDesc('efficiencyRatio')} onSort={onSortChange} />
-                  </span>
-                </th>
                 <th className={TH_NUM}>Tokens消耗</th>
                 <th className={TH_NUM}>费用</th>
               </tr>
@@ -350,14 +358,14 @@ export default function CommitList() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={12}>
+                    <td className={TD} colSpan={11}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={12}>
+                  <td colSpan={11}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无数据</div>
                   </td>
                 </tr>
@@ -399,13 +407,14 @@ export default function CommitList() {
                         )}
                       </td>
                       <td className={TD}>
-                        {row.user_name ? (
+                        {row.user_id || row.user_name ? (
                           <button
                             type="button"
                             className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
+                            title={displayUserName(row)}
                             onClick={(e) => goToUser(row, e)}
                           >
-                            {row.user_name}
+                            {displayUserName(row) || '-'}
                           </button>
                         ) : (
                           '-'
@@ -432,9 +441,6 @@ export default function CommitList() {
                       <td className={TD_NUM}>{row.diff_lines ?? '-'}</td>
                       <td className={TD_NUM}>{formatDuration(getEffectiveReal(row))}</td>
                       <td className={TD_NUM}>{formatDuration(getEffectiveAncient(row))}</td>
-                      <td className="px-3 py-2 align-middle text-center">
-                        <PercentPill value={row.efficiency_ratio} />
-                      </td>
                       <td className={TD_NUM}>{tokens > 0 ? tokens.toLocaleString() : '-'}</td>
                       <td className={TD_NUM}>{row.cost != null ? fmtCost(row.cost) : '-'}</td>
                     </tr>

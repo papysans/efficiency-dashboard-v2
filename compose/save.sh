@@ -14,8 +14,15 @@ for img in "${IMAGE_SERVER}" "${IMAGE_KBCLI}" "${IMAGE_NGINX}" "${IMAGE_POSTGRES
   docker pull --platform "${PLATFORM}" "${img}"
 done
 
+SAVE_IMAGES=("${IMAGE_SERVER}" "${IMAGE_KBCLI}" "${IMAGE_NGINX}" "${IMAGE_POSTGRES}")
+# 可选：chat-stats 镜像是本地构建、无远端可 pull（不进上面的 pull 循环）。
+# 先 CHAT_STATS_SRC=... ./build.sh 以 linux/amd64 构建，再 INCLUDE_CHAT_STATS=1 ./save.sh 一并导出。
+if [[ "${INCLUDE_CHAT_STATS:-0}" == "1" ]]; then
+  SAVE_IMAGES+=("${IMAGE_CHAT_STATS}")
+fi
+
 echo "==> docker save -> ${OUT}"
-docker save "${IMAGE_SERVER}" "${IMAGE_KBCLI}" "${IMAGE_NGINX}" "${IMAGE_POSTGRES}" | gzip > "${OUT}"
+docker save "${SAVE_IMAGES[@]}" | gzip > "${OUT}"
 echo "OK. 把 ${OUT} 和整个 compose/ 目录拷到内网后："
 echo "  docker load -i $(basename "${OUT}")"
 echo "  cd compose && docker compose up -d        # 注意用 'docker compose'(v2)，不是 'docker-compose'(v1)"

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"kanban/core/models"
 
@@ -32,6 +33,9 @@ type UserV2Row struct {
 	Tokens              int64    `json:"tokens"`
 	ConfidenceLimited   bool     `json:"confidence_limited"`
 	ConfidenceReason    string   `json:"confidence_reason"`
+	AICodeRatio         *float64 `json:"ai_code_ratio"`
+	aiCoveredLoc        int64
+	totalLocNet         int64
 }
 
 type UsersV2NativeResponse struct {
@@ -59,6 +63,7 @@ type OrgV2Row struct {
 	CommitCount         int64    `json:"commit_count"`
 	CommitDiffLines     int64    `json:"commit_diff_lines"`
 	Cost                float64  `json:"cost"`
+	AICodeRatio         *float64 `json:"ai_code_ratio"`
 }
 
 type OrgsV2NativeResponse struct {
@@ -69,6 +74,17 @@ type OrgsV2NativeResponse struct {
 // aggregateUsersV2 把 user_productivity_v2 的周行按用户聚合。
 func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 	agg, err := QueryEfficiencyV2Aggregate(statDB, startDate, endDate, userID)
+	if err != nil {
+		return nil, err
+	}
+	var startTime, endTime string
+	if start, err := parseStartDate(startDate); err == nil && start != nil {
+		startTime = start.Format(time.RFC3339)
+	}
+	if end, err := parseEndDate(endDate); err == nil && end != nil {
+		endTime = end.Format(time.RFC3339)
+	}
+	aiAggs, err := queryUserNeedAICodeAggs(statDB, startTime, endTime, strings.TrimSpace(userID))
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +130,11 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 	rows := make([]UserV2Row, 0, len(order))
 	for _, uid := range order {
 		r := byUser[uid]
+		if agg, ok := aiAggs[uid]; ok {
+			r.aiCoveredLoc = agg.AICoveredLoc
+			r.totalLocNet = agg.TotalLocNet
+			r.AICodeRatio = calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
+		}
 		r.CalendarRatio = efficiencyV2Ratio(r.BaselineCalendarMin, r.ActualCalendarMin)
 		r.WorkRatio = efficiencyV2Ratio(r.BaselineWorkMin, r.ActualWorkMin)
 		rows = append(rows, *r)
@@ -137,11 +158,17 @@ func listUsersV2Native(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
 		return
 	}
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, userSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
 	rows, err := aggregateUsersV2(c.Query("startDate"), c.Query("endDate"), "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
+	sortUserV2Data(rows, orderField, orderDir)
 	page := getDefaultInt(c, "page", 1)
 	pageSize := getDefaultInt(c, "pageSize", 50)
 	total := len(rows)
@@ -215,6 +242,11 @@ func listOrgsV2Native(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
 		return
 	}
+	orderField, orderDir := parseOrderParam(strings.TrimSpace(c.Query("order")))
+	if orderField != "" && !isAllowedField(orderField, orgSortFields) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "不支持的排序字段: " + orderField})
+		return
+	}
 	rows, err := aggregateUsersV2(c.Query("startDate"), c.Query("endDate"), "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -243,6 +275,8 @@ func listOrgsV2Native(c *gin.Context) {
 		commitCount         int64
 		commitDiffLines     int64
 		cost                float64
+		aiCoveredLoc        int64
+		totalLocNet         int64
 	}
 	buckets := make(map[string]*acc)
 	orgOrder := make([]string, 0)
@@ -269,6 +303,8 @@ func listOrgsV2Native(c *gin.Context) {
 		b.commitCount += r.CommitCount
 		b.commitDiffLines += r.CommitDiffLines
 		b.cost += r.Cost
+		b.aiCoveredLoc += r.aiCoveredLoc
+		b.totalLocNet += r.totalLocNet
 	}
 
 	data := make([]OrgV2Row, 0, len(orgOrder))
@@ -285,9 +321,11 @@ func listOrgsV2Native(c *gin.Context) {
 			CommitCount:         b.commitCount,
 			CommitDiffLines:     b.commitDiffLines,
 			Cost:                b.cost,
+			AICodeRatio:         calcNeedAICodeRatio(b.aiCoveredLoc, b.totalLocNet),
 		})
 	}
 	sort.SliceStable(data, func(i, j int) bool { return data[i].UserCount > data[j].UserCount })
+	sortOrgV2Data(data, orderField, orderDir)
 
 	c.JSON(http.StatusOK, OrgsV2NativeResponse{Data: data, NoOrgMapping: !mapped})
 }

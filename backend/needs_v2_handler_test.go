@@ -11,6 +11,7 @@ func TestSummarizeNeed_CopiesPersistedFields(t *testing.T) {
 	bandLow := 0.15
 	bandHigh := 0.4
 	work := 0.30
+	ai := 0.42
 	calendar := 400.0
 	fused := 260.0
 	need := models.Need{
@@ -32,6 +33,9 @@ func TestSummarizeNeed_CopiesPersistedFields(t *testing.T) {
 		ConfidenceLevel:             "high",
 		OutlierFlag:                 false,
 		CoverageEligible:            true,
+		ChangedLoc:                  1000,
+		AICoveredLoc:                420,
+		AICodeRatio:                 &ai,
 		ThinkActiveMin:              20,
 		ExecutionActiveMin:          40,
 		VerificationActiveMin:       10,
@@ -49,6 +53,62 @@ func TestSummarizeNeed_CopiesPersistedFields(t *testing.T) {
 	}
 	if got.TotalActiveWorkMin != 210 || got.BaselineFusedWorkMin == nil || *got.BaselineFusedWorkMin != 260 {
 		t.Fatalf("work terms not copied")
+	}
+	if got.TotalLocNet != 1000 || got.AICoveredLoc != 420 || got.AICodeRatio == nil || *got.AICodeRatio != 0.42 {
+		t.Fatalf("ai code ratio terms not copied")
+	}
+}
+
+func TestCalcNeedAICodeRatio(t *testing.T) {
+	if got := calcNeedAICodeRatio(1, 0); got != nil {
+		t.Fatalf("zero LOC denominator should return nil, got %v", *got)
+	}
+	got := calcNeedAICodeRatio(25, 100)
+	if got == nil || *got != 0.25 {
+		t.Fatalf("ratio = %v, want 0.25", got)
+	}
+}
+
+func TestCalcRepoNeedAICodeRatio_BranchScoped(t *testing.T) {
+	aggs := map[repoNeedAICodeAggKey]needAICodeAgg{
+		{RepoAddr: "git@example.com/x.git", RepoBranch: "main"}: {
+			AICoveredLoc: 20,
+			TotalLocNet:  100,
+		},
+		{RepoAddr: "git@example.com/x.git", RepoBranch: "feature"}: {
+			AICoveredLoc: 90,
+			TotalLocNet:  100,
+		},
+	}
+
+	got := calcRepoNeedAICodeRatio(aggs, "git@example.com/x.git", "feature")
+	if got == nil || *got != 0.9 {
+		t.Fatalf("feature branch ratio = %v, want 0.9", got)
+	}
+	if got := calcRepoNeedAICodeRatio(aggs, "git@example.com/x.git", "missing"); got != nil {
+		t.Fatalf("missing branch should return nil, got %v", *got)
+	}
+}
+
+func TestUserSortFieldsRejectUnsupportedLegacyFields(t *testing.T) {
+	for _, field := range []string{
+		"taskCount",
+		"taskDiffLines",
+		"taskRealMinutes",
+		"taskAncientMinutes",
+		"taskEfficiencyRatio",
+		"commitRealMinutes",
+		"commitAncientMinutes",
+		"commitEfficiencyRatio",
+	} {
+		if isAllowedField(field, userSortFields) {
+			t.Fatalf("legacy field %q should not be accepted by UserV2 sorting", field)
+		}
+	}
+	for _, field := range []string{"userName", "actualWorkMin", "workRatio", "aiCodeRatio", "commitCount"} {
+		if !isAllowedField(field, userSortFields) {
+			t.Fatalf("UserV2 field %q should be accepted by sorting", field)
+		}
 	}
 }
 

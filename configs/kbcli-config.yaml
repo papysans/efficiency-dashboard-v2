@@ -178,6 +178,16 @@ silica_max_days: 7
 task_dir: "/mnt/prod_env/user-indicator/raw/task"
 repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
 analysed_dir: "./analysed"
+
+# 存储后端：目录路径以 s3:// 开头时走 S3 兼容对象存储（MinIO 等），否则本地磁盘，可混搭。
+# 例：task_dir: "s3://kanban-raw/task"
+# storage:
+#   s3:
+#     endpoint: "minio.intranet:9000"   # 不含 scheme
+#     access_key: "xxx"
+#     secret_key: "xxx"
+#     use_ssl: false
+
 org_csv_file: "./analysed/org_mapping.csv"
 org_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
 # dept-sync 部门同步服务（import-dept 用）：拉部门树+人员落库 dept/dept_user 并投影回填 user_org

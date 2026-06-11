@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +23,50 @@ import (
 // only Needs whose dev window overlaps the range are loaded, so reruns on a
 // narrow window do not touch other weeks.
 func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV2Config, startDate, endDate string) (int, error) {
+	rows, err := aggregateAndUpsertEfficiencyV2UserProductivityRows(db, cfg, startDate, endDate)
+	return len(rows), err
+}
+
+// RebuildEfficiencyV2UserProductivityAll 全量（无日期窗）重写 user_productivity_v2，
+// 并删除本轮未重新生成的周行。仅在 need prune 删除过旧行（key 换代）后调用：
+// 窗口化重算只重写窗口内的周，窗口外历史周的 need_ids 会悬挂引用已删 need；
+// 周锚点（dev_end_ts 所在周）也可能随 episode 切分漂移，留下整行过期的旧周行。
+// 幂等：need prune=0 的后续重算走窗口化路径，不会触发本函数。
+func RebuildEfficiencyV2UserProductivityAll(db *gorm.DB, cfg EfficiencyV2Config) (int, error) {
+	rows, err := aggregateAndUpsertEfficiencyV2UserProductivityRows(db, cfg, "", "")
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		// 与 need prune 同样的安全护栏：空轮不清表。
+		return 0, nil
+	}
+	currentIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		currentIDs = append(currentIDs, row.UserProductivityV2Id)
+	}
+	var existing []string
+	if err := db.Model(&models.UserProductivityV2{}).Pluck("user_productivity_v2_id", &existing).Error; err != nil {
+		return 0, fmt.Errorf("list user_productivity_v2 ids for prune: %w", err)
+	}
+	stale := efficiencyV2StaleIDs(existing, currentIDs)
+	if len(stale) > 0 {
+		const batch = 500
+		for i := 0; i < len(stale); i += batch {
+			end := i + batch
+			if end > len(stale) {
+				end = len(stale)
+			}
+			if err := db.Where("user_productivity_v2_id IN ?", stale[i:end]).Delete(&models.UserProductivityV2{}).Error; err != nil {
+				return 0, fmt.Errorf("prune stale user_productivity_v2 rows: %w", err)
+			}
+		}
+	}
+	log.Printf("efficiency-v2 prune: user_productivity_v2 full rebuild wrote %d rows, deleted %d stale rows", len(rows), len(stale))
+	return len(rows), nil
+}
+
+func aggregateAndUpsertEfficiencyV2UserProductivityRows(db *gorm.DB, cfg EfficiencyV2Config, startDate, endDate string) ([]models.UserProductivityV2, error) {
 	cfg = NormalizeEfficiencyV2Config(cfg)
 	q := db.Model(&models.Need{}).Order("primary_user_id ASC")
 	if startDate != "" {
@@ -33,26 +78,18 @@ func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV
 	}
 	var needs []models.Need
 	if err := q.Find(&needs).Error; err != nil {
-		return 0, fmt.Errorf("load needs: %w", err)
+		return nil, fmt.Errorf("load needs: %w", err)
 	}
 	rows := AggregateEfficiencyV2UserProductivity(needs, cfg)
-	regenerated := make(map[string]bool, len(rows))
-	for _, row := range rows {
-		regenerated[row.UserProductivityV2Id] = true
-	}
 	if len(rows) == 0 {
-		// 零产出也要清扫：need 被治理清扫删除后，对应用户周可能不再有任何 need。
-		if err := cleanupEfficiencyV2StaleUserWeeks(db, regenerated, startDate, endDate); err != nil {
-			return 0, err
-		}
-		return 0, nil
+		return nil, nil
 	}
 	// 与老 user_productivity 对齐：补 token / cost / commit 用量字段。
 	// 通过 Need 反查（Need 已经有 PrimaryUserId + 周锚点 + session_ids + commit_ids），
 	// 比直接 join sessions 表更稳（sessions 表在 v2 路径下可能未被填充）。
 	usage, err := rollupEfficiencyV2UsageFromNeeds(db, needs)
 	if err != nil {
-		return 0, fmt.Errorf("rollup usage from needs: %w", err)
+		return nil, fmt.Errorf("rollup usage from needs: %w", err)
 	}
 	for i := range rows {
 		key := efficiencyV2UserWeekKey{UserID: rows[i].UserId, WeekStart: rows[i].WeekStart}
@@ -79,53 +116,9 @@ func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV
 			"updated_at",
 		}),
 	}).Create(&rows).Error; err != nil {
-		return 0, fmt.Errorf("upsert user_productivity_v2: %w", err)
+		return nil, fmt.Errorf("upsert user_productivity_v2: %w", err)
 	}
-	if err := cleanupEfficiencyV2StaleUserWeeks(db, regenerated, startDate, endDate); err != nil {
-		return 0, err
-	}
-	return len(rows), nil
-}
-
-// cleanupEfficiencyV2StaleUserWeeks 删除重算范围内本轮未再生成的用户周残留行。
-// need 被治理清扫删除后（全排除残留/pre-canon 旧行），其用户周若不再有任何 need，
-// 仅靠 upsert 永远不会清掉旧行，看板会展示引用已删 need 的悬挂统计。
-// 范围控制：仅清理 [周一锚(startDate), 周一锚(endDate)] 内的周；全量跑（无日期）清理全表。
-// 日期解析失败时保守跳过清理（绝不扩大删除范围）。
-func cleanupEfficiencyV2StaleUserWeeks(db *gorm.DB, regenerated map[string]bool, startDate, endDate string) error {
-	q := db.Model(&models.UserProductivityV2{})
-	if startDate != "" {
-		t, err := time.Parse("2006-01-02", startDate)
-		if err != nil {
-			return nil
-		}
-		q = q.Where("week_start >= ?", EfficiencyV2MondayAnchor(t))
-	}
-	if endDate != "" {
-		t, err := time.Parse("2006-01-02", endDate)
-		if err != nil {
-			return nil
-		}
-		q = q.Where("week_start <= ?", EfficiencyV2MondayAnchor(t))
-	}
-	var ids []string
-	if err := q.Pluck("user_productivity_v2_id", &ids).Error; err != nil {
-		return fmt.Errorf("query stale user weeks: %w", err)
-	}
-	var stale []string
-	for _, id := range ids {
-		if !regenerated[id] {
-			stale = append(stale, id)
-		}
-	}
-	if len(stale) == 0 {
-		return nil
-	}
-	sort.Strings(stale)
-	if err := db.Where("user_productivity_v2_id IN ?", stale).Delete(&models.UserProductivityV2{}).Error; err != nil {
-		return fmt.Errorf("delete stale user weeks: %w", err)
-	}
-	return nil
+	return rows, nil
 }
 
 // AggregateEfficiencyV2UserProductivity buckets Needs by (user, week) and

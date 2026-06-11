@@ -442,7 +442,9 @@ var importDeptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		baseURL, _ := cmd.Flags().GetString("base-url")
 		queryKey, _ := cmd.Flags().GetString("query-key")
-		return runImportDept(baseURL, queryKey)
+		return withImportAdvisoryLock("import-dept", func() error {
+			return runImportDept(baseURL, queryKey)
+		})
 	},
 }
 

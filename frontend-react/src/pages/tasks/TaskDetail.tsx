@@ -1,7 +1,6 @@
 // Task 详情页（TaskDetailV2 的 React + 玻璃拟态迁移）。
 // 分区 1:1 按 research/pr2-task-pages.md §7；视觉换玻璃拟态。
 //
-// ⚠️ efficiency_ratio 百分比口径：详情大数字 Math.round()+'%'，不 ×100，用 percentTextClass 着色。
 // manual 优先：度量区有 manual 时显示 manual 值 + 黄(?)理由 + 删除线原 AI 值 + 灰(?)AI 理由。
 // time_segments 是死代码：会话时间线纯线性（无 gap/segment 分支）。
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -13,10 +12,28 @@ import type { Conversation, TaskListItem, UpdateTaskManualRequest } from '@/api/
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
 import { Tag } from '@/components/ui/Tag'
-import { percentTextClass } from '@/components/ui/PercentPill'
 import { Modal } from '@/components/ui/Modal'
 
 const DISPLAY_LIMIT = 200
+
+// 采集侧会把 harness 注入块（任务通知/系统提醒/环境详情等）混进 user_input，
+// 它们不是用户提问。展示时剥掉，剥完为空说明整条是系统消息。
+const NOISE_TAG_RE =
+  /^<(task-notification|system-reminder|environment_details|local-command-stdout|local-command-caveat|command-name|command-message|command-args|file_content|workspace_diagnostics)>/
+
+function extractUserQuestion(raw?: string): string {
+  let s = (raw || '').trim()
+  for (;;) {
+    const m = s.match(NOISE_TAG_RE)
+    if (!m) break
+    const close = `</${m[1]}>`
+    const idx = s.indexOf(close)
+    if (idx === -1) return '' // 注入块未闭合 → 整条都是系统内容
+    s = s.slice(idx + close.length).trim()
+  }
+  // 尾部附加的环境详情块一并剥掉
+  return s.replace(/<environment_details>[\s\S]*?<\/environment_details>/g, '').trim()
+}
 
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>()
@@ -26,12 +43,7 @@ export default function TaskDetail() {
   // task user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
   const { resolveName } = useUserNameMap()
 
-  // 合并：顶层 efficiency_ratio 覆盖进 task（§7.1）。
-  const task: TaskListItem = useMemo(() => {
-    const t = (data?.task || { task_id: taskId || '' }) as TaskListItem
-    if (data?.efficiency_ratio != null) return { ...t, efficiency_ratio: data.efficiency_ratio }
-    return t
-  }, [data, taskId])
+  const task: TaskListItem = useMemo(() => (data?.task || { task_id: taskId || '' }) as TaskListItem, [data, taskId])
   const conversations: Conversation[] = data?.conversations || []
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -44,7 +56,6 @@ export default function TaskDetail() {
   const totalCostSum = useMemo(() => conversations.reduce((s, c) => s + (c.cost || 0), 0), [conversations])
 
   const repoDisplay = task.repo_addr && task.repo_branch ? `${task.repo_addr}#${task.repo_branch}` : '-'
-  const ratio = task.efficiency_ratio
 
   async function submitManual(body: UpdateTaskManualRequest) {
     await updateTaskManualV2(taskId as string, body)
@@ -174,11 +185,6 @@ export default function TaskDetail() {
           <Kv label="费用">
             {(task.cost ?? 0) > 0 ? `${fmtCost(task.cost)} 元` : totalCostSum > 0 ? `${fmtCost(totalCostSum)} 元` : '-'}
           </Kv>
-          <Kv label="提效比例">
-            <span className={`text-xl font-bold tabular-nums ${percentTextClass(ratio)}`}>
-              {ratio != null ? `${Math.round(ratio)}%` : '-'}
-            </span>
-          </Kv>
         </KvGrid>
       </Panel>
 
@@ -194,51 +200,65 @@ export default function TaskDetail() {
               const key = `${idx}_conv`
               const isExpanded = expanded.has(key)
               const input = conv.user_input || ''
-              const truncated = input.length > DISPLAY_LIMIT && !isExpanded
-              const shown = truncated ? `${input.substring(0, DISPLAY_LIMIT)}...` : input
+              // 用户提问优先展示；剥完系统注入块为空 → 整条是系统消息，默认折叠原文。
+              const question = extractUserQuestion(input)
+              const isSystemOnly = !!input && !question
+              const text = question || input
+              const truncated = text.length > DISPLAY_LIMIT && !isExpanded
+              const shown = truncated ? `${text.substring(0, DISPLAY_LIMIT)}...` : text
               return (
                 <li key={conv.id ?? idx} className="ml-5">
                   <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#0a0a0f]" aria-hidden="true" />
                   <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">{formatLocalTime(conv.start_time)}</div>
                   <div className="glass rounded-xl p-3 space-y-1.5">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {formatLocalTime(conv.start_time)} ~ {formatLocalTime(conv.end_time)}
-                      {' | 耗时 '}
-                      {conv.process_time ?? '-'} ms
-                      {' | TTFT '}
-                      {conv.process_ttft ?? '-'} ms
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                      <span>{conv.prompt_mode || '-'}</span>
-                      <span className="text-gray-300 dark:text-gray-600">|</span>
-                      <span>{conv.mode || '-'}</span>
-                      <span className="text-gray-300 dark:text-gray-600">|</span>
-                      <span>{conv.model || '-'}</span>
+                    {question && (
+                      <pre className="whitespace-pre-wrap break-all bg-gray-50/80 dark:bg-white/5 rounded-lg px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200 max-h-[600px] overflow-y-auto m-0">
+                        {shown}
+                      </pre>
+                    )}
+                    {isSystemOnly && (
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        系统消息（非用户提问）
+                        {isExpanded && (
+                          <pre className="whitespace-pre-wrap break-all bg-gray-50/80 dark:bg-white/5 rounded-lg px-3 py-2 mt-1.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400 max-h-[600px] overflow-y-auto m-0">
+                            {shown}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                    {/* agent 循环里只有人敲字那轮才有 user_input，其余轮次内容在 request_content */}
+                    {!input && (
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        Agent 自动轮次（无用户输入）
+                        {isExpanded && !!conv.request_content && (
+                          <pre className="whitespace-pre-wrap break-all bg-gray-50/80 dark:bg-white/5 rounded-lg px-3 py-2 mt-1.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400 max-h-[600px] overflow-y-auto m-0">
+                            {conv.request_content}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                    {(text.length > DISPLAY_LIMIT || isSystemOnly || (!input && !!conv.request_content)) && (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(key)}
+                        className="text-xs text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
+                      >
+                        {isExpanded ? '收起' : isSystemOnly ? '展开原文' : !input ? '展开请求内容' : '展开全文'}
+                      </button>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                      <span>{conv.model || conv.mode || '-'}</span>
+                      {/* 采集侧 process_time 常缺失，Go int64 把 null 烤成 0 → 0 视为无数据 */}
+                      <span>耗时 {conv.process_time ? `${conv.process_time} ms` : '-'}</span>
+                      <span>上行 {conv.upstream_tokens ?? '-'} / 下行 {conv.downstream_tokens ?? '-'}</span>
+                      <span>费用 {fmtCost(conv.cost) || '0.00'}</span>
+                      <span>代码 {conv.diff_lines ?? '-'} 行</span>
                       {conv.error_code && (
                         <Tag tone="error">
                           {conv.error_code}: {conv.error_reason}
                         </Tag>
                       )}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      上行 {conv.upstream_tokens ?? '-'} | 下行 {conv.downstream_tokens ?? '-'} | 费用 {fmtCost(conv.cost) || '0.00'} | 代码 {conv.diff_lines ?? '-'} 行
-                    </div>
-                    {input && (
-                      <div>
-                        <pre className="whitespace-pre-wrap break-all bg-gray-50/80 dark:bg-white/5 rounded-lg px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200 max-h-[600px] overflow-y-auto m-0">
-                          {shown}
-                        </pre>
-                        {input.length > DISPLAY_LIMIT && (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(key)}
-                            className="mt-1 text-xs text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 focus:outline-none focus-visible:underline"
-                          >
-                            {isExpanded ? '收起' : '展开全文'}
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </li>
               )

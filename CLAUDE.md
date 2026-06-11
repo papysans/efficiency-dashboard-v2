@@ -103,6 +103,16 @@ export PGPASSWORD='1' && psql -U postgres -d report -c "SQL"
 - 修复：移除表格2第一行的2个空单元格 → 变成11列
 - 结果：12列+11列成功合并（列数差1，在允许范围内）
 
+#### PostgreSQL 报错 "function round(double precision, integer) does not exist"
+**错误现象**：对 float8 列（如 needs 的各 *_min 字段）做 `round(表达式, 1)` 报错
+**原因**：PG 两参数 `round()` 只有 numeric 版本；float8 列参与除法/乘法后结果仍是 double precision，即使分子先 `::numeric`，除以 double 又会变回 double
+**正确用法**：整个算术表达式算完后再 `(...)::numeric`，最后才进 `round(..., 1)`
+
+#### fd/rg 搜不到明明存在的文件或目录
+**错误现象**：用 `fd` / `rg` 搜某个数据目录（如 `工时估算数据/`）返回空，误判"文件不在本机"，实际上目录一直存在
+**原因**：`fd` 和 `rg` 默认遵循 `.gitignore`，被忽略的目录整个跳过；`-H` 只放开隐藏文件，不放开 ignore 规则
+**正确用法**：找数据文件/被 gitignore 的目录时，必须加 `--no-ignore`（fd/rg 通用），如 `fd --no-ignore -t d 工时估算 .`；用 `ls` 直接探测路径也可以兜底
+
 #### kbcli import 报错 "invalid character '{' after top-level value"
 **错误现象**：`kbcli import-conv` 导入 conversation 文件时，报错第N行JSON解析失败，错误信息为 `invalid character '{' after top-level value`
 **原因**：上游写入 conversation 的 .jsonl 文件时，两个 JSON 对象写到了同一行，没有用换行符分隔，如 `{"a":1}{"a":2}`
@@ -111,6 +121,20 @@ export PGPASSWORD='1' && psql -U postgres -d report -c "SQL"
 2. 检查该行是否包含多个 `{}` 块直接拼接
 3. 如果是偶发情况，通常是上游并发写入或缓冲刷新问题
 **修复**：在 `parseConversationFile` 中增加容错逻辑，当整行解析失败时，尝试按顶层JSON对象逐个拆分并解析。
+
+#### codex review 报错 "'--uncommitted' cannot be used with '[PROMPT]'"
+**错误现象**：跑 `codex review --uncommitted "审查指令…"` 报错 `'--uncommitted' cannot be used with '[PROMPT]'`，且容易反复重试浪费几分钟。
+**原因**：`codex review` 的范围 flag（`--uncommitted` / `--base` / `--commit`）三者互斥，且**每个都与自定义 `[PROMPT]` 互斥**，只能取其一。命令行不能在选范围的同时再带 prompt。
+**范围怎么选**（`--uncommitted` 一旦 `git commit` 就看不到，审已提交内容必须换 flag）：
+- 未提交改动（staged+unstaged+untracked）→ `codex review --uncommitted`
+- 刚提交的单个 commit → `codex review --commit HEAD`（或 `--commit <SHA>`）
+- 整个分支/任务相对主干（含已提交的多个 commit）→ `codex review --base feat/efficiency-v2-pipeline`（本仓主干）
+**正确用法**：按上表选定 flag 后**裸跑**，不要拼审查指令。项目审查侧重已通过仓库根 `AGENTS.md` 自动喂给 codex（它会读 `AGENTS.md` 作为上下文）；需要长期侧重就写进 `AGENTS.md`，**不要**在命令行现编每个任务的临时指令——那是多余发挥。
+**禁用 MCP**（codex 的 stdio MCP 在 sandbox 下会 hang）：只需禁开销大的 `fast-context`（它 `npx --prefer-online` 拉取+索引，最易 hang），其余 3 个（playwright/openaiDeveloperDocs/context7）开销小、留着即可。纯命令行覆盖、不碰文件、被 kill 也无需恢复。注意 `-c mcp_servers='{}'` 无效（codex 深合并 table，空表清不掉），必须按名字禁；若别的 server 也拖慢 review，用 `codex mcp list` 查名字后同样加一行禁用。示例：
+```bash
+codex review --base feat/efficiency-v2-pipeline \
+  -c mcp_servers.fast-context.enabled=false
+```
 
 ## 输入处理规范
 - **所有搜索/过滤输入框，传给后端或用于前端过滤前，必须先 `.trim()` 去除两侧空格**

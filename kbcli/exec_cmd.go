@@ -90,94 +90,102 @@ func getIntParam(params map[string]interface{}, key string, defaultVal int) int 
 }
 
 func executeImportConv(params map[string]interface{}) error {
-	taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
-	analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
-	force := getBoolParam(params, "force", false)
-	startDate := getStringParam(params, "start_date", "")
-	endDate := getStringParam(params, "end_date", "")
-	date := getStringParam(params, "date", "")
-	createPseudo := getBoolParam(params, "create_pseudo", appconfig.Cfg.TaskCreate.CreatePseudoTask)
-	if date == "" {
-		startDate = appconfig.ApplyAnalysisFloor(startDate)
-	}
-	return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+	return withImportAdvisoryLock("import-conv", func() error {
+		taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
+		analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
+		force := getBoolParam(params, "force", false)
+		startDate := getStringParam(params, "start_date", "")
+		endDate := getStringParam(params, "end_date", "")
+		date := getStringParam(params, "date", "")
+		createPseudo := getBoolParam(params, "create_pseudo", appconfig.Cfg.TaskCreate.CreatePseudoTask)
+		if date == "" {
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
+		}
+		return runImportConv(taskDir, analysedDir, force, startDate, endDate, date, createPseudo)
+	})
 }
 
 func executeImportRepo(params map[string]interface{}) error {
-	repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
-	analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
-	force := getBoolParam(params, "force", false)
-	maxDays := getIntParam(params, "max_days", appconfig.Cfg.TaskCreate.SilicaMaxDays)
-	startDate := getStringParam(params, "start_date", "")
-	endDate := getStringParam(params, "end_date", "")
-	date := getStringParam(params, "date", "")
-	if date == "" {
-		startDate = appconfig.ApplyAnalysisFloor(startDate)
-	}
-	return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
+	return withImportAdvisoryLock("import-repo", func() error {
+		repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
+		analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
+		force := getBoolParam(params, "force", false)
+		maxDays := getIntParam(params, "max_days", appconfig.Cfg.TaskCreate.SilicaMaxDays)
+		startDate := getStringParam(params, "start_date", "")
+		endDate := getStringParam(params, "end_date", "")
+		date := getStringParam(params, "date", "")
+		if date == "" {
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
+		}
+		return runImportRepo(repoDir, analysedDir, force, maxDays, startDate, endDate, date)
+	})
 }
 
 func executeImportOrg(params map[string]interface{}) error {
-	fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
-	fromCSV := getStringParam(params, "from_csv", "")
-	toCSV := getStringParam(params, "to_csv", "")
-	return runImportOrg(fromDB, fromCSV, toCSV)
+	return withImportAdvisoryLock("import-org", func() error {
+		fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
+		fromCSV := getStringParam(params, "from_csv", "")
+		toCSV := getStringParam(params, "to_csv", "")
+		return runImportOrg(fromDB, fromCSV, toCSV)
+	})
 }
 
 func executeImport(params map[string]interface{}) error {
-	taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
-	repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
-	analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
-	force := getBoolParam(params, "force", false)
-	fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
-	fromCSV := getStringParam(params, "from_csv", "")
-	startDate := getStringParam(params, "start_date", "")
-	endDate := getStringParam(params, "end_date", "")
-	date := getStringParam(params, "date", "")
-	maxDays := getIntParam(params, "max_days", appconfig.Cfg.TaskCreate.SilicaMaxDays)
-	createPseudo := getBoolParam(params, "create_pseudo", appconfig.Cfg.TaskCreate.CreatePseudoTask)
-	// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
-	// 一处生效全流程：import-conv/import-repo/efficiency(-v2) 都用这个 startDate。
-	if date == "" {
-		startDate = appconfig.ApplyAnalysisFloor(startDate)
-	}
-	// 增量 days 窗【只用于取数】(import-conv/repo)：仅增量加行、安全。
-	// efficiency 重算仍用原始 startDate（cron 的 days 不传时=空=全量），避免跨窗 need 被
-	// 窗内 commit 部分覆盖（commit_ids 是覆盖更新，会永久丢掉窗外老 commit）。
-	ingestStart := resolveStartDateByDays(params, startDate, date)
-
-	steps := []struct {
-		name string
-		fn   func() error
-	}{
-		{"import-conv", func() error {
-			return runImportConv(taskDir, analysedDir, force, ingestStart, endDate, date, createPseudo)
-		}},
-		{"import-repo", func() error {
-			return runImportRepo(repoDir, analysedDir, force, maxDays, ingestStart, endDate, date)
-		}},
-		{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
-		{"import-dept", func() error {
-			// 非致命：未配置 dept_sync.base_url 或 dept-sync 不可达时仅告警跳过，
-			// 不阻断后续 efficiency 步骤。import-dept 用真实部门刷新 org，配合
-			// import-org 的非破坏性占位，使 org 自动保持正确。
-			if err := runImportDept("", ""); err != nil {
-				logx.Warnf("import-dept 跳过(非致命): %v", err)
-			}
-			return nil
-		}},
-		{"efficiency-v2", func() error { return runEfficiencyV2(startDate, endDate, date) }},
-	}
-
-	for _, step := range steps {
-		logx.Infof("========== [import] 步骤: %s ==========", step.name)
-		if err := step.fn(); err != nil {
-			logx.Errorf("步骤 %s 失败: %v", step.name, err)
+	return withImportAdvisoryLock("import", func() error {
+		taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
+		repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
+		analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
+		force := getBoolParam(params, "force", false)
+		fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
+		fromCSV := getStringParam(params, "from_csv", "")
+		startDate := getStringParam(params, "start_date", "")
+		endDate := getStringParam(params, "end_date", "")
+		date := getStringParam(params, "date", "")
+		maxDays := getIntParam(params, "max_days", appconfig.Cfg.TaskCreate.SilicaMaxDays)
+		createPseudo := getBoolParam(params, "create_pseudo", appconfig.Cfg.TaskCreate.CreatePseudoTask)
+		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
+		// 一处生效全流程：import-conv/import-repo/efficiency(-v2) 都用这个 startDate。
+		if date == "" {
+			startDate = appconfig.ApplyAnalysisFloor(startDate)
 		}
-	}
+		// 增量 days 窗【只用于取数】(import-conv/repo)：仅增量加行、安全。
+		// efficiency 重算仍用原始 startDate（cron 的 days 不传时=空=全量），避免跨窗 need 被
+		// 窗内 commit 部分覆盖（commit_ids 是覆盖更新，会永久丢掉窗外老 commit）。
+		ingestStart := resolveStartDateByDays(params, startDate, date)
 
-	logx.Info("========== [import] 全部步骤完成 ==========")
-	return nil
+		steps := []struct {
+			name string
+			fn   func() error
+		}{
+			{"import-conv", func() error {
+				return runImportConv(taskDir, analysedDir, force, ingestStart, endDate, date, createPseudo)
+			}},
+			{"import-repo", func() error {
+				return runImportRepo(repoDir, analysedDir, force, maxDays, ingestStart, endDate, date)
+			}},
+			{"import-org", func() error { return runImportOrg(fromDB, fromCSV, "") }},
+			{"import-dept", func() error {
+				// 非致命：未配置 dept_sync.base_url 或 dept-sync 不可达时仅告警跳过，
+				// 不阻断后续 efficiency 步骤。import-dept 用真实部门刷新 org，配合
+				// import-org 的非破坏性占位，使 org 自动保持正确。
+				if err := runImportDept("", ""); err != nil {
+					logx.Warnf("import-dept 跳过(非致命): %v", err)
+				}
+				return nil
+			}},
+			{"efficiency-v2", func() error { return runEfficiencyV2(startDate, endDate, date) }},
+		}
+
+		for _, step := range steps {
+			logx.Infof("========== [import] 步骤: %s ==========", step.name)
+			if err := step.fn(); err != nil {
+				logx.Errorf("步骤 %s 失败: %v", step.name, err)
+			}
+		}
+
+		logx.Info("========== [import] 全部步骤完成 ==========")
+		return nil
+	})
 }
 
 func executeEfficiencyV2(params map[string]interface{}) error {

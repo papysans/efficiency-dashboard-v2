@@ -18,6 +18,8 @@ cors:
   allow_origins:
     - "*"
 
+dashboard_title_prefix: "Costrict"
+
 ai_estimation:
   enabled: true
   api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
@@ -38,3 +40,13 @@ dept_sync:
   # 默认按名字匹配 "深信服科技股份有限公司"；若内网公司根 dept_id 已知，填 root_dept_id 更稳（优先级高于名字）。
   root_dept_name: "深信服科技股份有限公司"
   # root_dept_id: ""
+
+# chat-indicator-statistics 平台客观指标服务（/api/v2/chat/* 反代用）。
+# 默认注释 = 功能关闭（接口 503，前端「平台」分组隐藏）。
+# 启用 compose 的 chat-stats 服务后打开（chat-stats 是栈内服务名，重启 server 生效）：
+# chat_stats:
+#   base_url: "http://chat-stats:8080"
+#   # username/password 可选：仅上游带 HTTP Basic Auth 时填（如直连外网实例
+#   # base_url: "https://zgsm.sangfor.com"，填 costrict 账号）；栈内 chat-stats 无鉴权，留空/不写即可。
+#   # username: ""
+#   # password: ""

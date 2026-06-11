@@ -64,7 +64,7 @@ func TestResolveEfficiencyV2NeedPrecedence(t *testing.T) {
 				FilePaths: []string{"docs/a.md", "docs/b.md"},
 			}),
 			wantSource: efficiencyV2BoundaryFileCluster,
-			wantID:     "cluster:u-dan:2026w21:docs",
+			wantID:     "cluster:u-dan:docs",
 			wantConf:   efficiencyV2ConfidenceLow,
 		},
 		{
@@ -72,7 +72,7 @@ func TestResolveEfficiencyV2NeedPrecedence(t *testing.T) {
 			metric:     efficiencyV2NeedTestMetric("s-orphan", "u-erin", "", "", base, base.Add(time.Hour)),
 			event:      efficiencyV2NeedTestEvent("e-orphan", "s-orphan", "u-erin", "", "", base, EfficiencyV2BoundaryEvidence{IsOrphan: true}),
 			wantSource: efficiencyV2BoundaryOrphan,
-			wantID:     "orphan:u-erin:2026w21",
+			wantID:     "orphan:u-erin",
 			wantConf:   efficiencyV2ConfidenceVeryLow,
 		},
 	}
@@ -99,7 +99,7 @@ func TestResolveEfficiencyV2NeedPrecedence(t *testing.T) {
 
 func TestResolveEfficiencyV2NeedMainlineBranchFiltering(t *testing.T) {
 	base := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
-	for _, branch := range []string{"main", "master", "develop", "release", "release/2026.05"} {
+	for _, branch := range []string{"main", "master", "develop", "release", "release/2026.05", "develop/v2"} {
 		t.Run(branch, func(t *testing.T) {
 			metric := efficiencyV2NeedTestMetric("s-"+strings.ReplaceAll(branch, "/", "-"), "u-main", "git@example.com/acme/app.git", branch, base, base.Add(time.Hour))
 			commit := efficiencyV2NeedTestCommit("c-"+strings.ReplaceAll(branch, "/", "-"), "u-main", "git@example.com/acme/app.git", branch, base.Add(30*time.Minute), "TASK-204 fix mainline regression")
@@ -127,7 +127,7 @@ func TestResolveEfficiencyV2NeedCommitTouchedFilesCreateFileCluster(t *testing.T
 	if len(needs) != 1 {
 		t.Fatalf("need count: want 1, got %d", len(needs))
 	}
-	if needs[0].BoundarySource != efficiencyV2BoundaryFileCluster || needs[0].NeedId != "cluster:u-files:2026w21:reports" {
+	if needs[0].BoundarySource != efficiencyV2BoundaryFileCluster || needs[0].NeedId != "cluster:u-files:reports" {
 		t.Fatalf("commit touched files should create file cluster, got %s/%s", needs[0].BoundarySource, needs[0].NeedId)
 	}
 	if !strings.Contains(string(needs[0].TouchedFiles), "reports/monthly.go") {
@@ -203,27 +203,43 @@ func TestResolveEfficiencyV2NeedOverMaxSpanFlag(t *testing.T) {
 	}
 }
 
-func TestResolveEfficiencyV2NeedMergeWaitSeparatedFromDevEnd(t *testing.T) {
+func TestResolveEfficiencyV2NeedCommitExtendsDevEnd(t *testing.T) {
 	base := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	metric := efficiencyV2NeedTestMetric("s-review", "u-review", "git@example.com/acme/app.git", "feature/review-wait", base, base.Add(time.Hour))
-	mergeCommit := efficiencyV2NeedTestCommit("c-review-merge", "u-review", "git@example.com/acme/app.git", "feature/review-wait", base.Add(3*time.Hour), "Merge pull request #88 from feature/review-wait")
+	lateCommit := efficiencyV2NeedTestCommit("c-review-late", "u-review", "git@example.com/acme/app.git", "feature/review-wait", base.Add(3*time.Hour), "Merge pull request #88 from feature/review-wait")
 
-	needs := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{mergeCommit}, EfficiencyV2Config{})
+	needs := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{lateCommit}, EfficiencyV2Config{})
 	if len(needs) != 1 {
 		t.Fatalf("need count: want 1, got %d", len(needs))
 	}
 	need := needs[0]
-	if need.MergeTs == nil || !need.MergeTs.Equal(mergeCommit.CommitTime) {
-		t.Fatalf("merge_ts = %v, want %v", need.MergeTs, mergeCommit.CommitTime)
+	if need.DevEndTs == nil || !need.DevEndTs.Equal(lateCommit.CommitTime) {
+		t.Fatalf("dev_end_ts = %v, want commit time %v", need.DevEndTs, lateCommit.CommitTime)
 	}
-	if need.DevEndTs == nil || !need.DevEndTs.Equal(base.Add(time.Hour)) {
-		t.Fatalf("dev_end_ts = %v, want session end %v", need.DevEndTs, base.Add(time.Hour))
+	if need.DevDurationMin != 180 {
+		t.Fatalf("dev_duration_min = %.2f, want 180", need.DevDurationMin)
 	}
-	if need.WaitForReviewMin != 120 {
-		t.Fatalf("wait_for_review_min = %.2f, want 120", need.WaitForReviewMin)
+}
+
+func TestResolveEfficiencyV2NeedFutureCommitClamped(t *testing.T) {
+	// 采集侧时区双偏移会产生「未来」commit_time（实测内网多用户 +8h），dev_end 应被 clamp 到当前时刻。
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	metric := efficiencyV2NeedTestMetric("s-future", "u-future", "git@example.com/acme/app.git", "feature/future-commit", base, base.Add(30*time.Minute))
+	futureCommit := efficiencyV2NeedTestCommit("c-future", "u-future", "git@example.com/acme/app.git", "feature/future-commit", time.Now().Add(8*time.Hour), "Merge pull request #99 from feature/future-commit")
+
+	needs := ResolveEfficiencyV2Needs([]models.SessionStageMetric{metric}, nil, []models.Commit{futureCommit}, EfficiencyV2Config{})
+	if len(needs) != 1 {
+		t.Fatalf("need count: want 1, got %d", len(needs))
 	}
-	if need.DevDurationMin != 60 {
-		t.Fatalf("dev_duration_min = %.2f, want 60", need.DevDurationMin)
+	need := needs[0]
+	if need.DevEndTs == nil {
+		t.Fatal("dev_end_ts is nil")
+	}
+	if need.DevEndTs.After(time.Now()) {
+		t.Fatalf("dev_end_ts = %v 仍在未来，未被 clamp", need.DevEndTs)
+	}
+	if need.DevStartTs == nil || !need.DevStartTs.Equal(base) {
+		t.Fatalf("dev_start_ts = %v, want %v", need.DevStartTs, base)
 	}
 }
 
@@ -331,48 +347,5 @@ func efficiencyV2NeedTestCommit(commitID, userID, repoAddr, branch string, commi
 		RepoBranch: branch,
 		CommitTime: commitTime,
 		Comment:    comment,
-	}
-}
-
-func TestSelectFullyExcludedNeedIDs(t *testing.T) {
-	mk := func(id string, commitIDs ...string) models.Need {
-		return models.Need{NeedId: id, CommitIds: EfficiencyV2StringJSON(commitIDs)}
-	}
-	excluded := map[string]bool{"c1": true, "c2": true}
-	got := selectFullyExcludedNeedIDs([]models.Need{
-		mk("n-all-excluded", "c1", "c2"),   // 全排除 → 清理
-		mk("n-partial", "c1", "c3"),        // 还有存活 commit → 保留
-		mk("n-alive", "c3"),                // 无排除 → 保留
-		mk("n-empty"),                      // 无 commit（防御：上游查询已过滤）→ 保留
-		mk("n-single-excluded", "c2"),      // 单 commit 全排除 → 清理
-	}, excluded)
-	want := []string{"n-all-excluded", "n-single-excluded"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("selectFullyExcludedNeedIDs = %v, want %v", got, want)
-	}
-}
-
-func TestEfficiencyV2NeedContentOwnedBy(t *testing.T) {
-	mk := func(sess, cmt []string) models.Need {
-		return models.Need{SessionIds: EfficiencyV2StringJSON(sess), CommitIds: EfficiencyV2StringJSON(cmt)}
-	}
-	owned := map[string]bool{"s1": true, "c1": true, "c2": true}
-	cases := []struct {
-		name string
-		need models.Need
-		want bool
-	}{
-		{"全覆盖", mk([]string{"s1"}, []string{"c1", "c2"}), true},
-		{"commit 有存活", mk([]string{"s1"}, []string{"c1", "c9"}), false},
-		{"session 有存活", mk([]string{"s9"}, []string{"c1"}), false},
-		{"纯 commit 全覆盖", mk(nil, []string{"c1"}), true},
-		{"空内容不参与", mk(nil, nil), false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := efficiencyV2NeedContentOwnedBy(tc.need, owned, owned); got != tc.want {
-				t.Fatalf("efficiencyV2NeedContentOwnedBy = %v, want %v", got, tc.want)
-			}
-		})
 	}
 }

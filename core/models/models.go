@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -334,6 +335,18 @@ func OpenGormDB(dsn string) (*gorm.DB, error) {
 }
 
 func AutoMigrate(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	lock, err := AcquireAdvisoryLock(context.Background(), sqlDB, AdvisoryLockAutoMigrate)
+	if err != nil {
+		return fmt.Errorf("获取 AutoMigrate 互斥锁失败: %w", err)
+	}
+	defer func() {
+		_ = lock.Release(context.Background())
+	}()
+
 	if err := db.Exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).Error; err != nil {
 		return fmt.Errorf("启用 pgcrypto 扩展失败: %w", err)
 	}

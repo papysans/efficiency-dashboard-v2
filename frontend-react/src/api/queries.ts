@@ -1,6 +1,7 @@
 // TanStack Query hooks —— 统一 loading/error/缓存。PR0 先做高管大屏/Need 用到的；其余随页面加。
 import { useQuery } from '@tanstack/react-query'
 import {
+  chatStats,
   getAllNeedsV2,
   getCommitDetailV2,
   getDashboardSummary,
@@ -134,5 +135,63 @@ export function useProjectDetail(projectId: string | undefined) {
     queryKey: ['project-detail', projectId],
     queryFn: () => getProjectDetail(projectId as string),
     enabled: !!projectId,
+  })
+}
+
+// ---- Chat Stats（/api/v2/chat/* 代理；mutation 类按现有惯例由页面直接调 endpoints） ----
+
+/**
+ * 实时态势聚合。服务端 10 秒限频 + 直查源库较慢，故：
+ * 不自动轮询（refetchInterval 关）、不窗口聚焦重拉、失败不重试（限频错误重试只会继续 400）。
+ * 页面用「手动刷新按钮 + 10s 倒计时」触发 refetch（设计 §2.2）。
+ */
+export function useChatRealtime(
+  params: { range: '30m' | '1h' | '3h'; datasource_id?: string },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['chat-realtime', params],
+    queryFn: () => chatStats.getRealtime(params),
+    enabled,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: 10_000,
+  })
+}
+
+/** 模型价格列表（设置页；增删改后由页面 invalidate ['chat-pricing']）。 */
+export function useChatPricing(enabled = true) {
+  return useQuery({
+    queryKey: ['chat-pricing'],
+    queryFn: () => chatStats.listPricing(),
+    enabled,
+  })
+}
+
+/** 数据源列表（设置页）。 */
+export function useChatDatasources(enabled = true) {
+  return useQuery({
+    queryKey: ['chat-datasources'],
+    queryFn: () => chatStats.listDatasources(),
+    enabled,
+  })
+}
+
+/** 同步任务列表（设置页；页面可对 running 任务自行加 refetchInterval）。 */
+export function useChatSyncTasks(enabled = true) {
+  return useQuery({
+    queryKey: ['chat-sync-tasks'],
+    queryFn: () => chatStats.listSyncTasks(),
+    enabled,
+  })
+}
+
+/** 系统配置 KV（币种/汇率）。 */
+export function useChatSystemConfig(enabled = true) {
+  return useQuery({
+    queryKey: ['chat-system-config'],
+    queryFn: () => chatStats.getConfig(),
+    enabled,
   })
 }

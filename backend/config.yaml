@@ -15,6 +15,11 @@ cors:
   allow_origins:
     - "*"
 
+dashboard_title_prefix: "Costrict"
+
+# 人天单价（¥/人天），高管大屏把节省人天折算成节省成本用；缺省默认 2000。
+# cost_per_person_day: 2000
+
 ai_estimation:
   enabled: true
   api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
@@ -38,3 +43,13 @@ task_real_minutes:
 
 org_mapping_refresh:
   interval_minutes: 5
+
+# chat-indicator-statistics 平台客观指标服务（/api/v2/chat/* 反代用）：
+# base_url 填服务地址（不含路由前缀），空 = 功能关闭（接口返回 503，前端「平台」分组隐藏）。
+# 内网 compose 示例：http://chat-indicator-statistics:8080；本地调试：http://127.0.0.1:8080
+# 上游有 HTTP Basic Auth 时再填 username/password（两者均非空才注入 Authorization）。
+# 外网实例示例：base_url: "https://zgsm.sangfor.com" + costrict 账号。
+chat_stats:
+  base_url: ""
+  username: ""
+  password: ""
