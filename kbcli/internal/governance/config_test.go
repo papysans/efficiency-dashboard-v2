@@ -11,7 +11,8 @@ func assertDefaultConfig(t *testing.T, cfg Config) {
 	if !cfg.Identity.BuiltinBotPatterns {
 		t.Errorf("默认 builtin_bot_patterns 应为 true")
 	}
-	if len(cfg.Identity.BlockedEmails) != 0 || len(cfg.Identity.BlockedEmailPatterns) != 0 || len(cfg.Identity.BlockedNamePatterns) != 0 {
+	if len(cfg.Identity.BlockedEmails) != 0 || len(cfg.Identity.BlockedEmailPatterns) != 0 ||
+		len(cfg.Identity.BlockedNamePatterns) != 0 || len(cfg.Identity.BlockedUserIds) != 0 {
 		t.Errorf("默认黑名单应为空，得到 %+v", cfg.Identity)
 	}
 	if cfg.Identity.IdentityMap.Enforce {
@@ -61,6 +62,9 @@ func TestLoadExampleYaml(t *testing.T) {
 	}
 	if len(cfg.Identity.BlockedNamePatterns) != 2 {
 		t.Errorf("样例 blocked_name_patterns 应为 2 条，得到 %d", len(cfg.Identity.BlockedNamePatterns))
+	}
+	if len(cfg.Identity.BlockedUserIds) != 0 {
+		t.Errorf("样例 blocked_user_ids 应为空列表（真实 user_id 属部署配置），得到 %v", cfg.Identity.BlockedUserIds)
 	}
 	if cfg.Identity.IdentityMap.Enforce {
 		t.Errorf("样例 identity_map.enforce 应为 false")
