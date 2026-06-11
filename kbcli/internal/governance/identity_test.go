@@ -7,8 +7,9 @@ func testIdentityConfig() Config {
 	cfg := DefaultConfig()
 	cfg.Identity.BlockedEmails = []string{
 		"test@example.com", "xjm@test.com", "yaajun@example.com", "lisama@example.com", "incremental@test.local",
+		"your@email.com", "root@localhost.localdomain",
 	}
-	cfg.Identity.BlockedEmailPatterns = []string{"*@example.com", "*@test.*", "*@*.local"}
+	cfg.Identity.BlockedEmailPatterns = []string{"*@example.com", "*@test.*", "*@test.local", "*@*.internal.cloudapp.net"}
 	cfg.Identity.BlockedNamePatterns = []string{"Test User", "Incremental Tester"}
 	return cfg
 }
@@ -39,12 +40,17 @@ func TestJudgeIdentityMatrix(t *testing.T) {
 		{"精确黑名单", "test@example.com", "tester", "u1", true, "identity:blocked_email"},
 		{"精确黑名单大小写", "Test@Example.COM", "tester", "u1", true, "identity:blocked_email"},
 		{"精确黑名单local域", "incremental@test.local", "tester", "u1", true, "identity:blocked_email"},
+		{"精确黑名单占位身份", "your@email.com", "Your Name", "u1", true, "identity:blocked_email"},
 		// c. glob 邮箱模式（* 通配，大小写不敏感；精确黑名单优先于模式，见上 test@example.com 用例）
 		{"glob example.com", "anyone@example.com", "anyone", "u1", true, "identity:blocked_email_pattern"},
 		{"glob test.*", "foo@test.cn", "foo", "u1", true, "identity:blocked_email_pattern"},
-		{"glob *.local", "bar@dev.local", "bar", "u1", true, "identity:blocked_email_pattern"},
+		{"glob test.local", "bar@test.local", "bar", "u1", true, "identity:blocked_email_pattern"},
+		{"glob azure测试机", "user@vm.internal.cloudapp.net", "user", "u1", true, "identity:blocked_email_pattern"},
 		{"glob大小写", "FOO@TEST.COM", "foo", "u1", true, "identity:blocked_email_pattern"},
 		{"glob不误伤相似域", "zhangsan@test-env.sangfor.com.cn", "张三", "u1", false, ""},
+		// 守护：曾配 "*@*.local" 误伤内网真实交付 ai@claude-code.local 1665 行，
+		// 该模式已改为 "*@test.local"，此用例防止误伤行为复活
+		{"local域真实交付不误伤", "ai@claude-code.local", "ai", "u1", false, ""},
 		// d. name glob 黑名单
 		{"name精确命中", "zhangsan@sangfor.com.cn", "Test User", "u1", true, "identity:blocked_name"},
 		{"name第二条", "zhangsan@sangfor.com.cn", "Incremental Tester", "u1", true, "identity:blocked_name"},

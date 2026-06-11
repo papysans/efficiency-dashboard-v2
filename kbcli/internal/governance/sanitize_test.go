@@ -20,6 +20,10 @@ func TestSanitizeRepoAddr(t *testing.T) {
 		// 协议形式但无 userinfo → 原样（含路径中 @ 不误剥）
 		{"无 userinfo 不动", "https://github.com/acme/repo.git", "https://github.com/acme/repo.git"},
 		{"路径中 @ 不动", "https://github.com/acme/repo@v2", "https://github.com/acme/repo@v2"},
+		// authority 按 RFC 在 ? / # 截断：query/fragment 中的 @ 不是 userinfo，不误剥
+		{"query 中 @ 不动", "https://host?u=a@b", "https://host?u=a@b"},
+		{"fragment 中 @ 不动", "https://host#a@b", "https://host#a@b"},
+		{"userinfo 与 query 并存", "https://user@host?x=1", "https://host?x=1"},
 		// 非协议形式 / 空串原样
 		{"裸地址不动", "github.com/acme/repo", "github.com/acme/repo"},
 		{"空串原样返回", "", ""},

@@ -31,11 +31,12 @@ func SanitizeRepoAddr(addr string) string {
 	if schemeEnd == 0 {
 		return addr
 	}
-	// authority 段 = scheme 之后到第一个 "/" 之前；取最后一个 "@" 之后为 host，剥掉 userinfo
+	// authority 段 = scheme 之后到第一个 "/"、"?" 或 "#" 之前（RFC 3986，query/fragment 中的 @
+	// 不是 userinfo）；取最后一个 "@" 之后为 host，剥掉 userinfo
 	rest := addr[schemeEnd:]
 	authority := rest
-	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
-		authority = rest[:slash]
+	if end := strings.IndexAny(rest, "/?#"); end >= 0 {
+		authority = rest[:end]
 	}
 	at := strings.LastIndexByte(authority, '@')
 	if at < 0 {
@@ -44,13 +45,15 @@ func SanitizeRepoAddr(addr string) string {
 	return addr[:schemeEnd] + rest[at+1:]
 }
 
-// applySanitizeRepoAddrs 基表凭据脱敏子 pass：对 commits / conversations / session_stage_metrics
-// 三张表，清洗 repo_addr 中内嵌的 URL userinfo（明文 PAT/密码经 API 对前端可见，二轮挖掘实锤 294 行）。
+// applySanitizeRepoAddrs 基表凭据脱敏子 pass：对 commits / conversations / session_stage_metrics /
+// tasks 四张表，清洗 repo_addr 中内嵌的 URL userinfo（明文 PAT/密码经 API 对前端可见，二轮挖掘实锤 294 行；
+// tasks.repo_addr 与三表完全同源——从 commit/conversation 的 RepoAddr 复制——且经 /api/v2/tasks 直出，
+// 存量带凭据的旧行不在 cron 重导入时间窗内不会自愈，必须一并清洗）。
 // 凭据是安全例外，优先于"治理只打标记不改原始数据"哲学——明文 token 一旦落库就是泄露面，必须改写。
 // 用 SQL LIKE '%://%@%' 预过滤出疑似含凭据的 distinct 地址（conversations 5 万行，不可全表加载），
 // SanitizeRepoAddr 后有变化才 UPDATE。幂等：清洗过的行不再命中变化条件，重跑零写入。
 func applySanitizeRepoAddrs(db *gorm.DB) error {
-	for _, table := range []string{"commits", "conversations", "session_stage_metrics"} {
+	for _, table := range []string{"commits", "conversations", "session_stage_metrics", "tasks"} {
 		var addrs []string
 		if err := db.Table(table).Distinct("repo_addr").
 			Where("repo_addr LIKE ?", "%://%@%").Pluck("repo_addr", &addrs).Error; err != nil {

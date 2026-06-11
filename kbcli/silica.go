@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"kanban/core/models"
 	"kanban/kbcli/internal/appconfig"
+	"kanban/kbcli/internal/governance"
 	"kanban/kbcli/internal/logx"
 	"os"
 	"path/filepath"
@@ -257,10 +258,13 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 
 			// 选择分组：有 repo_addr 走主分组 (repoAddr,userID)；缺 repo_addr 时改用 work_dir_id
 			// 后备分组，让这部分对话也能与 commit 匹配；两者皆无则无法定位分组，跳过。
+			// repo_addr 过 SanitizeRepoAddr：凭据脱敏修复前生成的旧 .silica.json 中 repo_addr
+			// 仍带 userinfo，而 commit 侧已入库即脱敏，不清洗会导致 groupKey 精确匹配失配
+			// （带凭据仓库的 silica 降级）。幂等，新文件不受影响。
 			var gi groupIndexer
 			var exists bool
 			if conv.RepoAddr != "" {
-				gk := groupKey{repoAddr: conv.RepoAddr, userID: ss.UserId}
+				gk := groupKey{repoAddr: governance.SanitizeRepoAddr(conv.RepoAddr), userID: ss.UserId}
 				gi, exists = idx.groups[gk]
 				if !exists {
 					gi = newGroupIndexer()
