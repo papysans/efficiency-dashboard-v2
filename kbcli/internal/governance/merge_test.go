@@ -8,14 +8,18 @@ func TestIsMergeComment(t *testing.T) {
 		comment string
 		want    bool
 	}{
-		// 行首 merge 命中（内网实测 comment 以 merge 开头 376 个，avg 314 行 max 20304 行）
+		// git 规范 merge 文案命中（内网实测 comment 以 merge 开头 376 个，avg 314 行 max 20304 行）
 		{"Merge branch", "Merge branch 'feature/x' into main", true},
 		{"Merge pull request", "Merge pull request #123 from a/b", true},
 		{"Merge remote-tracking", "Merge remote-tracking branch 'origin/main'", true},
-		{"小写 merge 冒号", "merge: 同步主干代码", true},
+		{"Merge tag", "Merge tag 'v1.2.0' into release", true},
+		{"Merge commit", "Merge commit 'abc123' into dev", true},
 		{"全大写", "MERGE BRANCH DEV", true},
-		{"仅 merge 一词", "merge", true},
-		{"merge后跟中文也算行首单词", "Merge分支dev到main", true},
+		// 兜底只认 git 规范文案：人写的行首 merge 误杀清零 LOC 代价大于漏认（真 merge 主路径是 parent_ids）
+		{"小写 merge 冒号不命中", "merge: 同步主干代码", false},
+		{"仅 merge 一词不命中", "merge", false},
+		{"merge后跟中文不命中", "Merge分支dev到main", false},
+		{"祈使句 merge 不命中", "merge search results with local cache", false},
 		// 边界：merged 不命中 \b（merge 后紧跟字母）
 		{"merged 不命中", "merged latest upstream changes", false},
 		// 边界："merge" 出现在句中不命中行首规则

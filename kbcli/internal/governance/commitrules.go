@@ -52,7 +52,7 @@ func applyCommitRules(db *gorm.DB, cfg Config) error {
 	lastID := ""
 	for {
 		var batch []models.Commit
-		if err := db.Select("commit_id", "user_id", "comment", "diff_lines", "commit_time", "replay_of", "effective_diff_lines").
+		if err := db.Select("commit_id", "user_id", "repo_addr", "comment", "diff_lines", "commit_time", "replay_of", "effective_diff_lines", "excluded_flag").
 			Where("commit_id > ?", lastID).
 			Order("commit_id ASC").Limit(commitRulesBatchSize).Find(&batch).Error; err != nil {
 			return fmt.Errorf("读取 commits 失败: %w", err)
@@ -105,11 +105,14 @@ func compileDownweightRules(rules []DownweightRule) ([]compiledDownweightRule, e
 
 // computeCommitRuleResults 纯计算（不触 DB）：对全量 commits 按 softcap / comment 降权 /
 // replay 去重重算 effective_diff_lines 与 replay_of，返回 map[commit_id]结果。
-// replay 去重组键 (user_id, trim(comment), diff_lines)，组内按 commit_time 升序保最早，
-// 其余标 replay_of=最早 commit_id 且 effective=0。
+// replay 去重组键 (user_id, canon repo, trim(comment), diff_lines)，组内按 commit_time 升序
+// 保最早，其余标 replay_of=最早 commit_id 且 effective=0。
+// repo 维度防跨仓误并（rebase 重放只发生在同一仓库；"fix lint"+同行数撞车的不同仓提交是合法交付）；
+// excluded commit 不参与组键，防止"最早条被身份排除→合法重复全归零"的组合伤。
 func computeCommitRuleResults(commits []models.Commit, cfg CommitRulesConfig, rules []compiledDownweightRule) map[string]commitRuleResult {
 	type replayKey struct {
 		userID    string
+		repoAddr  string
 		comment   string
 		diffLines int
 	}
@@ -125,8 +128,8 @@ func computeCommitRuleResults(commits []models.Commit, cfg CommitRulesConfig, ru
 			effectiveDiffLines: computeCommitEffectiveDiffLines(int64(c.DiffLines), c.Comment, cfg.DiffLinesSoftcap, rules),
 		}
 		trimmed := strings.TrimSpace(c.Comment)
-		if cfg.ReplayDedup && c.DiffLines > replayDedupMinDiffLines && len(trimmed) > replayDedupMinCommentLen {
-			key := replayKey{userID: c.UserId, comment: trimmed, diffLines: c.DiffLines}
+		if cfg.ReplayDedup && !c.ExcludedFlag && c.DiffLines > replayDedupMinDiffLines && len(trimmed) > replayDedupMinCommentLen {
+			key := replayKey{userID: c.UserId, repoAddr: CanonRepoAddr(c.RepoAddr), comment: trimmed, diffLines: c.DiffLines}
 			groups[key] = append(groups[key], replayMember{commitID: c.CommitId, commitTime: c.CommitTime})
 		}
 	}

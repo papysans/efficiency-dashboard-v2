@@ -87,6 +87,11 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 
 	needs := ResolveEfficiencyV2Needs(metrics, events, commits, cfg)
 	if len(needs) == 0 {
+		// 窗口内候选可能被治理全量排除（excluded commit 不进查询）：本轮零产出
+		// 也要清扫"内容物全被排除"的残留 need，否则旧行带着治理前统计永久残留。
+		if err := cleanupEfficiencyV2FullyExcludedNeeds(db); err != nil {
+			return nil, err
+		}
 		return needs, nil
 	}
 	if err := db.Clauses(clause.OnConflict{

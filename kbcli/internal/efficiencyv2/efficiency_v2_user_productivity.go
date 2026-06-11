@@ -36,7 +36,15 @@ func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV
 		return 0, fmt.Errorf("load needs: %w", err)
 	}
 	rows := AggregateEfficiencyV2UserProductivity(needs, cfg)
+	regenerated := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		regenerated[row.UserProductivityV2Id] = true
+	}
 	if len(rows) == 0 {
+		// 零产出也要清扫：need 被治理清扫删除后，对应用户周可能不再有任何 need。
+		if err := cleanupEfficiencyV2StaleUserWeeks(db, regenerated, startDate, endDate); err != nil {
+			return 0, err
+		}
 		return 0, nil
 	}
 	// 与老 user_productivity 对齐：补 token / cost / commit 用量字段。
@@ -73,7 +81,51 @@ func AggregateAndUpsertEfficiencyV2UserProductivity(db *gorm.DB, cfg EfficiencyV
 	}).Create(&rows).Error; err != nil {
 		return 0, fmt.Errorf("upsert user_productivity_v2: %w", err)
 	}
+	if err := cleanupEfficiencyV2StaleUserWeeks(db, regenerated, startDate, endDate); err != nil {
+		return 0, err
+	}
 	return len(rows), nil
+}
+
+// cleanupEfficiencyV2StaleUserWeeks 删除重算范围内本轮未再生成的用户周残留行。
+// need 被治理清扫删除后（全排除残留/pre-canon 旧行），其用户周若不再有任何 need，
+// 仅靠 upsert 永远不会清掉旧行，看板会展示引用已删 need 的悬挂统计。
+// 范围控制：仅清理 [周一锚(startDate), 周一锚(endDate)] 内的周；全量跑（无日期）清理全表。
+// 日期解析失败时保守跳过清理（绝不扩大删除范围）。
+func cleanupEfficiencyV2StaleUserWeeks(db *gorm.DB, regenerated map[string]bool, startDate, endDate string) error {
+	q := db.Model(&models.UserProductivityV2{})
+	if startDate != "" {
+		t, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return nil
+		}
+		q = q.Where("week_start >= ?", EfficiencyV2MondayAnchor(t))
+	}
+	if endDate != "" {
+		t, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return nil
+		}
+		q = q.Where("week_start <= ?", EfficiencyV2MondayAnchor(t))
+	}
+	var ids []string
+	if err := q.Pluck("user_productivity_v2_id", &ids).Error; err != nil {
+		return fmt.Errorf("query stale user weeks: %w", err)
+	}
+	var stale []string
+	for _, id := range ids {
+		if !regenerated[id] {
+			stale = append(stale, id)
+		}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	sort.Strings(stale)
+	if err := db.Where("user_productivity_v2_id IN ?", stale).Delete(&models.UserProductivityV2{}).Error; err != nil {
+		return fmt.Errorf("delete stale user weeks: %w", err)
+	}
+	return nil
 }
 
 // AggregateEfficiencyV2UserProductivity buckets Needs by (user, week) and

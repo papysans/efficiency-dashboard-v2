@@ -9,10 +9,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// mergeCommentRe merge commit 的 comment 兜底识别正则：行首 merge 单词（大小写不敏感），
-// 覆盖 "Merge branch ..." / "Merge pull request ..." / "Merge remote-tracking ..." / "merge: ..." 等写法。
-// \b 保证 "merged xxx" 不命中；非行首出现 merge（句中提及）也不命中。
-var mergeCommentRe = regexp.MustCompile(`(?i)^merge\b`)
+// mergeCommentRe merge commit 的 comment 兜底识别正则：只认 git 生成的规范 merge 文案
+// （Merge branch / Merge pull request / Merge remote(-tracking) / Merge tag / Merge commit）。
+// 故意不放宽到行首任意 merge：兜底命中会把 effective_diff_lines 清零，
+// "merge search results" 这类祈使句开发 commit 被误杀的代价远大于漏认
+// （真 merge 的主路径是 import-repo 按 parent_ids 落 is_merge，兜底只为存量旧数据）。
+var mergeCommentRe = regexp.MustCompile(`(?i)^merge\s+(branch|pull request|remote|tag|commit)\b`)
 
 // IsMergeComment 判定 commit comment 是否为 merge commit 的提交说明。
 // 存量数据没有 parent_ids，靠 comment 兜底识别（增量数据由 import-repo 按 parent_ids 落 is_merge）。

@@ -144,3 +144,35 @@ func TestComputeCommitRuleResults_ReplayOverridesDownweightAndSameSecondTieBreak
 	}
 	assertEffective(t, dup.effectiveDiffLines, 0)
 }
+
+func TestComputeCommitRuleResults_ReplayRepoScopedAndSkipsExcluded(t *testing.T) {
+	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
+	commits := []models.Commit{
+		// 跨仓库同 comment 同行数：合法交付，不得并组（repo 维度隔离；写法分裂经 canon 仍同组）
+		{CommitId: "r1-a", UserId: "u1", RepoAddr: "git@github.com:acme/repo-a.git", Comment: "fix lint errors", DiffLines: 300, CommitTime: base},
+		{CommitId: "r2-a", UserId: "u1", RepoAddr: "git@github.com:acme/repo-b.git", Comment: "fix lint errors", DiffLines: 300, CommitTime: base.Add(time.Hour)},
+		// 同仓写法分裂（ssh vs https）：canon 后同组，后者标 replay
+		{CommitId: "r1-b", UserId: "u1", RepoAddr: "https://github.com/acme/repo-a", Comment: "fix lint errors", DiffLines: 300, CommitTime: base.Add(2 * time.Hour)},
+		// excluded 不参与组键：它比组里所有成员都早，但不能当组首把合法重复归零
+		{CommitId: "x-early", UserId: "u2", RepoAddr: "r", Comment: "rebase replay batch", DiffLines: 400, CommitTime: base, ExcludedFlag: true},
+		{CommitId: "x-mid", UserId: "u2", RepoAddr: "r", Comment: "rebase replay batch", DiffLines: 400, CommitTime: base.Add(time.Hour)},
+		{CommitId: "x-late", UserId: "u2", RepoAddr: "r", Comment: "rebase replay batch", DiffLines: 400, CommitTime: base.Add(2 * time.Hour)},
+	}
+	results := computeCommitRuleResults(commits, CommitRulesConfig{ReplayDedup: true}, nil)
+
+	if r := results["r2-a"]; r.replayOf != "" {
+		t.Fatalf("跨仓库同 comment 不应并组，r2-a replay_of=%q", r.replayOf)
+	}
+	if r := results["r1-b"]; r.replayOf != "r1-a" {
+		t.Fatalf("同仓写法分裂应经 canon 并组，r1-b replay_of=%q want r1-a", r.replayOf)
+	}
+	if r := results["x-early"]; r.replayOf != "" {
+		t.Fatalf("excluded commit 不参与组键，x-early replay_of=%q", r.replayOf)
+	}
+	if r := results["x-mid"]; r.replayOf != "" || r.effectiveDiffLines != nil {
+		t.Fatalf("excluded 不当组首：x-mid 应为存活组首，得到 replay_of=%q effective=%v", r.replayOf, r.effectiveDiffLines)
+	}
+	if r := results["x-late"]; r.replayOf != "x-mid" {
+		t.Fatalf("x-late 应以 x-mid 为组首，得到 replay_of=%q", r.replayOf)
+	}
+}
