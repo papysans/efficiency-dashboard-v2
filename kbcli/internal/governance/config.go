@@ -61,8 +61,9 @@ func DefaultConfig() Config {
 		CommitRules: CommitRulesConfig{
 			DiffLinesSoftcap: 3000,
 			DownweightCommentPatterns: []DownweightRule{
-				// \b 锚定避免子串误伤（definitely 含 init、merged 含 merge）
-				{Pattern: `(?i)\b(merge|sync|format|style|scaffold|init)\b`, Factor: 0.2},
+				// 行首锚定 ^[\[\(]? 容忍 "[Merge]xxx" / "(merge)xxx" 前缀；\b 避免子串误伤（definitely 含 init）。
+				// 教训：曾用全文 \b 匹配，"feat: 修复init逻辑" 这类句中词命中致 52% 误伤、9.5 万行真实交付被 ×0.2。
+				{Pattern: `(?i)^[\[\(]?(merge|sync|format|style|scaffold|init)\b`, Factor: 0.2},
 			},
 			ReplayDedup: true,
 		},

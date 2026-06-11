@@ -15,11 +15,18 @@ identity:
     - yaajun@example.com
     - lisama@example.com
     - incremental@test.local
+    # 占位身份（git 默认配置没改），二轮挖掘实锤 20 commits / 12359 行
+    - your@email.com
+    # 机器 root 默认身份，非真人交付
+    - root@localhost.localdomain
   # 通配符邮箱模式（* 匹配任意串）
   blocked_email_patterns:
     - "*@example.com"
     - "*@test.*"
-    - "*@*.local"
+    # 只封 test.local 测试域；曾配 "*@*.local" 误伤内网真实交付 ai@claude-code.local 1665 行
+    - "*@test.local"
+    # Azure 测试机默认域名，非真人交付
+    - "*@*.internal.cloudapp.net"
   # git user name 黑名单模式
   blocked_name_patterns:
     - "Test User"
@@ -36,9 +43,11 @@ identity:
 commit_rules:
   # 巨型批量提交软上限：diff_lines 超过该值按治理规则折算（写 effective_diff_lines）
   diff_lines_softcap: 3000
-  # 低价值 comment 降权：commit comment 命中正则（Go 正则语法）时，diff_lines 乘以 factor
+  # 低价值 comment 降权：commit comment 命中正则（Go 正则语法）时，diff_lines 乘以 factor。
+  # 行首锚定 ^[\[\(]? 容忍 "[Merge]xxx" / "(merge)xxx" 前缀；
+  # 教训：曾用全文匹配，"feat: 修复init逻辑" 这类句中词命中致 52% 误伤、9.5 万行真实交付被 ×0.2
   downweight_comment_patterns:
-    - pattern: "(?i)\\b(merge|sync|format|style|scaffold|init)\\b"
+    - pattern: "(?i)^[\\[\\(]?(merge|sync|format|style|scaffold|init)\\b"
       factor: 0.2
   # merge/rebase/cherry-pick 重放去重（重复计数的 commit 标 replay_of，排除重复贡献）
   replay_dedup: true

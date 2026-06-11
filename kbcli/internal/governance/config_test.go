@@ -53,11 +53,11 @@ func TestLoadExampleYaml(t *testing.T) {
 	if err != nil {
 		t.Fatalf("加载样例治理配置失败: %v", err)
 	}
-	if len(cfg.Identity.BlockedEmails) != 5 {
-		t.Errorf("样例 blocked_emails 应为 5 条，得到 %d", len(cfg.Identity.BlockedEmails))
+	if len(cfg.Identity.BlockedEmails) != 7 {
+		t.Errorf("样例 blocked_emails 应为 7 条，得到 %d", len(cfg.Identity.BlockedEmails))
 	}
-	if len(cfg.Identity.BlockedEmailPatterns) != 3 {
-		t.Errorf("样例 blocked_email_patterns 应为 3 条，得到 %d", len(cfg.Identity.BlockedEmailPatterns))
+	if len(cfg.Identity.BlockedEmailPatterns) != 4 {
+		t.Errorf("样例 blocked_email_patterns 应为 4 条，得到 %d", len(cfg.Identity.BlockedEmailPatterns))
 	}
 	if len(cfg.Identity.BlockedNamePatterns) != 2 {
 		t.Errorf("样例 blocked_name_patterns 应为 2 条，得到 %d", len(cfg.Identity.BlockedNamePatterns))

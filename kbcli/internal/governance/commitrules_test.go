@@ -68,6 +68,26 @@ func TestComputeCommitEffectiveDiffLines_MultiPatternTakesMinFactor(t *testing.T
 	assertEffective(t, computeCommitEffectiveDiffLines(1000, "format code", 3000, rules), 800)
 }
 
+func TestComputeCommitEffectiveDiffLines_DefaultPatternAnchorsLineStart(t *testing.T) {
+	rules := mustCompileDownweightRules(t, DefaultConfig().CommitRules.DownweightCommentPatterns)
+	// 行首命中：1000 × 0.2 = 200
+	assertEffective(t, computeCommitEffectiveDiffLines(1000, "Merge branch 'main' into dev", 3000, rules), 200)
+	assertEffective(t, computeCommitEffectiveDiffLines(1000, "init repo skeleton", 3000, rules), 200)
+	// [ ( 前缀容忍
+	assertEffective(t, computeCommitEffectiveDiffLines(1000, "[Merge]同步主干", 3000, rules), 200)
+	assertEffective(t, computeCommitEffectiveDiffLines(1000, "(sync) upstream changes", 3000, rules), 200)
+	// 句中词不命中（全文匹配误伤教训：52% 误伤、9.5 万行真实交付被 ×0.2）
+	for _, comment := range []string{
+		"feat: 修复init逻辑",
+		"definitely a real fix",
+		"fix: handle merge conflict edge case",
+	} {
+		if got := computeCommitEffectiveDiffLines(1000, comment, 3000, rules); got != nil {
+			t.Fatalf("句中词不应命中降权: %q → %d", comment, *got)
+		}
+	}
+}
+
 func TestComputeCommitRuleResults_ReplayKeepsEarliest(t *testing.T) {
 	base := time.Date(2026, 5, 18, 9, 0, 0, 0, time.UTC)
 	commits := []models.Commit{
