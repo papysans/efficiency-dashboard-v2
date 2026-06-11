@@ -12,7 +12,7 @@ func testIdentityConfig() Config {
 	cfg.Identity.BlockedEmailPatterns = []string{"*@example.com", "*@test.*", "*@test.local", "*@*.internal.cloudapp.net"}
 	cfg.Identity.BlockedNamePatterns = []string{"Test User", "Incremental Tester"}
 	// 平台 user_id 黑名单（user 级整体排除，真实部署值见挖掘实锤的纯测试账号）
-	cfg.Identity.BlockedUserIds = []string{"b70062d1d654d7012debfd5b35613d8e"}
+	cfg.Identity.BlockedUserIds = []string{"test-bot-user-id-0001"}
 	return cfg
 }
 
@@ -58,9 +58,9 @@ func TestJudgeIdentityMatrix(t *testing.T) {
 		{"name第二条", "zhangsan@sangfor.com.cn", "Incremental Tester", "u1", true, "identity:blocked_name"},
 		{"name不含通配不部分匹配", "zhangsan@sangfor.com.cn", "A Test User B", "u1", false, ""},
 		// f. 平台 user_id 黑名单（精确匹配，优先级最低）：blocked 账号上报的 commit 也排除
-		{"user_id黑名单", "zhangsan@sangfor.com.cn", "张三", "b70062d1d654d7012debfd5b35613d8e", true, "identity:blocked_user"},
+		{"user_id黑名单", "zhangsan@sangfor.com.cn", "张三", "test-bot-user-id-0001", true, "identity:blocked_user"},
 		// 优先级：blocked user 的邮箱先命中更高优先级规则时，reason 不是 blocked_user
-		{"user_id黑名单但邮箱先命中", "incremental@test.local", "tester", "b70062d1d654d7012debfd5b35613d8e", true, "identity:blocked_email"},
+		{"user_id黑名单但邮箱先命中", "incremental@test.local", "tester", "test-bot-user-id-0001", true, "identity:blocked_email"},
 		// user_id 精确匹配，不做部分/大小写匹配
 		{"user_id前缀不误伤", "zhangsan@sangfor.com.cn", "张三", "b70062d1d654d7012debfd5b3561", false, ""},
 		// 正常身份不误伤
