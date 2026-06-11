@@ -29,6 +29,17 @@ type Config struct {
 	S3 S3Config `yaml:"s3"`
 }
 
+// Redacted 返回凭证脱敏后的副本，供启动日志打印（避免 AK/SK 明文进日志）。
+func (c Config) Redacted() Config {
+	if c.S3.AccessKey != "" {
+		c.S3.AccessKey = "***"
+	}
+	if c.S3.SecretKey != "" {
+		c.S3.SecretKey = "***"
+	}
+	return c
+}
+
 // FileInfo Walk / Stat 返回的文件元信息
 type FileInfo struct {
 	Name    string // 文件名（不含目录）

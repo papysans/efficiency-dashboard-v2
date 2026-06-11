@@ -102,7 +102,9 @@ func LoadFirstConfig(files []string) (*Config, error) {
 		}
 		loadedCfg, err := loadConfig(fname)
 		if err == nil {
-			log.Printf("load config [%s] ok, cfg: %+v\n", fname, loadedCfg)
+			logCfg := *loadedCfg
+			logCfg.Storage = logCfg.Storage.Redacted()
+			log.Printf("load config [%s] ok, cfg: %+v\n", fname, &logCfg)
 			return loadedCfg, nil
 		}
 		log.Printf("load config [%s] failed: %v\n", fname, err)

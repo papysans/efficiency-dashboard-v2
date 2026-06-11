@@ -152,3 +152,20 @@ func TestS3NotConfigured(t *testing.T) {
 	}
 	Configure(Config{}) // 还原
 }
+
+func TestConfigRedacted(t *testing.T) {
+	c := Config{S3: S3Config{Endpoint: "e:9000", AccessKey: "AK", SecretKey: "SK"}}
+	r := c.Redacted()
+	if r.S3.AccessKey != "***" || r.S3.SecretKey != "***" {
+		t.Errorf("凭证未脱敏: %+v", r.S3)
+	}
+	if r.S3.Endpoint != "e:9000" {
+		t.Errorf("非凭证字段不应改动: %s", r.S3.Endpoint)
+	}
+	if c.S3.AccessKey != "AK" || c.S3.SecretKey != "SK" {
+		t.Errorf("原配置被改动: %+v", c.S3)
+	}
+	if empty := (Config{}).Redacted(); empty.S3.AccessKey != "" || empty.S3.SecretKey != "" {
+		t.Errorf("空凭证不应标星: %+v", empty.S3)
+	}
+}
