@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"kanban/kbcli/internal/appconfig"
+	"kanban/kbcli/internal/governance"
 	"kanban/kbcli/internal/logx"
 	"kanban/kbcli/internal/util"
 	"math"
@@ -207,8 +208,12 @@ func saveSession(db *gorm.DB, ss *taskSession, sessionDate, conversationDate str
 }
 
 func correctConversations(ss *taskSession, conversations []taskConversation) {
+	// 入库即脱敏：repo_addr 内嵌的 URL 凭据（如 http://oauth2:token@host）不得进基表；
+	// session_stage_metrics 的 repo_addr 从 conversations 派生，上游净则净
+	ss.RepoAddr = governance.SanitizeRepoAddr(ss.RepoAddr)
 	// 遍历所有对话，解析时间并累加指标；时间解析失败则跳过该对话并记录警告
 	for i, conv := range conversations {
+		conversations[i].RepoAddr = governance.SanitizeRepoAddr(conv.RepoAddr)
 		if conv.StartTime == "" {
 			logx.Warnf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
 			continue

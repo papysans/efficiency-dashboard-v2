@@ -11,13 +11,16 @@ const governanceBatchSize = 500
 
 // ApplyCommitGovernance commit 治理总入口：在 efficiency-v2 主流程开头执行，
 // 按治理配置重判 commits 的排除标记（排除=打标记不删数据），改名单→重跑 efficiency-v2 即生效。
-// 依次执行身份治理、commit 规则治理与 merge 治理三个子 pass
-// （merge 置 0 优先级最高，必须放在 commitrules 之后兜底）。
+// 依次执行凭据脱敏、身份治理、commit 规则治理与 merge 治理四个子 pass
+// （脱敏改写基表存量值是安全例外，必须最先跑；merge 置 0 优先级最高，必须放在 commitrules 之后兜底）。
 // TODO: startDate/endDate（YYYY-MM-DD，空=全量）的识别窗口语义由子 pass 落地时统一实现，
 // 当前先透传不裁剪。
 func ApplyCommitGovernance(db *gorm.DB, cfg Config, startDate, endDate string) error {
 	_ = startDate
 	_ = endDate
+	if err := applySanitizeRepoAddrs(db); err != nil {
+		return fmt.Errorf("repo_addr 凭据脱敏子 pass 失败: %w", err)
+	}
 	if err := applyIdentityRules(db, cfg); err != nil {
 		return fmt.Errorf("identity 治理子 pass 失败: %w", err)
 	}

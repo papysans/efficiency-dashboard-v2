@@ -7,6 +7,7 @@ import (
 	"kanban/core/utils"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/efficiencyv2"
+	"kanban/kbcli/internal/governance"
 	"kanban/kbcli/internal/logx"
 	"kanban/kbcli/internal/util"
 	"os"
@@ -196,6 +197,9 @@ func importCommitFile(db *gorm.DB, meta repoFileMeta, idx *conversationsIndexer,
 	if commitData.CommitTime == "" {
 		return fmt.Errorf("commit_time为空")
 	}
+
+	// 入库即脱敏：repo_addr 内嵌的 URL 凭据（如 http://oauth2:token@host）不得进基表
+	commitData.RepoAddr = governance.SanitizeRepoAddr(commitData.RepoAddr)
 
 	commitTime, err := time.Parse(time.RFC3339, commitData.CommitTime)
 	if err != nil {
