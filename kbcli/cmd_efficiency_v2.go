@@ -125,6 +125,9 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 	// repo 地址归一开关由治理配置注入（normalization.repo_addr_canon），不走 efficiency_v2 yaml。
 	effCfg := appconfig.Cfg.EfficiencyV2
 	effCfg.RepoAddrCanon = govCfg.Normalization.RepoAddrCanon
+	// user_id 黑名单同样由治理配置注入（identity.blocked_user_ids）：
+	// blocked 账号的 session/conversation 不进任何统计（commit 侧由 identity 子 pass 排除）。
+	effCfg.BlockedUserIds = govCfg.Identity.BlockedUserIds
 	return RunEfficiencyV2Pipeline(db, EfficiencyV2PipelineArgs{
 		StartDate:      start,
 		EndDate:        end,
@@ -184,8 +187,9 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 	}
 
 	events, err := efficiencyv2.NormalizeAndUpsertEfficiencyV2ConversationEvents(db, efficiencyv2.EfficiencyV2ConversationEventQuery{
-		StartDate: args.StartDate,
-		EndDate:   args.EndDate,
+		StartDate:      args.StartDate,
+		EndDate:        args.EndDate,
+		BlockedUserIds: args.EfficiencyV2.BlockedUserIds,
 	})
 	if err != nil {
 		return counts, fmt.Errorf("normalize events: %w", err)

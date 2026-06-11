@@ -33,6 +33,8 @@ func governanceGlobMatch(pattern, s string) bool {
 //  3. 邮箱通配模式（glob，* 通配，大小写不敏感）→ identity:blocked_email_pattern
 //  4. git user name 黑名单模式（glob）→ identity:blocked_name
 //  5. identity_map enforce 且该 user_id 有映射条目但 email 不在允许列表 → identity:foreign_author
+//  6. 平台 user_id 黑名单（精确匹配）→ identity:blocked_user——该账号上报的 commit 也排除，
+//     session/need 侧由 efficiency-v2 管线按同一名单过滤（user 级整体排除）
 func JudgeIdentity(cfg Config, email, name, userId string) (bool, string) {
 	id := cfg.Identity
 	if id.BuiltinBotPatterns && builtinBotEmailRe.MatchString(email) {
@@ -65,6 +67,12 @@ func JudgeIdentity(cfg Config, email, name, userId string) (bool, string) {
 			if !matched {
 				return true, "identity:foreign_author"
 			}
+		}
+	}
+	for _, blocked := range id.BlockedUserIds {
+		// 空条目跳过，避免 user_id 为空的 commit 被误排
+		if b := strings.TrimSpace(blocked); b != "" && b == userId {
+			return true, "identity:blocked_user"
 		}
 	}
 	return false, ""

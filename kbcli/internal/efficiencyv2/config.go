@@ -100,6 +100,10 @@ type EfficiencyV2Config struct {
 	// 由 efficiency-v2 管线入口注入（不走本 yaml）。开启时 need 边界 key 构造与
 	// repo+branch 配对比较统一用归一地址（governance.CanonRepoAddr）。
 	RepoAddrCanon bool `yaml:"-"`
+	// BlockedUserIds 平台 user_id 黑名单，来自治理配置 identity.blocked_user_ids，
+	// 由 efficiency-v2 管线入口注入（不走本 yaml）。命中账号的 conversation/session
+	// 在数据加载层被过滤，不进任何统计；残留 need 行由 cleanupEfficiencyV2BlockedUserNeeds 清理。
+	BlockedUserIds []string `yaml:"-"`
 }
 
 var defaultEfficiencyV2VerificationCommandPatterns = []string{

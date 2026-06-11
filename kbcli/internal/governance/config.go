@@ -28,6 +28,7 @@ type IdentityConfig struct {
 	BlockedEmails        []string          `yaml:"blocked_emails"`         // 精确匹配的黑名单 git 邮箱
 	BlockedEmailPatterns []string          `yaml:"blocked_email_patterns"` // 通配符邮箱模式，如 *@example.com
 	BlockedNamePatterns  []string          `yaml:"blocked_name_patterns"`  // git user name 黑名单模式
+	BlockedUserIds       []string          `yaml:"blocked_user_ids"`       // 平台 user_id 黑名单：该账号全部活动不参与统计（与 blocked_emails 的 git 身份维度互补）
 	IdentityMap          IdentityMapConfig `yaml:"identity_map"`
 }
 

@@ -140,8 +140,17 @@ func AggregateEfficiencyV2UserProductivity(needs []models.Need, cfg EfficiencyV2
 		needIDs []string
 		needs   []models.Need
 	}
+	blockedUsers := make(map[string]bool)
+	for _, id := range EfficiencyV2SortedUnique(cfg.BlockedUserIds) {
+		blockedUsers[id] = true
+	}
 	buckets := map[bucketKey]*bucket{}
 	for _, need := range needs {
+		// 聚合侧保险：primary_user 命中 user_id 黑名单的 need 不进周表
+		// （防 needs 表残留行——清理跑前的旧行——串进 user_productivity_v2）。
+		if blockedUsers[need.PrimaryUserId] {
+			continue
+		}
 		anchor := efficiencyV2WeekAnchorForNeed(need)
 		key := bucketKey{userID: need.PrimaryUserId, weekStart: anchor}
 		b := buckets[key]

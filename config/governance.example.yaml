@@ -31,6 +31,11 @@ identity:
   blocked_name_patterns:
     - "Test User"
     - "Incremental Tester"
+  # 平台 user_id 黑名单（精确匹配）：该账号的全部活动（commit/session/need）不参与统计，
+  # 与 blocked_emails 的 git 身份维度互补；真实 user_id 属部署配置，样例留空。
+  blocked_user_ids: []
+  # blocked_user_ids:
+  #   - b70062d1d654d7012debfd5b35613d8e
   # user_id → 允许的 git emails 映射；enforce: true 且有条目时，
   # 映射内 user_id 下使用映射外邮箱的 commit 才会被硬排。
   identity_map:

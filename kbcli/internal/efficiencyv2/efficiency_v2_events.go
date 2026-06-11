@@ -29,6 +29,9 @@ type EfficiencyV2ConversationEventQuery struct {
 	StartDate string
 	EndDate   string
 	SessionID string
+	// BlockedUserIds 平台 user_id 黑名单（治理配置 identity.blocked_user_ids）：
+	// 命中账号的 conversation 不进事件归一化（user 级整体排除）。
+	BlockedUserIds []string
 }
 
 // NormalizeEfficiencyV2ConversationEvents builds normalized v2 event rows from
@@ -223,6 +226,11 @@ func QueryEfficiencyV2Conversations(db *gorm.DB, query EfficiencyV2ConversationE
 	}
 	if query.EndDate != "" {
 		tx = tx.Where("DATE(start_time) <= ?", query.EndDate)
+	}
+	// blocked user 过滤：conversations 表无 user_id 列，经 sessions 表按 session 归属排除
+	if blocked := EfficiencyV2SortedUnique(query.BlockedUserIds); len(blocked) > 0 {
+		tx = tx.Where("session_id NOT IN (?)",
+			db.Model(&models.Session{}).Select("session_id").Where("user_id IN ?", blocked))
 	}
 
 	var conversations []models.Conversation

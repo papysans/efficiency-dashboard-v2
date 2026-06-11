@@ -64,12 +64,21 @@ type efficiencyV2PayloadBoundary struct {
 }
 
 func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, startDate, endDate string) ([]models.Need, error) {
+	// blocked user（治理配置 identity.blocked_user_ids）的 session/事件不进边界构建：
+	// 全表扫描会捞到历史轮残留行，本轮源头过滤后这里还要再挡一道。
+	blockedUserIDs := EfficiencyV2SortedUnique(cfg.BlockedUserIds)
+	metricsQuery := db.Order("session_id ASC")
+	eventsQuery := db.Order("session_id ASC").Order("event_start_ts ASC").Order("event_id ASC")
+	if len(blockedUserIDs) > 0 {
+		metricsQuery = metricsQuery.Where("user_id NOT IN ?", blockedUserIDs)
+		eventsQuery = eventsQuery.Where("user_id NOT IN ?", blockedUserIDs)
+	}
 	var metrics []models.SessionStageMetric
-	if err := db.Order("session_id ASC").Find(&metrics).Error; err != nil {
+	if err := metricsQuery.Find(&metrics).Error; err != nil {
 		return nil, fmt.Errorf("query session stage metrics: %w", err)
 	}
 	var events []models.ConversationEvent
-	if err := db.Order("session_id ASC").Order("event_start_ts ASC").Order("event_id ASC").Find(&events).Error; err != nil {
+	if err := eventsQuery.Find(&events).Error; err != nil {
 		return nil, fmt.Errorf("query conversation events: %w", err)
 	}
 	// 治理排除的 commit 不参与 Need 边界构建（双保险：聚合口径处也按 effective 记 0）
@@ -90,6 +99,9 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 		// 窗口内候选可能被治理全量排除（excluded commit 不进查询）：本轮零产出
 		// 也要清扫"内容物全被排除"的残留 need，否则旧行带着治理前统计永久残留。
 		if err := cleanupEfficiencyV2FullyExcludedNeeds(db); err != nil {
+			return nil, err
+		}
+		if err := cleanupEfficiencyV2BlockedUserNeeds(db, blockedUserIDs); err != nil {
 			return nil, err
 		}
 		return needs, nil
@@ -132,7 +144,25 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config, star
 	if err := cleanupEfficiencyV2FullyExcludedNeeds(db); err != nil {
 		return nil, err
 	}
+	if err := cleanupEfficiencyV2BlockedUserNeeds(db, blockedUserIDs); err != nil {
+		return nil, err
+	}
 	return needs, nil
+}
+
+// cleanupEfficiencyV2BlockedUserNeeds 删除 primary_user_id 命中 user_id 黑名单的残留 need 行。
+// blocked user 的 session/commit 已不进边界构建，旧 need 行不会被本轮重算覆盖，
+// 不删则带着治理前统计永久残留（如纯测试账号的 orphan need）。删除幂等且可恢复：
+// 解黑后重跑全量会原样重建。贡献者含 blocked 但 primary 不是 blocked 的 need 不动
+// （其 session 成员已被过滤，下轮重算自然收缩）。
+func cleanupEfficiencyV2BlockedUserNeeds(db *gorm.DB, blockedUserIDs []string) error {
+	if len(blockedUserIDs) == 0 {
+		return nil
+	}
+	if err := db.Where("primary_user_id IN ?", blockedUserIDs).Delete(&models.Need{}).Error; err != nil {
+		return fmt.Errorf("delete blocked-user needs: %w", err)
+	}
+	return nil
 }
 
 // cleanupEfficiencyV2FullyExcludedNeeds 清理"内容物已被治理全量排除"的残留 need：
