@@ -45,6 +45,38 @@ func TestAggregateEfficiencyV2UserProductivity_RatioFromSums(t *testing.T) {
 	}
 }
 
+func TestAggregateEfficiencyV2UserProductivity_BlockedPrimaryUserSkipped(t *testing.T) {
+	weekStart := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	devEnd := weekStart.Add(48 * time.Hour)
+	baseHigh := 400.0
+	needs := []models.Need{
+		{
+			NeedId: "n1", PrimaryUserId: "u1", Status: "merged",
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			TotalCalendarMin: 240, BaselineCalendarMin: &baseHigh,
+			BaselineFusedWorkMin: ptrFloat(100), TotalActiveWorkCorrectedMin: 100,
+			DevEndTs: ptrTime(devEnd),
+		},
+		{
+			// blocked 账号的残留 need（清理跑前的旧行）不得串进周表
+			NeedId: "n2", PrimaryUserId: "blocked-user", Status: "merged",
+			BoundaryConfidence: efficiencyV2ConfidenceHigh, CoverageEligible: true,
+			TotalCalendarMin: 999, BaselineCalendarMin: ptrFloat(9999),
+			BaselineFusedWorkMin: ptrFloat(999), TotalActiveWorkCorrectedMin: 999,
+			DevEndTs: ptrTime(devEnd),
+		},
+	}
+	rows := AggregateEfficiencyV2UserProductivity(needs, EfficiencyV2Config{
+		BlockedUserIds: []string{"blocked-user"},
+	})
+	if len(rows) != 1 {
+		t.Fatalf("blocked primary_user 的 need 应被跳过，期望 1 行，得到 %d 行", len(rows))
+	}
+	if rows[0].UserId != "u1" || rows[0].ActualCalendarMin != 240 {
+		t.Fatalf("仅 u1 进周表（actual=240），得到 user=%q actual=%.2f", rows[0].UserId, rows[0].ActualCalendarMin)
+	}
+}
+
 func TestAggregateEfficiencyV2UserProductivity_LowConfidenceNeedsDontEnterRatio(t *testing.T) {
 	weekStart := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
 	devEnd := weekStart.Add(48 * time.Hour)
