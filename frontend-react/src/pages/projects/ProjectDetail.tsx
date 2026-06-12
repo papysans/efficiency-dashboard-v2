@@ -2,10 +2,11 @@
 // 分区 + 8 管理操作 1:1 按 research/pr4-project-commit-workdir.md §2.2；视觉换玻璃拟态。
 //
 // ⚠️ 口径：
-//   - userStats 行 task/commit_efficiency_ratio = **百分比口径** PercentPill（前端 reduce 算出 ancient/real*100）。
+//   - userStats 行 task/commit_efficiency_ratio = **提升百分比口径** PercentPill（前端 reduce 算
+//     (ancient−real)/real*100，与后端 CalcEfficiencyRatio / 项目列表 / RepoDetail 一致；缺一侧 → null 显 '-'）。
 //   - ProjectCommit 表 silica 展示为 AI 代码占比，直接当百分比（不 ×100，阈值 80/50）。
-//   - 顶部 devEfficiencyRatio/e2eEfficiencyRatio 是**内部小数**（如 3.0），显示 Math.round(*100)+'%'，
-//     着色 percentTextClass(*100)。这是 PR4 唯一「内部小数、显示×100」例外，仍走 300/150 阈值。
+//   - 顶部 devEfficiencyRatio/e2eEfficiencyRatio 是**提升百分比的内部小数**（(ancient−real)/real，如 2.0），
+//     显示 Math.round(*100)+'%'，着色 percentTextClass(*100)，与项目列表后端 CalcEfficiencyRatio 同口径。
 //
 // 8 管理操作：编辑 / 删除 / 人工调整 / 加 Task / 移 Task / 改 Task AI 代码权重 / 加 Repo（含编辑=删旧+加新）/ 移 Repo。
 // ⚠️ updateProject 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空。
@@ -76,8 +77,8 @@ interface UserStat {
   commit_ancient_minutes: number
   commit_real_minutes: number
   cost: number
-  task_efficiency_ratio: number
-  commit_efficiency_ratio: number
+  task_efficiency_ratio: number | null
+  commit_efficiency_ratio: number | null
 }
 
 export default function ProjectDetail() {
@@ -118,8 +119,11 @@ export default function ProjectDetail() {
   const traditionalLinesPerDay = ancientWorkDays && ancientWorkDays > 0 ? totalCodeLines / ancientWorkDays : null
   const traditionalDevLinesPerDay = globalConfig?.traditional_dev_lines_per_day || 100
   // 内部小数（显示 ×100）
-  const devEfficiencyRatio = ancientWorkDays && actualWorkDays && actualWorkDays > 0 ? ancientWorkDays / actualWorkDays : null
-  const e2eEfficiencyRatio = ancientWorkDays && leadWorkDays && leadWorkDays > 0 ? ancientWorkDays / leadWorkDays : null
+  // 提升百分比口径 (ancient−real)/real，与项目列表后端 CalcEfficiencyRatio 一致（原倍数口径与列表差 100 个点）
+  const devEfficiencyRatio =
+    ancientWorkDays && actualWorkDays && actualWorkDays > 0 ? (ancientWorkDays - actualWorkDays) / actualWorkDays : null
+  const e2eEfficiencyRatio =
+    ancientWorkDays && leadWorkDays && leadWorkDays > 0 ? (ancientWorkDays - leadWorkDays) / leadWorkDays : null
 
   // ---- userStats（用户视角聚合）----
   const userStats = useMemo<UserStat[]>(() => {
@@ -137,8 +141,8 @@ export default function ProjectDetail() {
           commit_ancient_minutes: 0,
           commit_real_minutes: 0,
           cost: 0,
-          task_efficiency_ratio: 0,
-          commit_efficiency_ratio: 0,
+          task_efficiency_ratio: null,
+          commit_efficiency_ratio: null,
         }
         map.set(userId, s)
       }
@@ -161,9 +165,16 @@ export default function ProjectDetail() {
       s.cost += c.cost || 0
     }
     const rows = Array.from(map.values())
+    // 提升百分比 (ancient−real)/real*100：两侧都>0 才可算（缺一侧算出来是假 ±100%），否则 null 显 '-'
     for (const s of rows) {
-      s.task_efficiency_ratio = s.task_real_minutes > 0 ? (s.task_ancient_minutes / s.task_real_minutes) * 100 : 0
-      s.commit_efficiency_ratio = s.commit_real_minutes > 0 ? (s.commit_ancient_minutes / s.commit_real_minutes) * 100 : 0
+      s.task_efficiency_ratio =
+        s.task_ancient_minutes > 0 && s.task_real_minutes > 0
+          ? ((s.task_ancient_minutes - s.task_real_minutes) / s.task_real_minutes) * 100
+          : null
+      s.commit_efficiency_ratio =
+        s.commit_ancient_minutes > 0 && s.commit_real_minutes > 0
+          ? ((s.commit_ancient_minutes - s.commit_real_minutes) / s.commit_real_minutes) * 100
+          : null
     }
     rows.sort((a, b) => b.commit_diff_lines - a.commit_diff_lines)
     return rows
@@ -287,12 +298,12 @@ export default function ProjectDetail() {
           <Kv label="传统开发人天代码量" title={`传统开发基准：${traditionalDevLinesPerDay} 行/人天`}>
             {traditionalLinesPerDay != null ? `${traditionalLinesPerDay.toFixed(0)} 行/人天` : '-'}
           </Kv>
-          <Kv label="开发提效比" title="传统开发预估 ÷ 实际耗时">
+          <Kv label="开发提效比" title="（传统开发预估 − 实际耗时）÷ 实际耗时">
             <span className={`text-xl font-bold tabular-nums ${percentTextClass(devEfficiencyRatio != null ? devEfficiencyRatio * 100 : null)}`}>
               {devEfficiencyRatio != null ? `${Math.round(devEfficiencyRatio * 100)}%` : '-'}
             </span>
           </Kv>
-          <Kv label="端到端提效比" title="传统开发预估 ÷ 项目周期">
+          <Kv label="端到端提效比" title="（传统开发预估 − 项目周期）÷ 项目周期">
             <span className={`text-xl font-bold tabular-nums ${percentTextClass(e2eEfficiencyRatio != null ? e2eEfficiencyRatio * 100 : null)}`}>
               {e2eEfficiencyRatio != null ? `${Math.round(e2eEfficiencyRatio * 100)}%` : '-'}
             </span>
@@ -339,12 +350,12 @@ export default function ProjectDetail() {
                   <td className={TD_NUM}>{formatDuration(s.task_ancient_minutes)}</td>
                   <td className={TD_NUM}>{formatDuration(s.task_real_minutes)}</td>
                   <td className="px-3 py-2 align-middle text-center">
-                    {s.task_efficiency_ratio > 0 ? <PercentPill value={s.task_efficiency_ratio} /> : <Tag tone="info">-</Tag>}
+                    {s.task_efficiency_ratio != null ? <PercentPill value={s.task_efficiency_ratio} /> : <Tag tone="info">-</Tag>}
                   </td>
                   <td className={TD_NUM}>{formatDuration(s.commit_ancient_minutes)}</td>
                   <td className={TD_NUM}>{formatDuration(s.commit_real_minutes)}</td>
                   <td className="px-3 py-2 align-middle text-center">
-                    {s.commit_efficiency_ratio > 0 ? <PercentPill value={s.commit_efficiency_ratio} /> : <Tag tone="info">-</Tag>}
+                    {s.commit_efficiency_ratio != null ? <PercentPill value={s.commit_efficiency_ratio} /> : <Tag tone="info">-</Tag>}
                   </td>
                   <td className={TD_NUM}>{s.cost > 0 ? fmtCost(s.cost) : '-'}</td>
                 </tr>
