@@ -2,10 +2,10 @@ server:
   port: 9990
 
 stat_database:
-  host: "localhost"
+  host: "192.168.137.106"
   port: 5432
   user: "postgres"
-  password: "1"
+  password: "123456"
   dbname: "costrict_stat"
   sslmode: "disable"
 
@@ -53,6 +53,6 @@ org_mapping_refresh:
 # 上游有 HTTP Basic Auth 时再填 username/password（两者均非空才注入 Authorization）。
 # 外网实例示例：base_url: "https://zgsm.sangfor.com" + costrict 账号。
 chat_stats:
-  base_url: ""
+  base_url: "http://192.168.137.106:8080"
   username: ""
   password: ""

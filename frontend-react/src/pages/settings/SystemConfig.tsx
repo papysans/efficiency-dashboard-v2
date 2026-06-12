@@ -25,6 +25,8 @@ export default function SystemConfig() {
   const [etlSource, setEtlSource] = useState('')
   const [currency, setCurrency] = useState('CNY')
   const [rate, setRate] = useState('7.2420')
+  const [rawLogRootDir, setRawLogRootDir] = useState('')
+  const [rawLogPreviewMaxMb, setRawLogPreviewMaxMb] = useState('5')
 
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -37,12 +39,19 @@ export default function SystemConfig() {
     setEtlSource(cfg.daily_etl_source || '')
     setCurrency(cfg.system_currency || 'CNY')
     setRate(cfg.default_exchange_rate || '7.2420')
+    setRawLogRootDir(cfg.raw_log_root_dir || '')
+    setRawLogPreviewMaxMb(cfg.raw_log_preview_max_mb || '5')
   }, [cfg])
 
   async function handleSave() {
     const rateNum = Number(rate.trim())
+    const previewMaxMb = rawLogPreviewMaxMb.trim() === '' ? 5 : Number(rawLogPreviewMaxMb.trim())
     if (!Number.isFinite(rateNum) || rateNum <= 0) {
       setMsg({ ok: false, text: '默认汇率必须为正数' })
+      return
+    }
+    if (!Number.isFinite(previewMaxMb) || previewMaxMb <= 0) {
+      setMsg({ ok: false, text: '日志预览最大大小必须为正数' })
       return
     }
     if (etlEnabled && !etlSource) {
@@ -58,6 +67,8 @@ export default function SystemConfig() {
         daily_etl_source: etlSource,
         system_currency: currency,
         default_exchange_rate: String(rateNum),
+        raw_log_root_dir: rawLogRootDir.trim(),
+        raw_log_preview_max_mb: String(previewMaxMb),
       })
       await queryClient.invalidateQueries({ queryKey: ['chat-system-config'] })
       setMsg({ ok: true, text: '配置已保存' })
@@ -81,7 +92,7 @@ export default function SystemConfig() {
 
         {isLoading || !enabled ? (
           <div className="space-y-3 max-w-lg">
-            {Array.from({ length: 5 }).map((_, i) => (
+            {Array.from({ length: 7 }).map((_, i) => (
               <div key={i} className="skeleton h-9 rounded-lg" />
             ))}
           </div>
@@ -122,6 +133,28 @@ export default function SystemConfig() {
 
             <Field label="默认汇率（外币兑换系统币种）" hint="新增模型价格时，非系统币种默认使用此汇率换算，可在价格编辑时单独修改。">
               <input type="number" step="0.0001" min="0.0001" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="7.2420" className={INPUT_CLS} />
+            </Field>
+
+            <Field label="原始日志根目录" hint="local_log_path 会被限制在该目录内读取。留空时使用 chat 服务 config.yaml 中的 raw_log_preview.root_dir。">
+              <input
+                type="text"
+                value={rawLogRootDir}
+                onChange={(e) => setRawLogRootDir(e.target.value)}
+                placeholder="/data/chat-logs 或 ./logs/raw"
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </Field>
+
+            <Field label="日志预览最大大小（MB）" hint="超过该大小时只显示文件大小和提示，不在线展示内容。">
+              <input
+                type="number"
+                step="0.5"
+                min="0.1"
+                value={rawLogPreviewMaxMb}
+                onChange={(e) => setRawLogPreviewMaxMb(e.target.value)}
+                placeholder="5"
+                className={INPUT_CLS}
+              />
             </Field>
 
             <div className="flex items-center gap-3 pt-1">

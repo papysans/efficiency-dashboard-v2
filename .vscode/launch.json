@@ -15,12 +15,17 @@
         },
         {
             "name": "backend",
-            "type": "go",
+            "type": "node-terminal",
             "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceFolder}/webui/backend",
-            "env": {},
-            "args": []
+            "cwd": "${workspaceFolder}/backend",
+            "command": "pwd && go run ."
+        },
+        {
+            "name": "frontend-react dev",
+            "type": "node-terminal",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/frontend-react",
+            "command": "npm run dev -- --host 0.0.0.0"
         }
     ]
 }

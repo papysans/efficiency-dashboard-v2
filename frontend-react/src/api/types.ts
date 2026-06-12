@@ -1004,25 +1004,50 @@ export interface ChatDetailRow {
   username: string | null
   universal_id: string | null
   ts: string
+  system_tokens: number | null
+  user_tokens: number | null
+  processed_system_tokens?: number | null
+  processed_user_tokens?: number | null
+  retry_num?: number | null
+  first_token_duration: number | null
+  duration: number | null
   prompt_tokens: number | null
   completion_tokens: number | null
   cache_tokens: number | null
   error_code: string | null
+  slow_chunk: number | null
+  chunk_per_second?: number | null
+  token_output_time?: number | null
+  token_output_speed?: number | null
+  token_output_speed_e2e?: number | null
+  task_id?: string | null
+  client_version?: string | null
+  request_time: string | null
+  forward_request_time?: string | null
+  end_time: string | null
+  mode: string | null
   model: string | null
   routed_model: string | null
-  mode: string | null
-  duration: number | null
-  first_token_duration: number | null
-  slow_chunk: number | null
-  system_tokens: number | null
-  user_tokens: number | null
-  request_time: string | null
-  end_time: string | null
+  local_log_path?: string | null
+  created_at?: string | null
 }
 
 export interface ChatDetailQueryResponse {
   total: number
   items: ChatDetailRow[]
+}
+
+/** POST /v2/chat/stats/detail/log-preview 响应。超过阈值或非 UTF-8 时只返回提示，不返回 content。 */
+export interface ChatLogPreviewResponse {
+  path: string
+  file_name: string
+  size_bytes: number
+  size_mb: number
+  max_size_mb: number
+  previewable: boolean
+  exceeded: boolean
+  content?: string
+  message?: string
 }
 
 /** model_pricing 行（models.go ModelPricing；pricing_mode ∈ token|request|hybrid）。 */
@@ -1148,4 +1173,3 @@ export interface ChatSyncTaskStatus {
 
 /** GET/PUT /v2/chat/config —— KV 扁平 map（如 system_currency / exchange_rate_usd_cny）。 */
 export type ChatSystemConfig = Record<string, string>
-
