@@ -288,8 +288,8 @@ export default function NeedList() {
             value={draftFilters.userId}
             onChange={(e) => setDraftFilters((f) => ({ ...f, userId: e.target.value }))}
             onKeyDown={onFilterKey}
-            placeholder="用户 ID"
-            className={`${inputCls} w-[150px]`}
+            placeholder="真名/工号/ID"
+            className={`${inputCls} w-[160px]`}
           />
           <select
             value={draftFilters.boundarySource}
