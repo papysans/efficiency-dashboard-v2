@@ -36,6 +36,7 @@ export default function UserGroupDetail() {
   const [dateRange, setDateRange] = useState<[string, string]>(getDefaultDateRangeWide())
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const params = useMemo(
     () => ({ startDate: dateRange[0].replace(/-/g, ''), endDate: dateRange[1].replace(/-/g, '') }),
@@ -51,12 +52,13 @@ export default function UserGroupDetail() {
   async function handleDelete() {
     if (!groupId) return
     setDeleting(true)
+    setDeleteError('')
     try {
       await deleteUserGroup(groupId)
       setConfirmOpen(false)
       navigate('/user-v2')
-    } catch {
-      // 错误已由 client 拦截器转成 Error message，这里只复位删除态
+    } catch (e) {
+      setDeleteError((e as Error).message || '删除失败')
       setDeleting(false)
     }
   }
@@ -82,7 +84,10 @@ export default function UserGroupDetail() {
           <DateRangePicker value={dateRange} onChange={setDateRange} />
           <button
             type="button"
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => {
+              setDeleteError('')
+              setConfirmOpen(true)
+            }}
             disabled={!groupId}
             className="rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
           >
@@ -104,8 +109,9 @@ export default function UserGroupDetail() {
             <MetricCard label="成员数" value={formatNumber(members.length)} />
             <MetricCard label="总 Task 数" value={formatNumber(summary?.task_count ?? 0)} />
             <MetricCard label="总 Commit 数" value={formatNumber(summary?.commit_count ?? 0)} />
-            <MetricCard label="加权 Task 提效比" value={<PercentPill value={summary?.task_efficiency_ratio} />} />
-            <MetricCard label="加权 Commit 提效比" value={<PercentPill value={summary?.commit_efficiency_ratio} />} />
+            {/* 后端无数据时返回 0（CalcEfficiencyRatio 兜底），0 显 '-' 避免误读为「零提效」 */}
+            <MetricCard label="加权 Task 提效比" value={<PercentPill value={summary?.task_efficiency_ratio || null} />} />
+            <MetricCard label="加权 Commit 提效比" value={<PercentPill value={summary?.commit_efficiency_ratio || null} />} />
             <MetricCard label="总费用" value={fmtCostVal(summary?.cost)} />
           </section>
 
@@ -156,8 +162,8 @@ export default function UserGroupDetail() {
                         <td className={TD_NUM}>{m.day_count}</td>
                         <td className={TD_NUM}>{m.task_count}</td>
                         <td className={TD_NUM}>{m.commit_count}</td>
-                        <td className={TD_CENTER}><PercentPill value={m.task_efficiency_ratio} /></td>
-                        <td className={TD_CENTER}><PercentPill value={m.commit_efficiency_ratio} /></td>
+                        <td className={TD_CENTER}><PercentPill value={m.task_efficiency_ratio || null} /></td>
+                        <td className={TD_CENTER}><PercentPill value={m.commit_efficiency_ratio || null} /></td>
                         <td className={TD_NUM}>{fmtCostVal(m.cost)}</td>
                       </tr>
                     ))
@@ -199,6 +205,7 @@ export default function UserGroupDetail() {
         <p className="text-sm text-gray-600 dark:text-gray-300">
           确认删除虚拟组「{group?.name || groupId}」？此操作不可撤销。
         </p>
+        {deleteError && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">删除失败：{deleteError}</p>}
       </Modal>
     </div>
   )

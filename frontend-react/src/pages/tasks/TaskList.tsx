@@ -100,7 +100,7 @@ function buildQuery(s: PageState): Record<string, string> {
   return q
 }
 
-/** 请求参数：仅服务端列才下发 order（§3.4 serverOrderParam）。userName/org 是客户端筛选，不下发。 */
+/** 请求参数：仅服务端列才下发 order（§3.4 serverOrderParam）。userName 走服务端多口径反查（全量过滤而非当前页）；org 仍客户端筛选。 */
 function buildParams(s: PageState): Record<string, string | number> {
   const [start, end] = s.dateRange
   const params: Record<string, string | number> = {
@@ -109,6 +109,7 @@ function buildParams(s: PageState): Record<string, string | number> {
     page: s.page,
     pageSize: s.pageSize,
   }
+  if (s.userName) params.userName = s.userName
   const parsed = parseOrder(s.order)
   if (parsed && SERVER_FIELDS.has(parsed.field)) params.order = s.order
   return params
@@ -183,14 +184,9 @@ export default function TaskList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  // 客户端筛选（userName / org，§4.2 注：仅日期走服务端，其余客户端）。
+  // 客户端筛选（仅 org；userName 已改走服务端多口径反查，避免只过滤当前页）。
   const filteredRows = useMemo(() => {
     let out = rows
-    if (state.userName) {
-      const kw = state.userName.toLowerCase()
-      // 匹配真实名（resolveName）+ 原始 user_name。
-      out = out.filter((r) => `${resolveName(r.user_id)}${r.user_name || ''}`.toLowerCase().includes(kw))
-    }
     const orgs = [state.org1, state.org2, state.org3, state.org4]
     if (orgs.some(Boolean)) {
       out = out.filter((r) => {
@@ -199,7 +195,7 @@ export default function TaskList() {
       })
     }
     return out
-  }, [rows, state.userName, state.org1, state.org2, state.org3, state.org4, resolveName])
+  }, [rows, state.org1, state.org2, state.org3, state.org4])
 
   // 客户端列排序（命中 CLIENT_GETTERS 才在前端排；服务端列后端已排，原样）。
   const displayRows = useMemo(() => {

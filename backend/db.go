@@ -397,18 +397,21 @@ func ListSessions(db *gorm.DB, filter SessionFilter, page, pageSize int, orderCl
 
 type TaskFilter struct {
 	OrgsFilter
-	UserId     string
-	UserName   string
-	ClientId   string
-	ClientIde  string
-	ClientOs   string
-	Caller     string
-	RepoAddr   string
-	RepoBranch string
-	WorkDirId  string
-	StartTime  string
-	EndTime    string
-	TaskIds    []string
+	UserId   string
+	UserName string
+	// UserName 的多口径反查候选（resolveUserIdCandidates 产出，handler 注入）：
+	// tasks.user_name 多为 UUID，真名/工号搜索需经 user_id 候选集命中。
+	UserNameCandidates []string
+	ClientId           string
+	ClientIde          string
+	ClientOs           string
+	Caller             string
+	RepoAddr           string
+	RepoBranch         string
+	WorkDirId          string
+	StartTime          string
+	EndTime            string
+	TaskIds            []string
 }
 
 func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
@@ -416,7 +419,11 @@ func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 		q = q.Where("user_id = ?", f.UserId)
 	}
 	if f.UserName != "" {
-		q = q.Where("user_name = ?", f.UserName)
+		if len(f.UserNameCandidates) > 0 {
+			q = q.Where("user_name = ? OR user_id IN ?", f.UserName, f.UserNameCandidates)
+		} else {
+			q = q.Where("user_name = ?", f.UserName)
+		}
 	}
 	if f.ClientId != "" {
 		q = q.Where("client_id = ?", f.ClientId)

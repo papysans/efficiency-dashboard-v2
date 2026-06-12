@@ -173,13 +173,13 @@ export default function UserList() {
     [sortedRows, page, pageSize],
   )
 
-  // 顶部 4 张 MetricCard 统计
+  // 顶部 4 张 MetricCard 统计（随关键词过滤联动，与下方列表同口径）
   const stats = useMemo(() => {
-    const merged = allRows.reduce((sum, r) => sum + (r.merged_need_count || 0), 0)
-    const commits = allRows.reduce((sum, r) => sum + (r.commit_count || 0), 0)
-    const ratios = allRows.map((r) => Number(r.calendar_ratio)).filter((v) => Number.isFinite(v))
+    const merged = filteredRows.reduce((sum, r) => sum + (r.merged_need_count || 0), 0)
+    const commits = filteredRows.reduce((sum, r) => sum + (r.commit_count || 0), 0)
+    const ratios = filteredRows.map((r) => Number(r.calendar_ratio)).filter((v) => Number.isFinite(v))
     return { merged, commits, medianRatio: median(ratios) }
-  }, [allRows])
+  }, [filteredRows])
 
   function applyFilters() {
     commit({ dateRange: draftRange, order: state.order })

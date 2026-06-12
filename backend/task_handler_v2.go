@@ -94,18 +94,25 @@ func listTasksV2(c *gin.Context) {
 	}
 	orderClause := buildTaskOrder(orderField, orderDir)
 
+	userName := strings.TrimSpace(c.Query("userName"))
+	var userNameCandidates []string
+	if userName != "" {
+		// 多口径反查（真名/工号/git名/UUID → user_id 候选集），与 needs 页搜索同口径
+		userNameCandidates = resolveUserIdCandidates(statDB, userName)
+	}
 	filter := TaskFilter{
-		UserId:     strings.TrimSpace(c.Query("userId")),
-		UserName:   strings.TrimSpace(c.Query("userName")),
-		ClientId:   strings.TrimSpace(c.Query("clientId")),
-		ClientIde:  strings.TrimSpace(c.Query("clientIde")),
-		ClientOs:   strings.TrimSpace(c.Query("clientOs")),
-		Caller:     strings.TrimSpace(c.Query("caller")),
-		RepoAddr:   strings.TrimSpace(c.Query("repoAddr")),
-		RepoBranch: strings.TrimSpace(c.Query("repoBranch")),
-		WorkDirId:  strings.TrimSpace(c.Query("workDirId")),
-		StartTime:  startT.Format(time.RFC3339),
-		EndTime:    endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339),
+		UserId:             strings.TrimSpace(c.Query("userId")),
+		UserName:           userName,
+		UserNameCandidates: userNameCandidates,
+		ClientId:           strings.TrimSpace(c.Query("clientId")),
+		ClientIde:          strings.TrimSpace(c.Query("clientIde")),
+		ClientOs:           strings.TrimSpace(c.Query("clientOs")),
+		Caller:             strings.TrimSpace(c.Query("caller")),
+		RepoAddr:           strings.TrimSpace(c.Query("repoAddr")),
+		RepoBranch:         strings.TrimSpace(c.Query("repoBranch")),
+		WorkDirId:          strings.TrimSpace(c.Query("workDirId")),
+		StartTime:          startT.Format(time.RFC3339),
+		EndTime:            endT.Add(23*time.Hour + 59*time.Minute + 59*time.Second).Format(time.RFC3339),
 		OrgsFilter: OrgsFilter{
 			Org1: strings.TrimSpace(c.Query("org1")),
 			Org2: strings.TrimSpace(c.Query("org2")),
