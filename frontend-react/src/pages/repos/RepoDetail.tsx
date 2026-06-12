@@ -3,7 +3,7 @@
 // 「添加到 Project」（PR4c §4.2）：选 Project（或新建）→ 两段式冲突检测（checkProjectConflicts，
 // 有冲突展示让用户确认）→ addRepoToProject（加 repo filter，可选白名单 commits）。
 //
-// 提效比计算：commitEffRatio/taskEffRatio = (ancientₘ − realₘ) / realₘ * 100（提升百分比，与后端 CalcEfficiencyRatio 及同页汇总卡一致；manual 优先，both>0 才算，否则 0，>0 才显示）。
+// 提效比计算：commitEffRatio/taskEffRatio = (ancientₘ − realₘ) / realₘ * 100（提升百分比，与后端 CalcEfficiencyRatio 及同页汇总卡一致；manual 优先，ancient/real 都>0 才可算，返回值含 0/负的真实提效；不可算返回 null，渲染/排序按缺失处理）。
 // 表格客户端排序（manual 优先 / 计算值），null/0 沉底。
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
@@ -20,18 +20,19 @@ import { SortableTh } from '@/components/ui/SortableTh'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { Modal } from '@/components/ui/Modal'
 
-// manual 优先口径（commit/task 提效比 = (ancient−real)/real*100 提升百分比，与后端 CalcEfficiencyRatio 及同页汇总卡一致，both>0 才算）。
-function commitEffRatio(row: RepoCommitItem): number {
+// manual 优先口径（commit/task 提效比 = (ancient−real)/real*100 提升百分比，与后端 CalcEfficiencyRatio 及同页汇总卡一致）。
+// ancient/real 都>0 才可算（返回值含 0/负的真实提效，无提升即 0 或负，照常显示）；不可算返回 null → 显示 `-`、排序沉底。
+function commitEffRatio(row: RepoCommitItem): number | null {
   const ancient = row.commit_ancient_minutes_manual ?? row.commit_ancient_minutes
   const real = row.commit_real_minutes_manual ?? row.commit_real_minutes
   if (ancient != null && real != null && ancient > 0 && real > 0) return ((ancient - real) / real) * 100
-  return 0
+  return null
 }
-function taskEffRatio(row: TaskListItem): number {
+function taskEffRatio(row: TaskListItem): number | null {
   const ancient = row.task_ancient_minutes_manual ?? row.task_ancient_minutes
   const real = row.task_real_minutes_manual ?? row.task_real_minutes
   if (ancient != null && real != null && ancient > 0 && real > 0) return ((ancient - real) / real) * 100
-  return 0
+  return null
 }
 function commitReal(row: RepoCommitItem): number | null | undefined {
   return row.commit_real_minutes_manual ?? row.commit_real_minutes
@@ -129,7 +130,7 @@ export default function RepoDetail() {
       commitReal: (r) => commitReal(r),
       commitAncient: (r) => commitAncient(r),
       silica: (r) => r.silica,
-      efficiencyRatio: (r) => (commitEffRatio(r) > 0 ? commitEffRatio(r) : null),
+      efficiencyRatio: (r) => commitEffRatio(r),
       cost: (r) => r.cost,
       tokens: (r) => {
         const t = tokenSum(r.upstream_tokens, r.downstream_tokens)
@@ -144,7 +145,7 @@ export default function RepoDetail() {
       diffLines: (r) => r.diff_lines,
       taskReal: (r) => taskReal(r),
       taskAncient: (r) => taskAncient(r),
-      efficiencyRatio: (r) => (taskEffRatio(r) > 0 ? taskEffRatio(r) : null),
+      efficiencyRatio: (r) => taskEffRatio(r),
       cost: (r) => r.cost,
       tokens: (r) => {
         const t = tokenSum(r.upstream_tokens, r.downstream_tokens)
@@ -388,7 +389,7 @@ export default function RepoDetail() {
                         {c.silica != null ? <Tag tone={aiCodeRatioTone(c.silica)}>{formatV2Ratio(c.silica)}</Tag> : '-'}
                       </td>
                       <td className="px-3 py-2 align-middle text-center">
-                        {eff > 0 ? <PercentPill value={eff} /> : '-'}
+                        {eff != null ? <PercentPill value={eff} /> : '-'}
                       </td>
                       <td className={TD_NUM}>{c.cost != null && c.cost > 0 ? c.cost.toFixed(2) : '-'}</td>
                       <td className={TD_NUM}>{tokens > 0 ? tokens.toLocaleString() : '-'}</td>
@@ -470,7 +471,7 @@ export default function RepoDetail() {
                       <td className={TD_NUM}>{formatDuration(taskReal(t))}</td>
                       <td className={TD_NUM}>{formatDuration(taskAncient(t))}</td>
                       <td className="px-3 py-2 align-middle text-center">
-                        {eff > 0 ? <PercentPill value={eff} /> : '-'}
+                        {eff != null ? <PercentPill value={eff} /> : '-'}
                       </td>
                       <td className={TD_NUM}>{t.cost != null && t.cost > 0 ? t.cost.toFixed(2) : '-'}</td>
                       <td className={TD_NUM}>{tokens > 0 ? tokens.toLocaleString() : '-'}</td>
