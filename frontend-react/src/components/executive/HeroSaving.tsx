@@ -104,7 +104,7 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">AI 提效总览</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            按 {cur}{formatNumber(costPerPersonDay)}/人天估算 · 基于可计入需求（merged &amp; eligible）
+            按 {cur}{formatNumber(costPerPersonDay)}/人天估算 · 基于可计入且非异常的已合并需求
             {aiAvailable && ' · AI 花费为全平台口径（按价格表估算）'}
           </p>
         </div>

@@ -923,7 +923,8 @@ func ListRepoAggregates(db *gorm.DB, startTime, endTime string) ([]RepoAggregate
 			SUM(commits.commit_real_minutes) AS sum_real_minutes,
 			COUNT(DISTINCT tasks.task_id) AS task_count`).
 		Joins("LEFT JOIN tasks ON tasks.commit_id = commits.commit_id").
-		Where("commits.repo_addr IS NOT NULL AND commits.repo_addr != ''")
+		Where("commits.repo_addr IS NOT NULL AND commits.repo_addr != ''").
+		Where("commits.excluded_flag = false")
 
 	if startTime != "" {
 		q = q.Where("commits.commit_time >= ?", startTime)
@@ -1286,6 +1287,7 @@ func ListUserProductivity(db *gorm.DB, filter UserFilter, page, pageSize int, _ 
 			COALESCE(SUM(COALESCE(commit_real_minutes_manual, commit_real_minutes)),0) AS commit_real_minutes,
 			COALESCE(MAX(COALESCE(NULLIF(user_name,''), git_user_name)),'') AS user_name`).
 		Where("user_id IS NOT NULL AND user_id <> ''").
+		Where("excluded_flag = false").
 		Group("user_id, DATE(commit_time)")
 	if len(userIds) > 0 {
 		cq = cq.Where("user_id IN ?", userIds)
@@ -1406,8 +1408,10 @@ func DeleteUserGroup(db *gorm.DB, groupId string) error {
 // ============================================================
 
 func ListCommitLightByRepoRange(db *gorm.DB, repoAddr, repoBranch, startTime, endTime string) ([]CommitLightStats, error) {
+	// 治理过滤与 ListRepoAggregates 同口径，避免 repo 详情统计与列表行分裂
 	q := db.Model(&models.Commit{}).
-		Select("commit_id, COALESCE(user_name, git_user_name) AS user_name, diff_lines, commit_ancient_minutes AS ancient_minutes, commit_real_minutes AS real_minutes")
+		Select("commit_id, COALESCE(user_name, git_user_name) AS user_name, diff_lines, commit_ancient_minutes AS ancient_minutes, commit_real_minutes AS real_minutes").
+		Where("excluded_flag = false")
 
 	if repoAddr != "" {
 		q = q.Where("repo_addr = ?", repoAddr)
@@ -1500,13 +1504,15 @@ type dashboardCommitAgg struct {
 
 func queryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboardCommitAgg, error) {
 	var agg dashboardCommitAgg
+	// total_branchs 由独立子查询改为主查询内表达式：自动继承日期窗与治理过滤（原先全表全时段计数）
 	q := db.Model(&models.Commit{}).Select(`COUNT(*) as total_commits,
 		COALESCE(SUM(diff_lines), 0) as total_diff_lines,
 		COUNT(DISTINCT NULLIF(user_id, '')) as total_users,
 		COUNT(DISTINCT NULLIF(repo_addr, '')) as total_repos,
-		(SELECT COUNT(*) FROM (SELECT DISTINCT repo_addr, repo_branch FROM commits WHERE repo_addr IS NOT NULL AND repo_addr != '') sub) as total_branchs,
+		COUNT(DISTINCT CASE WHEN repo_addr IS NOT NULL AND repo_addr != '' THEN repo_addr || '|#|' || COALESCE(repo_branch, '') END) as total_branchs,
 		COALESCE(SUM(CASE WHEN commit_real_minutes_manual IS NOT NULL THEN commit_real_minutes_manual ELSE commit_real_minutes END), 0) as total_real_minutes,
-		COALESCE(SUM(CASE WHEN commit_ancient_minutes_manual IS NOT NULL THEN commit_ancient_minutes_manual ELSE commit_ancient_minutes END), 0) as total_ancient_minutes`)
+		COALESCE(SUM(CASE WHEN commit_ancient_minutes_manual IS NOT NULL THEN commit_ancient_minutes_manual ELSE commit_ancient_minutes END), 0) as total_ancient_minutes`).
+		Where("excluded_flag = false")
 	if startTime != "" {
 		q = q.Where("commit_time >= ?", startTime)
 	}
