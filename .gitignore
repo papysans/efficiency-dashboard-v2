@@ -201,3 +201,6 @@ compose/server/config.local.yaml
 
 # 含内网真实账号/逐人工时的人效分析数据（禁止提交）
 docs/data/efficiency_v2_person_efficiency.csv
+
+# 客户交付说明书（含内部代码问题清单/口径备忘）——交付前需先审阅，暂不纳入仓库跟踪，本地保留
+docs/manual/
