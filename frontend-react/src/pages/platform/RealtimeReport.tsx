@@ -1,10 +1,10 @@
 // 平台·实时态势 —— chat-indicator-statistics /stats/realtime 的玻璃拟态重写（design §2.2）。
 // 服务端 10 秒全局限频：取数完成（成功或失败）后，刷新/换档按钮统一 10s 倒计时禁用，
 // 避免必然 400；若仍撞限频（多人同时刷），错误条直接展示 chat 侧友好文案「请 N 秒后再试」。
-// datasource_id 不传 = 服务端自动取第一个启用的数据源（内网单源，省一次 /datasources 请求）。
+// 数据源显式选择后传 datasource_id，避免多源环境下误查到服务端默认数据源。
 import { useEffect, useMemo, useState } from 'react'
 import type { EChartsOption } from 'echarts'
-import { useChatRealtime, useGlobalConfig } from '@/api/queries'
+import { useChatDatasources, useChatRealtime, useGlobalConfig } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { EChart } from '@/components/charts/EChart'
@@ -61,16 +61,29 @@ const TH = 'px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 w
 const TH_NUM = 'px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
+const SELECT_CLS =
+  'glass rounded-lg px-3 py-1.5 text-sm bg-transparent text-gray-900 dark:text-white ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue disabled:opacity-50'
 
 export default function RealtimeReport() {
   const { theme } = useTheme()
   const [range, setRange] = useState<Range>('30m')
+  const [datasourceId, setDatasourceId] = useState('')
   // 开关语义与设置区一致：chat_stats_enabled !== true 时 hooks 不发请求、整页显示未启用提示
   // （导航虽已隐藏「平台」组，但直达 URL 仍可进本页）。
   const { data: gc } = useGlobalConfig()
   const chatEnabled = gc?.chat_stats_enabled === true
   const chatDisabled = !!gc && !chatEnabled
-  const q = useChatRealtime({ range }, chatEnabled)
+  const { data: datasources, isLoading: dsLoading, error: dsError } = useChatDatasources(chatEnabled)
+  const enabledDatasources = useMemo(() => (datasources || []).filter((d) => d.is_enabled), [datasources])
+
+  useEffect(() => {
+    if (!datasourceId && enabledDatasources.length > 0) {
+      setDatasourceId(String(enabledDatasources[0].id))
+    }
+  }, [datasourceId, enabledDatasources])
+
+  const q = useChatRealtime({ range, datasource_id: datasourceId }, chatEnabled && !!datasourceId)
   const data = q.data
   // universal_id 与看板 user_id 同源 → Top 用户表解析看板用户名并互链（加载失败自动回退，不阻塞）。
   const { resolveName } = useUserNameMap()
@@ -87,6 +100,8 @@ export default function RealtimeReport() {
   }, [lastFetchedAt])
 
   const locked = q.isFetching || cooldown > 0
+  const noEnabledDatasource = !dsLoading && enabledDatasources.length === 0
+  const noDatasourceSelected = !dsLoading && enabledDatasources.length > 0 && !datasourceId
 
   const p = useMemo(() => getPalette(theme), [theme])
 
@@ -199,6 +214,32 @@ export default function RealtimeReport() {
 
       {/* 工具栏：range 切换 + 手动刷新（限频倒计时） */}
       <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm text-gray-600 dark:text-gray-300" htmlFor="realtime-datasource">
+          数据源
+        </label>
+        <select
+          id="realtime-datasource"
+          value={datasourceId}
+          onChange={(e) => setDatasourceId(e.target.value)}
+          disabled={dsLoading || locked}
+          className={`${SELECT_CLS} min-w-[240px] cursor-pointer disabled:cursor-not-allowed`}
+          aria-label="数据源"
+        >
+          {dsLoading ? (
+            <option value="">正在加载数据源...</option>
+          ) : enabledDatasources.length === 0 ? (
+            <option value="">暂无可用数据源</option>
+          ) : (
+            <>
+              <option value="">请选择数据源</option>
+              {(datasources || []).map((d) => (
+                <option key={d.id} value={String(d.id)} disabled={!d.is_enabled}>
+                  {d.name}（{d.source_type === 'postgres' ? 'PG' : 'ES'}）{d.is_enabled ? '' : ' - 未启用'}
+                </option>
+              ))}
+            </>
+          )}
+        </select>
         {RANGE_OPTIONS.map((o) => (
           <button
             key={o.value}
@@ -215,7 +256,7 @@ export default function RealtimeReport() {
         <button
           type="button"
           onClick={() => q.refetch()}
-          disabled={locked}
+          disabled={locked || !datasourceId}
           className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
         >
           {q.isFetching ? '刷新中…' : cooldown > 0 ? `刷新（${cooldown}s）` : '刷新'}
@@ -228,8 +269,23 @@ export default function RealtimeReport() {
           {(q.error as Error).message}
         </div>
       )}
+      {dsError && (
+        <div className="glass rounded-xl px-4 py-3 text-sm text-rose-600 dark:text-rose-400 bg-rose-50/50 dark:bg-rose-900/20">
+          {(dsError as Error).message || '获取数据源失败'}
+        </div>
+      )}
 
-      {q.isLoading ? (
+      {dsLoading ? (
+        <ReportSkeleton />
+      ) : noEnabledDatasource ? (
+        <div className="glass rounded-2xl p-10 text-center text-sm text-gray-400 dark:text-gray-500">
+          暂无可用数据源，请先在「设置 → 数据源」中配置并启用数据源
+        </div>
+      ) : noDatasourceSelected ? (
+        <div className="glass rounded-2xl p-10 text-center text-sm text-gray-400 dark:text-gray-500">
+          请选择一个数据源后查看实时态势
+        </div>
+      ) : q.isLoading ? (
         <ReportSkeleton />
       ) : data ? (
         <>

@@ -9,6 +9,7 @@ import type {
   ChatDatasourceUpsert,
   ChatDetailQueryReq,
   ChatDetailQueryResponse,
+  ChatLogPreviewResponse,
   ChatRealtimeResponse,
   ChatSyncSubmitReq,
   ChatSyncSubmitResponse,
@@ -291,6 +292,10 @@ export const chatStats = {
   /** 明细点查（最多 100 条；时间 ISO 8601 必填）。 */
   queryDetail(body: ChatDetailQueryReq) {
     return chatPost<ChatDetailQueryResponse>('/stats/detail/query', body)
+  },
+  /** 原始日志预览（local_log_path 会由 chat 服务限制在配置的根目录内）。 */
+  previewLog(body: { local_log_path: string }) {
+    return chatPost<ChatLogPreviewResponse>('/stats/detail/log-preview', body)
   },
 
   // -- 模型价格 CRUD --

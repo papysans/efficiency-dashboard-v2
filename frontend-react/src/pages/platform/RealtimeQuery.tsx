@@ -1,12 +1,12 @@
 // 平台·明细点查 —— chat-indicator-statistics /stats/detail/query 的玻璃拟态重写（现场排查核心）。
 // 一次性查询（无分页），SQL 层过滤，最多 100 条；行点击弹详情（全部字段，错误码醒目）。
 // 时间发送本地壁钟时间 + 浏览器实际时区偏移（chat 侧按 RFC3339 解析，避免硬编码 +08:00）。
-// datasource_id 不传 = 服务端自动取第一个启用的数据源（内网单源）。
-import { useState, type ReactNode } from 'react'
+// 数据源显式选择后传 datasource_id，避免多源环境下误查到服务端默认数据源。
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { chatStats } from '@/api/endpoints'
-import { useGlobalConfig } from '@/api/queries'
-import type { ChatDetailQueryReq, ChatDetailRow } from '@/api/types'
+import { useChatDatasources, useGlobalConfig } from '@/api/queries'
+import type { ChatDetailQueryReq, ChatDetailRow, ChatLogPreviewResponse } from '@/api/types'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Modal } from '@/components/ui/Modal'
 import { Tag } from '@/components/ui/Tag'
@@ -47,6 +47,7 @@ const QUICK_RANGES = [
 ]
 
 interface QueryForm {
+  datasourceId: string
   start: string
   end: string
   universalId: string
@@ -59,10 +60,11 @@ interface QueryForm {
   order: 'desc' | 'asc'
 }
 
-function defaultForm(): QueryForm {
+function defaultForm(datasourceId = ''): QueryForm {
   const end = new Date()
   const start = new Date(end.getTime() - 30 * 60_000)
   return {
+    datasourceId,
     start: toLocalInputValue(start),
     end: toLocalInputValue(end),
     universalId: '',
@@ -83,17 +85,39 @@ const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dar
 const INPUT_CLS =
   'glass rounded-lg px-3 py-1.5 text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 ' +
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue'
+const BTN_SECONDARY =
+  'glass rounded-lg px-3 py-1 text-xs text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue ' +
+  'transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue'
 
 const fmtMs = (v: number | null | undefined) => (v != null ? `${Number(v).toFixed(0)} ms` : '-')
+const fmtFloat = (v: number | null | undefined, digits = 2) => (v != null ? Number(v).toFixed(digits) : '-')
+
+interface LogPreviewState {
+  open: boolean
+  loading: boolean
+  data: ChatLogPreviewResponse | null
+  error: string
+  path: string
+}
 
 export default function RealtimeQuery() {
   // 开关语义与设置区/态势页一致：未启用时整页提示，不让表单提交打到 503 的代理。
   const { data: gc } = useGlobalConfig()
-  const chatDisabled = !!gc && gc.chat_stats_enabled !== true
+  const chatEnabled = gc?.chat_stats_enabled === true
+  const chatDisabled = !!gc && !chatEnabled
+  const { data: datasources, isLoading: dsLoading, error: dsError } = useChatDatasources(chatEnabled)
+  const enabledDatasources = useMemo(() => (datasources || []).filter((d) => d.is_enabled), [datasources])
 
   const [form, setForm] = useState<QueryForm>(defaultForm)
   const [validateMsg, setValidateMsg] = useState('')
   const [detailRow, setDetailRow] = useState<ChatDetailRow | null>(null)
+  const [logPreview, setLogPreview] = useState<LogPreviewState>({
+    open: false,
+    loading: false,
+    data: null,
+    error: '',
+    path: '',
+  })
   // universal_id 与看板 user_id 同源 → 结果表/详情弹层解析看板用户名并互链（失败自动回退）。
   const { resolveName } = useUserNameMap()
 
@@ -101,6 +125,12 @@ export default function RealtimeQuery() {
   const query = useMutation({
     mutationFn: (body: ChatDetailQueryReq) => chatStats.queryDetail(body),
   })
+
+  useEffect(() => {
+    if (!form.datasourceId && enabledDatasources.length > 0) {
+      setForm((f) => ({ ...f, datasourceId: String(enabledDatasources[0].id) }))
+    }
+  }, [form.datasourceId, enabledDatasources])
 
   function setField<K extends keyof QueryForm>(key: K, value: QueryForm[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -113,6 +143,10 @@ export default function RealtimeQuery() {
   }
 
   function submit() {
+    if (!form.datasourceId) {
+      setValidateMsg('请选择数据源')
+      return
+    }
     if (!form.start || !form.end) {
       setValidateMsg('请选择查询起止时间')
       return
@@ -131,6 +165,7 @@ export default function RealtimeQuery() {
 
     // 所有文本输入提交前 .trim()（CLAUDE.md 输入处理规范）。
     const body: ChatDetailQueryReq = {
+      datasource_id: form.datasourceId,
       start_time: toIsoWithOffset(form.start),
       end_time: toIsoWithOffset(form.end),
       limit: form.limit,
@@ -151,12 +186,30 @@ export default function RealtimeQuery() {
   }
 
   function resetForm() {
-    setForm(defaultForm())
+    setForm(defaultForm(form.datasourceId || (enabledDatasources[0] ? String(enabledDatasources[0].id) : '')))
     setValidateMsg('')
   }
 
   function onFieldKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter') submit()
+  }
+
+  async function previewLog(localLogPath: string | null | undefined) {
+    const path = (localLogPath || '').trim()
+    if (!path) return
+    setLogPreview({ open: true, loading: true, data: null, error: '', path })
+    try {
+      const data = await chatStats.previewLog({ local_log_path: path })
+      setLogPreview({ open: true, loading: false, data, error: '', path })
+    } catch (e: unknown) {
+      setLogPreview({
+        open: true,
+        loading: false,
+        data: null,
+        error: e instanceof Error ? e.message : '日志预览失败',
+        path,
+      })
+    }
   }
 
   const rows = query.data?.items ?? []
@@ -190,6 +243,32 @@ export default function RealtimeQuery() {
       {/* 查询条件 */}
       <section className="glass rounded-2xl p-5 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm text-gray-600 dark:text-gray-300" htmlFor="rq-datasource">
+            数据源
+          </label>
+          <select
+            id="rq-datasource"
+            value={form.datasourceId}
+            onChange={(e) => setField('datasourceId', e.target.value)}
+            disabled={dsLoading || query.isPending}
+            className={`${INPUT_CLS} min-w-[240px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}
+            aria-label="数据源"
+          >
+            {dsLoading ? (
+              <option value="">正在加载数据源...</option>
+            ) : enabledDatasources.length === 0 ? (
+              <option value="">暂无可用数据源</option>
+            ) : (
+              <>
+                <option value="">请选择数据源</option>
+                {(datasources || []).map((d) => (
+                  <option key={d.id} value={String(d.id)} disabled={!d.is_enabled}>
+                    {d.name}（{d.source_type === 'postgres' ? 'PG' : 'ES'}）{d.is_enabled ? '' : ' - 未启用'}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
           <label className="text-sm text-gray-600 dark:text-gray-300" htmlFor="rq-start">
             时间范围
           </label>
@@ -283,7 +362,7 @@ export default function RealtimeQuery() {
           <button
             type="button"
             onClick={submit}
-            disabled={query.isPending}
+            disabled={query.isPending || dsLoading || enabledDatasources.length === 0}
             className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
           >
             {query.isPending ? '查询中…' : '查询'}
@@ -298,6 +377,11 @@ export default function RealtimeQuery() {
         </div>
 
         {validateMsg && <div className="text-sm text-amber-600 dark:text-amber-400">{validateMsg}</div>}
+        {dsError && (
+          <div className="text-sm text-rose-600 dark:text-rose-400">
+            {(dsError as Error).message || '获取数据源失败'}
+          </div>
+        )}
       </section>
 
       {/* 查询结果 */}
@@ -407,9 +491,18 @@ export default function RealtimeQuery() {
         open={!!detailRow}
         title={`请求详情 · ${detailRow?.request_id || '-'}`}
         onClose={() => setDetailRow(null)}
-        maxWidth={760}
+        maxWidth={980}
       >
-        {detailRow && <RowDetail row={detailRow} resolveName={resolveName} />}
+        {detailRow && <RowDetail row={detailRow} resolveName={resolveName} onPreviewLog={previewLog} />}
+      </Modal>
+
+      <Modal
+        open={logPreview.open}
+        title="日志预览"
+        onClose={() => setLogPreview({ open: false, loading: false, data: null, error: '', path: '' })}
+        maxWidth={980}
+      >
+        <LogPreviewPanel state={logPreview} />
       </Modal>
     </div>
   )
@@ -417,45 +510,105 @@ export default function RealtimeQuery() {
 
 // ---- 详情弹层 ----
 
-function RowDetail({ row, resolveName }: { row: ChatDetailRow; resolveName: (userId?: string) => string }) {
+function RowDetail({
+  row,
+  resolveName,
+  onPreviewLog,
+}: {
+  row: ChatDetailRow
+  resolveName: (userId?: string) => string
+  onPreviewLog: (localLogPath: string | null | undefined) => void
+}) {
   const hasErr = isErrorCode(row.error_code)
+  const localLogPath = (row.local_log_path || '').trim()
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* 错误醒目条 */}
       {hasErr && (
         <div className="rounded-xl px-4 py-3 text-sm bg-rose-50/70 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 font-medium">
           该请求出错，错误码：<span className="font-mono font-bold">{row.error_code}</span>
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+
+      <DetailSection title="基础信息">
         <Field label="ID" value={row.id} />
-        <Field label="时间" value={formatLocalTime(row.ts)} />
+        <Field
+          label="状态"
+          value={hasErr ? <Tag tone="error" mono>{row.error_code}</Tag> : <Tag tone="success">OK</Tag>}
+        />
         <Field label="Request ID" value={row.request_id} span2 mono />
         <Field label="Universal ID" value={row.universal_id} mono />
+        <Field label="User ID" value={row.user_id} mono />
         <Field
           label="用户名"
           value={<ChatUserCell universalId={row.universal_id} chatUsername={row.username} resolveName={resolveName} />}
         />
-        <Field label="User ID" value={row.user_id} span2 mono />
+        <Field label="错误码" value={row.error_code} mono />
+      </DetailSection>
+
+      <DetailSection title="模型与标签">
         <Field label="Model" value={row.model ? <Tag tone="primary">{row.model}</Tag> : null} />
         <Field label="Routed Model" value={row.routed_model ? <Tag tone="info">{row.routed_model}</Tag> : null} />
         <Field label="Mode" value={row.mode ? <Tag>{row.mode}</Tag> : null} />
-        <Field
-          label="错误码"
-          value={hasErr ? <Tag tone="error" mono>{row.error_code}</Tag> : <Tag tone="success">OK</Tag>}
-        />
+        <Field label="Client Version" value={row.client_version} mono />
+        <Field label="Task ID" value={row.task_id} span2 mono />
+      </DetailSection>
+
+      <DetailSection title="Token 指标">
         <Field label="Prompt Tokens" value={formatNumber(row.prompt_tokens)} />
         <Field label="Completion Tokens" value={formatNumber(row.completion_tokens)} />
         <Field label="Cache Tokens" value={formatNumber(row.cache_tokens)} />
-        <Field label="Slow Chunk" value={row.slow_chunk} />
-        <Field label="总耗时" value={fmtMs(row.duration)} />
-        <Field label="首 Token 时延（TTFT）" value={fmtMs(row.first_token_duration)} />
+        <Field label="Retry Num" value={formatNumber(row.retry_num)} />
         <Field label="System Tokens" value={formatNumber(row.system_tokens)} />
         <Field label="User Tokens" value={formatNumber(row.user_tokens)} />
+        <Field label="Processed System Tokens" value={formatNumber(row.processed_system_tokens)} />
+        <Field label="Processed User Tokens" value={formatNumber(row.processed_user_tokens)} />
+      </DetailSection>
+
+      <DetailSection title="性能指标">
+        <Field label="Duration" value={fmtMs(row.duration)} />
+        <Field label="TTFT" value={fmtMs(row.first_token_duration)} />
+        <Field label="Slow Chunk" value={formatNumber(row.slow_chunk)} />
+        <Field label="Chunk/s" value={fmtFloat(row.chunk_per_second)} />
+        <Field label="Token Output Time" value={fmtMs(row.token_output_time)} />
+        <Field label="Token Output Speed" value={fmtFloat(row.token_output_speed)} />
+        <Field label="Token Output Speed E2E" value={fmtFloat(row.token_output_speed_e2e)} />
+      </DetailSection>
+
+      <DetailSection title="时间链路">
+        <Field label="TS" value={formatLocalTime(row.ts)} />
+        <Field label="Created At" value={row.created_at ? formatLocalTime(row.created_at) : null} />
         <Field label="Request Time" value={row.request_time ? formatLocalTime(row.request_time) : null} />
+        <Field label="Forward Request Time" value={row.forward_request_time ? formatLocalTime(row.forward_request_time) : null} />
         <Field label="End Time" value={row.end_time ? formatLocalTime(row.end_time) : null} />
-      </div>
+      </DetailSection>
+
+      <DetailSection title="日志">
+        <Field
+          label="Local Log Path"
+          value={
+            localLogPath ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono break-all">{localLogPath}</span>
+                <button type="button" className={BTN_SECONDARY} onClick={() => onPreviewLog(localLogPath)}>
+                  预览
+                </button>
+              </div>
+            ) : null
+          }
+          span2
+        />
+      </DetailSection>
     </div>
+  )
+}
+
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">{title}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">{children}</div>
+    </section>
   )
 }
 
@@ -475,6 +628,53 @@ function Field({
     <div className={span2 ? 'sm:col-span-2' : ''}>
       <div className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">{label}</div>
       <div className={`text-sm text-gray-800 dark:text-gray-100 ${mono ? 'font-mono break-all' : ''}`}>{display}</div>
+    </div>
+  )
+}
+
+function LogPreviewPanel({ state }: { state: LogPreviewState }) {
+  if (state.loading) {
+    return (
+      <div className="space-y-3">
+        <div className="skeleton h-6 rounded-lg" />
+        <div className="skeleton h-64 rounded-xl" />
+      </div>
+    )
+  }
+
+  if (state.error) {
+    return <div className="rounded-xl px-4 py-3 text-sm bg-rose-50/70 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300">{state.error}</div>
+  }
+
+  if (!state.data) return null
+
+  const data = state.data
+  const path = data.path || state.path
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+        <Field label="文件名" value={data.file_name} />
+        <Field label="大小" value={data.size_mb != null ? `${fmtFloat(data.size_mb)} MB` : null} />
+        <Field label="路径" value={path} span2 mono />
+      </div>
+
+      {!data.previewable && (
+        <div
+          className={`rounded-xl px-4 py-3 text-sm ${
+            data.exceeded
+              ? 'bg-amber-50/70 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+              : 'bg-blue-50/70 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+          }`}
+        >
+          {data.message || '该文件不支持在线预览'}
+        </div>
+      )}
+
+      {data.previewable && (
+        <pre className="m-0 max-h-[560px] overflow-auto rounded-xl bg-gray-950 px-4 py-3 text-xs leading-6 text-gray-50 whitespace-pre-wrap break-words">
+          {data.content || ''}
+        </pre>
+      )}
     </div>
   )
 }
