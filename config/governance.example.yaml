@@ -56,6 +56,15 @@ commit_rules:
       factor: 0.2
   # merge/rebase/cherry-pick 重放去重（重复计数的 commit 标 replay_of，排除重复贡献）
   replay_dedup: true
+  # 纯文档 commit 排除：touched_files 非空且全部命中下列后缀（大小写不敏感）时，
+  # 整条 commit 打 excluded_flag=true / excluded_reason=doc_only_commit，
+  # 经 GetEffectiveDiffLines→0 让其 loc/AI 占比/古法基线全口径归零（纯文档不计入提效）。
+  # 故意不含 .txt：requirements.txt / CMakeLists.txt / 构建输出 / prompt 多为非文档，会误伤。
+  # 改后缀名单重跑 efficiency-v2 即生效（幂等，不命中自动恢复）。
+  doc_file_extensions:
+    - ".md"
+    - ".mdx"
+    - ".markdown"
 
 normalization:
   # repo 地址写法归一（http/ssh 协议、大小写、.git 后缀等写法分裂合并统计）
