@@ -32,11 +32,15 @@ type IdentityConfig struct {
 	IdentityMap          IdentityMapConfig `yaml:"identity_map"`
 }
 
-// CommitRulesConfig commit 级治理规则：巨型批量提交软上限、低价值 comment 降权、merge/rebase 重放去重。
+// CommitRulesConfig commit 级治理规则：巨型批量提交软上限、低价值 comment 降权、merge/rebase 重放去重、纯文档 commit 排除。
 type CommitRulesConfig struct {
 	DiffLinesSoftcap          int64            `yaml:"diff_lines_softcap"`
 	DownweightCommentPatterns []DownweightRule `yaml:"downweight_comment_patterns"`
 	ReplayDedup               bool             `yaml:"replay_dedup"`
+	// DocFileExtensions 文档后缀列表（大小写不敏感后缀匹配）：touched_files 非空且全部命中时
+	// 该 commit 整条排除（纯文档 commit，diff 全是文档行，不计入提效）。空列表=禁用本规则。
+	// 默认 [.md .mdx .markdown]；故意不含 .txt（requirements.txt/CMakeLists.txt/构建输出多为非文档，会误伤）。
+	DocFileExtensions []string `yaml:"doc_file_extensions"`
 }
 
 // NormalizationConfig 归一化配置：repo 地址写法分裂的规范化。
@@ -66,7 +70,8 @@ func DefaultConfig() Config {
 				// 教训：曾用全文 \b 匹配，"feat: 修复init逻辑" 这类句中词命中致 52% 误伤、9.5 万行真实交付被 ×0.2。
 				{Pattern: `(?i)^[\[\(]?(merge|sync|format|style|scaffold|init)\b`, Factor: 0.2},
 			},
-			ReplayDedup: true,
+			ReplayDedup:       true,
+			DocFileExtensions: []string{".md", ".mdx", ".markdown"},
 		},
 		Normalization: NormalizationConfig{
 			RepoAddrCanon: true,
