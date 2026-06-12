@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"kanban/backend/internal/appconfig"
 	"kanban/core/models"
 	"kanban/core/utils"
 
@@ -735,34 +736,42 @@ func deriveCommitWorkMinutesBatch(db *gorm.DB, commitIDs []string) (map[string]f
 	if len(commitIDs) == 0 {
 		return ancientByCommit, realByCommit, nil
 	}
-	// 1) Need 归属（精确）：从包含该 commit 的 Need 把工作量按 commit 数平摊。
-	// 注意：不能用 jsonb 的 `?|` 操作符——GORM 会把其中的 `?` 当成占位符导致 SQL 语法错误。
-	// Need 数量很少（数十个），直接全量加载后在 Go 里按 commit 归属即可。
-	var needs []models.Need
-	if err := db.Select("commit_ids", "baseline_fused_work_min", "total_active_work_corrected_min").
-		Find(&needs).Error; err != nil {
-		return nil, nil, err
-	}
 	wanted := make(map[string]bool, len(commitIDs))
 	for _, id := range commitIDs {
 		wanted[id] = true
+	}
+	// ancient 派生：commit 古法直算（治理后有效行数 × 每行分钟），与 kbcli 写侧
+	// estimateCommitAncientMinutes 同口径。不再用 Need 的 baseline_fused_work_min（V2 融合基线）
+	// 平摊——那是 kNN/LLM 估计值，倒灌进 V1 ancient 会混血两套口径。
+	// 有效行数 0（doc-only/merge 治理归零）→ ancient 不派生，上层提效比显 '-'，不造估计值。
+	var commitRows []models.Commit
+	if err := db.Select("commit_id, diff_lines, effective_diff_lines, excluded_flag").
+		Where("commit_id IN ?", commitIDs).Find(&commitRows).Error; err != nil {
+		return nil, nil, err
+	}
+	for _, row := range commitRows {
+		if lines := row.GetEffectiveDiffLines(); lines > 0 {
+			ancientByCommit[row.CommitId] = float64(lines) * appconfig.Cfg.CommitMinutesPerLine
+		}
+	}
+	// 1) real 派生·Need 归属（精确）：从包含该 commit 的 Need 把实测活跃工时按 commit 数平摊。
+	// 注意：不能用 jsonb 的 `?|` 操作符——GORM 会把其中的 `?` 当成占位符导致 SQL 语法错误。
+	// Need 数量很少（数十个），直接全量加载后在 Go 里按 commit 归属即可。
+	var needs []models.Need
+	if err := db.Select("commit_ids", "total_active_work_corrected_min").
+		Find(&needs).Error; err != nil {
+		return nil, nil, err
 	}
 	for _, need := range needs {
 		needCommitIDs := efficiencyV2DecodeJSONStringSlice(need.CommitIds)
 		if len(needCommitIDs) == 0 {
 			continue
 		}
-		share := 1.0 / float64(len(needCommitIDs))
-		var ancientShare float64
-		if need.BaselineFusedWorkMin != nil {
-			ancientShare = *need.BaselineFusedWorkMin * share
-		}
-		realShare := need.TotalActiveWorkCorrectedMin * share
+		realShare := need.TotalActiveWorkCorrectedMin / float64(len(needCommitIDs))
 		for _, id := range needCommitIDs {
 			if !wanted[id] {
 				continue
 			}
-			ancientByCommit[id] += ancientShare
 			realByCommit[id] += realShare
 		}
 	}

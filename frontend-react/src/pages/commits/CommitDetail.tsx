@@ -161,8 +161,9 @@ export default function CommitDetail() {
             />
           </Kv>
           <Kv label="提效比例">
+            {/* 0 = CalcEfficiencyRatio 无基线兜底（如治理归零行数派生不出 ancient），显 '-' 不显误导值 */}
             <span className={`text-xl font-bold tabular-nums ${percentTextClass(ratio)}`}>
-              {ratio != null ? `${Math.round(ratio)}%` : '-'}
+              {ratio != null && ratio !== 0 ? `${Math.round(ratio)}%` : '-'}
             </span>
           </Kv>
           <Kv

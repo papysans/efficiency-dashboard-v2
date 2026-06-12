@@ -23,11 +23,14 @@ type Config struct {
 	CORS         struct {
 		AllowOrigins []string `yaml:"allow_origins"`
 	} `yaml:"cors"`
-	TraditionalDevLinesPerDay int             `yaml:"traditional_dev_lines_per_day"`
-	CostPerPersonDay          float64         `yaml:"cost_per_person_day"`
-	DashboardTitlePrefix      string          `yaml:"dashboard_title_prefix"`
-	DeptSync                  DeptSyncConfig  `yaml:"dept_sync"`
-	ChatStats                 ChatStatsConfig `yaml:"chat_stats"`
+	TraditionalDevLinesPerDay int `yaml:"traditional_dev_lines_per_day"`
+	// CommitMinutesPerLine commit 古法每行分钟数（派生 ancient 用），字段名与 kbcli 配置一致，
+	// 部署时两边应同值（内网 1.8）。缺省按 480/traditional_dev_lines_per_day 推导（=4.8）。
+	CommitMinutesPerLine float64         `yaml:"commit_minutes_per_line"`
+	CostPerPersonDay     float64         `yaml:"cost_per_person_day"`
+	DashboardTitlePrefix string          `yaml:"dashboard_title_prefix"`
+	DeptSync             DeptSyncConfig  `yaml:"dept_sync"`
+	ChatStats            ChatStatsConfig `yaml:"chat_stats"`
 	// Storage 存储后端配置。task_dir 等路径以 s3:// 开头时走 S3 兼容对象存储，否则本地磁盘。
 	Storage storage.Config `yaml:"storage"`
 }
@@ -89,6 +92,12 @@ func loadConfig(path string) (*Config, error) {
 		cfg.DeptSync.RootDeptName = DefaultRootDeptName
 	}
 	cfg.DashboardTitlePrefix = strings.TrimSpace(cfg.DashboardTitlePrefix)
+	if cfg.TraditionalDevLinesPerDay <= 0 {
+		cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay
+	}
+	if cfg.CommitMinutesPerLine <= 0 {
+		cfg.CommitMinutesPerLine = 480.0 / float64(cfg.TraditionalDevLinesPerDay)
+	}
 	return &cfg, nil
 }
 
