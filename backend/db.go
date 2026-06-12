@@ -421,7 +421,8 @@ func (f *TaskFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	}
 	if f.UserName != "" {
 		if len(f.UserNameCandidates) > 0 {
-			q = q.Where("user_name = ? OR user_id IN ?", f.UserName, f.UserNameCandidates)
+			// 显式括号：不依赖 ORM 对 raw 条件的分组行为，确保 OR 不越过其他 AND 过滤
+			q = q.Where("(user_name = ? OR user_id IN ?)", f.UserName, f.UserNameCandidates)
 		} else {
 			q = q.Where("user_name = ?", f.UserName)
 		}
@@ -538,6 +539,9 @@ type CommitFilter struct {
 	WorkDirId   string
 	StartTime   string
 	EndTime     string
+	// ExcludeGoverned 统计/聚合路径置 true：剔除治理排除的 commit，与 ListRepoAggregates 等
+	// 聚合口径一致。明细列表（Commit 列表页）保持 false 以便排查全量。
+	ExcludeGoverned bool
 }
 
 func intersectUserIdFilter(orgUserIds []string, userId string, userIds []string) []string {
@@ -646,6 +650,9 @@ func (f *CommitFilter) applyToQuery(q *gorm.DB) *gorm.DB {
 	if f.EndTime != "" {
 		q = q.Where("commit_time <= ?", f.EndTime)
 	}
+	if f.ExcludeGoverned {
+		q = q.Where("excluded_flag = false")
+	}
 	return q
 }
 
@@ -740,9 +747,11 @@ func deriveCommitWorkMinutesBatch(db *gorm.DB, commitIDs []string) (map[string]f
 	for _, id := range commitIDs {
 		wanted[id] = true
 	}
-	// ancient 派生：commit 古法直算（治理后有效行数 × 每行分钟），与 kbcli 写侧
-	// estimateCommitAncientMinutes 同口径。不再用 Need 的 baseline_fused_work_min（V2 融合基线）
-	// 平摊——那是 kNN/LLM 估计值，倒灌进 V1 ancient 会混血两套口径。
+	// ancient 派生：commit 古法直算（治理后有效行数 × 每行分钟），速率与 kbcli 写侧
+	// estimateCommitAncientMinutes 同源（commit_minutes_per_line，部署须两边同值）；与写侧的差异：
+	// 这里用治理后 GetEffectiveDiffLines（写侧用原始行数）、且无 min_minutes 下限——有意为之。
+	// 不再用 Need 的 baseline_fused_work_min（V2 融合基线）平摊——那是 kNN/LLM 估计值，
+	// 倒灌进 V1 ancient 会混血两套口径。
 	// 有效行数 0（doc-only/merge 治理归零）→ ancient 不派生，上层提效比显 '-'，不造估计值。
 	var commitRows []models.Commit
 	if err := db.Select("commit_id, diff_lines, effective_diff_lines, excluded_flag").

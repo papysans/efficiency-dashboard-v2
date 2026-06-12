@@ -77,6 +77,8 @@ func loadConfig(path string) (*Config, error) {
 	cfg.AnalysedDir = "../task"
 	cfg.CORS.AllowOrigins = []string{"http://localhost:8880"}
 	cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay
+	// 初值块就给默认，确保 ReadFile 失败的早返回路径也拿到非零速率（0 会让派生 ancient 全部静默消失）
+	cfg.CommitMinutesPerLine = 480.0 / float64(DefaultTraditionalDevLinesPerDay)
 	cfg.CostPerPersonDay = DefaultCostPerPersonDay
 	cfg.DeptSync.RootDeptName = DefaultRootDeptName
 

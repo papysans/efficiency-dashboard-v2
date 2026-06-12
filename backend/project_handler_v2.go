@@ -184,11 +184,13 @@ func collectProjectCommits(project *models.Project) (map[string]*models.Commit, 
 			endTime = *rf.EndTime
 		}
 
+		// 与项目列表（ListCommitLightByRepoRange 已剔除治理 commit）同口径，避免列表/详情分裂
 		commits, _, err := ListCommits(statDB, CommitFilter{
-			RepoAddr:   rf.RepoAddr,
-			RepoBranch: rf.RepoBranch,
-			StartTime:  startTime,
-			EndTime:    endTime,
+			ExcludeGoverned: true,
+			RepoAddr:        rf.RepoAddr,
+			RepoBranch:      rf.RepoBranch,
+			StartTime:       startTime,
+			EndTime:         endTime,
 		}, 1, 999999, "commit_time DESC")
 		if err != nil {
 			return nil, fmt.Errorf("查询 commits 失败: %w", err)

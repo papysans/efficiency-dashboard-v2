@@ -220,14 +220,17 @@ func getRepoDetailV2(c *gin.Context) {
 	startDate := c.Query("startDate")
 	endDate := c.Query("endDate")
 	filter := CommitFilter{
-		RepoAddr:    strings.TrimSpace(c.Query("repoAddr")),
-		RepoBranch:  strings.TrimSpace(c.Query("repoBranch")),
-		GitUserName: strings.TrimSpace(c.Query("gitUserName")),
-		UserId:      strings.TrimSpace(c.Query("userId")),
-		UserName:    strings.TrimSpace(c.Query("userName")),
-		ClientId:    strings.TrimSpace(c.Query("clientId")),
-		WorkDir:     strings.TrimSpace(c.Query("workDir")),
-		WorkDirId:   strings.TrimSpace(c.Query("workDirId")),
+		// repo 详情是统计页：与 ListRepoAggregates（列表行）同口径剔除治理排除 commit，
+		// 否则同仓库列表与详情的 commit 数/工时/提效比对不上。全量明细看 Commit 列表页。
+		ExcludeGoverned: true,
+		RepoAddr:        strings.TrimSpace(c.Query("repoAddr")),
+		RepoBranch:      strings.TrimSpace(c.Query("repoBranch")),
+		GitUserName:     strings.TrimSpace(c.Query("gitUserName")),
+		UserId:          strings.TrimSpace(c.Query("userId")),
+		UserName:        strings.TrimSpace(c.Query("userName")),
+		ClientId:        strings.TrimSpace(c.Query("clientId")),
+		WorkDir:         strings.TrimSpace(c.Query("workDir")),
+		WorkDirId:       strings.TrimSpace(c.Query("workDirId")),
 		OrgsFilter: OrgsFilter{
 			Org1: strings.TrimSpace(c.Query("org1")),
 			Org2: strings.TrimSpace(c.Query("org2")),
