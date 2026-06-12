@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -327,8 +328,10 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 	if filter.RepoBranch != "" {
 		q = q.Where("repo_branch = ?", strings.TrimSpace(filter.RepoBranch))
 	}
-	if filter.UserId != "" {
-		q = q.Where("primary_user_id = ?", strings.TrimSpace(filter.UserId))
+	if strings.TrimSpace(filter.UserId) != "" {
+		// 多口径反查:搜索框可输入真名/工号/git名/UUID 任意一种,统一反查成 primary_user_id 候选集。
+		// 候选集恒含 term 原值,故已知 UUID 的精确查询向后兼容;反查无命中时退化为仅原值精确匹配。
+		q = q.Where("primary_user_id IN ?", resolveUserIdCandidates(db, filter.UserId))
 	}
 	// 看板口径：非 active(已交付) + 非主干分支。详见 applyNeedCaliberFilter。
 	// includeAll=true 时放开口径，显示 active + 主干分支 + 全部需求，便于排查异常。
@@ -370,6 +373,52 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 		resp.Data = append(resp.Data, summarizeNeed(n))
 	}
 	return resp, nil
+}
+
+// resolveUserIdCandidates 把搜索框输入的 term(真名/工号/git 用户名/UUID 任意一种)反查成
+// needs.primary_user_id 的候选 UUID 集合。多口径并集,且恒并入 term 原值(兼容已知 UUID 精确查询、
+// 以及 dept_user/commits 都未覆盖但 needs 确有的 UUID)。
+//
+// 口径:三表 user 主键同源,均为 dept-sync universal_id 形态的 UUID —— needs.primary_user_id ==
+// commits.user_id == dept_user.universal_id(前端 useUserNameMap 即依赖此命中把 UUID 显示成真名,
+// 内网实测约 98.6% 命中;models.go DeptUser 上"universal_id 0% 命中"为早期过时注释)。
+//   - 路 A dept_user(内网 dept-sync 权威表):真名子串 / 工号精确 / universal_id 精确 → universal_id
+//   - 路 C commits:git_user_name 子串(内网格式"AI_真名工号",真名与工号同时内嵌)→ user_id
+//     注意 commits.user_name 实为 UUID(非可读名),不可用于真名模糊,故不纳入。
+//
+// 性能:commits.git_user_name 子串匹配走全表扫(无法用索引),搜索为低频交互,代价可接受。
+func resolveUserIdCandidates(db *gorm.DB, term string) []string {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return nil
+	}
+	// 转义 LIKE 元字符,避免用户输入的 % _ \ 被当通配符使匹配面失控(如输入单个 % 命中全表、过滤失效)。
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(term)
+	like := "%" + escaped + "%"
+	set := map[string]struct{}{term: {}}
+	// 反查失败记日志并降级(继续用已得候选,搜索保持可用),不静默吞错致真名搜索无声失效、排障无迹。
+	var deptIDs []string
+	if err := db.Model(&models.DeptUser{}).
+		Where("real_name ILIKE ? OR emp_no = ? OR universal_id = ?", like, term, term).
+		Distinct().Pluck("universal_id", &deptIDs).Error; err != nil {
+		log.Printf("[WARN] resolveUserIdCandidates: dept_user 反查失败(降级,真名/工号搜全度受影响): %v", err)
+	}
+	var commitIDs []string
+	if err := db.Model(&models.Commit{}).
+		Where("git_user_name ILIKE ?", like).
+		Distinct().Pluck("user_id", &commitIDs).Error; err != nil {
+		log.Printf("[WARN] resolveUserIdCandidates: commits 反查失败(降级,真名搜全度受影响): %v", err)
+	}
+	for _, id := range append(deptIDs, commitIDs...) {
+		if strings.TrimSpace(id) != "" {
+			set[id] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+	return out
 }
 
 func QueryNeedV2Detail(db *gorm.DB, needID string) (NeedsV2DetailResponse, error) {
