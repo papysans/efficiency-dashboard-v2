@@ -3,6 +3,7 @@ package models
 import (
 	"strings"
 
+	"kanban/core/rawdump"
 	"kanban/core/storage"
 )
 
@@ -40,17 +41,15 @@ func GetSummaryFilePath(taskDir string, task *Task) (string, bool, error) {
 	return filePath, true, nil
 }
 
-func GetConversationFilePath(taskDir string, task *Task) (string, bool, error) {
+// ResolveConversation 定位某任务的 conversation 数据，自动兼容「旧单文件 <id>.jsonl」与
+// 「新目录分片 <id>/00000N.jsonl」两种布局，返回可重组的 ConversationRef。
+// 返回值：ref、是否存在、存储故障。存储故障（S3 端点不可达/凭证失效/限流等）必须区别于
+// "文件不存在"上抛，否则 S3 中断期间会被伪装成 404 且无日志。
+func ResolveConversation(taskDir string, task *Task) (rawdump.ConversationRef, bool, error) {
 	yyyy, mm, dd, ok := GetDatePartsFromTask(task, "conversation")
 	if !ok {
-		return "", false, nil
+		return rawdump.ConversationRef{}, false, nil
 	}
-	filePath := storage.Join(taskDir, "conversation", yyyy, mm, dd, task.SessionId+".jsonl")
-	if _, err := storage.Stat(filePath); err != nil {
-		if storage.IsNotExist(err) {
-			return "", false, nil
-		}
-		return "", false, err
-	}
-	return filePath, true, nil
+	dateDir := storage.Join(taskDir, "conversation", yyyy, mm, dd)
+	return rawdump.Resolve(dateDir, task.SessionId)
 }

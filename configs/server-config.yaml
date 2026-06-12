@@ -21,10 +21,13 @@ repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
 analysed_dir: "./analysed"
 
 # 存储后端：目录路径以 s3:// 开头时走 S3 兼容对象存储（MinIO 等），否则本地磁盘，可混搭。
-# 例：task_dir: "s3://kanban-raw/task"
+# 上游 user-indicator 已切 S3 分片布局(rawDumpConfig.blobStorageType=s3)，看板读 raw 改指 MinIO：
+#   task_dir: "s3://user-indicator/raw-dump/task"     # bucket=user-indicator, prefix=raw-dump
+# conversation 在 task/conversation/YYYY/MM/DD/<sessionId>/00000N.jsonl 目录分片，原文接口自动重组。
 # storage:
 #   s3:
-#     endpoint: "minio.intranet:9000"   # 不含 scheme
-#     access_key: "xxx"
-#     secret_key: "xxx"
-#     use_ssl: false
+#     endpoint: "10.20.19.101:9000"   # 不含 scheme；内网直连或经 ssh -L 转发
+#     access_key: "minioadmin"
+#     secret_key: "minioadmin"
+#     use_ssl: true                   # 上游 MinIO 为 https
+#     skip_verify: true               # 自签证书 + endpoint 走 IP/转发口，证书域名对不上需跳过校验

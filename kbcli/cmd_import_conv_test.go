@@ -6,7 +6,14 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"kanban/core/rawdump"
 )
+
+// convRefOf 把单个 conversation 文件路径包成 ConversationRef（测试旧单文件布局用）。
+func convRefOf(path string) rawdump.ConversationRef {
+	return rawdump.ConversationRef{Paths: []string{path}}
+}
 
 func mkRFC3339(s string) string {
 	t, err := time.Parse("2006-01-02 15:04:05", s)
@@ -488,7 +495,7 @@ func TestTaskConversation_FloatProcessTime_NotDropped(t *testing.T) {
 
 // 6.1 force=true → always returns true
 func TestNeedUpdateConversations_ForceTrue(t *testing.T) {
-	got := needUpdateConversations("any", "any", true)
+	got := needUpdateConversations(rawdump.ConversationRef{}, "any", true)
 	if !got {
 		t.Error("expected true when force=true")
 	}
@@ -506,7 +513,7 @@ func TestNeedUpdateConversations_SilicaNotExist(t *testing.T) {
 	}
 	convFile.Close()
 
-	got := needUpdateConversations(convFile.Name(), "/nonexistent/path/silica.json", false)
+	got := needUpdateConversations(convRefOf(convFile.Name()), "/nonexistent/path/silica.json", false)
 	if !got {
 		t.Error("expected true when silica file does not exist")
 	}
@@ -534,7 +541,7 @@ func TestNeedUpdateConversations_SilicaInvalidJSON(t *testing.T) {
 	}
 	silicaFile.Close()
 
-	got := needUpdateConversations(convFile.Name(), silicaFile.Name(), false)
+	got := needUpdateConversations(convRefOf(convFile.Name()), silicaFile.Name(), false)
 	if !got {
 		t.Error("expected true when silica file has invalid JSON")
 	}
@@ -563,7 +570,7 @@ func TestNeedUpdateConversations_FileSizesDiffer(t *testing.T) {
 	}
 	silicaFile.Close()
 
-	got := needUpdateConversations(convFile.Name(), silicaFile.Name(), false)
+	got := needUpdateConversations(convRefOf(convFile.Name()), silicaFile.Name(), false)
 	if !got {
 		t.Error("expected true when file sizes differ")
 	}
@@ -593,7 +600,7 @@ func TestNeedUpdateConversations_FileSizesSame(t *testing.T) {
 	}
 	silicaFile.Close()
 
-	got := needUpdateConversations(convFile.Name(), silicaFile.Name(), false)
+	got := needUpdateConversations(convRefOf(convFile.Name()), silicaFile.Name(), false)
 	if got {
 		t.Error("expected false when file sizes are the same")
 	}

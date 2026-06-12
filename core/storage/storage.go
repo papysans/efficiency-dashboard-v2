@@ -21,7 +21,11 @@ type S3Config struct {
 	AccessKey string `yaml:"access_key"`
 	SecretKey string `yaml:"secret_key"`
 	UseSSL    bool   `yaml:"use_ssl"`
-	Region    string `yaml:"region"` // 可选，MinIO 通常留空
+	// SkipVerify 跳过 TLS 证书校验（仅 use_ssl=true 时生效）。
+	// 内网自建 MinIO 多用自签证书且 endpoint 走 IP/转发端口，证书域名对不上，
+	// 必须跳过校验才能连上（上游 user-indicator 即 useSSL+skipVerify）。
+	SkipVerify bool   `yaml:"skip_verify"`
+	Region     string `yaml:"region"` // 可选，MinIO 通常留空
 }
 
 // Config 存储后端配置。目录路径以 s3:// 开头时使用 S3，否则使用本地磁盘。

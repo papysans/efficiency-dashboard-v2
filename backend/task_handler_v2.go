@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/rawdump"
 	"kanban/core/storage"
 	"kanban/core/utils"
 
@@ -244,37 +245,40 @@ func getTaskFile(c *gin.Context) {
 		return
 	}
 
-	var filePath string
+	var data []byte
 	var contentType string
 	var found bool
 	var storageErr error
 
 	if typ == "summary" {
+		// summary 仍是单文件，按路径读
+		var filePath string
 		filePath, found, storageErr = models.GetSummaryFilePath(appconfig.Cfg.TaskDir, task)
 		contentType = "application/json"
+		if storageErr == nil && found {
+			data, storageErr = storage.ReadFile(filePath)
+		}
 	} else {
-		filePath, found, storageErr = models.GetConversationFilePath(appconfig.Cfg.TaskDir, task)
+		// conversation 兼容单文件/目录分片：解析出 ref 后按序重组返回完整原文
+		var ref rawdump.ConversationRef
+		ref, found, storageErr = models.ResolveConversation(appconfig.Cfg.TaskDir, task)
 		contentType = "text/plain; charset=utf-8"
+		if storageErr == nil && found {
+			data, storageErr = ref.Read()
+		}
 	}
 	if storageErr != nil {
-		// 存储故障 ≠ 文件不存在：记日志、回 500，错误细节不出响应体
+		// Stat/解析与读取之间文件被移除 → 当作不存在(404)；其余为存储故障 → 500，细节不出响应体
+		if storage.IsNotExist(storageErr) {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "文件不存在"})
+			return
+		}
 		log.Printf("读取任务文件失败 task=%s type=%s: %v", taskId, typ, storageErr)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "存储读取失败"})
 		return
 	}
 	if !found {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "文件不存在"})
-		return
-	}
-
-	data, err := storage.ReadFile(filePath)
-	if err != nil {
-		if storage.IsNotExist(err) { // Stat 与 ReadFile 之间文件被移除
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "文件不存在"})
-			return
-		}
-		log.Printf("读取任务文件失败 task=%s type=%s: %v", taskId, typ, err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "存储读取失败"})
 		return
 	}
 

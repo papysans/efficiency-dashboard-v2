@@ -80,7 +80,7 @@ func fixSingleTask(db *gorm.DB, taskDir, taskID string) error {
 		return fmt.Errorf("查询task失败: %w", err)
 	}
 
-	convPath, ok, err := models.GetConversationFilePath(taskDir, &task)
+	convRef, ok, err := models.ResolveConversation(taskDir, &task)
 	if err != nil {
 		return fmt.Errorf("访问conversation文件失败: session=%s: %w", task.SessionId, err)
 	}
@@ -88,7 +88,7 @@ func fixSingleTask(db *gorm.DB, taskDir, taskID string) error {
 		return fmt.Errorf("找不到conversation文件: session=%s", task.SessionId)
 	}
 
-	convs, err := parseConversationFile(convPath)
+	convs, err := parseConversations(convRef)
 	if err != nil {
 		return fmt.Errorf("读取conversation文件失败: %w", err)
 	}

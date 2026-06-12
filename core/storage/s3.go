@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/fs"
@@ -20,11 +21,24 @@ type s3Backend struct {
 }
 
 func newS3Backend(cfg S3Config) (*s3Backend, error) {
-	cli, err := minio.New(cfg.Endpoint, &minio.Options{
+	opts := &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
 		Secure: cfg.UseSSL,
 		Region: cfg.Region,
-	})
+	}
+	// 自签证书的内网 MinIO：用自定义 transport 跳过 TLS 校验。
+	if cfg.UseSSL && cfg.SkipVerify {
+		tr, err := minio.DefaultTransport(true)
+		if err != nil {
+			return nil, fmt.Errorf("构造 S3 transport 失败: %w", err)
+		}
+		if tr.TLSClientConfig == nil {
+			tr.TLSClientConfig = &tls.Config{}
+		}
+		tr.TLSClientConfig.InsecureSkipVerify = true
+		opts.Transport = tr
+	}
+	cli, err := minio.New(cfg.Endpoint, opts)
 	if err != nil {
 		return nil, err
 	}

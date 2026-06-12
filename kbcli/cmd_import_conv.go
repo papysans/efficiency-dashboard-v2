@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/rawdump"
 	"kanban/core/storage"
 	"kanban/core/utils"
 
@@ -303,13 +304,13 @@ type preparedImportTask struct {
 	conversations    []taskConversation
 	sessionDate      string
 	conversationDate string
-	conversationPath string
+	convRef          rawdump.ConversationRef
 	silicaPath       string
 }
 
 // prepareImportTask 读取并解析单个任务的 summary 与 conversation 文件，算好待写入的记录。
 // 仅做文件 IO 与解析、不触库；这样所有易失败的解析步骤都在事务外，不会污染批量事务。
-func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*preparedImportTask, error) {
+func prepareImportTask(summaryPath string, src convSource, silicaPath string) (*preparedImportTask, error) {
 	data, err := storage.ReadFile(summaryPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取summary文件失败: %w", err)
@@ -328,19 +329,18 @@ func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*prepa
 		return nil, fmt.Errorf("user_id为空")
 	}
 
-	// 解析对话文件，得到该任务下的所有对话列表
-	conversations, err := parseConversationFile(conversationPath)
+	// 解析对话：ref 兼容单文件/目录分片，把分片按序拼接后逐行解析
+	conversations, err := parseConversations(src.ref)
 	if err != nil {
 		return nil, fmt.Errorf("解析conversation文件失败: %w", err)
 	}
 
-	// 根据 ss 和 conversations 计算完整的 Task 记录
+	// sessionDate 仍从 summary 单文件路径反推；conversationDate 直接用扫描识别出的内容日期
+	// （分片布局下 conversation 路径多了一层 <id> 目录，无法再用单文件路径反推日期）。
 	summaryDir := storage.Dir(storage.Dir(summaryPath))
 	summaryDir = storage.Dir(storage.Dir(summaryDir))
 	sessionDate := extractDateFromPath(summaryDir, summaryPath)
-	conversationDir := storage.Dir(storage.Dir(conversationPath))
-	conversationDir = storage.Dir(storage.Dir(conversationDir))
-	conversationDate := extractDateFromPath(conversationDir, conversationPath)
+	conversationDate := src.date
 
 	// 解析对话内的时间/指标；saveConversations 依赖此处填充的 startTime/endTime
 	correctConversations(&ss, conversations)
@@ -350,7 +350,7 @@ func prepareImportTask(summaryPath, conversationPath, silicaPath string) (*prepa
 		conversations:    conversations,
 		sessionDate:      sessionDate,
 		conversationDate: conversationDate,
-		conversationPath: conversationPath,
+		convRef:          src.ref,
 		silicaPath:       silicaPath,
 	}, nil
 }
@@ -379,7 +379,7 @@ func writeImportTaskBatch(tx *gorm.DB, batch []*preparedImportTask) error {
 
 // finalizeImportTaskSilica 写库成功后生成 task silica 文件（用于下次增量检测）；失败仅告警，不阻断。
 func finalizeImportTaskSilica(p *preparedImportTask) {
-	if err := generateTaskSilicaFile(p.ss, p.conversations, p.conversationPath, p.silicaPath); err != nil {
+	if err := generateTaskSilicaFile(p.ss, p.conversations, p.convRef, p.silicaPath); err != nil {
 		logx.Warnf("生成task silica文件失败 [%s]: %v", p.ss.SessionId, err)
 	}
 }
@@ -644,17 +644,28 @@ func parseConversation(path string, lineNum int, content []byte, ignoreUnmarshal
 //  2. 容错机制：当单行整体验证失败时，尝试调用 splitConversations 将连续拼接的 JSON 对象（如 {"a":1}{"a":2}）拆分为多个对象分别解析。
 //  3. scanner.Buffer 显式设置缓冲区初始大小和最大大小，防止超长行导致扫描器默认缓冲区溢出。
 func parseConversationFile(path string) ([]taskConversation, error) {
-	f, err := storage.Open(path)
+	return parseConversations(rawdump.ConversationRef{Paths: []string{path}})
+}
+
+// parseConversations 解析一个会话的 conversation 数据，兼容单文件与目录分片：
+// ConversationRef 把 N 个分片按数字序拼成一个流，再逐行解析为 taskConversation。
+func parseConversations(ref rawdump.ConversationRef) ([]taskConversation, error) {
+	rc, err := ref.Open()
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer rc.Close()
+	return parseConversationReader(rc, strings.Join(ref.Paths, ","))
+}
 
+// parseConversationReader 从（可能由多分片拼接而成的）流逐行解析 conversation。
+// name 仅用于日志/报错定位。
+func parseConversationReader(r io.Reader, name string) ([]taskConversation, error) {
 	var convs []taskConversation
 	// 用 bufio.Reader 逐行读取，对单行长度不设硬上限：
 	// 避免个别超长 JSON 行（>10MB，如内嵌大段 base64/上下文）触发 bufio.Scanner 的
 	// token too long，进而导致整个 conversation 文件被判失败、对应 session 整条丢失。
-	reader := bufio.NewReader(f)
+	reader := bufio.NewReader(r)
 	lineNum := 0
 	for {
 		lineStr, readErr := reader.ReadString('\n')
@@ -664,7 +675,7 @@ func parseConversationFile(path string) ([]taskConversation, error) {
 		line := strings.TrimSpace(lineStr)
 		if line != "" {
 			// 先尝试将整行作为一个 JSON 对象解析；ignoreUnmarshalWarning=true 减少冗余日志
-			c, parseErr := parseConversation(path, lineNum, []byte(line), true)
+			c, parseErr := parseConversation(name, lineNum, []byte(line), true)
 			if parseErr == nil {
 				if c != nil {
 					convs = append(convs, *c)
@@ -672,7 +683,7 @@ func parseConversationFile(path string) ([]taskConversation, error) {
 			} else if parts, splitErr := splitConversations(line); splitErr == nil && len(parts) > 0 {
 				// 容错：处理上游缺少换行符把多个对象拼到一行的情况 {"a":1}{"a":2}
 				for _, part := range parts {
-					if pc, e := parseConversation(path, lineNum, []byte(part), false); e == nil && pc != nil {
+					if pc, e := parseConversation(name, lineNum, []byte(part), false); e == nil && pc != nil {
 						convs = append(convs, *pc)
 					}
 				}
@@ -771,16 +782,17 @@ func splitConversations(line string) ([]string, error) {
 // 参数：
 //   - ss: 任务摘要，用于填充 silica 中的基础信息。
 //   - conversations: 该任务的所有对话列表。
-//   - conversationPath: 原始 conversation 文件路径，用于获取文件大小作为增量检测依据。
+//   - convRef: conversation 来源引用（单文件或分片），用于聚合字节数作为增量检测依据。
 //   - silicaPath: 输出 silica 文件的目标路径。
 //
 // 返回值：文件写入过程中发生的错误。
 // 关键技术原理：calcLineFingerprint 为每行新增代码生成稳定指纹，用于后续任务间的代码相似度分析。
-func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, conversationPath, silicaPath string) error {
-	// 获取 conversation 文件大小，用于后续增量导入时判断是否需要更新
+func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, convRef rawdump.ConversationRef, silicaPath string) error {
+	// 获取分片聚合字节数，作为增量导入的变更信号（替代旧的单文件 size：
+	// 上游每追加一片，聚合字节都会变，据此触发重导）。
 	var fileSize int64
-	if info, err := storage.Stat(conversationPath); err == nil {
-		fileSize = info.Size
+	if size, _, err := convRef.Aggregate(); err == nil {
+		fileSize = size
 	}
 
 	// 组装 taskSilicaData 基础信息
@@ -832,52 +844,99 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 	return nil
 }
 
-// scanConversationFiles 扫描 conversation 目录下所有 .jsonl 文件，建立 sessionId -> 文件路径 映射。
-// 功能：递归遍历目录，收集以 .jsonl 结尾的文件；若同一 sessionId 对应多个路径，保留字典序更大的路径。
+// convSource 描述一个会话的 conversation 来源：可重组的 ref + 内容日期(YYYY/MM/DD)。
+type convSource struct {
+	ref  rawdump.ConversationRef
+	date string
+}
+
+// scanConversationFiles 扫描 conversation 目录下所有 .jsonl 文件，建立 sessionId -> convSource 映射。
+// 兼容两种布局，由 rawdump.ClassifyRelPath 按路径自动识别：
+//   - 旧单文件：YYYY/MM/DD/<sessionId>.jsonl
+//   - 新分片：  YYYY/MM/DD/<sessionId>/00000N.jsonl（按 session 目录聚合 N 片）
+//
 // 参数：
 //   - conversationDir: conversation 文件所在根目录。
 //   - startDate: 开始日期（含），nil 表示不限。
 //   - endDate: 结束日期（不含），nil 表示不限。
 //
-// 返回值：taskID 到文件路径的映射；扫描失败时返回错误。
-func scanConversationFiles(conversationDir string, startDate, endDate *time.Time) (map[string]string, error) {
-	convMap := make(map[string]string)
+// 返回值：sessionId 到 convSource 的映射；扫描失败时返回错误。
+// 同一 session 跨多个日期目录(re-ingest)时，只保留最新日期那组分片，避免不同日期目录的分片混入。
+func scanConversationFiles(conversationDir string, startDate, endDate *time.Time) (map[string]convSource, error) {
+	type acc struct {
+		paths   []string
+		date    string
+		isChunk bool // 当前组是分片(true)还是单文件(false)，用于同日期新旧并存时取舍
+	}
+	groups := make(map[string]*acc)
+
 	// 目录不存在时返回空映射，不做报错处理
 	if ok, err := storage.Exists(conversationDir); err != nil {
 		return nil, err
 	} else if !ok {
-		return convMap, nil
+		return map[string]convSource{}, nil
 	}
 
 	err := storage.Walk(conversationDir, func(path string, info storage.FileInfo) error {
 		// 仅处理 .jsonl 文件
-		if strings.HasSuffix(info.Name, ".jsonl") {
-			// 从相对路径中提取日期信息 YYYY/MM/DD
-			relPath, err := storage.Rel(conversationDir, path)
-			if err != nil {
-				return err
-			}
-			dateStr := filepath.ToSlash(filepath.Dir(relPath))
-			fileDate, err := time.Parse("2006/01/02", dateStr)
-			if err != nil {
-				// 路径格式不符合预期，跳过该文件
-				return nil
-			}
-			// 日期范围过滤：不在 [startDate, endDate) 范围内时跳过
-			if !util.IsActiveTimeInRange(fileDate, startDate, endDate) {
-				return nil
-			}
+		if !strings.HasSuffix(info.Name, ".jsonl") {
+			return nil
+		}
+		relPath, err := storage.Rel(conversationDir, path)
+		if err != nil {
+			return err
+		}
+		// 按路径识别布局并提取 sessionId + 日期 + 是否分片；不符合任一已知布局则跳过
+		sessionId, date, isChunk, ok := rawdump.ClassifyRelPath(relPath)
+		if !ok {
+			return nil
+		}
+		fileDate, err := time.Parse("2006/01/02", date)
+		if err != nil {
+			return nil
+		}
+		// 日期范围过滤：不在 [startDate, endDate) 范围内时跳过
+		if !util.IsActiveTimeInRange(fileDate, startDate, endDate) {
+			return nil
+		}
 
-			sessionId := strings.TrimSuffix(info.Name, ".jsonl")
-			// 若存在同名 sessionId 的多个文件，保留字典序更大的路径（通常表示更晚生成或更优先的版本）
-			if existing, ok := convMap[sessionId]; !ok || path > existing {
-				convMap[sessionId] = path
+		a := groups[sessionId]
+		if a == nil {
+			groups[sessionId] = &acc{paths: []string{path}, date: date, isChunk: isChunk}
+			return nil
+		}
+		switch {
+		case date > a.date:
+			// 跨日期 re-ingest：更新的日期目录整组取代旧的
+			a.paths = []string{path}
+			a.date = date
+			a.isChunk = isChunk
+		case date == a.date:
+			// 同日期新旧布局并存时单文件优先（与 rawdump.Resolve 一致），避免混入两套记录
+			switch {
+			case a.isChunk && !isChunk:
+				a.paths = []string{path} // 单文件取代分片
+				a.isChunk = false
+			case a.isChunk && isChunk:
+				a.paths = append(a.paths, path) // 都是分片，累积
 			}
+			// 其余（已是单文件）：忽略后到的分片/重复单文件
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("扫描conversation目录失败: %w", err)
+	}
+
+	convMap := make(map[string]convSource, len(groups))
+	for sessionId, a := range groups {
+		rawdump.SortChunkPaths(a.paths)
+		ref := rawdump.ConversationRef{SessionID: sessionId, Paths: a.paths}
+		// 缺片告警：序号有洞=不完整会话（多为上游写入/列举问题），用现存片重组但不中断
+		if missing := ref.MissingChunkNumbers(); len(missing) > 0 {
+			logx.Warnf("会话[%s]分片缺号%v(%s)，用现存%d片重组，可能不完整", sessionId, missing, a.date, len(a.paths))
+		}
+		convMap[sessionId] = convSource{ref: ref, date: a.date}
 	}
 	return convMap, nil
 }
@@ -916,12 +975,12 @@ func scanSessionFiles(summaryDir string) (map[string]string, error) {
 // needUpdateConversations 判断是否需要重新导入某任务的 conversation 数据。
 // 功能：基于 silica 文件中记录的 conversation 文件大小，与当前文件实际大小比对，实现增量检测。
 // 参数：
-//   - conversationPath: 当前 conversation 文件路径。
+//   - ref: 当前 conversation 来源引用（单文件或分片）。
 //   - silicaPath: 上次生成的 silica 文件路径。
 //   - force: 若 force 为 true，则跳过检测直接返回 true（强制重新导入）。
 //
 // 返回值：需要更新时返回 true，否则返回 false。
-func needUpdateConversations(conversationPath, silicaPath string, force bool) bool {
+func needUpdateConversations(ref rawdump.ConversationRef, silicaPath string, force bool) bool {
 	// 强制模式直接返回需要更新
 	if force {
 		return true
@@ -935,12 +994,12 @@ func needUpdateConversations(conversationPath, silicaPath string, force bool) bo
 	if err := json.Unmarshal(data, &tsd); err != nil {
 		return true
 	}
-	// 获取当前 conversation 文件大小并与 silica 中记录的值比较
-	info, err := storage.Stat(conversationPath)
+	// 计算当前分片聚合字节并与 silica 记录值比较（任一片变动或新增都会改变聚合字节 → 触发重导）
+	size, _, err := ref.Aggregate()
 	if err != nil {
 		return true
 	}
-	return info.Size != tsd.Size
+	return size != tsd.Size
 }
 
 // runImportConv 执行完整的 task 批量导入流程。
@@ -1029,7 +1088,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	}
 	sort.Strings(sessionIDs)
 	for _, sessionId := range sessionIDs {
-		conversationPath := convMap[sessionId]
+		src := convMap[sessionId]
 		processed++
 		logx.Progress("[import-conv] 导入对话", processed, totalConv, 50)
 		summaryPath, ok := sessionMap[sessionId]
@@ -1041,14 +1100,14 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 
 		// 构造 silica 文件路径并判断是否需要增量更新
 		silicaPath := storage.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
-		if !needUpdateConversations(conversationPath, silicaPath, force) {
+		if !needUpdateConversations(src.ref, silicaPath, force) {
 			logx.Debugf("跳过(conversation未更新): %s", sessionId)
 			skipCount++
 			continue
 		}
 
 		// 解析放在事务外：解析失败（如缺字段）只跳过当前 session，不污染批量事务
-		p, err := prepareImportTask(summaryPath, conversationPath, silicaPath)
+		p, err := prepareImportTask(summaryPath, src, silicaPath)
 		if err != nil {
 			if errors.Is(err, errSkipTask) {
 				logx.Debugf("跳过(日期范围过滤): %s", sessionId)

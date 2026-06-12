@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"kanban/core/rawdump"
 	"kanban/core/storage"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
@@ -33,9 +34,9 @@ type checkContext struct {
 	ignoreSet   map[string]bool // issue类型 -> 是否忽略
 	modelPrices map[string]appconfig.ModelPrice
 	issues      []CheckIssue
-	summaryMap  map[string]string // taskID -> summary path
-	convMap     map[string]string // taskID -> conversation path
-	repoFileMap map[string]string // commitID -> repo file path
+	summaryMap  map[string]string                  // taskID -> summary path
+	convMap     map[string]rawdump.ConversationRef // taskID -> conversation 来源(单文件或分片)
+	repoFileMap map[string]string                  // commitID -> repo file path
 }
 
 func severityRank(s string) int {
@@ -90,7 +91,7 @@ func runCheck(taskDir, repoDir, dateFilter, output, minLevel string, ignoreList 
 		modelPrices: appconfig.Cfg.ModelPrices,
 		issues:      make([]CheckIssue, 0),
 		summaryMap:  make(map[string]string),
-		convMap:     make(map[string]string),
+		convMap:     make(map[string]rawdump.ConversationRef),
 		repoFileMap: make(map[string]string),
 	}
 
@@ -252,17 +253,35 @@ func (ctx *checkContext) scanConversations() error {
 	if ok, err := storage.Exists(convDir); err != nil || !ok {
 		return err
 	}
-	return storage.Walk(convDir, func(path string, info storage.FileInfo) error {
+	// 按 sessionId 聚合分片：新分片布局下文件名是 00000N.jsonl，必须按父目录(sessionId)归组，
+	// 否则每个分片会被当成独立 conversation，巡检将满屏误报 orphan/missing-conversation。
+	groups := make(map[string][]string)
+	err := storage.Walk(convDir, func(path string, info storage.FileInfo) error {
 		if !strings.HasSuffix(info.Name, ".jsonl") {
 			return nil
 		}
 		if !matchDateFilter(path, ctx.dateFilter) {
 			return nil
 		}
-		taskID := strings.TrimSuffix(info.Name, ".jsonl")
-		ctx.convMap[taskID] = path
+		relPath, err := storage.Rel(convDir, path)
+		if err != nil {
+			return err
+		}
+		sessionID, _, _, ok := rawdump.ClassifyRelPath(relPath)
+		if !ok {
+			return nil
+		}
+		groups[sessionID] = append(groups[sessionID], path)
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	for sessionID, paths := range groups {
+		rawdump.SortChunkPaths(paths)
+		ctx.convMap[sessionID] = rawdump.ConversationRef{SessionID: sessionID, Paths: paths}
+	}
+	return nil
 }
 
 func (ctx *checkContext) scanRepos() error {
@@ -327,14 +346,25 @@ func (ctx *checkContext) checkSummaries() error {
 
 func (ctx *checkContext) checkConversations() error {
 	cnt := 0
-	for taskID, path := range ctx.convMap {
+	for taskID, ref := range ctx.convMap {
 		cnt++
 		logx.PromptProgress(cnt, 50)
 
-		data, err := storage.ReadFile(path)
+		// path 取首片用于问题定位；data 为按序重组后的完整会话（兼容单文件/分片）
+		path := ""
+		if len(ref.Paths) > 0 {
+			path = ref.Paths[0]
+		}
+		data, err := ref.Read()
 		if err != nil {
 			ctx.addIssue("error", path, taskID, "", "read-failed", "", fmt.Sprintf("读取文件失败: %v", err))
 			continue
+		}
+
+		// 分片缺号检测：序号有洞=会话可能不完整（多为上游写入/列举问题）
+		if missing := ref.MissingChunkNumbers(); len(missing) > 0 {
+			ctx.addIssue("warn", path, taskID, "", "chunk-gap", "",
+				fmt.Sprintf("分片序号缺号%v，会话可能不完整(现存%d片)", missing, ref.ChunkCount()))
 		}
 
 		// 检查对应summary是否存在
@@ -570,18 +600,10 @@ func (ctx *checkContext) checkCrossReferences() error {
 		if _, ok := ctx.convMap[taskID]; !ok {
 			ctx.addIssue("error", summaryPath, taskID, "", "missing-conversation", "",
 				fmt.Sprintf("未找到关联的conversation文件(task_id=%s)，该任务将被视为无对话数据导入", taskID))
-		} else {
-			// 检查路径是否对应（是否在同一天的目录下）
-			summaryDir := storage.Dir(summaryPath)
-			convPath := ctx.convMap[taskID]
-			convDir := storage.Dir(convPath)
-			expectedConvDir := strings.Replace(summaryDir, "/summary/", "/conversation/", 1)
-			expectedConvDir = strings.Replace(expectedConvDir, "\\summary\\", "\\conversation\\", 1)
-			if convDir != expectedConvDir {
-				ctx.addIssue("warn", summaryPath, taskID, "", "conversation-misplaced", "",
-					fmt.Sprintf("conversation文件不在预期路径(预期:%s, 实际:%s)，可能存在数据归档错位", expectedConvDir, convDir))
-			}
 		}
+		// 注：原「同日目录」启发式(conversation-misplaced)已移除——上游 summary 用入库日、
+		// conversation 用内容日，两者目录日期本就可不同(实测 06/13 vs 05/13)；且新分片布局多一层
+		// <sessionId> 目录，按目录比对必假阳。存在性校验(上面 missing-conversation)已足够。
 	}
 
 	// 检查conversation文件名与实际内容一致性（如果conversation内部有task_id字段的话）
@@ -770,8 +792,8 @@ var checkCmd = &cobra.Command{
 	Long: `提前检查summary和conversation目录下的原始数据正确性，输出问题清单文件，作为排障依据或提前将问题数据剔除。
 
 支持的 --ignore issue 类型：
-  all-start-times-invalid, commit-diff-lines-negative, commit-empty-diff-content,
-  commit-id-mismatch, conversation-misplaced, diff-lines-mismatch,
+  all-start-times-invalid, chunk-gap, commit-diff-lines-negative,
+  commit-empty-diff-content, commit-id-mismatch, diff-lines-mismatch,
   empty-diff-content, empty-request-content, empty-response-content,
   empty-user-input, invalid-commit-time, invalid-end-time,
   invalid-start-time, json-parse-failed, missing-caller, missing-client-id,
