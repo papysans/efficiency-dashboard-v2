@@ -159,7 +159,7 @@ export default function TaskDetail() {
           <Kv label="生成代码量">
             <span className="inline-flex items-center gap-2">
               {task.diff_lines ?? '-'} 行
-              <FileLink href={getTaskFileUrl('summary', task.task_id, task.start_time)}>查看详情</FileLink>
+              <FileLink href={getTaskFileUrl('summary', task.task_id)}>查看详情</FileLink>
             </span>
           </Kv>
           <Kv label="实际耗时">
@@ -193,7 +193,7 @@ export default function TaskDetail() {
         <Panel
           title="对话历史"
           hint=""
-          rightSlot={<FileLink href={getTaskFileUrl('conversation', task.task_id, task.start_time)}>查看原始数据</FileLink>}
+          rightSlot={<FileLink href={getTaskFileUrl('conversation', task.task_id)}>查看原始数据</FileLink>}
         >
           <ol className="relative border-l-2 border-gray-200/60 dark:border-white/10 ml-2 space-y-4">
             {conversations.map((conv, idx) => {

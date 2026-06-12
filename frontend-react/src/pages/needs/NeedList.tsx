@@ -395,7 +395,7 @@ export default function NeedList() {
                   <span className="inline-flex items-center gap-1 justify-end">传统人力预估 <InfoMark tip={FUSED_BASELINE_WORK_TIP} /></span>
                 </th>
                 <th className={TH}>
-                  <SortableTh field="devStartTs" label="记录时间" active={isSortActive('devStartTs')} desc={isSortDesc('devStartTs')} onSort={onSortChange} />
+                  <SortableTh field="devStartTs" label="开发开始时间" active={isSortActive('devStartTs')} desc={isSortDesc('devStartTs')} onSort={onSortChange} />
                 </th>
               </tr>
             </thead>
@@ -435,7 +435,8 @@ export default function NeedList() {
                     </td>
                     <td className={TD}><RatioPill value={row.efficiency_ratio} /></td>
                     <td className={TD}><RatioPill value={row.work_efficiency_ratio} /></td>
-                    <td className={TD}><RatioPill value={row.ai_code_ratio} /></td>
+                    {/* ai_code_ratio=0 表示 silica 无数据而非真 0，与详情页 fmtPct 同口径显示 '-' */}
+                    <td className={TD}><RatioPill value={row.ai_code_ratio || null} /></td>
                     <td className={TD}><Ellipsis text={row.repo_addr} /></td>
                     <td className={TD}><Ellipsis text={row.repo_branch} /></td>
                     <td className={TD}>

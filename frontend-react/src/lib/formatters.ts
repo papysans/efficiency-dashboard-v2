@@ -35,6 +35,13 @@ export function formatNumber(value: number | string | null | undefined, digits =
   return num.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 }
 
+/** 币种代码 → 符号（system_currency KV；未知代码原样返回，缺省按 CNY） */
+const CURRENCY_SYMBOL: Record<string, string> = { CNY: '¥', USD: '$', EUR: '€', GBP: '£', JPY: '¥' }
+export function currencySymbol(code: string | null | undefined): string {
+  const c = (code || 'CNY').toUpperCase()
+  return CURRENCY_SYMBOL[c] || c
+}
+
 /** AI 预估人天（保留 1 位，0 => '-'） */
 export function fmtDays(value: number | null | undefined): string {
   if (value == null || value === 0) return '-'

@@ -1518,6 +1518,7 @@ type dashboardNeedAgg struct {
 	TotalNeeds          int
 	MergedNeeds         int
 	EligibleNeeds       int
+	TotalUsers          int
 	ActualCalendarMin   float64
 	BaselineCalendarMin float64
 	ActualWorkMin       float64
@@ -1540,6 +1541,7 @@ func queryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNe
 	// work_outlier_flag，与 kbcli 个人周表投影口径一致(design.md §4)。eligible_needs 取两侧
 	// 均干净(NOT outlier_flag)作总览计数。
 	q := applyNeedCaliberFilter(db.Model(&models.Need{})).Select(`COUNT(*) as total_needs,
+		COUNT(DISTINCT NULLIF(primary_user_id, '')) as total_users,
 		COUNT(*) FILTER (WHERE status = 'merged') as merged_needs,
 		COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag) as eligible_needs,
 		COALESCE(SUM(total_calendar_min) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag), 0) as actual_calendar_min,

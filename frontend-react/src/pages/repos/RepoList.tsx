@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { getReposV2 } from '@/api/endpoints'
 import type { RepoListItem } from '@/api/types'
-import { formatDuration, formatLocalTime } from '@/lib/formatters'
+import { formatDuration } from '@/lib/formatters'
 import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
@@ -269,7 +269,8 @@ export default function RepoList() {
                     <td className="px-3 py-2 align-middle text-center">
                       <RatioPill value={row.ai_code_ratio} />
                     </td>
-                    <td className={TD}>{formatLocalTime(row.start_time)}</td>
+                    {/* 后端已格式化为 date-only（2006-01-02），再过 formatLocalTime 会解析成 UTC 午夜→假 08:00:00 */}
+                    <td className={TD}>{row.start_time || '-'}</td>
                   </tr>
                 ))
               )}

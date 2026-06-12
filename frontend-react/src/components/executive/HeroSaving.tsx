@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useDashboardSummary, useGlobalConfig } from '@/api/queries'
+import { useChatSystemConfig, useDashboardSummary, useGlobalConfig } from '@/api/queries'
 import { chatGet } from '@/api/client'
 import { useCountUp } from '@/hooks/useCountUp'
-import { formatNumber, personDaysValue, PERSON_DAY_MINUTES } from '@/lib/formatters'
+import { currencySymbol, formatNumber, personDaysValue, PERSON_DAY_MINUTES } from '@/lib/formatters'
 
 interface HeroSavingProps {
   startDate: string
@@ -32,6 +32,9 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
   const costPerPersonDay =
     gc?.cost_per_person_day && gc.cost_per_person_day > 0 ? gc.cost_per_person_day : FALLBACK_COST_PER_PERSON_DAY
   const chatEnabled = gc?.chat_stats_enabled === true
+  // 货币符号跟随 system_currency（chat KV）；chat 未启用/未配置时兜底 ¥（CNY）
+  const { data: chatCfg } = useChatSystemConfig(chatEnabled)
+  const cur = currencySymbol(chatCfg?.system_currency)
 
   // AI 花费：chat 侧同日期区间 estimated_total_cost 求和（局部 useQuery，失败静默降级）
   const chatQ = useQuery({
@@ -101,7 +104,7 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">AI 提效总览</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            按 ¥{formatNumber(costPerPersonDay)}/人天估算 · 基于可计入需求（merged &amp; eligible）
+            按 {cur}{formatNumber(costPerPersonDay)}/人天估算 · 基于可计入需求（merged &amp; eligible）
             {aiAvailable && ' · AI 花费为全平台口径（按价格表估算）'}
           </p>
         </div>
@@ -114,10 +117,10 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
         // 净节省口径四格：省人天 / AI 花费 / 净节省（毛−AI）/ 综合提效
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-8 gap-y-6 flex-1">
           <BigStat label="为团队节省" value={savedDays > 0 ? daysCount.toFixed(1) : '-'} unit="人天" tone={emerald} compact />
-          <BigStat label="AI 花费" value={`¥${formatNumber(Math.round(aiCount))}`} unit="" tone={neutral} compact />
+          <BigStat label="AI 花费" value={`${cur}${formatNumber(Math.round(aiCount))}`} unit="" tone={neutral} compact />
           <BigStat
             label="净节省"
-            value={`¥${formatNumber(Math.round(netCount))}`}
+            value={`${cur}${formatNumber(Math.round(netCount))}`}
             unit=""
             tone={netSaving < 0 ? rose : emerald}
             compact
@@ -130,7 +133,7 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
           <BigStat label="为团队节省" value={savedDays > 0 ? daysCount.toFixed(1) : '-'} unit="人天" tone={emerald} />
           <BigStat
             label="折合节省成本"
-            value={grossSaving > 0 ? `¥${formatNumber(Math.round(grossCount))}` : '-'}
+            value={grossSaving > 0 ? `${cur}${formatNumber(Math.round(grossCount))}` : '-'}
             unit=""
             tone={emerald}
           />

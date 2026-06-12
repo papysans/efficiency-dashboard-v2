@@ -22,13 +22,12 @@ import SettingsLayout, {
   TH_NUM,
   useChatEnabled,
 } from './SettingsLayout'
+import { currencySymbol as sym } from '@/lib/formatters'
 
 // 1 token ↔ 1M tokens 转换因子
 const M = 1_000_000
 
 const CURRENCY_OPTIONS = ['CNY', 'USD', 'EUR', 'GBP', 'JPY']
-const SYMBOL: Record<string, string> = { CNY: '¥', USD: '$', EUR: '€', GBP: '£', JPY: '¥' }
-const sym = (c: string) => SYMBOL[c] || c
 
 const MODE_OPTIONS = [
   { value: 'token', label: 'Token 计价' },

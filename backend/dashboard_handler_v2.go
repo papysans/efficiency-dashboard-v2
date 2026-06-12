@@ -115,7 +115,8 @@ func getDashboardSummary(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, DashboardSummaryResponse{
-		TotalUsersV2:              commitAgg.TotalUsers,
+		// 名实相符：前端卡片 hint 为「需求口径参与者」，取 need 维度 primary_user_id 去重（看板口径+日期窗）
+		TotalUsersV2:              needAgg.TotalUsers,
 		TotalNeeds:                needAgg.TotalNeeds,
 		MergedNeeds:               needAgg.MergedNeeds,
 		EligibleNeeds:             needAgg.EligibleNeeds,
