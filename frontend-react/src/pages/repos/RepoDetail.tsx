@@ -3,7 +3,7 @@
 // 「添加到 Project」（PR4c §4.2）：选 Project（或新建）→ 两段式冲突检测（checkProjectConflicts，
 // 有冲突展示让用户确认）→ addRepoToProject（加 repo filter，可选白名单 commits）。
 //
-// 提效比计算：commitEffRatio/taskEffRatio = (ancientₘ / realₘ) * 100（manual 优先，both>0 才算，否则 0，>0 才显示）。
+// 提效比计算：commitEffRatio/taskEffRatio = (ancientₘ − realₘ) / realₘ * 100（提升百分比，与后端 CalcEfficiencyRatio 及同页汇总卡一致；manual 优先，both>0 才算，否则 0，>0 才显示）。
 // 表格客户端排序（manual 优先 / 计算值），null/0 沉底。
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
@@ -20,17 +20,17 @@ import { SortableTh } from '@/components/ui/SortableTh'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { Modal } from '@/components/ui/Modal'
 
-// manual 优先口径（commit/task 提效比 = ancient/real*100，both>0 才算）。
+// manual 优先口径（commit/task 提效比 = (ancient−real)/real*100 提升百分比，与后端 CalcEfficiencyRatio 及同页汇总卡一致，both>0 才算）。
 function commitEffRatio(row: RepoCommitItem): number {
   const ancient = row.commit_ancient_minutes_manual ?? row.commit_ancient_minutes
   const real = row.commit_real_minutes_manual ?? row.commit_real_minutes
-  if (ancient != null && real != null && ancient > 0 && real > 0) return (ancient / real) * 100
+  if (ancient != null && real != null && ancient > 0 && real > 0) return ((ancient - real) / real) * 100
   return 0
 }
 function taskEffRatio(row: TaskListItem): number {
   const ancient = row.task_ancient_minutes_manual ?? row.task_ancient_minutes
   const real = row.task_real_minutes_manual ?? row.task_real_minutes
-  if (ancient != null && real != null && ancient > 0 && real > 0) return (ancient / real) * 100
+  if (ancient != null && real != null && ancient > 0 && real > 0) return ((ancient - real) / real) * 100
   return 0
 }
 function commitReal(row: RepoCommitItem): number | null | undefined {

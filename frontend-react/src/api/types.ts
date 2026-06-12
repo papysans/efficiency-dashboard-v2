@@ -623,12 +623,6 @@ export interface UpdateTaskManualRequest {
   task_ancient_minutes_reason_manual: string
 }
 
-/** POST /v2/tasks/estimate-ancient 响应（§5.2，前端只读这两个字段） */
-export interface EstimateAncientResponse {
-  success: number
-  total: number
-}
-
 /**
  * /v2/commits 列表项（PR4 §1.1，backend db.go CommitListItem）。
  * ⚠️ efficiency_ratio 是**百分比口径**（300=300%，直接 .toFixed(1)+'%'，不 ×100）。

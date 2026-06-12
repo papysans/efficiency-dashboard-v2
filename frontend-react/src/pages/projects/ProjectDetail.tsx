@@ -22,7 +22,6 @@ import {
   removeRepoFromProject,
   removeTasksFromProject,
   updateProject,
-  updateProjectManual,
   updateTaskSilicaInProject,
 } from '@/api/endpoints'
 import { useGlobalConfig, useProjectDetail } from '@/api/queries'
@@ -172,7 +171,6 @@ export default function ProjectDetail() {
 
   // ---- dialog 状态 ----
   const [editOpen, setEditOpen] = useState(false)
-  const [manualOpen, setManualOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [taskOpen, setTaskOpen] = useState(false)
@@ -227,13 +225,6 @@ export default function ProjectDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setManualOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-          >
-            人工调整
-          </button>
           <button
             type="button"
             onClick={() => setEditOpen(true)}
@@ -515,7 +506,6 @@ export default function ProjectDetail() {
       {project && (
         <>
           <EditModal open={editOpen} project={project} repos={repos} onClose={() => setEditOpen(false)} onSaved={async () => { setEditOpen(false); await reload() }} projectId={projectId as string} />
-          <ManualModal open={manualOpen} project={project} onClose={() => setManualOpen(false)} onSaved={async () => { setManualOpen(false); await reload() }} projectId={projectId as string} />
           <AddTaskModal open={taskOpen} onClose={() => setTaskOpen(false)} onSaved={async () => { setTaskOpen(false); await reload() }} projectId={projectId as string} />
           <SilicaModal task={silicaTask} onClose={() => setSilicaTask(null)} onSaved={async () => { setSilicaTask(null); await reload() }} projectId={projectId as string} />
           <RepoModal open={repoAddOpen || !!repoEdit} edit={repoEdit} onClose={() => { setRepoAddOpen(false); setRepoEdit(null) }} onSaved={async () => { setRepoAddOpen(false); setRepoEdit(null); await reload() }} projectId={projectId as string} />
@@ -631,100 +621,6 @@ function EditModal({
       <Field label="描述">
         <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} className={`${INPUT} resize-y`} />
       </Field>
-    </FormModal>
-  )
-}
-
-// ============ 人工调整 dialog ============
-function ManualModal({
-  open,
-  project,
-  projectId,
-  onClose,
-  onSaved,
-}: {
-  open: boolean
-  project: ProjectModel
-  projectId: string
-  onClose: () => void
-  onSaved: () => Promise<void>
-}) {
-  const [ancient, setAncient] = useState('')
-  const [ancientReason, setAncientReason] = useState('')
-  const [process, setProcess] = useState('')
-  const [processReason, setProcessReason] = useState('')
-  const [lead, setLead] = useState('')
-  const [leadReason, setLeadReason] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [err, setErr] = useState('')
-
-  useEffect(() => {
-    if (!open) return
-    const num = (m: number | null | undefined) => (m == null ? '' : String(m))
-    setAncient(num(project.project_ancient_minutes_manual ?? project.project_ancient_minutes))
-    setAncientReason(project.project_ancient_minutes_reason_manual || '')
-    setProcess(num(project.project_real_process_minutes_manual ?? project.project_real_process_minutes))
-    setProcessReason(project.project_real_process_minutes_reason_manual || '')
-    setLead(num(project.project_real_lead_minutes_manual ?? project.project_real_lead_minutes))
-    setLeadReason(project.project_real_lead_minutes_reason_manual || '')
-    setStartTime(toLocalInput(project.start_time_manual))
-    setEndTime(toLocalInput(project.end_time_manual))
-    setErr('')
-  }, [open, project])
-
-  async function handleSubmit() {
-    setSubmitting(true)
-    setErr('')
-    try {
-      await updateProjectManual(projectId, {
-        project_ancient_minutes_manual: ancient === '' ? null : Number(ancient),
-        project_ancient_minutes_reason_manual: ancientReason,
-        project_real_process_minutes_manual: process === '' ? null : Number(process),
-        project_real_process_minutes_reason_manual: processReason,
-        project_real_lead_minutes_manual: lead === '' ? null : Number(lead),
-        project_real_lead_minutes_reason_manual: leadReason,
-        start_time_manual: startTime === '' ? null : new Date(startTime).toISOString(),
-        end_time_manual: endTime === '' ? null : new Date(endTime).toISOString(),
-      })
-      await onSaved()
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : '保存失败')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <FormModal open={open} title="人工调整" maxWidth={650} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
-      {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
-      <Field label="传统开发预估（分钟）">
-        <input type="number" step={10} value={ancient} onChange={(e) => setAncient(e.target.value)} className={INPUT} />
-      </Field>
-      <Field label="传统开发预估理由">
-        <textarea rows={2} value={ancientReason} onChange={(e) => setAncientReason(e.target.value)} className={`${INPUT} resize-y`} />
-      </Field>
-      <Field label="实际处理耗时（分钟）">
-        <input type="number" step={10} value={process} onChange={(e) => setProcess(e.target.value)} className={INPUT} />
-      </Field>
-      <Field label="实际处理耗时理由">
-        <textarea rows={2} value={processReason} onChange={(e) => setProcessReason(e.target.value)} className={`${INPUT} resize-y`} />
-      </Field>
-      <Field label="项目周期（分钟）">
-        <input type="number" step={10} value={lead} onChange={(e) => setLead(e.target.value)} className={INPUT} />
-      </Field>
-      <Field label="项目周期理由">
-        <textarea rows={2} value={leadReason} onChange={(e) => setLeadReason(e.target.value)} className={`${INPUT} resize-y`} />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="开始时间">
-          <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={INPUT} />
-        </Field>
-        <Field label="结束时间">
-          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={INPUT} />
-        </Field>
-      </div>
     </FormModal>
   )
 }

@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { addTasksToProject, createProject, estimateAncientMinutes, getProjects, getTasksV2 } from '@/api/endpoints'
+import { addTasksToProject, createProject, getProjects, getTasksV2 } from '@/api/endpoints'
 import type { ProjectListItem, TaskListItem } from '@/api/types'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
@@ -137,7 +137,6 @@ export default function TaskList() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [errMsg, setErrMsg] = useState('')
-  const [estimating, setEstimating] = useState(false)
 
   // 批量「添加到 Project」（§4.1，Task 入口无冲突检测）
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -209,12 +208,6 @@ export default function TaskList() {
     }
     return filteredRows
   }, [filteredRows, parsedOrder])
-
-  // 缺预估计数（§3.1，基于当前页原始行）
-  const missingEstimateCount = useMemo(
-    () => rows.filter((t) => t.task_ancient_minutes == null && t.task_ancient_minutes_manual == null).length,
-    [rows],
-  )
 
   // 选中的 Task（保持在当前显示行集合内）
   const selectedTasks = useMemo(
@@ -315,24 +308,6 @@ export default function TaskList() {
       search: `?startDate=${formatDateParam(state.dateRange[0])}&endDate=${formatDateParam(state.dateRange[1])}`,
     })
   }
-  async function runEstimate() {
-    setEstimating(true)
-    setErrMsg('')
-    try {
-      const res = await estimateAncientMinutes()
-      // 估算完成后刷新当前页：重新触发 effect（用同 query 强制重拉）。
-      const s = stateFromParams(searchParams)
-      const fresh = await getTasksV2(buildParams(s))
-      setRows(fresh.data || [])
-      setTotal(fresh.total || 0)
-      setErrMsg(`估算完成：成功 ${res.success}/${res.total} 条`)
-    } catch (err: unknown) {
-      setErrMsg(err instanceof Error ? `估算失败: ${err.message}` : '估算失败')
-    } finally {
-      setEstimating(false)
-    }
-  }
-
   const inputCls =
     'glass rounded-lg px-3 py-1.5 text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 ' +
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue'
@@ -372,26 +347,6 @@ export default function TaskList() {
           </button>
         </div>
       </header>
-
-      {/* 缺预估警告条 + AI 生成预估按钮（§3.1 / §5.2） */}
-      {missingEstimateCount > 0 && (
-        <div className="glass rounded-2xl px-5 py-3 flex flex-wrap items-center justify-between gap-3 border-l-4 border-amber-400">
-          <span className="text-sm text-amber-700 dark:text-amber-300 inline-flex items-center gap-2">
-            <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-            有 {missingEstimateCount} 条任务缺少「传统开发时长预估」数据
-          </span>
-          <button
-            type="button"
-            onClick={runEstimate}
-            disabled={estimating}
-            className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
-          >
-            {estimating ? '估算中...' : 'AI 生成预估数据'}
-          </button>
-        </div>
-      )}
 
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-gray-200/50 dark:border-white/10">

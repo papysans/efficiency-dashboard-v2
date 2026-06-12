@@ -29,7 +29,6 @@ import type {
   DashboardSummary,
   DeptMembersResponse,
   DeptTreeNode,
-  EstimateAncientResponse,
   GlobalConfig,
   ListParams,
   NeedsV2DetailResponse,
@@ -197,14 +196,6 @@ export function getTaskDetailV2(taskId: string) {
 /** 人工调整：PUT /v2/tasks/{taskId}/manual（实际耗时 / 传统预估 各值+理由 4 字段）。 */
 export function updateTaskManualV2(taskId: string, body: UpdateTaskManualRequest) {
   return apiPut<unknown>(`/v2/tasks/${encodeURIComponent(taskId)}/manual`, body)
-}
-
-/**
- * 古法估算：POST /v2/tasks/estimate-ancient（重算耗时，timeout 600s）。
- * 前端只读 { success, total }（§5.2）。
- */
-export function estimateAncientMinutes() {
-  return apiPost<EstimateAncientResponse>('/v2/tasks/estimate-ancient', undefined, { timeout: 600000 })
 }
 
 /**
