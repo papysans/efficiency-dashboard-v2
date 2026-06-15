@@ -782,6 +782,7 @@ export interface ProjectListItem {
   need_ai_code_ratio?: number | null
   need_total_loc_net?: number | null
   need_actual_work_min?: number | null
+  need_cost?: number | null
   need_eligible_count?: number
   need_total_count?: number
   [k: string]: unknown
@@ -794,57 +795,9 @@ export interface ProjectModel extends ProjectListItem {
   task_ids_silica?: number[] | null
 }
 
-/** /v2/projects/{id} commits 项（ProjectCommitItem，silica 直接当百分比，不 ×100）。 */
-export interface ProjectCommitItem {
-  commit_id: string
-  user_id?: string
-  commit_time?: string | null
-  repo_addr?: string
-  repo_branch?: string
-  user_name?: string
-  git_user_name?: string
-  diff_lines?: number | null
-  comment?: string
-  commit_ancient_minutes?: number | null
-  commit_ancient_minutes_manual?: number | null
-  commit_real_minutes?: number | null
-  commit_real_minutes_manual?: number | null
-  silica?: number | null
-  cost?: number | null // 当前后端 ProjectCommitItem 未返回（恒 undefined）；保留供 userStats 1:1 对齐 Vue
-  [k: string]: unknown
-}
-
-/** /v2/projects/{id} tasks 项（ProjectTaskItem）。 */
-export interface ProjectTaskItem {
-  task_id: string
-  user_id?: string
-  user_name?: string
-  start_time?: string | null
-  end_time?: string | null
-  upstream_tokens?: number | null
-  downstream_tokens?: number | null
-  cost?: number | null
-  task_ancient_minutes?: number | null
-  task_ancient_minutes_manual?: number | null
-  task_real_minutes?: number | null
-  task_real_minutes_manual?: number | null
-  title?: string
-  work_dir?: string
-  diff_lines?: number | null
-  silica?: number | null
-  accept_ratio?: number | null
-  [k: string]: unknown
-}
-
-/** /v2/projects/{id} 顶层响应（PR4 §2.2）。 */
+/** /v2/projects/{id} 顶层响应（纯 Need(branch) 口径；项目=一组 Need，小数口径用 RatioPill）。 */
 export interface ProjectDetailResponse {
   project: ProjectModel
-  commits: ProjectCommitItem[] | null
-  tasks: ProjectTaskItem[] | null
-  members: OrgMember[] | null
-  efficiency_ratio?: number | null
-  user_count?: number
-  // —— Need(branch) 口径指标（⚠️ 小数口径，用 RatioPill；与上方 commit 古法 efficiency_ratio 百分比口径互不替代）——
   need_calendar_efficiency_ratio?: number | null // 日历口径提效比（主）
   need_work_efficiency_ratio?: number | null // 工作量口径提效比（下钻）
   need_ai_code_ratio?: number | null // AI 代码占比（0~1）
@@ -856,6 +809,9 @@ export interface ProjectDetailResponse {
   need_excluded_count?: number // 因日历口径 outlier 自动剔除的 Need 数
   need_total_count?: number // 候选池内（看板口径）Need 总数（含未选/已排除/不合格）
   need_total_loc_net?: number // 已选干净 Need 净 LOC 之和（生成代码量）
+  need_cost?: number // 选中 Need 会话成本之和（按 session 去重）
+  need_upstream_tokens?: number
+  need_downstream_tokens?: number
 }
 
 /** /v2/projects/{id}/needs 列表项：复用 NeedsV2Summary（小数口径）+ 当前是否被项目排除。 */
@@ -886,13 +842,11 @@ export interface CreateProjectRequest {
   description?: string
 }
 
-/** PUT /v2/projects/{id}（必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空）。 */
+/** PUT /v2/projects/{id}（必须回传 repos 原值，否则后端清空；task_ids 已不属项目模型）。 */
 export interface UpdateProjectRequest {
   name: string
   description?: string
   repos: ProjectRepo[]
-  task_ids: string[]
-  task_ids_silica: number[]
 }
 
 /** PUT /v2/projects/{id}/manual（6 minutes/reason + start/end_time_manual）。 */
@@ -911,12 +865,6 @@ export interface UpdateProjectManualRequest {
 export interface AddTasksRequest {
   task_ids: string[]
   task_ids_silica: number[]
-}
-
-/** PUT /v2/projects/{id}/tasks/silica。 */
-export interface UpdateTaskSilicaRequest {
-  task_id: string
-  silica: number
 }
 
 /** POST /v2/projects/{id}/repos（end_time 白名单 now → null）。 */

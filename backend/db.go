@@ -13,7 +13,6 @@ import (
 	"kanban/core/utils"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // ============================================================
@@ -143,20 +142,6 @@ type RepoAggregate struct {
 	SumRealMinutes    float64
 	TaskCount         int
 	EfficiencyRatio   float64
-}
-
-type ProjectAggregates struct {
-	StartTime                 *time.Time
-	EndTime                   *time.Time
-	UpstreamTokens            int64
-	DownstreamTokens          int64
-	Cost                      float64
-	ProjectAncientMinutes     *float64
-	ProjectAncientReason      string
-	ProjectRealProcessMinutes *float64
-	ProjectRealProcessReason  string
-	ProjectRealLeadMinutes    *float64
-	ProjectRealLeadReason     string
 }
 
 type CommitLightStats struct {
@@ -1063,110 +1048,6 @@ func UpdateProjectManual(db *gorm.DB, projectID string, req UpdateProjectManualR
 		return fmt.Errorf("project project_id=%s 不存在", projectID)
 	}
 	return nil
-}
-
-func UpdateProjectAggregates(db *gorm.DB, projectID string, agg *ProjectAggregates) error {
-	updates := map[string]interface{}{
-		"start_time":                          agg.StartTime,
-		"end_time":                            agg.EndTime,
-		"upstream_tokens":                     agg.UpstreamTokens,
-		"downstream_tokens":                   agg.DownstreamTokens,
-		"cost":                                agg.Cost,
-		"project_ancient_minutes":             agg.ProjectAncientMinutes,
-		"project_ancient_minutes_reason":      agg.ProjectAncientReason,
-		"project_real_process_minutes":        agg.ProjectRealProcessMinutes,
-		"project_real_process_minutes_reason": agg.ProjectRealProcessReason,
-		"project_real_lead_minutes":           agg.ProjectRealLeadMinutes,
-		"project_real_lead_minutes_reason":    agg.ProjectRealLeadReason,
-		"updated_at":                          time.Now(),
-	}
-	result := db.Model(&models.Project{}).Where("project_id = ?", projectID).Updates(updates)
-	if result.Error != nil {
-		return fmt.Errorf("更新 project 聚合数据失败: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("project project_id=%s 不存在", projectID)
-	}
-	return nil
-}
-
-// ============================================================
-// project_tasks CRUD (GORM)
-// ============================================================
-
-func AddProjectTasks(db *gorm.DB, projectID string, taskIDs []string, silicas []float64) error {
-	if len(taskIDs) == 0 {
-		return nil
-	}
-	pts := make([]models.ProjectTask, len(taskIDs))
-	for i, tid := range taskIDs {
-		s := 1.0
-		if i < len(silicas) {
-			s = silicas[i]
-		}
-		pts[i] = models.ProjectTask{
-			ProjectId: projectID,
-			TaskId:    tid,
-			Silica:    s,
-		}
-	}
-	return db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{
-			{Name: "project_id"},
-			{Name: "task_id"},
-		},
-		DoUpdates: clause.AssignmentColumns([]string{"silica", "updated_at"}),
-	}).Create(&pts).Error
-}
-
-func RemoveProjectTasks(db *gorm.DB, projectID string, taskIDs []string) error {
-	if len(taskIDs) == 0 {
-		return nil
-	}
-	return db.Where("project_id = ? AND task_id IN ?", projectID, taskIDs).Delete(&models.ProjectTask{}).Error
-}
-
-func UpdateProjectTaskSilica(db *gorm.DB, projectID, taskID string, silica float64) error {
-	result := db.Model(&models.ProjectTask{}).Where("project_id = ? AND task_id = ?", projectID, taskID).Update("silica", silica)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("project_task (project_id=%s, task_id=%s) 不存在", projectID, taskID)
-	}
-	return nil
-}
-
-func ReplaceProjectTasks(db *gorm.DB, projectID string, taskIDs []string, silicas []float64) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("project_id = ?", projectID).Delete(&models.ProjectTask{}).Error; err != nil {
-			return err
-		}
-		if len(taskIDs) == 0 {
-			return nil
-		}
-		pts := make([]models.ProjectTask, len(taskIDs))
-		for i, tid := range taskIDs {
-			s := 1.0
-			if i < len(silicas) {
-				s = silicas[i]
-			}
-			pts[i] = models.ProjectTask{
-				ProjectId: projectID,
-				TaskId:    tid,
-				Silica:    s,
-			}
-		}
-		return tx.Create(&pts).Error
-	})
-}
-
-func ListProjectTasks(db *gorm.DB, projectID string) ([]models.ProjectTask, error) {
-	var pts []models.ProjectTask
-	if err := db.Where("project_id = ?", projectID).Find(&pts).Error; err != nil {
-		return nil, fmt.Errorf("查询 project_tasks 失败: %w", err)
-	}
-	return pts, nil
 }
 
 // ============================================================

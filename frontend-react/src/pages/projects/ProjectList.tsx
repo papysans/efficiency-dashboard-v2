@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createProject, deleteProject } from '@/api/endpoints'
 import { useProjectList } from '@/api/queries'
 import type { ProjectListItem } from '@/api/types'
+import { fmtCost } from '@/lib/formatters'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { RatioPill } from '@/components/ui/RatioPill'
@@ -20,6 +21,7 @@ const CLIENT_GETTERS: Record<string, (r: ProjectListItem) => number | null | und
   needAiRatio: (r) => r.need_ai_code_ratio,
   needLoc: (r) => r.need_total_loc_net,
   needWorkMin: (r) => r.need_actual_work_min,
+  needCost: (r) => r.need_cost,
 }
 
 function projectEndTime(r: ProjectListItem): string | null | undefined {
@@ -43,7 +45,7 @@ const TH_NUM = 'px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-
 const TH_CENTER = 'px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
-const COLSPAN = 9
+const COLSPAN = 10
 
 export default function ProjectList() {
   const navigate = useNavigate()
@@ -205,6 +207,9 @@ export default function ProjectList() {
                 <th className={TH_NUM}>
                   <SortableTh field="needWorkMin" label="实际工时" numeric active={isSortActive('needWorkMin')} desc={isSortDesc('needWorkMin')} onSort={onSortChange} />
                 </th>
+                <th className={TH_NUM}>
+                  <SortableTh field="needCost" label="费用" numeric active={isSortActive('needCost')} desc={isSortDesc('needCost')} onSort={onSortChange} />
+                </th>
                 <th className={`${TH} min-w-[170px]`}>时间</th>
                 <th className={TH_CENTER}>操作</th>
               </tr>
@@ -242,6 +247,7 @@ export default function ProjectList() {
                     <td className="px-3 py-2 align-middle text-center"><RatioPill value={row.need_ai_code_ratio ?? null} /></td>
                     <td className={TD_NUM}>{row.need_total_loc_net && row.need_total_loc_net > 0 ? `${row.need_total_loc_net.toLocaleString()} 行` : '-'}</td>
                     <td className={TD_NUM}>{row.need_actual_work_min && row.need_actual_work_min > 0 ? `${(row.need_actual_work_min / 480).toFixed(1)} 人天` : '-'}</td>
+                    <td className={TD_NUM}>{row.need_cost != null && row.need_cost > 0 ? `¥${fmtCost(row.need_cost)}` : '¥0'}</td>
                     <td className={TD}>
                       {isZeroTime(projectStartTime(row)) ? (
                         '-'

@@ -15,7 +15,7 @@ import {
 } from '@/api/endpoints'
 import { useProjectDetail, useProjectNeeds } from '@/api/queries'
 import type { ProjectModel, ProjectNeedItem, ProjectRepo, RepoListItem } from '@/api/types'
-import { formatV2Ratio } from '@/lib/formatters'
+import { fmtCost, formatV2Ratio } from '@/lib/formatters'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Tag } from '@/components/ui/Tag'
 import { RatioPill } from '@/components/ui/RatioPill'
@@ -211,7 +211,7 @@ export default function ProjectDetail() {
 
       {/* ② 核心指标（Need/branch 口径，守恒聚合，只计干净 Need） */}
       <section>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <MetricCard
             label="日历提效比"
             value={calR != null ? formatV2Ratio(calR) : '—'}
@@ -246,6 +246,12 @@ export default function ProjectDetail() {
             value={`${data?.need_eligible_count ?? 0} / ${data?.need_total_count ?? 0}`}
             hint={`自动剔除 ${data?.need_excluded_count ?? 0}`}
             tip="合格=已选且 coverage_eligible 且非 outlier；候选=看板口径全量；自动剔除=日历 outlier。"
+          />
+          <MetricCard
+            label="费用"
+            value={data?.need_cost != null && data.need_cost > 0 ? `¥${fmtCost(data.need_cost)}` : '¥0'}
+            hint={`tokens 上 ${Math.round((data?.need_upstream_tokens ?? 0) / 1000)}k · 下 ${Math.round((data?.need_downstream_tokens ?? 0) / 1000)}k`}
+            tip="干净 Need 会话的 token 成本之和（只计 coverage_eligible 且非 outlier，与其他卡同口径；按 session 去重；源数据缺 cost 时为 ¥0，tokens 仍真实）。"
           />
         </div>
       </section>
@@ -465,13 +471,11 @@ function EditModal({
     setSubmitting(true)
     setErr('')
     try {
-      // ⚠️ 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空（task 数据虽不展示但不销毁）。
+      // ⚠️ 必须回传 repos 原值，否则后端清空（task_ids 已不属项目模型，后端忽略）。
       await updateProject(projectId, {
         name: name.trim(),
         description: (desc || '').trim(),
         repos,
-        task_ids: project.task_ids || [],
-        task_ids_silica: project.task_ids_silica || [],
       })
       await onSaved()
     } catch (e: unknown) {

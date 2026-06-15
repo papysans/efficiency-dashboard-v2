@@ -4,11 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/core/models"
-	"kanban/core/utils"
 	"log"
-	"math"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +53,7 @@ type ProjectListItem struct {
 	NeedAICodeRatio             *float64 `json:"need_ai_code_ratio"`
 	NeedTotalLocNet             int64    `json:"need_total_loc_net"`
 	NeedActualWorkMin           float64  `json:"need_actual_work_min"`
+	NeedCost                    float64  `json:"need_cost"`
 	NeedEligibleCount           int      `json:"need_eligible_count"`
 	NeedTotalCount              int      `json:"need_total_count"`
 }
@@ -64,66 +62,25 @@ type ProjectListResponse struct {
 	Data []ProjectListItem `json:"data"`
 }
 
-type ProjectCommitItem struct {
-	CommitId                   string    `json:"commit_id"`
-	UserId                     string    `json:"user_id"`
-	CommitTime                 time.Time `json:"commit_time"`
-	RepoAddr                   string    `json:"repo_addr"`
-	RepoBranch                 string    `json:"repo_branch"`
-	UserName                   string    `json:"user_name"`
-	GitUserName                string    `json:"git_user_name"`
-	DiffLines                  int       `json:"diff_lines"`
-	Comment                    string    `json:"comment"`
-	CommitAncientMinutes       float64   `json:"commit_ancient_minutes"`
-	CommitAncientMinutesManual *float64  `json:"commit_ancient_minutes_manual"`
-	CommitRealMinutes          float64   `json:"commit_real_minutes"`
-	CommitRealMinutesManual    *float64  `json:"commit_real_minutes_manual"`
-	Silica                     float64   `json:"silica"`
-}
-
-type ProjectTaskItem struct {
-	TaskId                   string    `json:"task_id"`
-	UserId                   string    `json:"user_id"`
-	UserName                 string    `json:"user_name"`
-	StartTime                time.Time `json:"start_time"`
-	EndTime                  time.Time `json:"end_time"`
-	UpstreamTokens           int64     `json:"upstream_tokens"`
-	DownstreamTokens         int64     `json:"downstream_tokens"`
-	Cost                     float64   `json:"cost"`
-	TaskAncientMinutes       float64   `json:"task_ancient_minutes"`
-	TaskAncientMinutesManual *float64  `json:"task_ancient_minutes_manual"`
-	TaskRealMinutes          float64   `json:"task_real_minutes"`
-	TaskRealMinutesManual    *float64  `json:"task_real_minutes_manual"`
-	Title                    string    `json:"title"`
-	WorkDir                  string    `json:"work_dir"`
-	DiffLines                int       `json:"diff_lines"`
-	Silica                   float64   `json:"silica"`
-	AcceptRatio              float64   `json:"accept_ratio"`
-}
-
+// ProjectDetailResponse 项目详情（纯 Need(branch) 口径）。项目=一组 Need，所有指标从已选干净 Need 派生。
+// 比值为"分子分母守恒"原始倍数（小数，非百分比，前端用 RatioPill）；只计 coverage_eligible 且按口径
+// 非 outlier 的干净 Need，并套全局看板口径（排主干分支）。
 type ProjectDetailResponse struct {
-	Project         *models.Project     `json:"project"`
-	Commits         []ProjectCommitItem `json:"commits"`
-	Tasks           []ProjectTaskItem   `json:"tasks"`
-	Members         []UserDetail        `json:"members"`
-	EfficiencyRatio float64             `json:"efficiency_ratio"`
-	UserCount       int                 `json:"user_count"`
-
-	// —— Need(branch) 口径项目指标 ——
-	// 与上方 commit 古法口径（EfficiencyRatio 等）并列、互不替代，前端需明确区分标注。
-	// 比值为"分子分母守恒"原始倍数（非百分比、无上界、无 ×100），口径=日历主/工作量下钻，
-	// 只计 coverage_eligible 且按口径非 outlier 的干净 Need，并套全局看板口径（排主干分支）。
-	NeedCalendarEfficiencyRatio *float64 `json:"need_calendar_efficiency_ratio"` // 日历口径提效比（主）
-	NeedWorkEfficiencyRatio     *float64 `json:"need_work_efficiency_ratio"`     // 工作量口径提效比（下钻）
-	NeedAICodeRatio             *float64 `json:"need_ai_code_ratio"`             // AI 代码占比（0~1）
-	NeedActualCalendarMin       float64  `json:"need_actual_calendar_min"`
-	NeedBaselineCalendarMin     float64  `json:"need_baseline_calendar_min"`
-	NeedActualWorkMin           float64  `json:"need_actual_work_min"`
-	NeedBaselineWorkMin         float64  `json:"need_baseline_work_min"`
-	NeedEligibleCount           int      `json:"need_eligible_count"` // 已选且干净、计入指标的 Need 数
-	NeedExcludedCount           int      `json:"need_excluded_count"` // 已选但因日历口径 outlier 被自动剔除的 Need 数
-	NeedTotalCount              int      `json:"need_total_count"`    // 候选池总数（看板口径，含未选/已排除/不合格）；与 /needs 列表行数同源
-	NeedTotalLocNet             int64    `json:"need_total_loc_net"`  // 已选干净 Need 的净 LOC 之和（生成代码量，AI 占比同源口径）
+	Project                     *models.Project `json:"project"`
+	NeedCalendarEfficiencyRatio *float64        `json:"need_calendar_efficiency_ratio"` // 日历口径提效比（主）
+	NeedWorkEfficiencyRatio     *float64        `json:"need_work_efficiency_ratio"`     // 工作量口径提效比（下钻）
+	NeedAICodeRatio             *float64        `json:"need_ai_code_ratio"`             // AI 代码占比（0~1）
+	NeedActualCalendarMin       float64         `json:"need_actual_calendar_min"`
+	NeedBaselineCalendarMin     float64         `json:"need_baseline_calendar_min"`
+	NeedActualWorkMin           float64         `json:"need_actual_work_min"`
+	NeedBaselineWorkMin         float64         `json:"need_baseline_work_min"`
+	NeedEligibleCount           int             `json:"need_eligible_count"` // 已选且干净、计入指标的 Need 数
+	NeedExcludedCount           int             `json:"need_excluded_count"` // 已选但因日历口径 outlier 被自动剔除的 Need 数
+	NeedTotalCount              int             `json:"need_total_count"`    // 候选池总数（看板口径，含未选/已排除/不合格）；与 /needs 列表行数同源
+	NeedTotalLocNet             int64           `json:"need_total_loc_net"`  // 已选干净 Need 的净 LOC 之和（生成代码量）
+	NeedCost                    float64         `json:"need_cost"`           // 选中 Need 会话的成本之和（按 session 去重）
+	NeedUpstreamTokens          int64           `json:"need_upstream_tokens"`
+	NeedDownstreamTokens        int64           `json:"need_downstream_tokens"`
 }
 
 type ProjectConflict struct {
@@ -144,23 +101,7 @@ type CreateProjectRequest struct {
 type UpdateProjectRequest struct {
 	Name          string          `json:"name"`
 	Description   *string         `json:"description"`
-	Repos         json.RawMessage `json:"repos" swaggertype:"string"`
-	TaskIds       json.RawMessage `json:"task_ids" swaggertype:"string"`
-	TaskIdsSilica json.RawMessage `json:"task_ids_silica" swaggertype:"string"`
-}
-
-type AddTasksRequest struct {
-	TaskIds       []string  `json:"task_ids"`
-	TaskIdsSilica []float64 `json:"task_ids_silica"`
-}
-
-type RemoveTasksRequest struct {
-	TaskIds []string `json:"task_ids"`
-}
-
-type UpdateTaskSilicaRequest struct {
-	TaskId string  `json:"task_id"`
-	Silica float64 `json:"silica"`
+	Repos json.RawMessage `json:"repos" swaggertype:"string"`
 }
 
 type CheckProjectConflictsRequest struct {
@@ -250,252 +191,6 @@ func collectProjectCommits(project *models.Project) (map[string]*models.Commit, 
 	return commitMap, nil
 }
 
-func collectProjectTasks(project *models.Project, commitMap map[string]*models.Commit) ([]ProjectTaskItem, error) {
-	taskSilicaMap := map[string]float64{}
-
-	// 从 commits 查关联 tasks
-	commitIDs := make([]string, 0, len(commitMap))
-	for cid := range commitMap {
-		commitIDs = append(commitIDs, cid)
-	}
-	if len(commitIDs) > 0 {
-		var autoTaskIDs []string
-		if err := statDB.Model(&models.Task{}).Where("commit_id IN ?", commitIDs).Pluck("task_id", &autoTaskIDs).Error; err != nil {
-			log.Printf("批量查询 commit tasks 失败: %v", err)
-		}
-		for _, id := range autoTaskIDs {
-			taskSilicaMap[id] = 1.0
-		}
-	}
-
-	// 从 project_tasks 关联表获取手动添加的 tasks
-	projectTasks, err := ListProjectTasks(statDB, project.ProjectId)
-	if err != nil {
-		log.Printf("查询 project_tasks 失败: %v", err)
-	}
-	for _, pt := range projectTasks {
-		taskSilicaMap[pt.TaskId] = pt.Silica
-	}
-
-	allTaskIDs := make([]string, 0, len(taskSilicaMap))
-	for id := range taskSilicaMap {
-		allTaskIDs = append(allTaskIDs, id)
-	}
-
-	taskDetailMap, err := BatchGetTasks(statDB, allTaskIDs)
-	if err != nil {
-		log.Printf("批量查询 tasks 失败: %v", err)
-		taskDetailMap = make(map[string]*models.Task)
-	}
-
-	var tasks []ProjectTaskItem
-	for taskID, silica := range taskSilicaMap {
-		task := taskDetailMap[taskID]
-		if task == nil {
-			continue
-		}
-		tasks = append(tasks, ProjectTaskItem{
-			TaskId:                   task.TaskId,
-			UserId:                   task.UserId,
-			UserName:                 task.UserName,
-			StartTime:                task.StartTime,
-			EndTime:                  task.EndTime,
-			UpstreamTokens:           task.UpstreamTokens,
-			DownstreamTokens:         task.DownstreamTokens,
-			Cost:                     task.Cost,
-			TaskAncientMinutes:       task.TaskAncientMinutes,
-			TaskAncientMinutesManual: task.TaskAncientMinutesManual,
-			TaskRealMinutes:          task.TaskRealMinutes,
-			TaskRealMinutesManual:    task.TaskRealMinutesManual,
-			Title:                    task.Title,
-			WorkDir:                  task.WorkDir,
-			Silica:                   silica,
-		})
-	}
-
-	return tasks, nil
-}
-
-func collectProjectUsers(project *models.Project, commitMap map[string]*models.Commit, tasks []ProjectTaskItem) []UserDetail {
-	userSet := map[string]bool{}
-	for _, cm := range commitMap {
-		if cm.UserId != "" {
-			userSet[cm.UserId] = true
-		}
-	}
-	for _, task := range tasks {
-		if task.UserId != "" {
-			userSet[task.UserId] = true
-		}
-	}
-
-	userIDs := make([]string, 0, len(userSet))
-	for uid := range userSet {
-		userIDs = append(userIDs, uid)
-	}
-
-	var startTime, endTime string
-	if !project.StartTime.IsZero() {
-		startTime = project.StartTime.Format(time.RFC3339)
-	}
-	if !project.EndTime.IsZero() {
-		endTime = project.EndTime.Format(time.RFC3339)
-	}
-
-	return GetProductivityByIds(statDB, userIDs, startTime, endTime)
-}
-
-// recalculateProjectAggregates 重算虚拟项目的聚合数据
-func recalculateProjectAggregates(projectID string) error {
-	project, err := GetProject(statDB, projectID)
-	if err != nil {
-		return fmt.Errorf("获取 project 失败: %w", err)
-	}
-	if project == nil {
-		return fmt.Errorf("project %s 不存在", projectID)
-	}
-
-	commitMap, err := collectProjectCommits(project)
-	if err != nil {
-		return err
-	}
-
-	// 从 commits 提取 task_ids
-	commitIDs := make([]string, 0, len(commitMap))
-	for cid := range commitMap {
-		commitIDs = append(commitIDs, cid)
-	}
-	tasksets := NewTaskIdSet()
-	if len(commitIDs) > 0 {
-		var autoTaskIDs []string
-		if err := statDB.Model(&models.Task{}).Where("commit_id IN ?", commitIDs).Pluck("task_id", &autoTaskIDs).Error; err != nil {
-			log.Printf("批量查询 commit tasks 失败: %v", err)
-		}
-		for _, tid := range autoTaskIDs {
-			tasksets.tasks[tid] = true
-		}
-	}
-	// 从 project_tasks 关联表追加手动 task
-	projectTasks, err := ListProjectTasks(statDB, project.ProjectId)
-	if err != nil {
-		log.Printf("查询 project_tasks 失败: %v", err)
-	}
-	for _, pt := range projectTasks {
-		tasksets.tasks[pt.TaskId] = true
-	}
-
-	var upstreamTokens, downstreamTokens int64
-	var cost float64
-	var ancientMinutes, realProcessMinutes float64
-	var minTime, maxTime *time.Time
-
-	// 批量聚合 tasks
-	taskIDs := tasksets.GetTaskIds()
-
-	if len(taskIDs) > 0 {
-		// taskIDs := make([]string, 0, len(taskIDSet))
-		// for tid := range taskIDSet {
-		// 	taskIDs = append(taskIDs, tid)
-		// }
-		var taskAgg struct {
-			UpstreamTokens   int64
-			DownstreamTokens int64
-			Cost             float64
-			AncientMinutes   float64
-			RealMinutes      float64
-			MinTime          *time.Time
-			MaxTime          *time.Time
-		}
-		if err := statDB.Model(&models.Task{}).
-			Select(`COALESCE(SUM(upstream_tokens), 0) as upstream_tokens,
-				COALESCE(SUM(downstream_tokens), 0) as downstream_tokens,
-				COALESCE(SUM(cost), 0) as cost,
-				COALESCE(SUM(COALESCE(task_ancient_minutes_manual, task_ancient_minutes)), 0) as ancient_minutes,
-				COALESCE(SUM(COALESCE(task_real_minutes_manual, task_real_minutes)), 0) as real_minutes,
-				MIN(start_time) as min_time,
-				MAX(end_time) as max_time`).
-			Where("task_id IN ?", taskIDs).
-			Scan(&taskAgg).Error; err != nil {
-			return fmt.Errorf("批量聚合 tasks 失败: %w", err)
-		}
-		upstreamTokens = taskAgg.UpstreamTokens
-		downstreamTokens = taskAgg.DownstreamTokens
-		cost = taskAgg.Cost
-		ancientMinutes = taskAgg.AncientMinutes
-		realProcessMinutes = taskAgg.RealMinutes
-		minTime = taskAgg.MinTime
-		maxTime = taskAgg.MaxTime
-	}
-
-	// 遍历 commits
-	commitIDsForDerive := make([]string, 0, len(commitMap))
-	for _, commit := range commitMap {
-		if commit.CommitAncientMinutes <= 0 || commit.CommitRealMinutes <= 0 {
-			commitIDsForDerive = append(commitIDsForDerive, commit.CommitId)
-		}
-	}
-	derivedAncient, derivedReal, err := deriveCommitWorkMinutesBatch(statDB, commitIDsForDerive)
-	if err != nil {
-		log.Printf("批量派生项目 commit 工时失败: %v", err)
-	}
-	for _, commit := range commitMap {
-		if commit.CommitAncientMinutesManual != nil {
-			ancientMinutes += *commit.CommitAncientMinutesManual
-		} else if commit.CommitAncientMinutes > 0 {
-			ancientMinutes += commit.CommitAncientMinutes
-		} else {
-			ancientMinutes += derivedAncient[commit.CommitId]
-		}
-		if commit.CommitRealMinutesManual != nil {
-			realProcessMinutes += *commit.CommitRealMinutesManual
-		} else if commit.CommitRealMinutes > 0 {
-			realProcessMinutes += commit.CommitRealMinutes
-		} else {
-			realProcessMinutes += derivedReal[commit.CommitId]
-		}
-		if !commit.CommitTime.IsZero() {
-			if minTime == nil || commit.CommitTime.Before(*minTime) {
-				t := commit.CommitTime
-				minTime = &t
-			}
-			if maxTime == nil || commit.CommitTime.After(*maxTime) {
-				t := commit.CommitTime
-				maxTime = &t
-			}
-		}
-	}
-
-	// lead minutes
-	var leadMinutes *float64
-	if minTime != nil && maxTime != nil {
-		m := maxTime.Sub(*minTime).Minutes()
-		leadMinutes = &m
-	}
-
-	// reason
-	ancientReason := fmt.Sprintf("tasks:%d commits:%d", len(taskIDs), len(commitMap))
-	realReason := fmt.Sprintf("tasks:%d commits:%d", len(taskIDs), len(commitMap))
-	leadReason := ""
-	if minTime != nil && maxTime != nil {
-		leadReason = fmt.Sprintf("%s ~ %s", minTime.Format("2006-01-02"), maxTime.Format("2006-01-02"))
-	}
-
-	agg := &ProjectAggregates{
-		StartTime:                 minTime,
-		EndTime:                   maxTime,
-		UpstreamTokens:            upstreamTokens,
-		DownstreamTokens:          downstreamTokens,
-		Cost:                      cost,
-		ProjectAncientMinutes:     &ancientMinutes,
-		ProjectAncientReason:      ancientReason,
-		ProjectRealProcessMinutes: &realProcessMinutes,
-		ProjectRealProcessReason:  realReason,
-		ProjectRealLeadMinutes:    leadMinutes,
-		ProjectRealLeadReason:     leadReason,
-	}
-	return UpdateProjectAggregates(statDB, projectID, agg)
-}
-
 // createProjectV2 POST /api/v2/projects
 // @Summary 创建项目
 // @Description 创建新项目
@@ -563,7 +258,6 @@ func listProjectsV2(c *gin.Context) {
 
 	results := make([]ProjectListItem, len(list))
 	for i, p := range list {
-		// repo_count
 		repoCount := 0
 		if len(p.Repos) > 0 && string(p.Repos) != "null" && string(p.Repos) != "[]" {
 			var repos []json.RawMessage
@@ -571,90 +265,11 @@ func listProjectsV2(c *gin.Context) {
 				repoCount = len(repos)
 			}
 		}
-		// task_count 和手动 task IDs 从 project_tasks 关联表获取
-		projectTasks, _ := ListProjectTasks(statDB, p.ProjectId)
-		taskCount := len(projectTasks)
-		taskIDs := make([]string, len(projectTasks))
-		for i, pt := range projectTasks {
-			taskIDs[i] = pt.TaskId
-		}
 
-		// user_count & total_code_lines: 轻量查询 commits
-		userSet := map[string]bool{}
-		var totalCodeLines int64
-		var repos []ProjectRepo
-		if len(p.Repos) > 0 && string(p.Repos) != "null" && string(p.Repos) != "[]" {
-			_ = json.Unmarshal([]byte(p.Repos), &repos)
-		}
-		for _, rf := range repos {
-			startT := ""
-			endT := ""
-			if rf.StartTime != nil {
-				startT = *rf.StartTime
-			}
-			if rf.EndTime != nil {
-				endT = *rf.EndTime
-			}
-			lights, err := ListCommitLightByRepoRange(statDB, rf.RepoAddr, rf.RepoBranch, startT, endT)
-			if err != nil {
-				log.Printf("listProjectsV2: light query for repo %s failed: %v", rf.RepoAddr, err)
-				continue
-			}
-			for _, lc := range lights {
-				if lc.UserName != "" {
-					userSet[lc.UserName] = true
-				}
-				if lc.DiffLines > 0 {
-					totalCodeLines += int64(lc.DiffLines)
-				}
-				if lc.AncientMinutes > 0 {
-					p.ProjectAncientMinutes += lc.AncientMinutes
-				}
-				if lc.RealMinutes > 0 {
-					p.ProjectRealProcessMinutes += lc.RealMinutes
-				}
-			}
-		}
-		// 也从 tasks 中收集用户
-		if len(taskIDs) > 0 {
-			taskDetailMap, err := BatchGetTasks(statDB, taskIDs)
-			if err == nil {
-				for _, task := range taskDetailMap {
-					if task.UserName != "" {
-						userSet[task.UserName] = true
-					}
-				}
-			}
-		}
-		userCount := len(userSet)
-
-		// actual_lines_per_day
-		effectiveReal := p.ProjectRealProcessMinutes
-		if p.ProjectRealProcessMinutesManual != nil {
-			effectiveReal = *p.ProjectRealProcessMinutesManual
-		}
-		var actualLinesPerDay *float64
-		if effectiveReal > 0 && totalCodeLines > 0 {
-			days := effectiveReal / 480.0
-			v := math.Round(float64(totalCodeLines) / days)
-			actualLinesPerDay = &v
-		}
-
-		// efficiency_ratio
-		effectiveAncient := p.ProjectAncientMinutes
-		if p.ProjectAncientMinutesManual != nil {
-			effectiveAncient = *p.ProjectAncientMinutesManual
-		}
-		var effRatio *float64
-		if effectiveAncient > 0 && effectiveReal > 0 {
-			ratio := utils.CalcEfficiencyRatio(effectiveAncient, effectiveReal)
-			effRatio = &ratio
-		}
-
-		// Need(branch) 口径 per-project 聚合（与详情页 queryProjectNeedAgg 同源；失败仅置空不阻塞列表）。
+		// 项目=一组 Need：per-project Need 口径聚合 + 费用（与详情页 queryProjectNeedAgg/Cost 同源）。
 		var needCalR, needWorkR, needAIR *float64
 		var needLoc int64
-		var needWorkMin float64
+		var needWorkMin, needCost float64
 		var needEligible, needTotal int
 		if scopes, serr := collectProjectRepoBranches(&p); serr == nil {
 			if agg, aerr := queryProjectNeedAgg(statDB, scopes); aerr == nil {
@@ -668,49 +283,33 @@ func listProjectsV2(c *gin.Context) {
 			} else {
 				log.Printf("listProjectsV2: project %s Need 聚合失败: %v", p.ProjectId, aerr)
 			}
+			if cost, cerr := queryProjectNeedCost(statDB, scopes); cerr == nil {
+				needCost = cost.Cost
+			}
+		} else {
+			log.Printf("listProjectsV2: project %s 解析 repos 失败: %v", p.ProjectId, serr)
 		}
 
 		results[i] = ProjectListItem{
-			ProjectId:                       p.ProjectId,
-			Name:                            p.Name,
-			Description:                     p.Description,
-			Repos:                           json.RawMessage(p.Repos),
-			TaskIds:                         json.RawMessage([]byte("[]")),
-			TaskIdsSilica:                   json.RawMessage([]byte("[]")),
-			StartTime:                       &p.StartTime,
-			EndTime:                         &p.EndTime,
-			StartTimeManual:                 p.StartTimeManual,
-			EndTimeManual:                   p.EndTimeManual,
-			UpstreamTokens:                  &p.UpstreamTokens,
-			DownstreamTokens:                &p.DownstreamTokens,
-			Cost:                            &p.Cost,
-			ProjectAncientMinutes:           &p.ProjectAncientMinutes,
-			ProjectAncientReason:            p.ProjectAncientReason,
-			ProjectAncientMinutesManual:     p.ProjectAncientMinutesManual,
-			ProjectAncientReasonManual:      p.ProjectAncientReasonManual,
-			ProjectRealProcessMinutes:       &p.ProjectRealProcessMinutes,
-			ProjectRealProcessReason:        p.ProjectRealProcessReason,
-			ProjectRealProcessMinutesManual: p.ProjectRealProcessMinutesManual,
-			ProjectRealProcessReasonManual:  p.ProjectRealProcessReasonManual,
-			ProjectRealLeadMinutes:          &p.ProjectRealLeadMinutes,
-			ProjectRealLeadReason:           p.ProjectRealLeadReason,
-			ProjectRealLeadMinutesManual:    p.ProjectRealLeadMinutesManual,
-			ProjectRealLeadReasonManual:     p.ProjectRealLeadReasonManual,
-			CreatedAt:                       p.CreatedAt,
-			UpdatedAt:                       p.UpdatedAt,
-			RepoCount:                       repoCount,
-			TaskCount:                       taskCount,
-			UserCount:                       userCount,
-			TotalCodeLines:                  totalCodeLines,
-			ActualLinesPerDay:               actualLinesPerDay,
-			EfficiencyRatio:                 effRatio,
-			NeedCalendarEfficiencyRatio:     needCalR,
-			NeedWorkEfficiencyRatio:         needWorkR,
-			NeedAICodeRatio:                 needAIR,
-			NeedTotalLocNet:                 needLoc,
-			NeedActualWorkMin:               needWorkMin,
-			NeedEligibleCount:               needEligible,
-			NeedTotalCount:                  needTotal,
+			ProjectId:                   p.ProjectId,
+			Name:                        p.Name,
+			Description:                 p.Description,
+			Repos:                       json.RawMessage(p.Repos),
+			StartTime:                   &p.StartTime,
+			EndTime:                     &p.EndTime,
+			StartTimeManual:             p.StartTimeManual,
+			EndTimeManual:               p.EndTimeManual,
+			CreatedAt:                   p.CreatedAt,
+			UpdatedAt:                   p.UpdatedAt,
+			RepoCount:                   repoCount,
+			NeedCalendarEfficiencyRatio: needCalR,
+			NeedWorkEfficiencyRatio:     needWorkR,
+			NeedAICodeRatio:             needAIR,
+			NeedTotalLocNet:             needLoc,
+			NeedActualWorkMin:           needWorkMin,
+			NeedCost:                    needCost,
+			NeedEligibleCount:           needEligible,
+			NeedTotalCount:              needTotal,
 		}
 	}
 	sortProjectData(results, orderField, orderDir)
@@ -741,77 +340,14 @@ func getProjectDetailV2(c *gin.Context) {
 		return
 	}
 
-	// 收集 commits
-	commitMap, err := collectProjectCommits(project)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	// 项目=一组 Need：解析 project.Repos → (repo,branch) 候选池 → needs 表分子分母守恒聚合 + 费用派生。
+	resp := ProjectDetailResponse{Project: project}
+	scopes, scopeErr := collectProjectRepoBranches(project)
+	if scopeErr != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: scopeErr.Error()})
 		return
 	}
-
-	// 收集 tasks
-	tasks, err := collectProjectTasks(project, commitMap)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	sort.Slice(tasks, func(i, j int) bool {
-		if tasks[i].EndTime.IsZero() && tasks[j].EndTime.IsZero() {
-			return false
-		}
-		if tasks[i].EndTime.IsZero() {
-			return false
-		}
-		if tasks[j].EndTime.IsZero() {
-			return true
-		}
-		return tasks[i].EndTime.After(tasks[j].EndTime)
-	})
-
-	// 构建 commits 列表
-	commitItems := make([]ProjectCommitItem, 0, len(commitMap))
-	for _, cm := range commitMap {
-		commitItems = append(commitItems, ProjectCommitItem{
-			CommitId:                   cm.CommitId,
-			UserId:                     cm.UserId,
-			CommitTime:                 cm.CommitTime,
-			RepoAddr:                   cm.RepoAddr,
-			RepoBranch:                 cm.RepoBranch,
-			UserName:                   cm.UserName,
-			GitUserName:                cm.GitUserName,
-			DiffLines:                  cm.DiffLines,
-			Comment:                    cm.Comment,
-			CommitAncientMinutes:       cm.CommitAncientMinutes,
-			CommitAncientMinutesManual: cm.CommitAncientMinutesManual,
-			CommitRealMinutes:          cm.CommitRealMinutes,
-			CommitRealMinutesManual:    cm.CommitRealMinutesManual,
-			Silica:                     cm.Silica,
-		})
-	}
-	sort.Slice(commitItems, func(i, j int) bool {
-		return commitItems[i].CommitTime.After(commitItems[j].CommitTime)
-	})
-
-	effRatio := utils.CalcEfficiencyRatioManual(project.ProjectAncientMinutes,
-		project.ProjectRealProcessMinutes,
-		project.ProjectAncientMinutesManual,
-		project.ProjectRealProcessMinutesManual)
-
-	members := collectProjectUsers(project, commitMap, tasks)
-
-	resp := ProjectDetailResponse{
-		Project:         project,
-		Commits:         commitItems,
-		Tasks:           tasks,
-		Members:         members,
-		EfficiencyRatio: effRatio,
-		UserCount:       len(members),
-	}
-
-	// Need(branch) 口径项目指标：解析 project.Repos 拿 (repo,branch) 候选池 →
-	// needs 表分子分母守恒聚合（只计干净 Need、套看板口径）。失败仅记日志、不影响古法字段返回。
-	if scopes, scopeErr := collectProjectRepoBranches(project); scopeErr != nil {
-		log.Printf("解析 project %s repo 范围失败: %v", projectID, scopeErr)
-	} else if agg, aggErr := queryProjectNeedAgg(statDB, scopes); aggErr != nil {
+	if agg, aggErr := queryProjectNeedAgg(statDB, scopes); aggErr != nil {
 		log.Printf("查询 project %s Need 口径聚合失败: %v", projectID, aggErr)
 	} else {
 		// 复用全站共享 helper（actual<=0→nil；baseline=0,actual>0→-100%），口径与 dashboard/部门/组织详情一致。
@@ -826,6 +362,13 @@ func getProjectDetailV2(c *gin.Context) {
 		resp.NeedExcludedCount = agg.ExcludedNeeds
 		resp.NeedTotalCount = agg.TotalNeeds
 		resp.NeedTotalLocNet = agg.TotalLocNet
+	}
+	if cost, costErr := queryProjectNeedCost(statDB, scopes); costErr != nil {
+		log.Printf("查询 project %s 费用聚合失败: %v", projectID, costErr)
+	} else {
+		resp.NeedCost = cost.Cost
+		resp.NeedUpstreamTokens = cost.UpstreamTokens
+		resp.NeedDownstreamTokens = cost.DownstreamTokens
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -862,6 +405,16 @@ func updateProjectV2(c *gin.Context) {
 		return
 	}
 
+	// 校验 repos 必须是 []ProjectRepo 形状再落库，避免坏值入 JSONB 后读侧
+	// collectProjectRepoBranches 反序列化失败（详情/needs 整页 500）。
+	if len(req.Repos) > 0 && string(req.Repos) != "null" {
+		var probe []ProjectRepo
+		if err := json.Unmarshal(req.Repos, &probe); err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repos 必须是 [{repo_addr,repo_branch,...}] 数组: " + err.Error()})
+			return
+		}
+	}
+
 	updates := map[string]interface{}{
 		"name":        req.Name,
 		"description": project.Description,
@@ -881,24 +434,7 @@ func updateProjectV2(c *gin.Context) {
 		return
 	}
 
-	// 解析请求中的 task_ids 和 silica，替换 project_tasks
-	var taskIDs []string
-	var silicas []float64
-	if len(req.TaskIds) > 0 && string(req.TaskIds) != "null" && string(req.TaskIds) != "[]" {
-		json.Unmarshal(req.TaskIds, &taskIDs)
-	}
-	if len(req.TaskIdsSilica) > 0 && string(req.TaskIdsSilica) != "null" && string(req.TaskIdsSilica) != "[]" {
-		json.Unmarshal(req.TaskIdsSilica, &silicas)
-	}
-	if err := ReplaceProjectTasks(statDB, projectID, taskIDs, silicas); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	if err := recalculateProjectAggregates(projectID); err != nil {
-		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
-	}
-
+	// 注：项目=一组 Need；task_ids 已不属于项目模型（v1 遗留），不再写 project_tasks。
 	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
@@ -950,50 +486,6 @@ func updateProjectManualV2(c *gin.Context) {
 	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
-// addTasksToProjectV2 POST /api/v2/projects/:projectId/tasks
-// @Summary 为项目添加任务
-// @Description 向项目添加多个任务
-// @Tags Projects
-// @Accept json
-// @Produce json
-// @Param projectId path string true "项目ID"
-// @Param tasks body AddTasksRequest true "任务ID列表"
-// @Success 200 {object} StatusResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/projects/{projectId}/tasks [post]
-func addTasksToProjectV2(c *gin.Context) {
-	projectID := c.Param("projectId")
-
-	var req AddTasksRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	project, err := GetProject(statDB, projectID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if project == nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
-		return
-	}
-
-	// 去重追加到 project_tasks
-	if err := AddProjectTasks(statDB, projectID, req.TaskIds, req.TaskIdsSilica); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	if err := recalculateProjectAggregates(projectID); err != nil {
-		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
-	}
-
-	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
-}
-
 // addRepoToProjectV2 POST /api/v2/projects/:projectId/repos
 // @Summary 为项目添加仓库
 // @Description 向项目添加仓库
@@ -1037,10 +529,6 @@ func addRepoToProjectV2(c *gin.Context) {
 	if err := UpdateProject(statDB, project); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
-	}
-
-	if err := recalculateProjectAggregates(projectID); err != nil {
-		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
 	}
 
 	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
@@ -1095,10 +583,6 @@ func removeRepoFromProjectV2(c *gin.Context) {
 		return
 	}
 
-	if err := recalculateProjectAggregates(projectID); err != nil {
-		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
-	}
-
 	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }
 
@@ -1150,97 +634,4 @@ func checkProjectConflictsV2(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, ProjectConflictsResponse{Conflicts: conflicts})
-}
-
-// removeTasksFromProjectV2 DELETE /api/v2/projects/:projectId/tasks
-// @Summary 从项目移除任务
-// @Description 从项目中移除所有任务
-// @Tags Projects
-// @Produce json
-// @Param projectId path string true "项目ID"
-// @Param tasks body RemoveTasksRequest true "任务ID列表"
-// @Success 200 {object} StatusResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/projects/{projectId}/tasks [delete]
-func removeTasksFromProjectV2(c *gin.Context) {
-	projectID := c.Param("projectId")
-
-	var req RemoveTasksRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if len(req.TaskIds) == 0 {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "task_ids 不能为空"})
-		return
-	}
-
-	project, err := GetProject(statDB, projectID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if project == nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
-		return
-	}
-
-	if err := RemoveProjectTasks(statDB, projectID, req.TaskIds); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	if err := recalculateProjectAggregates(projectID); err != nil {
-		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
-	}
-
-	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
-}
-
-// updateTaskSilicaInProjectV2 PUT /api/v2/projects/:projectId/tasks/silica
-// @Summary 更新项目任务二氧化硅数据
-// @Description 更新项目中任务的二氧化硅数据
-// @Tags Projects
-// @Accept json
-// @Produce json
-// @Param projectId path string true "项目ID"
-// @Param data body UpdateTaskSilicaRequest true "二氧化硅数据"
-// @Success 200 {object} StatusResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v2/projects/{projectId}/tasks/silica [put]
-func updateTaskSilicaInProjectV2(c *gin.Context) {
-	projectID := c.Param("projectId")
-
-	var req UpdateTaskSilicaRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if req.TaskId == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "task_id 不能为空"})
-		return
-	}
-
-	project, err := GetProject(statDB, projectID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	if project == nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "project not found"})
-		return
-	}
-
-	if err := UpdateProjectTaskSilica(statDB, projectID, req.TaskId, req.Silica); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	if err := recalculateProjectAggregates(projectID); err != nil {
-		log.Printf("重算 project %s 聚合数据失败: %v", projectID, err)
-	}
-
-	c.JSON(http.StatusOK, StatusResponse{Status: "ok"})
 }

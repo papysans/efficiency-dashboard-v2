@@ -48,7 +48,6 @@ import type {
   UpdateProjectNeedSelectionRequest,
   UpdateProjectRequest,
   UpdateTaskManualRequest,
-  UpdateTaskSilicaRequest,
   UserGroupDetailResponse,
   UserV2DetailResponse,
   UserV2Row,
@@ -223,7 +222,7 @@ export function createProject(body: CreateProjectRequest) {
   return apiPost<CreateProjectResponse>('/v2/projects', body)
 }
 
-/** 编辑 Project：PUT /v2/projects/{id}。⚠️ 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空。 */
+/** 编辑 Project：PUT /v2/projects/{id}。⚠️ 必须回传 repos 原值，否则后端清空；task_ids 已不属项目模型。 */
 export function updateProject(projectId: string, body: UpdateProjectRequest) {
   return apiPut<unknown>(`/v2/projects/${encodeURIComponent(projectId)}`, body)
 }
@@ -241,16 +240,6 @@ export function updateProjectManual(projectId: string, body: UpdateProjectManual
 /** 加 Task：POST /v2/projects/{id}/tasks（task_ids + 同长 silica 数组）。 */
 export function addTasksToProject(projectId: string, body: AddTasksRequest) {
   return apiPost<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/tasks`, body)
-}
-
-/** 移 Task：DELETE /v2/projects/{id}/tasks（body 传 task_ids）。 */
-export function removeTasksFromProject(projectId: string, body: { task_ids: string[] }) {
-  return apiDelete<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/tasks`, { data: body })
-}
-
-/** 改 Task silica 权重：PUT /v2/projects/{id}/tasks/silica。 */
-export function updateTaskSilicaInProject(projectId: string, body: UpdateTaskSilicaRequest) {
-  return apiPut<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/tasks/silica`, body)
 }
 
 /** 加 Repo filter：POST /v2/projects/{id}/repos。 */

@@ -150,6 +150,37 @@ func queryProjectNeedAgg(db *gorm.DB, scopes []projectNeedScope) (*projectNeedAg
 	return &agg, nil
 }
 
+// projectNeedCost 项目费用聚合：选中 Need 的会话所产生的 token / 成本。
+type projectNeedCost struct {
+	Cost             float64
+	UpstreamTokens   int64
+	DownstreamTokens int64
+}
+
+// queryProjectNeedCost 按 Need→sessions→tasks 聚合选中【干净】Need 的费用/tokens。
+// 口径与 queryProjectNeedAgg/AI占比一致：只计 coverage_eligible 且非 outlier 的干净 Need，
+// 使费用与同页提效比/LOC/工时分母对齐（可与合格 Need 数对账）。
+// 关键：先对干净 Need 的 session_ids 去重展开，再对这些 session 的 task 求和——
+// 一个 session 可能被多个 Need 引用，按 session 去重可避免跨 Need 重复计数。
+func queryProjectNeedCost(db *gorm.DB, scopes []projectNeedScope) (*projectNeedCost, error) {
+	var c projectNeedCost
+	selClause, selArgs := buildProjectNeedScopeClause(scopes, true)
+	if selClause == "" {
+		return &c, nil
+	}
+	sub := applyNeedCaliberFilter(db.Model(&models.Need{})).
+		Select("DISTINCT jsonb_array_elements_text(session_ids) AS sid").
+		Where(selClause, selArgs...).
+		Where("coverage_eligible AND NOT outlier_flag")
+	if err := db.Model(&models.Task{}).
+		Select("COALESCE(SUM(cost),0) AS cost, COALESCE(SUM(upstream_tokens),0) AS upstream_tokens, COALESCE(SUM(downstream_tokens),0) AS downstream_tokens").
+		Where("session_id IN (?)", sub).
+		Scan(&c).Error; err != nil {
+		return nil, fmt.Errorf("查询项目 Need 费用聚合失败: %w", err)
+	}
+	return &c, nil
+}
+
 // listProjectNeeds 列出候选池内全部 Need（套看板口径，但不套 Need 白/黑名单——
 // 全展示并由调用方逐个标记 excluded，方便用户挑选）。
 func listProjectNeeds(db *gorm.DB, scopes []projectNeedScope) ([]models.Need, error) {

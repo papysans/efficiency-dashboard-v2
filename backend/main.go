@@ -152,11 +152,8 @@ func main() {
 		v2.PUT("/projects/:projectId", updateProjectV2)
 		v2.DELETE("/projects/:projectId", deleteProjectV2)
 		v2.PUT("/projects/:projectId/manual", updateProjectManualV2)
-		v2.POST("/projects/:projectId/tasks", addTasksToProjectV2)
 		v2.POST("/projects/:projectId/repos", addRepoToProjectV2)
 		v2.DELETE("/projects/:projectId/repos/:index", removeRepoFromProjectV2)
-		v2.DELETE("/projects/:projectId/tasks", removeTasksFromProjectV2)
-		v2.PUT("/projects/:projectId/tasks/silica", updateTaskSilicaInProjectV2)
 		v2.GET("/projects/:projectId/needs", getProjectNeedsV2)
 		v2.PUT("/projects/:projectId/needs/selection", updateProjectNeedSelectionV2)
 
