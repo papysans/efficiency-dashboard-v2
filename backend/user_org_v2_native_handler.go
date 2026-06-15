@@ -338,21 +338,54 @@ type UserNameRow struct {
 }
 
 // getUserNamesV2 GET /api/v2/user-names
-// 从 dept_user(dept-sync 同步落库)出 user_id→真名+工号映射，供前端把 UUID 解析成「真名(工号)」。
-// 看板 user_id 即 dept-sync universal_id，故按 universal_id 非空的行返回。
+// 全量权威映射 user_id→真名(+工号)，供前端把 UUID 解析成「真名(工号)」。
+// dept-sync 优先（dept_user.universal_id → real_name+emp_no），未覆盖的用户用 commits 的
+// git_user_name 兜底（按 user_id 取出现次数最多的非空 git_user_name）。看板 user_id 即 universal_id。
+// 收敛到此单一接口后，前端不再单独拉 commit 明细建映射，永不受分页截断影响。
 func getUserNamesV2(c *gin.Context) {
 	if statDB == nil {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
 		return
 	}
+	// 1) dept-sync 权威映射（主）
 	var rows []models.DeptUser
 	if err := statDB.Where("universal_id <> ''").Find(&rows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 dept_user 失败: " + err.Error()})
 		return
 	}
 	out := make([]UserNameRow, 0, len(rows))
+	seen := make(map[string]bool, len(rows))
 	for _, r := range rows {
+		if seen[r.UniversalId] {
+			continue
+		}
+		seen[r.UniversalId] = true
 		out = append(out, UserNameRow{UserId: r.UniversalId, RealName: r.RealName, EmpNo: r.EmpNo})
+	}
+	// 2) commits 兜底：每个 user_id 取出现次数最多的非空 git_user_name（DISTINCT ON + cnt desc）。
+	//    dept-sync 已覆盖的 user_id 跳过，emp_no 留空。
+	type commitName struct {
+		UserId      string `gorm:"column:user_id"`
+		GitUserName string `gorm:"column:git_user_name"`
+	}
+	var cnames []commitName
+	if err := statDB.Raw(`
+		SELECT DISTINCT ON (user_id) user_id, git_user_name
+		FROM commits
+		WHERE user_id <> '' AND git_user_name <> ''
+		GROUP BY user_id, git_user_name
+		ORDER BY user_id, COUNT(*) DESC, git_user_name
+	`).Scan(&cnames).Error; err != nil {
+		// 兜底失败不致命：仍返回 dept-sync 部分，避免整接口 500。
+		c.JSON(http.StatusOK, out)
+		return
+	}
+	for _, cn := range cnames {
+		if seen[cn.UserId] {
+			continue
+		}
+		seen[cn.UserId] = true
+		out = append(out, UserNameRow{UserId: cn.UserId, RealName: cn.GitUserName, EmpNo: ""})
 	}
 	c.JSON(http.StatusOK, out)
 }
