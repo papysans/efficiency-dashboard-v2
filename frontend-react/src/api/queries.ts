@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   chatStats,
   getAllNeedsV2,
+  getAllUsersV2,
   getCommitDetailV2,
   getDashboardSummary,
   getGlobalConfig,
@@ -13,6 +14,7 @@ import {
   getProjects,
   getRepoBranches,
   getRepoDetailV2,
+  getReposV2,
   getTaskDetailV2,
   getUserDetailV2,
   getUserGroupDetail,
@@ -56,6 +58,22 @@ export function useUsers(params: { startDate?: string; endDate?: string; pageSiz
   return useQuery({
     queryKey: ['users', params],
     queryFn: () => getUsersV2(params),
+  })
+}
+
+/** 翻页拉全 users（绕过服务端切片截断），分布页用户 Top 排行用。 */
+export function useAllUsers(params: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['users-all', params],
+    queryFn: () => getAllUsersV2(params),
+  })
+}
+
+/** 仓库列表（⚠️ 百分比口径 efficiency_ratio）。分布页仓库 Top 排行用，pageSize 拉大客户端排序。 */
+export function useRepos(params: ListParams) {
+  return useQuery({
+    queryKey: ['repos', params],
+    queryFn: () => getReposV2(params),
   })
 }
 

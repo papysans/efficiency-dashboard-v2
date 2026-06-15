@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-router'
 import AppShell from '@/components/layout/AppShell'
 import Overview from '@/pages/Overview'
+import DistributionOverview from '@/pages/distribution/DistributionOverview'
 import Placeholder from '@/pages/Placeholder'
 import NeedList from '@/pages/needs/NeedList'
 import NeedDetail from '@/pages/needs/NeedDetail'
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <Overview /> },
+      { path: 'distribution-v2', element: <DistributionOverview /> },
 
       { path: 'needs-v2', element: <NeedList /> },
       { path: 'needs/:needId', element: <NeedDetail /> },

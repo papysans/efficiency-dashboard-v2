@@ -10,6 +10,7 @@ const navGroups = [
     group: '效能',
     items: [
       { to: '/', label: '总览', end: true },
+      { to: '/distribution-v2', label: '分布' },
       { to: '/needs-v2', label: '需求' },
       // 「任务」(/task-v2)、「仓库」(/repo-v2) 暂从导航隐藏：数据缺失、单独入口意义不大。
       // 路由仍保留（其他页面有互链跳转到任务/仓库详情），后续数据补齐后可恢复。
