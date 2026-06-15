@@ -775,7 +775,15 @@ export interface ProjectListItem {
   user_count?: number
   total_code_lines?: number
   actual_lines_per_day?: number | null
-  efficiency_ratio?: number | null // 百分比口径
+  efficiency_ratio?: number | null // 百分比口径（古法，列表已迁 Need 口径不再展示）
+  // —— Need(branch) 口径（小数倍数，与详情页同源；列表展示用这些）——
+  need_calendar_efficiency_ratio?: number | null
+  need_work_efficiency_ratio?: number | null
+  need_ai_code_ratio?: number | null
+  need_total_loc_net?: number | null
+  need_actual_work_min?: number | null
+  need_eligible_count?: number
+  need_total_count?: number
   [k: string]: unknown
 }
 

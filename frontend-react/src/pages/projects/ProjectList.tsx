@@ -1,47 +1,30 @@
-// 项目列表页（ProjectViewV2 的 React + 玻璃拟态迁移）。
-// 逻辑/列/口径/混合排序 1:1 按 research/pr4-project-commit-workdir.md §2.1；视觉换玻璃拟态。
-//
-// ⚠️ efficiency_ratio 是**百分比口径**（300=300%，不 ×100），用 PercentPill，绝不用 RatioPill。
-// 无分页（getProjects 返回全量 {data:[]}），客户端筛选（name/开始范围/结束范围/仅未结束）。
-// 混合排序：
-//   服务端列 userCount/repoCount/taskCount/totalCodeLines/actualLinesPerDay/cost（order camelCase，变 order 重拉）；
-//   客户端列 projectAncientMinutes/projectRealProcessMinutes/efficiencyRatio（sortRows，manual 优先值，null 沉底）。
+// 项目列表页（纯 Need(branch) 口径，与项目详情页对齐）。
+// 提效比/AI占比为**小数口径**，用 RatioPill（绝不用 PercentPill 百分比口径）。
+// 无分页（getProjects 返回全量 {data:[]}）；筛选(name/仅未结束) + 全客户端排序（need_* 字段已在响应里）。
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { createProject, deleteProject } from '@/api/endpoints'
 import { useProjectList } from '@/api/queries'
 import type { ProjectListItem } from '@/api/types'
-import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
-import { PercentPill } from '@/components/ui/PercentPill'
+import { RatioPill } from '@/components/ui/RatioPill'
 import { Modal } from '@/components/ui/Modal'
 
-// 服务端排序白名单（backend sort.go projectSortFields 子集，本页声明 sortField 的六列）。
-const SERVER_FIELDS = new Set(['userCount', 'repoCount', 'taskCount', 'totalCodeLines', 'actualLinesPerDay', 'cost'])
-
-// 客户端列 sortRows getter（manual 优先 / 原值，按显示值，所见即所排）。
-function effAncient(r: ProjectListItem): number | null {
-  return r.project_ancient_minutes_manual ?? r.project_ancient_minutes ?? null
-}
-function effProcess(r: ProjectListItem): number | null {
-  return r.project_real_process_minutes_manual ?? r.project_real_process_minutes ?? null
-}
-function effLead(r: ProjectListItem): number | null {
-  return r.project_real_lead_minutes_manual ?? r.project_real_lead_minutes ?? null
-}
+// 全客户端排序 getter（按显示值，所见即所排；null 由 sortRows 沉底）。
 const CLIENT_GETTERS: Record<string, (r: ProjectListItem) => number | null | undefined> = {
-  projectAncientMinutes: effAncient,
-  projectRealProcessMinutes: effProcess,
-  efficiencyRatio: (r) => r.efficiency_ratio,
+  needCount: (r) => r.need_total_count,
+  needCalRatio: (r) => r.need_calendar_efficiency_ratio,
+  needWorkRatio: (r) => r.need_work_efficiency_ratio,
+  needAiRatio: (r) => r.need_ai_code_ratio,
+  needLoc: (r) => r.need_total_loc_net,
+  needWorkMin: (r) => r.need_actual_work_min,
 }
 
-/** end_time（manual 优先），无 → 进行中。 */
 function projectEndTime(r: ProjectListItem): string | null | undefined {
   return r.end_time_manual ?? r.end_time
 }
-/** 0001 零时间（后端零值）算作未设置 → 进行中。 */
 function isZeroTime(s: string | null | undefined): boolean {
   return !s || String(s).startsWith('0001-')
 }
@@ -51,12 +34,16 @@ function isOngoing(r: ProjectListItem): boolean {
 function projectStartTime(r: ProjectListItem): string | null | undefined {
   return r.start_time_manual ?? r.start_time
 }
+function fmtDate(s: string | null | undefined): string {
+  return isZeroTime(s) ? '-' : String(s).slice(0, 10)
+}
 
 const TH = 'px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TH_NUM = 'px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TH_CENTER = 'px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
+const COLSPAN = 9
 
 export default function ProjectList() {
   const navigate = useNavigate()
@@ -65,13 +52,10 @@ export default function ProjectList() {
 
   const order = searchParams.get('order') || ''
   const parsedOrder = useMemo(() => parseOrder(order), [order])
-  // 服务端列才把 order 下发后端（其余客户端列不消费）。
-  const serverOrder = parsedOrder && SERVER_FIELDS.has(parsedOrder.field) ? order : undefined
-  const { data, isLoading, error, refetch } = useProjectList(serverOrder ? { order: serverOrder } : undefined)
+  const { data, isLoading, error, refetch } = useProjectList()
 
   const rows = useMemo(() => data?.data || [], [data])
 
-  // 客户端筛选状态
   const [filterName, setFilterName] = useState('')
   const [filterOngoing, setFilterOngoing] = useState(false)
 
@@ -84,7 +68,6 @@ export default function ProjectList() {
     })
   }, [rows, filterName, filterOngoing])
 
-  // 客户端列排序（命中 CLIENT_GETTERS 才前端排；服务端列后端已排，原样）。
   const displayRows = useMemo(() => {
     if (parsedOrder && CLIENT_GETTERS[parsedOrder.field]) {
       return sortRows(filteredRows, CLIENT_GETTERS[parsedOrder.field], parsedOrder.desc)
@@ -102,7 +85,7 @@ export default function ProjectList() {
     [searchParams, setSearchParams],
   )
 
-  // 三态循环：none→asc→desc→none。服务端列变 order 由 react-query 自动重拉；客户端列本地重排。
+  // 三态循环：none→asc→desc→none（全客户端排序）。
   function onSortChange(field: string) {
     const cur = parsedOrder
     let nextOrder: string | undefined
@@ -114,7 +97,6 @@ export default function ProjectList() {
   const isSortActive = (field: string) => parsedOrder?.field === field
   const isSortDesc = (field: string) => parsedOrder?.field === field && parsedOrder?.desc === true
 
-  // 创建 Project
   const [createOpen, setCreateOpen] = useState(false)
 
   async function handleCreate(name: string, description: string) {
@@ -123,7 +105,6 @@ export default function ProjectList() {
     await refetch()
   }
 
-  // 删除 Project
   const [pendingDelete, setPendingDelete] = useState<ProjectListItem | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -151,7 +132,7 @@ export default function ProjectList() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">项目 Project 提效</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            虚拟项目聚合关联 Repo / Task 的古法预估 vs 实际耗时，提效比为百分比口径（300 表示提速到 4 倍）。
+            项目 = 一组 Need(branch)。提效比 / AI占比为 Need 小数口径（守恒聚合、只计干净 Need），点项目进详情查看组成与贡献者。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -176,9 +157,7 @@ export default function ProjectList() {
 
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            项目列表（{filteredRows.length}）
-          </span>
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">项目列表（{filteredRows.length}）</span>
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
@@ -202,38 +181,31 @@ export default function ProjectList() {
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={`${TH} min-w-[200px]`}>项目名称</th>
-                <th className={`${TH} min-w-[150px]`}>开始时间</th>
-                <th className={`${TH} min-w-[150px]`}>结束时间</th>
                 <th className={TH_NUM}>
-                  <SortableTh field="userCount" label="人数" numeric active={isSortActive('userCount')} desc={isSortDesc('userCount')} onSort={onSortChange} />
-                </th>
-                <th className={TH_NUM}>
-                  <SortableTh field="repoCount" label="Repo数" numeric active={isSortActive('repoCount')} desc={isSortDesc('repoCount')} onSort={onSortChange} />
-                </th>
-                <th className={TH_NUM}>
-                  <SortableTh field="taskCount" label="Task数" numeric active={isSortActive('taskCount')} desc={isSortDesc('taskCount')} onSort={onSortChange} />
-                </th>
-                <th className={TH_NUM}>
-                  <SortableTh field="totalCodeLines" label="生成代码量" numeric active={isSortActive('totalCodeLines')} desc={isSortDesc('totalCodeLines')} onSort={onSortChange} />
-                </th>
-                <th className={TH_NUM}>
-                  <SortableTh field="actualLinesPerDay" label="实际人天代码量" numeric active={isSortActive('actualLinesPerDay')} desc={isSortDesc('actualLinesPerDay')} onSort={onSortChange} />
-                </th>
-                <th className={TH_NUM}>
-                  <SortableTh field="cost" label="费用" numeric active={isSortActive('cost')} desc={isSortDesc('cost')} onSort={onSortChange} />
-                </th>
-                <th className={TH_NUM}>项目周期</th>
-                <th className={TH_NUM}>
-                  <SortableTh field="projectAncientMinutes" label="传统开发预估" numeric active={isSortActive('projectAncientMinutes')} desc={isSortDesc('projectAncientMinutes')} onSort={onSortChange} />
-                </th>
-                <th className={TH_NUM}>
-                  <SortableTh field="projectRealProcessMinutes" label="实际耗时" numeric active={isSortActive('projectRealProcessMinutes')} desc={isSortDesc('projectRealProcessMinutes')} onSort={onSortChange} />
+                  <SortableTh field="needCount" label="Needs" numeric active={isSortActive('needCount')} desc={isSortDesc('needCount')} onSort={onSortChange} />
                 </th>
                 <th className={TH_CENTER}>
                   <span className="inline-flex justify-center">
-                    <SortableTh field="efficiencyRatio" label="提效比" active={isSortActive('efficiencyRatio')} desc={isSortDesc('efficiencyRatio')} onSort={onSortChange} />
+                    <SortableTh field="needCalRatio" label="日历提效比" active={isSortActive('needCalRatio')} desc={isSortDesc('needCalRatio')} onSort={onSortChange} />
                   </span>
                 </th>
+                <th className={TH_CENTER}>
+                  <span className="inline-flex justify-center">
+                    <SortableTh field="needWorkRatio" label="工作量提效比" active={isSortActive('needWorkRatio')} desc={isSortDesc('needWorkRatio')} onSort={onSortChange} />
+                  </span>
+                </th>
+                <th className={TH_CENTER}>
+                  <span className="inline-flex justify-center">
+                    <SortableTh field="needAiRatio" label="AI占比" active={isSortActive('needAiRatio')} desc={isSortDesc('needAiRatio')} onSort={onSortChange} />
+                  </span>
+                </th>
+                <th className={TH_NUM}>
+                  <SortableTh field="needLoc" label="生成代码" numeric active={isSortActive('needLoc')} desc={isSortDesc('needLoc')} onSort={onSortChange} />
+                </th>
+                <th className={TH_NUM}>
+                  <SortableTh field="needWorkMin" label="实际工时" numeric active={isSortActive('needWorkMin')} desc={isSortDesc('needWorkMin')} onSort={onSortChange} />
+                </th>
+                <th className={`${TH} min-w-[170px]`}>时间</th>
                 <th className={TH_CENTER}>操作</th>
               </tr>
             </thead>
@@ -241,14 +213,14 @@ export default function ProjectList() {
               {isLoading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={14}>
+                    <td className={TD} colSpan={COLSPAN}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={14}>
+                  <td colSpan={COLSPAN}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无项目数据，点击「创建项目」开始</div>
                   </td>
                 </tr>
@@ -262,27 +234,22 @@ export default function ProjectList() {
                     <td className={TD}>
                       <div className="max-w-[240px] truncate font-medium text-gray-900 dark:text-white" title={row.name}>{row.name || '-'}</div>
                     </td>
-                    <td className={TD}>{isZeroTime(projectStartTime(row)) ? '-' : formatLocalTime(projectStartTime(row))}</td>
+                    <td className={TD_NUM} title="合格 / 候选 Need">
+                      {row.need_eligible_count ?? 0} <span className="text-gray-400 dark:text-gray-500">/ {row.need_total_count ?? 0}</span>
+                    </td>
+                    <td className="px-3 py-2 align-middle text-center"><RatioPill value={row.need_calendar_efficiency_ratio ?? null} /></td>
+                    <td className="px-3 py-2 align-middle text-center"><RatioPill value={row.need_work_efficiency_ratio ?? null} /></td>
+                    <td className="px-3 py-2 align-middle text-center"><RatioPill value={row.need_ai_code_ratio ?? null} /></td>
+                    <td className={TD_NUM}>{row.need_total_loc_net && row.need_total_loc_net > 0 ? `${row.need_total_loc_net.toLocaleString()} 行` : '-'}</td>
+                    <td className={TD_NUM}>{row.need_actual_work_min && row.need_actual_work_min > 0 ? `${(row.need_actual_work_min / 480).toFixed(1)} 人天` : '-'}</td>
                     <td className={TD}>
-                      {isOngoing(row) ? (
-                        <span className="text-emerald-600 dark:text-emerald-400">尚未结束</span>
+                      {isZeroTime(projectStartTime(row)) ? (
+                        '-'
                       ) : (
-                        formatLocalTime(projectEndTime(row))
+                        <span className="text-xs">
+                          {fmtDate(projectStartTime(row))} ~ {isOngoing(row) ? <span className="text-emerald-600 dark:text-emerald-400">进行中</span> : fmtDate(projectEndTime(row))}
+                        </span>
                       )}
-                    </td>
-                    <td className={TD_NUM}>{row.user_count ?? '-'}</td>
-                    <td className={TD_NUM}>{row.repo_count ?? '-'}</td>
-                    <td className={TD_NUM}>{row.task_count ?? '-'}</td>
-                    <td className={TD_NUM}>{row.total_code_lines && row.total_code_lines > 0 ? `${row.total_code_lines.toLocaleString()} 行` : '-'}</td>
-                    <td className={TD_NUM}>
-                      {row.actual_lines_per_day != null ? `${Math.round(row.actual_lines_per_day).toLocaleString()} 行/人天` : '-'}
-                    </td>
-                    <td className={TD_NUM}>{row.cost != null ? fmtCost(row.cost) : '-'}</td>
-                    <td className={TD_NUM}>{formatDuration(effLead(row))}</td>
-                    <td className={TD_NUM}>{formatDuration(effAncient(row))}</td>
-                    <td className={TD_NUM}>{formatDuration(effProcess(row))}</td>
-                    <td className="px-3 py-2 align-middle text-center">
-                      <PercentPill value={row.efficiency_ratio} />
                     </td>
                     <td className="px-3 py-2 align-middle text-center">
                       <button

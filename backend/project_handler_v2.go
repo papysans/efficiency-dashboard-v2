@@ -50,6 +50,14 @@ type ProjectListItem struct {
 	TotalCodeLines                  int64           `json:"total_code_lines"`
 	ActualLinesPerDay               *float64        `json:"actual_lines_per_day"`
 	EfficiencyRatio                 *float64        `json:"efficiency_ratio"`
+	// —— Need(branch) 口径（小数倍数，与项目详情页同源；列表已迁此口径，古法字段保留兼容不再展示）——
+	NeedCalendarEfficiencyRatio *float64 `json:"need_calendar_efficiency_ratio"`
+	NeedWorkEfficiencyRatio     *float64 `json:"need_work_efficiency_ratio"`
+	NeedAICodeRatio             *float64 `json:"need_ai_code_ratio"`
+	NeedTotalLocNet             int64    `json:"need_total_loc_net"`
+	NeedActualWorkMin           float64  `json:"need_actual_work_min"`
+	NeedEligibleCount           int      `json:"need_eligible_count"`
+	NeedTotalCount              int      `json:"need_total_count"`
 }
 
 type ProjectListResponse struct {
@@ -643,6 +651,25 @@ func listProjectsV2(c *gin.Context) {
 			effRatio = &ratio
 		}
 
+		// Need(branch) 口径 per-project 聚合（与详情页 queryProjectNeedAgg 同源；失败仅置空不阻塞列表）。
+		var needCalR, needWorkR, needAIR *float64
+		var needLoc int64
+		var needWorkMin float64
+		var needEligible, needTotal int
+		if scopes, serr := collectProjectRepoBranches(&p); serr == nil {
+			if agg, aerr := queryProjectNeedAgg(statDB, scopes); aerr == nil {
+				needCalR = efficiencyV2Ratio(agg.BaselineCalendarMin, agg.ActualCalendarMin)
+				needWorkR = efficiencyV2Ratio(agg.BaselineWorkMin, agg.ActualWorkMin)
+				needAIR = calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
+				needLoc = agg.TotalLocNet
+				needWorkMin = agg.ActualWorkMin
+				needEligible = agg.EligibleNeeds
+				needTotal = agg.TotalNeeds
+			} else {
+				log.Printf("listProjectsV2: project %s Need 聚合失败: %v", p.ProjectId, aerr)
+			}
+		}
+
 		results[i] = ProjectListItem{
 			ProjectId:                       p.ProjectId,
 			Name:                            p.Name,
@@ -677,6 +704,13 @@ func listProjectsV2(c *gin.Context) {
 			TotalCodeLines:                  totalCodeLines,
 			ActualLinesPerDay:               actualLinesPerDay,
 			EfficiencyRatio:                 effRatio,
+			NeedCalendarEfficiencyRatio:     needCalR,
+			NeedWorkEfficiencyRatio:         needWorkR,
+			NeedAICodeRatio:                 needAIR,
+			NeedTotalLocNet:                 needLoc,
+			NeedActualWorkMin:               needWorkMin,
+			NeedEligibleCount:               needEligible,
+			NeedTotalCount:                  needTotal,
 		}
 	}
 	sortProjectData(results, orderField, orderDir)
