@@ -1439,12 +1439,26 @@ type dashboardNeedAgg struct {
 	TotalLocNet         int64
 }
 
-// applyNeedCaliberFilter 限定到看板口径：已交付(非 active) + 非主干分支。
+// applyNeedCaliberFilter 限定到看板口径：已交付(非 active) + 非主干分支 + 软件用户(人级)。
 // main/master/develop/release 等主干提交不形成 branch Need，是落到 cluster/orphan 兜底桶的
 // 散落提交，与 "branch=Need" 口径不一致，列表与首页计数都按此口径收口。
+//
+// 人级软件用户口径：只保留 primary_user "用过我们软件"(至少有一个带 session 的 need)的 Need。
+// 没用过软件、只有 commit 的人，其 git 活动经 boundary 也会生成 commit-only Need，若计入会淹没
+// 真实 AI 用户的交付（首页 total_needs 与 eligible 严重背离、列表/个人表被灌满）。按人(而非按
+// 单个 Need 有无 session)过滤：真 AI 用户某条 Need 没关联上 session(boundary 劈分 + 采集覆盖率
+// 低)仍保留，只剔除"从未采集到任何 session"的纯非用户。判据用 needs.session_ids 自派生(不 join
+// sessions 表——v2 路径下 sessions 可能未填，见 efficiency_v2_user_productivity.go；且与 kbcli
+// 写侧 upv2 口径严格一致)。includeAll=true 时调用方不套本闸，可看到全部 Need(排查用)。
+// needSoftwareUserCaliberSQL 是人级"软件用户"谓词：primary_user 至少有一个带 session 的 need。
+// 与 kbcli 写侧 loadEfficiencyV2AIUserSet 全表派生口径严格一致（同一张 needs 表、同一判据）。
+// 提为常量便于无库回归单测断言其形态（见 db_test.go），防误删导致 commit-only 重新涌入。
+const needSoftwareUserCaliberSQL = "NULLIF(primary_user_id,'') IN (SELECT DISTINCT primary_user_id FROM needs WHERE COALESCE(primary_user_id,'') <> '' AND session_ids IS NOT NULL AND session_ids::text NOT IN ('[]','null',''))"
+
 func applyNeedCaliberFilter(q *gorm.DB) *gorm.DB {
 	return q.Where("status <> ?", "active").
-		Where("NOT (LOWER(TRIM(COALESCE(repo_branch,''))) IN ('main','master','develop','release') OR LOWER(TRIM(COALESCE(repo_branch,''))) LIKE 'release/%')")
+		Where("NOT (LOWER(TRIM(COALESCE(repo_branch,''))) IN ('main','master','develop','release') OR LOWER(TRIM(COALESCE(repo_branch,''))) LIKE 'release/%')").
+		Where(needSoftwareUserCaliberSQL)
 }
 
 func queryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNeedAgg, error) {

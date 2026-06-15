@@ -80,7 +80,17 @@ func aggregateAndUpsertEfficiencyV2UserProductivityRows(db *gorm.DB, cfg Efficie
 	if err := q.Find(&needs).Error; err != nil {
 		return nil, fmt.Errorf("load needs: %w", err)
 	}
-	rows := AggregateEfficiencyV2UserProductivity(needs, cfg)
+	// 软件用户集必须全表派生(不受 startDate/endDate 窗口约束)：窗口化重算时，某 AI 用户的带
+	// session need 可能落在窗口外、窗口内只剩 commit-only need；若从窗口切片派生会把他误判为非
+	// 用户、丢掉其周行，且与 backend 读侧全表子查询口径分叉(读写不一致)。
+	aiUsers, err := loadEfficiencyV2AIUserSet(db)
+	if err != nil {
+		return nil, fmt.Errorf("load ai-user set: %w", err)
+	}
+	if len(aiUsers) == 0 {
+		log.Printf("efficiency-v2 user-productivity: 全库无带 session 的 need，软件用户集为空——本轮所有用户都不进周表(疑似 session 采集缺失/链接断裂，非正常空，请核查 needs.session_ids)")
+	}
+	rows := AggregateEfficiencyV2UserProductivity(needs, cfg, aiUsers)
 	if len(rows) == 0 {
 		return nil, nil
 	}
@@ -121,9 +131,46 @@ func aggregateAndUpsertEfficiencyV2UserProductivityRows(db *gorm.DB, cfg Efficie
 	return rows, nil
 }
 
+// loadEfficiencyV2AIUserSet 全表派生"软件用户"集合：有 ≥1 个带 session 的 need 的 primary_user。
+// 与 backend 读侧 applyNeedCaliberFilter 的全表子查询口径严格一致（同一张 needs 表、同一谓词），
+// 不受 user_productivity_v2 周表重算的 startDate/endDate 窗口约束。
+func loadEfficiencyV2AIUserSet(db *gorm.DB) (map[string]bool, error) {
+	var ids []string
+	if err := db.Model(&models.Need{}).
+		Where("COALESCE(primary_user_id,'') <> '' AND session_ids IS NOT NULL AND session_ids::text NOT IN ('[]','null','')").
+		Distinct("primary_user_id").
+		Pluck("primary_user_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set, nil
+}
+
+// efficiencyV2AIUsersFromNeeds 从 needs 切片派生"软件用户"集合：有 ≥1 个带 session 的 need
+// 的 primary_user。用于测试与非窗口化场景；**生产窗口化路径必须用 loadEfficiencyV2AIUserSet 全表
+// 派生**——否则窗口外的带 session need 看不到，会把真 AI 用户误判为非用户（见 aggregateAndUpsert…）。
+func efficiencyV2AIUsersFromNeeds(needs []models.Need) map[string]bool {
+	aiUsers := make(map[string]bool)
+	for _, need := range needs {
+		if len(EfficiencyV2StringsFromJSON(need.SessionIds)) > 0 {
+			aiUsers[need.PrimaryUserId] = true
+		}
+	}
+	return aiUsers
+}
+
 // AggregateEfficiencyV2UserProductivity buckets Needs by (user, week) and
 // produces deterministic user-week aggregate rows.
-func AggregateEfficiencyV2UserProductivity(needs []models.Need, cfg EfficiencyV2Config) []models.UserProductivityV2 {
+//
+// 人级软件用户口径：aiUsers 是"用过我们软件"(有 ≥1 个带 session 的 need)的 primary_user 集合，
+// 只有其中的用户才进周表。纯非用户(只有 commit、无任何带 session 的 need)不产出行——否则没用 AI
+// 的人会灌满个人周表。按人过滤(而非按单个 need 有无 session)：真 AI 用户某条 need 没关联上 session
+// 仍保留其行。aiUsers 由调用方决定来源(生产=全表，测试=切片)，与 backend 读侧 applyNeedCaliberFilter
+// 全表子查询口径严格一致；不依赖 sessions 表(v2 路径下其可能未填，见下方 rollup 注释)。
+func AggregateEfficiencyV2UserProductivity(needs []models.Need, cfg EfficiencyV2Config, aiUsers map[string]bool) []models.UserProductivityV2 {
 	cfg = NormalizeEfficiencyV2Config(cfg)
 	type bucketKey struct {
 		userID    string
@@ -142,6 +189,10 @@ func AggregateEfficiencyV2UserProductivity(needs []models.Need, cfg EfficiencyV2
 		// 聚合侧保险：primary_user 命中 user_id 黑名单的 need 不进周表
 		// （防 needs 表残留行——清理跑前的旧行——串进 user_productivity_v2）。
 		if blockedUsers[need.PrimaryUserId] {
+			continue
+		}
+		// 人级口径：跳过非软件用户的 need（其 primary_user 无任何带 session 的 need）。
+		if !aiUsers[need.PrimaryUserId] {
 			continue
 		}
 		anchor := efficiencyV2WeekAnchorForNeed(need)

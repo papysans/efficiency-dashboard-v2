@@ -1,9 +1,63 @@
 package main
 
 import (
+	"os"
 	"sort"
+	"strings"
 	"testing"
+
+	"kanban/core/models"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
+
+// TestNeedSoftwareUserCaliberSQL_Shape 无库回归：人级软件用户谓词常量形态断言（CI 可跑）。
+// 防误删/改坏导致 commit-only(非软件用户)need 重新涌入首页/列表/项目/分布/AI比。
+func TestNeedSoftwareUserCaliberSQL_Shape(t *testing.T) {
+	for _, want := range []string{
+		"primary_user_id",
+		"SELECT DISTINCT primary_user_id FROM needs",
+		"session_ids IS NOT NULL",
+		"NOT IN ('[]','null','')",
+	} {
+		if !strings.Contains(needSoftwareUserCaliberSQL, want) {
+			t.Fatalf("needSoftwareUserCaliberSQL 缺少片段 %q\n常量: %s", want, needSoftwareUserCaliberSQL)
+		}
+	}
+}
+
+// TestApplyNeedCaliberFilter_PersonLevelPredicate 用 DryRun ToSQL 断言看板口径 SQL 含人级软件用户谓词。
+// 回归保护：防止误删该谓词导致没用软件的人(commit-only need)重新涌入首页/列表/项目/分布/AI比。
+// 需可连测试库渲染 SQL；CI 无库时 t.Skip（gorm postgres dialector 即使 DryRun 也在 Open 时连库）。
+func TestApplyNeedCaliberFilter_PersonLevelPredicate(t *testing.T) {
+	dsn := os.Getenv("TEST_PG_DSN")
+	if dsn == "" {
+		dsn = "host=127.0.0.1 port=5434 user=postgres password=1 dbname=costrict_stat sslmode=disable"
+	}
+	db, err := gorm.Open(postgres.New(postgres.Config{DSN: dsn, PreferSimpleProtocol: true}), &gorm.Config{DryRun: true})
+	if err != nil {
+		t.Skipf("无测试数据库，跳过 SQL 渲染断言: %v", err)
+	}
+	sqlStr := strings.ToLower(db.ToSQL(func(tx *gorm.DB) *gorm.DB {
+		var rows []models.Need
+		return applyNeedCaliberFilter(tx.Model(&models.Need{})).Find(&rows)
+	}))
+	// 人级软件用户口径必须落进 SQL。
+	for _, want := range []string{
+		"primary_user_id",
+		"session_ids",
+		"select distinct primary_user_id from needs",
+	} {
+		if !strings.Contains(sqlStr, want) {
+			t.Fatalf("applyNeedCaliberFilter SQL 缺少人级谓词片段 %q\nSQL: %s", want, sqlStr)
+		}
+	}
+	// 既有口径(已交付 + 非主干分支)仍在，未被破坏。
+	if !strings.Contains(sqlStr, "status") || !strings.Contains(sqlStr, "repo_branch") {
+		t.Fatalf("applyNeedCaliberFilter 丢失既有口径(status/repo_branch)\nSQL: %s", sqlStr)
+	}
+}
 
 func TestIntersectUserIdFilter(t *testing.T) {
 	tests := []struct {

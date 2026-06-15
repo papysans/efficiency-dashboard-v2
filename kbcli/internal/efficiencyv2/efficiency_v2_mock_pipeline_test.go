@@ -207,7 +207,7 @@ func TestEfficiencyV2MockPipeline(t *testing.T) {
 	logBaselineSummary(t, snapshots)
 
 	// ---- Step 6: user-week aggregate ----
-	weekly := AggregateEfficiencyV2UserProductivity(needs, cfg)
+	weekly := AggregateEfficiencyV2UserProductivity(needs, cfg, efficiencyV2AIUsersFromNeeds(needs))
 	t.Logf("step6 user_productivity_v2 rows: %d (users=%d)", len(weekly), countWeeklyUsers(weekly))
 	logUserWeekSample(t, weekly, 5)
 
