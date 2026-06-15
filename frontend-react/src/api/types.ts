@@ -732,6 +732,9 @@ export interface ProjectRepo {
   end_time?: string | null
   exclude_commits?: string[] | null
   include_only_commits?: string[] | null
+  // Need 维度白/黑名单（need_id），仅作用于"按 Need(branch) 聚合"口径，与 commit 级名单独立。
+  exclude_needs?: string[] | null
+  include_only_needs?: string[] | null
   [k: string]: unknown
 }
 
@@ -833,6 +836,39 @@ export interface ProjectDetailResponse {
   members: OrgMember[] | null
   efficiency_ratio?: number | null
   user_count?: number
+  // —— Need(branch) 口径指标（⚠️ 小数口径，用 RatioPill；与上方 commit 古法 efficiency_ratio 百分比口径互不替代）——
+  need_calendar_efficiency_ratio?: number | null // 日历口径提效比（主）
+  need_work_efficiency_ratio?: number | null // 工作量口径提效比（下钻）
+  need_ai_code_ratio?: number | null // AI 代码占比（0~1）
+  need_actual_calendar_min?: number | null
+  need_baseline_calendar_min?: number | null
+  need_actual_work_min?: number | null
+  need_baseline_work_min?: number | null
+  need_eligible_count?: number // 计入指标的干净 Need 数
+  need_excluded_count?: number // 因日历口径 outlier 自动剔除的 Need 数
+  need_total_count?: number // 候选池内（看板口径+已选）Need 总数
+}
+
+/** /v2/projects/{id}/needs 列表项：复用 NeedsV2Summary（小数口径）+ 当前是否被项目排除。 */
+export interface ProjectNeedItem extends NeedsV2Summary {
+  excluded: boolean
+}
+
+/** /v2/projects/{id}/needs 响应。 */
+export interface ProjectNeedsResponse {
+  data: ProjectNeedItem[] | null
+  total_count: number // 候选池总数（含未选/已排除/不合格），与详情卡 need_total_count 同源
+  eligible_count: number
+  excluded_count: number
+  stale_count: number // 配置名单中已不在候选池的陈旧 need_id 数（重算漂移）
+}
+
+/** PUT /v2/projects/{id}/needs/selection（纳入/排除单个 Need）。 */
+export interface UpdateProjectNeedSelectionRequest {
+  repo_addr: string
+  repo_branch: string
+  need_id: string
+  excluded: boolean
 }
 
 /** POST/PUT /v2/projects（创建/编辑） */

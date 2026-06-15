@@ -157,6 +157,8 @@ func main() {
 		v2.DELETE("/projects/:projectId/repos/:index", removeRepoFromProjectV2)
 		v2.DELETE("/projects/:projectId/tasks", removeTasksFromProjectV2)
 		v2.PUT("/projects/:projectId/tasks/silica", updateTaskSilicaInProjectV2)
+		v2.GET("/projects/:projectId/needs", getProjectNeedsV2)
+		v2.PUT("/projects/:projectId/needs/selection", updateProjectNeedSelectionV2)
 
 		v2.POST("/user-groups", createUserGroupHandler)
 		v2.DELETE("/user-groups/:groupId", deleteUserGroupHandler)

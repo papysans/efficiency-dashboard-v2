@@ -9,6 +9,7 @@ import {
   getDeptTreeV2,
   getNeedDetailV2,
   getProjectDetail,
+  getProjectNeeds,
   getProjects,
   getRepoBranches,
   getRepoDetailV2,
@@ -134,6 +135,15 @@ export function useProjectDetail(projectId: string | undefined) {
   return useQuery({
     queryKey: ['project-detail', projectId],
     queryFn: () => getProjectDetail(projectId as string),
+    enabled: !!projectId,
+  })
+}
+
+/** 项目候选池 Need 列表（小数口径；供按 branch 挑选干净样本）。 */
+export function useProjectNeeds(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-needs', projectId],
+    queryFn: () => getProjectNeeds(projectId as string),
     enabled: !!projectId,
   })
 }

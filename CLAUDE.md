@@ -108,6 +108,12 @@ export PGPASSWORD='1' && psql -U postgres -d report -c "SQL"
 **原因**：PG 两参数 `round()` 只有 numeric 版本；float8 列参与除法/乘法后结果仍是 double precision，即使分子先 `::numeric`，除以 double 又会变回 double
 **正确用法**：整个算术表达式算完后再 `(...)::numeric`，最后才进 `round(..., 1)`
 
+#### gorm 多段查询：.Scan(&struct) 会清零未映射字段
+**错误现象**：先 `.Count(&n)` 把某计数写进 struct 字段，再对同一 struct 跑 `.Select(部分列).Scan(&struct)`，结果先前写入的字段被重置为 0
+**原因**：gorm 的 `Scan`/`Find` 把目标 struct 当全新行容器，扫描前会按结果列重建，结果集里没有的列对应字段被清零（不是保留原值）
+**正确用法**：把"不在本次 Select 结果里的字段"放到 **最后一次 Scan 之后** 再赋值；或用独立变量接收、最终再组装。示例（项目 Need 聚合 `queryProjectNeedAgg`）：先 `.Scan(&agg)` 取 eligible/SUM 等列，**之后**再 `.Count(&poolCount)` 并 `agg.TotalNeeds = int(poolCount)`
+**附带坑**：`.Where("(A) OR (B)", argsWithSlice...)` 里嵌 `IN ?` 切片在 gorm 下会被正确展开，且 gorm 会给整段 raw 条件自动加外层括号（`caliber AND ((A) OR (B))`），不会发生 `caliber AND A OR B` 的优先级绕过——已用 DryRun ToSQL + 真实库实证
+
 #### fd/rg 搜不到明明存在的文件或目录
 **错误现象**：用 `fd` / `rg` 搜某个数据目录（如 `工时估算数据/`）返回空，误判"文件不在本机"，实际上目录一直存在
 **原因**：`fd` 和 `rg` 默认遵循 `.gitignore`，被忽略的目录整个跳过；`-H` 只放开隐藏文件，不放开 ignore 规则

@@ -100,6 +100,21 @@ type ProjectDetailResponse struct {
 	Members         []UserDetail        `json:"members"`
 	EfficiencyRatio float64             `json:"efficiency_ratio"`
 	UserCount       int                 `json:"user_count"`
+
+	// —— Need(branch) 口径项目指标 ——
+	// 与上方 commit 古法口径（EfficiencyRatio 等）并列、互不替代，前端需明确区分标注。
+	// 比值为"分子分母守恒"原始倍数（非百分比、无上界、无 ×100），口径=日历主/工作量下钻，
+	// 只计 coverage_eligible 且按口径非 outlier 的干净 Need，并套全局看板口径（排主干分支）。
+	NeedCalendarEfficiencyRatio *float64 `json:"need_calendar_efficiency_ratio"` // 日历口径提效比（主）
+	NeedWorkEfficiencyRatio     *float64 `json:"need_work_efficiency_ratio"`     // 工作量口径提效比（下钻）
+	NeedAICodeRatio             *float64 `json:"need_ai_code_ratio"`             // AI 代码占比（0~1）
+	NeedActualCalendarMin       float64  `json:"need_actual_calendar_min"`
+	NeedBaselineCalendarMin     float64  `json:"need_baseline_calendar_min"`
+	NeedActualWorkMin           float64  `json:"need_actual_work_min"`
+	NeedBaselineWorkMin         float64  `json:"need_baseline_work_min"`
+	NeedEligibleCount           int      `json:"need_eligible_count"` // 已选且干净、计入指标的 Need 数
+	NeedExcludedCount           int      `json:"need_excluded_count"` // 已选但因日历口径 outlier 被自动剔除的 Need 数
+	NeedTotalCount              int      `json:"need_total_count"`    // 候选池总数（看板口径，含未选/已排除/不合格）；与 /needs 列表行数同源
 }
 
 type ProjectConflict struct {
@@ -162,6 +177,11 @@ type ProjectRepo struct {
 	EndTime            *string  `json:"end_time"`
 	ExcludeCommits     []string `json:"exclude_commits"`
 	IncludeOnlyCommits []string `json:"include_only_commits"`
+	// Need 维度白/黑名单（need_id）：仅作用于"项目按 Need(branch) 聚合"口径，
+	// 与 commit 级的 ExcludeCommits/IncludeOnlyCommits 各自独立、互不影响。
+	// 默认全收该 (repo,branch) 下通过看板口径的 Need；可黑掉个别噪声 Need 或只白名单几个。
+	ExcludeNeeds     []string `json:"exclude_needs"`
+	IncludeOnlyNeeds []string `json:"include_only_needs"`
 }
 
 // collectProjectCommits 根据 project 的 repos 配置收集去重后的 commits
@@ -743,14 +763,36 @@ func getProjectDetailV2(c *gin.Context) {
 
 	members := collectProjectUsers(project, commitMap, tasks)
 
-	c.JSON(http.StatusOK, ProjectDetailResponse{
+	resp := ProjectDetailResponse{
 		Project:         project,
 		Commits:         commitItems,
 		Tasks:           tasks,
 		Members:         members,
 		EfficiencyRatio: effRatio,
 		UserCount:       len(members),
-	})
+	}
+
+	// Need(branch) 口径项目指标：解析 project.Repos 拿 (repo,branch) 候选池 →
+	// needs 表分子分母守恒聚合（只计干净 Need、套看板口径）。失败仅记日志、不影响古法字段返回。
+	if scopes, scopeErr := collectProjectRepoBranches(project); scopeErr != nil {
+		log.Printf("解析 project %s repo 范围失败: %v", projectID, scopeErr)
+	} else if agg, aggErr := queryProjectNeedAgg(statDB, scopes); aggErr != nil {
+		log.Printf("查询 project %s Need 口径聚合失败: %v", projectID, aggErr)
+	} else {
+		// 复用全站共享 helper（actual<=0→nil；baseline=0,actual>0→-100%），口径与 dashboard/部门/组织详情一致。
+		resp.NeedCalendarEfficiencyRatio = efficiencyV2Ratio(agg.BaselineCalendarMin, agg.ActualCalendarMin)
+		resp.NeedWorkEfficiencyRatio = efficiencyV2Ratio(agg.BaselineWorkMin, agg.ActualWorkMin)
+		resp.NeedAICodeRatio = calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
+		resp.NeedActualCalendarMin = agg.ActualCalendarMin
+		resp.NeedBaselineCalendarMin = agg.BaselineCalendarMin
+		resp.NeedActualWorkMin = agg.ActualWorkMin
+		resp.NeedBaselineWorkMin = agg.BaselineWorkMin
+		resp.NeedEligibleCount = agg.EligibleNeeds
+		resp.NeedExcludedCount = agg.ExcludedNeeds
+		resp.NeedTotalCount = agg.TotalNeeds
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // updateProjectV2 PUT /api/v2/projects/:projectId

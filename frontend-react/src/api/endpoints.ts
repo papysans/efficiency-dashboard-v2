@@ -37,6 +37,7 @@ import type {
   OrgDetailResponse,
   ProjectDetailResponse,
   ProjectListItem,
+  ProjectNeedsResponse,
   RepoBranchesResponse,
   RepoDetailResponse,
   RepoListItem,
@@ -44,6 +45,7 @@ import type {
   TaskListItem,
   UpdateCommitManualRequest,
   UpdateProjectManualRequest,
+  UpdateProjectNeedSelectionRequest,
   UpdateProjectRequest,
   UpdateTaskManualRequest,
   UpdateTaskSilicaRequest,
@@ -264,6 +266,16 @@ export function removeRepoFromProject(projectId: string, index: number) {
 /** 冲突检测：POST /v2/projects/check-conflicts → conflicts[{commit_id,project_id,project_name}]。 */
 export function checkProjectConflicts(body: { commit_ids: string[] }) {
   return apiPost<CheckConflictsResponse>('/v2/projects/check-conflicts', body)
+}
+
+/** 项目候选池 Need 列表：GET /v2/projects/{id}/needs（⚠️ 小数口径；含 excluded 标记）。 */
+export function getProjectNeeds(projectId: string) {
+  return apiGet<ProjectNeedsResponse>(`/v2/projects/${encodeURIComponent(projectId)}/needs`)
+}
+
+/** 纳入/排除单个 Need：PUT /v2/projects/{id}/needs/selection（写 exclude_needs，不影响 commit 古法口径）。 */
+export function updateProjectNeedSelection(projectId: string, body: UpdateProjectNeedSelectionRequest) {
+  return apiPut<unknown>(`/v2/projects/${encodeURIComponent(projectId)}/needs/selection`, body)
 }
 
 // ---- User Groups（⚠️ 百分比口径；后端无列表端点，只有 detail/delete） ----

@@ -23,13 +23,15 @@ import {
   removeRepoFromProject,
   removeTasksFromProject,
   updateProject,
+  updateProjectNeedSelection,
   updateTaskSilicaInProject,
 } from '@/api/endpoints'
-import { useGlobalConfig, useProjectDetail } from '@/api/queries'
+import { useGlobalConfig, useProjectDetail, useProjectNeeds } from '@/api/queries'
 import type {
   AddRepoRequest,
   ProjectCommitItem,
   ProjectModel,
+  ProjectNeedItem,
   ProjectRepo,
   ProjectTaskItem,
   RepoListItem,
@@ -39,6 +41,7 @@ import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Tag } from '@/components/ui/Tag'
 import { PercentPill, percentTextClass } from '@/components/ui/PercentPill'
+import { RatioPill } from '@/components/ui/RatioPill'
 import { Modal } from '@/components/ui/Modal'
 
 // ---- 派生工具 ----
@@ -86,6 +89,7 @@ export default function ProjectDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data, isLoading, error } = useProjectDetail(projectId)
+  const { data: needsData } = useProjectNeeds(projectId)
   const { data: globalConfig } = useGlobalConfig()
   // task/commit 的 user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
   const { resolveName } = useUserNameMap()
@@ -95,10 +99,39 @@ export default function ProjectDetail() {
   const commits = useMemo<ProjectCommitItem[]>(() => data?.commits || [], [data])
   const userCount = data?.user_count ?? 0
   const repos = useMemo<ProjectRepo[]>(() => project?.repos || [], [project])
+  const projectNeeds = useMemo<ProjectNeedItem[]>(() => needsData?.data || [], [needsData])
+  const [needBusy, setNeedBusy] = useState<string | null>(null)
+  const [needErr, setNeedErr] = useState('')
 
   const reload = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] })
   }, [queryClient, projectId])
+
+  // Need 勾选：写 exclude_needs（黑名单语义）。同时刷新详情（Need 口径指标卡）与 Need 列表。
+  const toggleNeed = useCallback(
+    async (n: ProjectNeedItem) => {
+      setNeedBusy(n.need_id)
+      setNeedErr('')
+      try {
+        await updateProjectNeedSelection(projectId as string, {
+          repo_addr: n.repo_addr,
+          repo_branch: n.repo_branch,
+          need_id: n.need_id,
+          excluded: !n.excluded,
+        })
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['project-needs', projectId] }),
+          queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] }),
+        ])
+      } catch (e: unknown) {
+        // 不静默吞错：勾选失败（如通配分支不匹配 400）给用户可见反馈，避免"点了没反应"。
+        setNeedErr(e instanceof Error ? e.message : '更新 Need 勾选失败')
+      } finally {
+        setNeedBusy(null)
+      }
+    },
+    [queryClient, projectId],
+  )
 
   // ---- 前端自算派生指标（§2.2）----
   const totalTokens = (project?.upstream_tokens || 0) + (project?.downstream_tokens || 0)
@@ -311,6 +344,38 @@ export default function ProjectDetail() {
         </KvGrid>
       </Panel>
 
+      {/* ③.5 Need 口径指标（按 branch 聚合） */}
+      <Panel title="Need 口径指标（按 branch 聚合）" hint="日历口径为主 · 只计干净 Need · 套看板口径">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 leading-relaxed">
+          ⚠️ 与上方「度量信息」的 commit 古法口径互不替代：此处按 Need(branch) 维度从 needs 表「分子分母守恒」聚合，
+          只计 coverage_eligible 且非 outlier 的干净 Need，并排除主干分支。比值为小数倍数口径（如 0.5 = 50%），非百分比。
+        </p>
+        {(data?.need_total_count ?? 0) === 0 ? (
+          <Empty>候选池内暂无符合看板口径的 Need（可能：项目仅配置了主干分支，或该范围暂无已交付特性分支 Need）</Empty>
+        ) : (
+          <KvGrid>
+            <Kv label="日历提效比" title="（基线日历时间 − 实际日历时间）÷ 实际日历时间；干净 Need 分子分母守恒聚合">
+              {data?.need_calendar_efficiency_ratio != null ? <RatioPill value={data.need_calendar_efficiency_ratio} /> : '-'}
+            </Kv>
+            <Kv label="工作量提效比" title="（融合基线工时 − 实际活跃工时）÷ 实际活跃工时（内部下钻口径）">
+              {data?.need_work_efficiency_ratio != null ? <RatioPill value={data.need_work_efficiency_ratio} /> : '-'}
+            </Kv>
+            <Kv label="AI 代码占比" title="Σ ai_covered_loc ÷ Σ total_loc_net（干净 Need）">
+              {data?.need_ai_code_ratio != null ? <RatioPill value={data.need_ai_code_ratio} /> : '-'}
+            </Kv>
+            <Kv label="合格 Need 数" title="计入指标的干净 Need 数（coverage_eligible 且非 outlier）">
+              {data?.need_eligible_count ?? 0}
+            </Kv>
+            <Kv label="自动剔除" title="因日历口径 outlier 被自动剔除、未计入提效比的 Need 数">
+              {data?.need_excluded_count ?? 0}
+            </Kv>
+            <Kv label="候选 Need 总数" title="候选池内通过看板口径的 Need 总数（含未选/已排除/不合格），与下方 Needs 子表行数同源">
+              {data?.need_total_count ?? 0}
+            </Kv>
+          </KvGrid>
+        )}
+      </Panel>
+
       {/* ④ 用户视角 */}
       <Panel title="用户视角" hint={`${userStats.length} 人`}>
         {userStats.length === 0 ? (
@@ -404,6 +469,71 @@ export default function ProjectDetail() {
                     <button type="button" onClick={() => setRepoEdit({ index: i, repo: r })} className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 text-sm mr-3 focus:outline-none focus-visible:underline">编辑</button>
                     <button type="button" onClick={() => setRemoveRepo({ index: i, repo: r })} className="text-rose-500 hover:text-rose-600 cursor-pointer bg-transparent border-none p-0 text-sm focus:outline-none focus-visible:underline">删除</button>
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        )}
+      </Panel>
+
+      {/* ⑤.5 Needs（按 branch，可勾选纳入/排除项目 Need 口径指标） */}
+      <Panel
+        title={`Needs (${projectNeeds.length})`}
+        hint="勾选=纳入项目 Need 口径指标；取消勾选=排除该 Need（写入 exclude_needs，不影响 commit 古法口径）"
+      >
+        {needErr && <div className="mb-3 text-sm text-rose-600 dark:text-rose-400">{needErr}</div>}
+        {(needsData?.stale_count ?? 0) > 0 && (
+          <div className="mb-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            ⚠️ 项目配置中有 {needsData?.stale_count} 个已勾选/排除的 Need 因重算已失效（need_id 漂移），不再影响聚合；如需清理可在上方「编辑 Repo」中移除对应名单项。
+          </div>
+        )}
+        {projectNeeds.length === 0 ? (
+          <Empty>候选池内暂无 Need（先在上方配置特性分支 Repo）</Empty>
+        ) : (
+          <TableWrap>
+            <thead>
+              <tr className="border-b border-gray-200/50 dark:border-white/10">
+                <th className={TH_CENTER}>纳入</th>
+                <th className={TH}>Need</th>
+                <th className={TH}>分支</th>
+                <th className={TH}>边界源</th>
+                <th className={TH_CENTER}>日历提效比</th>
+                <th className={TH_CENTER}>工作量提效比</th>
+                <th className={TH_CENTER}>AI占比</th>
+                <th className={TH_CENTER}>状态</th>
+                <th className={TH_NUM}>代码行</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectNeeds.map((n) => (
+                <tr
+                  key={n.need_id}
+                  className={`border-b border-gray-100/50 dark:border-white/5 transition-colors ${n.excluded ? 'opacity-40' : 'hover:bg-apple-blue/5 dark:hover:bg-white/5'}`}
+                >
+                  <td className="px-3 py-2 align-middle text-center">
+                    <input
+                      type="checkbox"
+                      checked={!n.excluded}
+                      disabled={needBusy === n.need_id}
+                      onChange={() => toggleNeed(n)}
+                      className="accent-apple-blue cursor-pointer disabled:opacity-50"
+                      aria-label={n.excluded ? '纳入该 Need' : '排除该 Need'}
+                    />
+                  </td>
+                  <td className={TD}>
+                    <LinkBtn onClick={() => navigate(`/needs/${encodeURIComponent(n.need_id)}`)}>
+                      <span className="font-mono break-all" title={n.need_id}>
+                        {n.need_id.length > 28 ? `${n.need_id.substring(0, 28)}…` : n.need_id}
+                      </span>
+                    </LinkBtn>
+                  </td>
+                  <td className={TD}>{n.repo_branch || '-'}</td>
+                  <td className={TD}>{n.boundary_source}</td>
+                  <td className="px-3 py-2 align-middle text-center"><RatioPill value={n.efficiency_ratio} /></td>
+                  <td className="px-3 py-2 align-middle text-center"><RatioPill value={n.work_efficiency_ratio} /></td>
+                  <td className="px-3 py-2 align-middle text-center"><RatioPill value={n.ai_code_ratio ?? null} /></td>
+                  <td className="px-3 py-2 align-middle text-center"><NeedStatusTag n={n} /></td>
+                  <td className={TD_NUM}>{n.total_loc_net ?? '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -569,6 +699,18 @@ function projectSilicaTone(v: number): 'success' | 'primary' | 'info' {
   if (v >= 80) return 'success'
   if (v >= 50) return 'primary'
   return 'info'
+}
+
+/**
+ * Need 干净度标签：不合格 / 日历异常 / 工作量异常 / 干净。
+ * 按口径区分异常：日历异常对应卡片「自动剔除」(日历口径)计数；工作量异常仅从工作量口径剔除、不计入「自动剔除」。
+ * 故「日历异常」标签数 == 卡片自动剔除数；「工作量异常」单列，避免两口径异常混成一个标签后与计数对不上账。
+ */
+function NeedStatusTag({ n }: { n: ProjectNeedItem }) {
+  if (!n.coverage_eligible) return <Tag tone="info" title="未交付或低置信，不计入提效比">不合格</Tag>
+  if (n.calendar_outlier_flag) return <Tag tone="warning" title={n.reason || '日历口径异常，从日历提效比剔除'}>日历异常</Tag>
+  if (n.work_outlier_flag) return <Tag tone="warning" title={n.reason || '工作量口径异常，仅从工作量提效比剔除'}>工作量异常</Tag>
+  return <Tag tone="success">干净</Tag>
 }
 
 // ============ 编辑项目 dialog ============
