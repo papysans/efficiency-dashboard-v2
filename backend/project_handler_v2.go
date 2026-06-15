@@ -115,6 +115,7 @@ type ProjectDetailResponse struct {
 	NeedEligibleCount           int      `json:"need_eligible_count"` // 已选且干净、计入指标的 Need 数
 	NeedExcludedCount           int      `json:"need_excluded_count"` // 已选但因日历口径 outlier 被自动剔除的 Need 数
 	NeedTotalCount              int      `json:"need_total_count"`    // 候选池总数（看板口径，含未选/已排除/不合格）；与 /needs 列表行数同源
+	NeedTotalLocNet             int64    `json:"need_total_loc_net"`  // 已选干净 Need 的净 LOC 之和（生成代码量，AI 占比同源口径）
 }
 
 type ProjectConflict struct {
@@ -790,6 +791,7 @@ func getProjectDetailV2(c *gin.Context) {
 		resp.NeedEligibleCount = agg.EligibleNeeds
 		resp.NeedExcludedCount = agg.ExcludedNeeds
 		resp.NeedTotalCount = agg.TotalNeeds
+		resp.NeedTotalLocNet = agg.TotalLocNet
 	}
 
 	c.JSON(http.StatusOK, resp)

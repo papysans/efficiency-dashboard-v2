@@ -1,87 +1,57 @@
-// 项目详情页（ProjectDetailV2 的 React + 玻璃拟态迁移）—— PR4b 最复杂页。
-// 分区 + 8 管理操作 1:1 按 research/pr4-project-commit-workdir.md §2.2；视觉换玻璃拟态。
-//
-// ⚠️ 口径：
-//   - userStats 行 task/commit_efficiency_ratio = **提升百分比口径** PercentPill（前端 reduce 算
-//     (ancient−real)/real*100，与后端 CalcEfficiencyRatio / 项目列表 / RepoDetail 一致；缺一侧 → null 显 '-'）。
-//   - ProjectCommit 表 silica 展示为 AI 代码占比，直接当百分比（不 ×100，阈值 80/50）。
-//   - 顶部 devEfficiencyRatio/e2eEfficiencyRatio 是**提升百分比的内部小数**（(ancient−real)/real，如 2.0），
-//     显示 Math.round(*100)+'%'，着色 percentTextClass(*100)，与项目列表后端 CalcEfficiencyRatio 同口径。
-//
-// 8 管理操作：编辑 / 删除 / 人工调整 / 加 Task / 移 Task / 改 Task AI 代码权重 / 加 Repo（含编辑=删旧+加新）/ 移 Repo。
-// ⚠️ updateProject 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空。
-// ⚠️ 加 Repo 用数组 index，编辑/删后 index 漂移 → 操作后必 loadData（invalidate）。
+// 项目详情页（纯 Need(branch) 口径重设计）—— Data-Dense Dashboard × 玻璃拟态。
+// 三块：① 核心指标(KPI 卡) ② 组成·Needs(主数据表，可勾选纳入/排除) ③ 贡献者(从 Needs 守恒派生)。
+// 「项目 = 一组 Need」：所有指标从已选干净 Need 派生。已移除 v1 遗留——古法 commit 度量 / Tasks 管理 /
+// Commits 明细 / 旧用户视角。Repo 配置降级为「Need 来源规则」(repo[/分支])。
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   addRepoToProject,
-  addTasksToProject,
   deleteProject,
   getReposV2,
-  getTasksV2,
   removeRepoFromProject,
-  removeTasksFromProject,
   updateProject,
   updateProjectNeedSelection,
-  updateTaskSilicaInProject,
 } from '@/api/endpoints'
-import { useGlobalConfig, useProjectDetail, useProjectNeeds } from '@/api/queries'
-import type {
-  AddRepoRequest,
-  ProjectCommitItem,
-  ProjectModel,
-  ProjectNeedItem,
-  ProjectRepo,
-  ProjectTaskItem,
-  RepoListItem,
-  TaskListItem,
-} from '@/api/types'
-import { fmtCost, formatDuration, formatLocalTime } from '@/lib/formatters'
+import { useProjectDetail, useProjectNeeds } from '@/api/queries'
+import type { ProjectModel, ProjectNeedItem, ProjectRepo, RepoListItem } from '@/api/types'
+import { formatV2Ratio } from '@/lib/formatters'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Tag } from '@/components/ui/Tag'
-import { PercentPill, percentTextClass } from '@/components/ui/PercentPill'
 import { RatioPill } from '@/components/ui/RatioPill'
+import { MetricCard } from '@/components/ui/MetricCard'
 import { Modal } from '@/components/ui/Modal'
 
-// ---- 派生工具 ----
-function effAncient(r: ProjectModel): number | null {
-  return r.project_ancient_minutes_manual ?? r.project_ancient_minutes ?? null
-}
-function effProcess(r: ProjectModel): number | null {
-  return r.project_real_process_minutes_manual ?? r.project_real_process_minutes ?? null
-}
-function effLead(r: ProjectModel): number | null {
-  return r.project_real_lead_minutes_manual ?? r.project_real_lead_minutes ?? null
-}
+const WORK_MIN_PER_DAY = 480
+
 function isZeroTime(s: string | null | undefined): boolean {
   return !s || String(s).startsWith('0001-')
 }
-function taskEff(t: ProjectTaskItem): number | null {
-  return t.task_ancient_minutes_manual ?? t.task_ancient_minutes ?? null
+function fmtDate(s: string | null | undefined): string {
+  return isZeroTime(s) ? '—' : String(s).slice(0, 10)
 }
-function taskReal(t: ProjectTaskItem): number | null {
-  return t.task_real_minutes_manual ?? t.task_real_minutes ?? null
+/** 小数口径提效比的 KPI 卡着色：正绿 / 负红 / 空中性。 */
+function ratioTone(r: number | null | undefined): 'pos' | 'neg' | 'neutral' {
+  if (r == null || !Number.isFinite(r)) return 'neutral'
+  return r >= 0 ? 'pos' : 'neg'
 }
-function commitEffMin(c: ProjectCommitItem): number | null {
-  return c.commit_ancient_minutes_manual ?? c.commit_ancient_minutes ?? null
-}
-function commitRealMin(c: ProjectCommitItem): number | null {
-  return c.commit_real_minutes_manual ?? c.commit_real_minutes ?? null
+/** 客户端镜像 efficiencyV2Ratio：actual>0 才出比值（分子分母守恒后相除）。 */
+function v2ratio(baseline: number, actual: number): number | null {
+  return actual > 0 ? (baseline - actual) / actual : null
 }
 
-interface UserStat {
+interface Contributor {
   user_id: string
-  task_count: number
-  commit_count: number
-  commit_diff_lines: number
-  task_ancient_minutes: number
-  task_real_minutes: number
-  commit_ancient_minutes: number
-  commit_real_minutes: number
-  cost: number
-  task_efficiency_ratio: number | null
-  commit_efficiency_ratio: number | null
+  needCount: number
+  loc: number
+  aiLoc: number
+  baseCal: number
+  actCal: number
+  baseWork: number
+  actWork: number
+  calRatio: number | null
+  workRatio: number | null
+  aiRatio: number | null
 }
 
 export default function ProjectDetail() {
@@ -90,24 +60,62 @@ export default function ProjectDetail() {
   const queryClient = useQueryClient()
   const { data, isLoading, error } = useProjectDetail(projectId)
   const { data: needsData } = useProjectNeeds(projectId)
-  const { data: globalConfig } = useGlobalConfig()
-  // task/commit 的 user_name 多为 UUID，用 commits 的 git_user_name 解析真实名。
   const { resolveName } = useUserNameMap()
 
   const project = data?.project
-  const tasks = useMemo<ProjectTaskItem[]>(() => data?.tasks || [], [data])
-  const commits = useMemo<ProjectCommitItem[]>(() => data?.commits || [], [data])
-  const userCount = data?.user_count ?? 0
   const repos = useMemo<ProjectRepo[]>(() => project?.repos || [], [project])
   const projectNeeds = useMemo<ProjectNeedItem[]>(() => needsData?.data || [], [needsData])
+
   const [needBusy, setNeedBusy] = useState<string | null>(null)
   const [needErr, setNeedErr] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [sourceAddOpen, setSourceAddOpen] = useState(false)
+  const [removeSource, setRemoveSource] = useState<{ index: number; repo: ProjectRepo } | null>(null)
 
   const reload = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] }),
+      queryClient.invalidateQueries({ queryKey: ['project-needs', projectId] }),
+    ])
   }, [queryClient, projectId])
 
-  // Need 勾选：写 exclude_needs（黑名单语义）。同时刷新详情（Need 口径指标卡）与 Need 列表。
+  // 贡献者：从「已选(非 excluded)」Need 客户端守恒派生，按口径分别只计干净 Need（与后端 agg 同口径）。
+  const contributors = useMemo<Contributor[]>(() => {
+    const m = new Map<string, Contributor>()
+    for (const n of projectNeeds) {
+      if (n.excluded) continue
+      const uid = n.primary_user_id || '未知'
+      let c = m.get(uid)
+      if (!c) {
+        c = { user_id: uid, needCount: 0, loc: 0, aiLoc: 0, baseCal: 0, actCal: 0, baseWork: 0, actWork: 0, calRatio: null, workRatio: null, aiRatio: null }
+        m.set(uid, c)
+      }
+      c.needCount += 1
+      if (n.coverage_eligible && !n.calendar_outlier_flag) {
+        c.baseCal += n.baseline_calendar_min || 0
+        c.actCal += n.total_calendar_min || 0
+      }
+      if (n.coverage_eligible && !n.work_outlier_flag) {
+        c.baseWork += n.baseline_fused_work_min || 0
+        c.actWork += n.total_active_work_corrected_min || 0
+      }
+      if (n.coverage_eligible && !n.outlier_flag && (n.total_loc_net || 0) > 0) {
+        c.loc += n.total_loc_net || 0
+        c.aiLoc += n.ai_covered_loc || 0
+      }
+    }
+    const rows = Array.from(m.values())
+    for (const c of rows) {
+      c.calRatio = v2ratio(c.baseCal, c.actCal)
+      c.workRatio = v2ratio(c.baseWork, c.actWork)
+      c.aiRatio = c.loc > 0 ? c.aiLoc / c.loc : null
+    }
+    rows.sort((a, b) => b.needCount - a.needCount || b.loc - a.loc)
+    return rows
+  }, [projectNeeds])
+
   const toggleNeed = useCallback(
     async (n: ProjectNeedItem) => {
       setNeedBusy(n.need_id)
@@ -119,110 +127,15 @@ export default function ProjectDetail() {
           need_id: n.need_id,
           excluded: !n.excluded,
         })
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['project-needs', projectId] }),
-          queryClient.invalidateQueries({ queryKey: ['project-detail', projectId] }),
-        ])
+        await reload()
       } catch (e: unknown) {
-        // 不静默吞错：勾选失败（如通配分支不匹配 400）给用户可见反馈，避免"点了没反应"。
         setNeedErr(e instanceof Error ? e.message : '更新 Need 勾选失败')
       } finally {
         setNeedBusy(null)
       }
     },
-    [queryClient, projectId],
+    [reload, projectId],
   )
-
-  // ---- 前端自算派生指标（§2.2）----
-  const totalTokens = (project?.upstream_tokens || 0) + (project?.downstream_tokens || 0)
-  const totalCodeLines = useMemo(() => commits.reduce((s, r) => s + (r.diff_lines || 0), 0), [commits])
-  const actualWorkDays = useMemo(() => {
-    const m = project ? effProcess(project) : null
-    return m != null && m > 0 ? m / 480 : null
-  }, [project])
-  const ancientWorkDays = useMemo(() => {
-    const m = project ? effAncient(project) : null
-    return m != null && m > 0 ? m / 480 : null
-  }, [project])
-  const leadWorkDays = useMemo(() => {
-    const m = project ? effLead(project) : null
-    return m != null && m > 0 ? m / 480 : null
-  }, [project])
-  const actualLinesPerDay = actualWorkDays && actualWorkDays > 0 ? totalCodeLines / actualWorkDays : null
-  const traditionalLinesPerDay = ancientWorkDays && ancientWorkDays > 0 ? totalCodeLines / ancientWorkDays : null
-  const traditionalDevLinesPerDay = globalConfig?.traditional_dev_lines_per_day || 100
-  // 内部小数（显示 ×100）
-  // 提升百分比口径 (ancient−real)/real，与项目列表后端 CalcEfficiencyRatio 一致（原倍数口径与列表差 100 个点）
-  const devEfficiencyRatio =
-    ancientWorkDays && actualWorkDays && actualWorkDays > 0 ? (ancientWorkDays - actualWorkDays) / actualWorkDays : null
-  const e2eEfficiencyRatio =
-    ancientWorkDays && leadWorkDays && leadWorkDays > 0 ? (ancientWorkDays - leadWorkDays) / leadWorkDays : null
-
-  // ---- userStats（用户视角聚合）----
-  const userStats = useMemo<UserStat[]>(() => {
-    const map = new Map<string, UserStat>()
-    const ensure = (userId: string): UserStat => {
-      let s = map.get(userId)
-      if (!s) {
-        s = {
-          user_id: userId,
-          task_count: 0,
-          commit_count: 0,
-          commit_diff_lines: 0,
-          task_ancient_minutes: 0,
-          task_real_minutes: 0,
-          commit_ancient_minutes: 0,
-          commit_real_minutes: 0,
-          cost: 0,
-          task_efficiency_ratio: null,
-          commit_efficiency_ratio: null,
-        }
-        map.set(userId, s)
-      }
-      return s
-    }
-    // 分组键改为 user_id（user_name 多为 UUID，不宜当分组 key/显示）；空 → '未知'。显示走 resolveName。
-    for (const t of tasks) {
-      const s = ensure(t.user_id || '未知')
-      s.task_count += 1
-      s.task_ancient_minutes += taskEff(t) || 0
-      s.task_real_minutes += taskReal(t) || 0
-      s.cost += t.cost || 0
-    }
-    for (const c of commits) {
-      const s = ensure(c.user_id || '未知')
-      s.commit_count += 1
-      s.commit_diff_lines += c.diff_lines || 0
-      s.commit_ancient_minutes += commitEffMin(c) || 0
-      s.commit_real_minutes += commitRealMin(c) || 0
-      s.cost += c.cost || 0
-    }
-    const rows = Array.from(map.values())
-    // 提升百分比 (ancient−real)/real*100：两侧都>0 才可算（缺一侧算出来是假 ±100%），否则 null 显 '-'
-    for (const s of rows) {
-      s.task_efficiency_ratio =
-        s.task_ancient_minutes > 0 && s.task_real_minutes > 0
-          ? ((s.task_ancient_minutes - s.task_real_minutes) / s.task_real_minutes) * 100
-          : null
-      s.commit_efficiency_ratio =
-        s.commit_ancient_minutes > 0 && s.commit_real_minutes > 0
-          ? ((s.commit_ancient_minutes - s.commit_real_minutes) / s.commit_real_minutes) * 100
-          : null
-    }
-    rows.sort((a, b) => b.commit_diff_lines - a.commit_diff_lines)
-    return rows
-  }, [tasks, commits])
-
-  // ---- dialog 状态 ----
-  const [editOpen, setEditOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [taskOpen, setTaskOpen] = useState(false)
-  const [silicaTask, setSilicaTask] = useState<ProjectTaskItem | null>(null)
-  const [removeTask, setRemoveTask] = useState<ProjectTaskItem | null>(null)
-  const [repoEdit, setRepoEdit] = useState<{ index: number; repo: ProjectRepo } | null>(null)
-  const [repoAddOpen, setRepoAddOpen] = useState(false)
-  const [removeRepo, setRemoveRepo] = useState<{ index: number; repo: ProjectRepo } | null>(null)
 
   async function confirmDelete() {
     setDeleting(true)
@@ -235,17 +148,10 @@ export default function ProjectDetail() {
     }
   }
 
-  async function doRemoveTask() {
-    if (!removeTask) return
-    await removeTasksFromProject(projectId as string, { task_ids: [removeTask.task_id] })
-    setRemoveTask(null)
-    await reload()
-  }
-
-  async function doRemoveRepo() {
-    if (!removeRepo) return
-    await removeRepoFromProject(projectId as string, removeRepo.index)
-    setRemoveRepo(null)
+  async function doRemoveSource() {
+    if (!removeSource) return
+    await removeRepoFromProject(projectId as string, removeSource.index)
+    setRemoveSource(null)
     await reload()
   }
 
@@ -257,18 +163,35 @@ export default function ProjectDetail() {
     )
   }
 
+  const dateRange =
+    project && !isZeroTime(project.start_time_manual ?? project.start_time)
+      ? `${fmtDate(project.start_time_manual ?? project.start_time)} ~ ${
+          isZeroTime(project.end_time_manual ?? project.end_time) ? '至今' : fmtDate(project.end_time_manual ?? project.end_time)
+        }`
+      : '—'
+
+  const calR = data?.need_calendar_efficiency_ratio
+  const workR = data?.need_work_efficiency_ratio
+  const actualPersonDays = data?.need_actual_work_min != null ? data.need_actual_work_min / WORK_MIN_PER_DAY : null
+  const calPersonDays = data?.need_actual_calendar_min != null ? data.need_actual_calendar_min / WORK_MIN_PER_DAY : null
+
   return (
     <div className={`space-y-5 ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}>
       {/* ① 标题栏 */}
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
           <BackButton onClick={() => navigate(-1)} />
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">{project?.name || '项目详情'}</h1>
-            {project?.description && <p className="text-sm text-gray-500 dark:text-gray-400">{project.description}</p>}
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{project?.name || '项目详情'}</h1>
+            {project?.description && <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{project.description}</p>}
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+              <MetaChip>{dateRange}</MetaChip>
+              <MetaChip>{data?.need_total_count ?? projectNeeds.length} Needs</MetaChip>
+              <MetaChip>{contributors.length} 人</MetaChip>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setEditOpen(true)}
@@ -286,209 +209,92 @@ export default function ProjectDetail() {
         </div>
       </header>
 
-      {/* ② 基础信息 */}
-      <Panel title="基础信息">
-        <KvGrid>
-          <Kv label="项目ID" mono>{project?.project_id || '-'}</Kv>
-          <Kv label="起始时间">
-            <ManualTime manual={project?.start_time_manual} original={project?.start_time} />
-          </Kv>
-          <Kv label="结束时间">
-            {isZeroTime(project?.end_time_manual ?? project?.end_time) ? (
-              <span className="text-emerald-600 dark:text-emerald-400">尚未结束</span>
-            ) : (
-              <ManualTime manual={project?.end_time_manual} original={project?.end_time} />
-            )}
-          </Kv>
-          <Kv label="Repo数">{repos.length}</Kv>
-          <Kv label="Task数">{tasks.length}</Kv>
-          <Kv label="Commit数">{commits.length}</Kv>
-          <Kv label="参与人数">{userCount}</Kv>
-        </KvGrid>
-      </Panel>
+      {/* ② 核心指标（Need/branch 口径，守恒聚合，只计干净 Need） */}
+      <section>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <MetricCard
+            label="日历提效比"
+            value={calR != null ? formatV2Ratio(calR) : '—'}
+            tone={ratioTone(calR)}
+            accent="#0071e3"
+            tip="（基线日历时间 − 实际日历时间）÷ 实际日历时间；分子分母守恒，仅计干净 Need。业务主口径。"
+          />
+          <MetricCard
+            label="工作量提效比"
+            value={workR != null ? formatV2Ratio(workR) : '—'}
+            tone={ratioTone(workR)}
+            tip="（融合基线工时 − 实际活跃工时）÷ 实际活跃工时。内部下钻口径。"
+          />
+          <MetricCard
+            label="AI 代码占比"
+            value={data?.need_ai_code_ratio != null ? formatV2Ratio(data.need_ai_code_ratio) : '—'}
+            tip="Σ ai_covered_loc ÷ Σ total_loc_net（干净 Need）。"
+          />
+          <MetricCard
+            label="实际工时"
+            value={actualPersonDays != null ? `${actualPersonDays.toFixed(1)} 人天` : '—'}
+            hint={calPersonDays != null ? `日历跨度 ${calPersonDays.toFixed(1)} 人天` : undefined}
+            tip="干净 Need 的实际活跃工时之和（÷480 折人天）。"
+          />
+          <MetricCard
+            label="生成代码"
+            value={data?.need_total_loc_net != null ? `${data.need_total_loc_net.toLocaleString()} 行` : '—'}
+            tip="干净 Need 净 LOC 之和。"
+          />
+          <MetricCard
+            label="合格 / 候选 Need"
+            value={`${data?.need_eligible_count ?? 0} / ${data?.need_total_count ?? 0}`}
+            hint={`自动剔除 ${data?.need_excluded_count ?? 0}`}
+            tip="合格=已选且 coverage_eligible 且非 outlier；候选=看板口径全量；自动剔除=日历 outlier。"
+          />
+        </div>
+      </section>
 
-      {/* ③ 度量信息 */}
-      <Panel title="度量信息">
-        <KvGrid>
-          <Kv label="传统开发预估" title={`汇聚项目内所有 Task 和 Commit 的传统开发预估时间之和${project?.project_ancient_minutes_reason ? `：${project.project_ancient_minutes_reason}` : ''}`}>
-            {formatDuration(project ? effAncient(project) : null)}
-          </Kv>
-          <Kv label="实际处理耗时" title={`项目内实际 AI 处理耗时之和（不含等待时间）${project?.project_real_process_minutes_reason ? `：${project.project_real_process_minutes_reason}` : ''}`}>
-            {formatDuration(project ? effProcess(project) : null)}
-          </Kv>
-          <Kv label="项目周期" title={project?.project_real_lead_minutes_reason || undefined}>
-            {formatDuration(project ? effLead(project) : null)}
-          </Kv>
-          <Kv label="总Tokens" title={`上行 ${project?.upstream_tokens || 0} / 下行 ${project?.downstream_tokens || 0}`}>
-            {totalTokens > 0 ? totalTokens.toLocaleString() : '-'}
-          </Kv>
-          <Kv label="总费用">{project?.cost != null && project.cost > 0 ? `${fmtCost(project.cost)} 元` : '-'}</Kv>
-          <Kv label="生成代码量" title="所有 Commit diff_lines 之和">
-            {totalCodeLines > 0 ? `${totalCodeLines.toLocaleString()} 行` : '-'}
-          </Kv>
-          <Kv label="实际耗时">{actualWorkDays != null ? `${actualWorkDays.toFixed(2)} 人天` : '-'}</Kv>
-          <Kv label="实际人天代码量">{actualLinesPerDay != null ? `${actualLinesPerDay.toFixed(0)} 行/人天` : '-'}</Kv>
-          <Kv label="传统开发人天代码量" title={`传统开发基准：${traditionalDevLinesPerDay} 行/人天`}>
-            {traditionalLinesPerDay != null ? `${traditionalLinesPerDay.toFixed(0)} 行/人天` : '-'}
-          </Kv>
-          <Kv label="开发提效比" title="（传统开发预估 − 实际耗时）÷ 实际耗时">
-            <span className={`text-xl font-bold tabular-nums ${percentTextClass(devEfficiencyRatio != null ? devEfficiencyRatio * 100 : null)}`}>
-              {devEfficiencyRatio != null ? `${Math.round(devEfficiencyRatio * 100)}%` : '-'}
-            </span>
-          </Kv>
-          <Kv label="端到端提效比" title="（传统开发预估 − 项目周期）÷ 项目周期">
-            <span className={`text-xl font-bold tabular-nums ${percentTextClass(e2eEfficiencyRatio != null ? e2eEfficiencyRatio * 100 : null)}`}>
-              {e2eEfficiencyRatio != null ? `${Math.round(e2eEfficiencyRatio * 100)}%` : '-'}
-            </span>
-          </Kv>
-        </KvGrid>
-      </Panel>
-
-      {/* ③.5 Need 口径指标（按 branch 聚合） */}
-      <Panel title="Need 口径指标（按 branch 聚合）" hint="日历口径为主 · 只计干净 Need · 套看板口径">
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 leading-relaxed">
-          ⚠️ 与上方「度量信息」的 commit 古法口径互不替代：此处按 Need(branch) 维度从 needs 表「分子分母守恒」聚合，
-          只计 coverage_eligible 且非 outlier 的干净 Need，并排除主干分支。比值为小数倍数口径（如 0.5 = 50%），非百分比。
-        </p>
-        {(data?.need_total_count ?? 0) === 0 ? (
-          <Empty>候选池内暂无符合看板口径的 Need（可能：项目仅配置了主干分支，或该范围暂无已交付特性分支 Need）</Empty>
-        ) : (
-          <KvGrid>
-            <Kv label="日历提效比" title="（基线日历时间 − 实际日历时间）÷ 实际日历时间；干净 Need 分子分母守恒聚合">
-              {data?.need_calendar_efficiency_ratio != null ? <RatioPill value={data.need_calendar_efficiency_ratio} /> : '-'}
-            </Kv>
-            <Kv label="工作量提效比" title="（融合基线工时 − 实际活跃工时）÷ 实际活跃工时（内部下钻口径）">
-              {data?.need_work_efficiency_ratio != null ? <RatioPill value={data.need_work_efficiency_ratio} /> : '-'}
-            </Kv>
-            <Kv label="AI 代码占比" title="Σ ai_covered_loc ÷ Σ total_loc_net（干净 Need）">
-              {data?.need_ai_code_ratio != null ? <RatioPill value={data.need_ai_code_ratio} /> : '-'}
-            </Kv>
-            <Kv label="合格 Need 数" title="计入指标的干净 Need 数（coverage_eligible 且非 outlier）">
-              {data?.need_eligible_count ?? 0}
-            </Kv>
-            <Kv label="自动剔除" title="因日历口径 outlier 被自动剔除、未计入提效比的 Need 数">
-              {data?.need_excluded_count ?? 0}
-            </Kv>
-            <Kv label="候选 Need 总数" title="候选池内通过看板口径的 Need 总数（含未选/已排除/不合格），与下方 Needs 子表行数同源">
-              {data?.need_total_count ?? 0}
-            </Kv>
-          </KvGrid>
-        )}
-      </Panel>
-
-      {/* ④ 用户视角 */}
-      <Panel title="用户视角" hint={`${userStats.length} 人`}>
-        {userStats.length === 0 ? (
-          <Empty>暂无数据</Empty>
-        ) : (
-          <TableWrap>
-            <thead>
-              <tr className="border-b border-gray-200/50 dark:border-white/10">
-                <th className={TH}>用户</th>
-                <th className={TH_NUM}>Task数</th>
-                <th className={TH_NUM}>Commit数</th>
-                <th className={TH_NUM}>代码行数</th>
-                <th className={TH_NUM}>Task传统预估</th>
-                <th className={TH_NUM}>Task实际耗时</th>
-                <th className={TH_CENTER}>Task提效比</th>
-                <th className={TH_NUM}>Commit传统预估</th>
-                <th className={TH_NUM}>Commit实际耗时</th>
-                <th className={TH_CENTER}>Commit提效比</th>
-                <th className={TH_NUM}>费用</th>
-              </tr>
-            </thead>
-            <tbody>
-              {userStats.map((s) => (
-                <tr key={s.user_id} className="border-b border-gray-100/50 dark:border-white/5 hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors">
-                  <td className={TD} title={resolveName(s.user_id)}>
-                    {s.user_id && s.user_id !== '未知' ? (
-                      <LinkBtn onClick={() => navigate(`/user/${encodeURIComponent(s.user_id)}`)}>
-                        {resolveName(s.user_id)}
-                      </LinkBtn>
-                    ) : (
-                      resolveName(s.user_id)
-                    )}
-                  </td>
-                  <td className={TD_NUM}>{s.task_count}</td>
-                  <td className={TD_NUM}>{s.commit_count}</td>
-                  <td className={TD_NUM}>{s.commit_diff_lines.toLocaleString()}</td>
-                  <td className={TD_NUM}>{formatDuration(s.task_ancient_minutes)}</td>
-                  <td className={TD_NUM}>{formatDuration(s.task_real_minutes)}</td>
-                  <td className="px-3 py-2 align-middle text-center">
-                    {s.task_efficiency_ratio != null ? <PercentPill value={s.task_efficiency_ratio} /> : <Tag tone="info">-</Tag>}
-                  </td>
-                  <td className={TD_NUM}>{formatDuration(s.commit_ancient_minutes)}</td>
-                  <td className={TD_NUM}>{formatDuration(s.commit_real_minutes)}</td>
-                  <td className="px-3 py-2 align-middle text-center">
-                    {s.commit_efficiency_ratio != null ? <PercentPill value={s.commit_efficiency_ratio} /> : <Tag tone="info">-</Tag>}
-                  </td>
-                  <td className={TD_NUM}>{s.cost > 0 ? fmtCost(s.cost) : '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        )}
-      </Panel>
-
-      {/* ⑤ Repos */}
+      {/* ③ 组成 · Needs（主角：来源规则 + 逐个勾选纳入/排除） */}
       <Panel
-        title={`Repos (${repos.length})`}
-        action={
-          <PanelAddButton onClick={() => setRepoAddOpen(true)}>添加 Repo</PanelAddButton>
-        }
+        title="组成 · Needs"
+        hint={`候选 ${data?.need_total_count ?? projectNeeds.length} · 合格 ${data?.need_eligible_count ?? 0}`}
+        action={<PanelAddButton onClick={() => setSourceAddOpen(true)}>添加来源</PanelAddButton>}
       >
-        {repos.length === 0 ? (
-          <Empty>暂无 Repo 配置</Empty>
-        ) : (
-          <TableWrap>
-            <thead>
-              <tr className="border-b border-gray-200/50 dark:border-white/10">
-                <th className={TH}>仓库地址</th>
-                <th className={TH}>分支</th>
-                <th className={TH}>开始时间</th>
-                <th className={TH}>结束时间</th>
-                <th className={TH_NUM}>白名单commits</th>
-                <th className={TH_NUM}>排除commits</th>
-                <th className={TH_CENTER}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {repos.map((r, i) => (
-                <tr key={`${r.repo_addr}#${r.repo_branch}#${i}`} className="border-b border-gray-100/50 dark:border-white/5 hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors">
-                  <td className={TD}>
-                    <LinkBtn onClick={() => navigate(`/repo/${encodeURIComponent(r.repo_addr)}${r.repo_branch ? `/${encodeURIComponent(r.repo_branch)}` : ''}`)}>
-                      {r.repo_addr}
-                    </LinkBtn>
-                  </td>
-                  <td className={TD}>{r.repo_branch || '-'}</td>
-                  <td className={TD}>{isZeroTime(r.start_time) ? '-' : formatLocalTime(r.start_time)}</td>
-                  <td className={TD}>{isZeroTime(r.end_time) ? '-' : formatLocalTime(r.end_time)}</td>
-                  <td className={TD_NUM}>{r.include_only_commits?.length || 0}</td>
-                  <td className={TD_NUM}>{r.exclude_commits?.length || 0}</td>
-                  <td className="px-3 py-2 align-middle text-center whitespace-nowrap">
-                    <button type="button" onClick={() => setRepoEdit({ index: i, repo: r })} className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 text-sm mr-3 focus:outline-none focus-visible:underline">编辑</button>
-                    <button type="button" onClick={() => setRemoveRepo({ index: i, repo: r })} className="text-rose-500 hover:text-rose-600 cursor-pointer bg-transparent border-none p-0 text-sm focus:outline-none focus-visible:underline">删除</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        )}
-      </Panel>
+        {/* 来源规则 chips */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-400 dark:text-gray-500">Need 来源：</span>
+          {repos.length === 0 ? (
+            <span className="text-xs text-gray-400 dark:text-gray-500">未配置（点「添加来源」按仓库/分支纳入 Need）</span>
+          ) : (
+            repos.map((r, i) => (
+              <span
+                key={`${r.repo_addr}#${r.repo_branch}#${i}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-apple-blue/10 dark:bg-white/10 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-200"
+              >
+                <span className="font-mono truncate max-w-[220px]" title={`${r.repo_addr}${r.repo_branch ? ` @ ${r.repo_branch}` : ''}`}>
+                  {shortRepo(r.repo_addr)}
+                  {r.repo_branch ? ` @ ${r.repo_branch}` : ' @ 全部分支'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRemoveSource({ index: i, repo: r })}
+                  aria-label={`移除来源 ${r.repo_addr}`}
+                  className="text-gray-400 hover:text-rose-500 cursor-pointer bg-transparent border-none p-0 leading-none transition-colors focus:outline-none focus-visible:text-rose-500"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            ))
+          )}
+        </div>
 
-      {/* ⑤.5 Needs（按 branch，可勾选纳入/排除项目 Need 口径指标） */}
-      <Panel
-        title={`Needs (${projectNeeds.length})`}
-        hint="勾选=纳入项目 Need 口径指标；取消勾选=排除该 Need（写入 exclude_needs，不影响 commit 古法口径）"
-      >
         {needErr && <div className="mb-3 text-sm text-rose-600 dark:text-rose-400">{needErr}</div>}
         {(needsData?.stale_count ?? 0) > 0 && (
           <div className="mb-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            ⚠️ 项目配置中有 {needsData?.stale_count} 个已勾选/排除的 Need 因重算已失效（need_id 漂移），不再影响聚合；如需清理可在上方「编辑 Repo」中移除对应名单项。
+            ⚠️ 配置中有 {needsData?.stale_count} 个已勾选/排除的 Need 因重算已失效（need_id 漂移），不再影响聚合；如需清理可移除对应来源后重加。
           </div>
         )}
+
         {projectNeeds.length === 0 ? (
-          <Empty>候选池内暂无 Need（先在上方配置特性分支 Repo）</Empty>
+          <Empty>候选池内暂无 Need（先在上方「添加来源」配置特性分支仓库）</Empty>
         ) : (
           <TableWrap>
             <thead>
@@ -516,24 +322,24 @@ export default function ProjectDetail() {
                       checked={!n.excluded}
                       disabled={needBusy === n.need_id}
                       onChange={() => toggleNeed(n)}
-                      className="accent-apple-blue cursor-pointer disabled:opacity-50"
-                      aria-label={n.excluded ? '纳入该 Need' : '排除该 Need'}
+                      className="w-4 h-4 accent-apple-blue cursor-pointer disabled:opacity-50"
+                      aria-label={n.excluded ? `纳入 Need ${n.repo_branch}` : `排除 Need ${n.repo_branch}`}
                     />
                   </td>
                   <td className={TD}>
                     <LinkBtn onClick={() => navigate(`/needs/${encodeURIComponent(n.need_id)}`)}>
                       <span className="font-mono break-all" title={n.need_id}>
-                        {n.need_id.length > 28 ? `${n.need_id.substring(0, 28)}…` : n.need_id}
+                        {n.need_id.length > 30 ? `${n.need_id.slice(0, 30)}…` : n.need_id}
                       </span>
                     </LinkBtn>
                   </td>
                   <td className={TD}>{n.repo_branch || '-'}</td>
-                  <td className={TD}>{n.boundary_source}</td>
+                  <td className={TD}><span className="text-xs text-gray-400 dark:text-gray-500">{n.boundary_source}</span></td>
                   <td className="px-3 py-2 align-middle text-center"><RatioPill value={n.efficiency_ratio} /></td>
                   <td className="px-3 py-2 align-middle text-center"><RatioPill value={n.work_efficiency_ratio} /></td>
                   <td className="px-3 py-2 align-middle text-center"><RatioPill value={n.ai_code_ratio ?? null} /></td>
                   <td className="px-3 py-2 align-middle text-center"><NeedStatusTag n={n} /></td>
-                  <td className={TD_NUM}>{n.total_loc_net ?? '-'}</td>
+                  <td className={TD_NUM}>{n.total_loc_net != null ? n.total_loc_net.toLocaleString() : '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -541,101 +347,37 @@ export default function ProjectDetail() {
         )}
       </Panel>
 
-      {/* ⑥ Tasks */}
-      <Panel
-        title={`Tasks (${tasks.length})`}
-        action={<PanelAddButton onClick={() => setTaskOpen(true)}>添加 Task</PanelAddButton>}
-      >
-        {tasks.length === 0 ? (
-          <Empty>暂无数据</Empty>
+      {/* ④ 贡献者（从已选干净 Need 守恒派生） */}
+      <Panel title="贡献者" hint={`${contributors.length} 人`}>
+        {contributors.length === 0 ? (
+          <Empty>暂无已选 Need 的贡献者</Empty>
         ) : (
           <TableWrap>
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
-                <th className={TH}>Task ID</th>
                 <th className={TH}>用户</th>
-                <th className={TH}>开始时间</th>
-                <th className={TH_NUM}>传统预估</th>
-                <th className={TH_NUM}>实际耗时</th>
-                <th className={TH_NUM}>AI 代码权重</th>
-                <th className={TH_NUM}>费用</th>
-                <th className={TH_CENTER}>操作</th>
+                <th className={TH_NUM}>Needs</th>
+                <th className={TH_CENTER}>日历提效比</th>
+                <th className={TH_CENTER}>工作量提效比</th>
+                <th className={TH_CENTER}>AI占比</th>
+                <th className={TH_NUM}>代码行</th>
               </tr>
             </thead>
             <tbody>
-              {tasks.map((t) => (
-                <tr
-                  key={t.task_id}
-                  onClick={() => navigate(`/task/${encodeURIComponent(t.task_id)}`)}
-                  className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
-                >
-                  <td className={TD}>
-                    <span className="font-mono text-apple-blue">{t.task_id.substring(0, 8)}</span>
+              {contributors.map((c) => (
+                <tr key={c.user_id} className="border-b border-gray-100/50 dark:border-white/5 hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors">
+                  <td className={TD} title={resolveName(c.user_id)}>
+                    {c.user_id && c.user_id !== '未知' ? (
+                      <LinkBtn onClick={() => navigate(`/user/${encodeURIComponent(c.user_id)}`)}>{resolveName(c.user_id)}</LinkBtn>
+                    ) : (
+                      resolveName(c.user_id)
+                    )}
                   </td>
-                  <td className={TD}>{resolveName(t.user_id)}</td>
-                  <td className={TD}>{formatLocalTime(t.start_time)}</td>
-                  <td className={TD_NUM}>{formatDuration(taskEff(t))}</td>
-                  <td className={TD_NUM}>{formatDuration(taskReal(t))}</td>
-                  <td className={TD_NUM}>{(t.silica ?? 1.0).toFixed(2)}</td>
-                  <td className={TD_NUM}>{t.cost != null && t.cost > 0 ? fmtCost(t.cost) : '-'}</td>
-                  <td className="px-3 py-2 align-middle text-center whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setSilicaTask(t) }}
-                      className="text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 text-sm mr-3 focus:outline-none focus-visible:underline"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setRemoveTask(t) }}
-                      className="text-rose-500 hover:text-rose-600 cursor-pointer bg-transparent border-none p-0 text-sm focus:outline-none focus-visible:underline"
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        )}
-      </Panel>
-
-      {/* ⑦ Commits */}
-      <Panel title={`Commits (${commits.length})`}>
-        {commits.length === 0 ? (
-          <Empty>暂无数据</Empty>
-        ) : (
-          <TableWrap>
-            <thead>
-              <tr className="border-b border-gray-200/50 dark:border-white/10">
-                <th className={TH}>Commit ID</th>
-                <th className={TH}>用户</th>
-                <th className={TH}>时间</th>
-                <th className={TH}>说明</th>
-                <th className={TH_NUM}>代码行数</th>
-                <th className={TH_NUM}>传统预估</th>
-                <th className={TH_NUM}>实际耗时</th>
-                <th className={TH_CENTER}>AI 代码占比</th>
-              </tr>
-            </thead>
-            <tbody>
-              {commits.map((c) => (
-                <tr
-                  key={c.commit_id}
-                  onClick={() => navigate(`/commit/${encodeURIComponent(c.commit_id)}`)}
-                  className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
-                >
-                  <td className={TD}><span className="font-mono text-apple-blue">{c.commit_id.substring(0, 8)}</span></td>
-                  <td className={TD}>{commitUserName(c, resolveName)}</td>
-                  <td className={TD}>{formatLocalTime(c.commit_time)}</td>
-                  <td className={TD}><div className="max-w-[260px] truncate" title={c.comment}>{c.comment || '-'}</div></td>
-                  <td className={TD_NUM}>{c.diff_lines ?? '-'}</td>
-                  <td className={TD_NUM}>{formatDuration(commitEffMin(c))}</td>
-                  <td className={TD_NUM}>{formatDuration(commitRealMin(c))}</td>
-                  <td className="px-3 py-2 align-middle text-center">
-                    {c.silica != null ? <Tag tone={projectSilicaTone(c.silica)}>{c.silica.toFixed(1)}%</Tag> : '-'}
-                  </td>
+                  <td className={TD_NUM}>{c.needCount}</td>
+                  <td className="px-3 py-2 align-middle text-center"><RatioPill value={c.calRatio} /></td>
+                  <td className="px-3 py-2 align-middle text-center"><RatioPill value={c.workRatio} /></td>
+                  <td className="px-3 py-2 align-middle text-center"><RatioPill value={c.aiRatio} /></td>
+                  <td className={TD_NUM}>{c.loc.toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -647,9 +389,7 @@ export default function ProjectDetail() {
       {project && (
         <>
           <EditModal open={editOpen} project={project} repos={repos} onClose={() => setEditOpen(false)} onSaved={async () => { setEditOpen(false); await reload() }} projectId={projectId as string} />
-          <AddTaskModal open={taskOpen} onClose={() => setTaskOpen(false)} onSaved={async () => { setTaskOpen(false); await reload() }} projectId={projectId as string} />
-          <SilicaModal task={silicaTask} onClose={() => setSilicaTask(null)} onSaved={async () => { setSilicaTask(null); await reload() }} projectId={projectId as string} />
-          <RepoModal open={repoAddOpen || !!repoEdit} edit={repoEdit} onClose={() => { setRepoAddOpen(false); setRepoEdit(null) }} onSaved={async () => { setRepoAddOpen(false); setRepoEdit(null); await reload() }} projectId={projectId as string} />
+          <SourceModal open={sourceAddOpen} onClose={() => setSourceAddOpen(false)} onSaved={async () => { setSourceAddOpen(false); await reload() }} projectId={projectId as string} />
         </>
       )}
 
@@ -663,54 +403,30 @@ export default function ProjectDetail() {
         onConfirm={confirmDelete}
       />
       <ConfirmModal
-        open={!!removeTask}
-        title="移除 Task"
-        message="确定要从项目中移除此 Task 吗？"
+        open={!!removeSource}
+        title="移除来源"
+        message={`确定要移除 Need 来源「${removeSource?.repo.repo_addr || ''}${removeSource?.repo.repo_branch ? ` @ ${removeSource.repo.repo_branch}` : ''}」吗？该来源下的 Need 将不再计入本项目。`}
         confirmLabel="移除"
-        onClose={() => setRemoveTask(null)}
-        onConfirm={doRemoveTask}
-      />
-      <ConfirmModal
-        open={!!removeRepo}
-        title="移除 Repo"
-        message={`确定要从项目中移除 Repo「${removeRepo?.repo.repo_addr || ''}」吗？`}
-        confirmLabel="移除"
-        onClose={() => setRemoveRepo(null)}
-        onConfirm={doRemoveRepo}
+        onClose={() => setRemoveSource(null)}
+        onConfirm={doRemoveSource}
       />
     </div>
   )
 }
 
-/**
- * Commit 行用户名：优先按 user_id 解析真实名（resolveName）；
- * 未命中（无 user_id 或映射缺失，resolveName 回退原 user_id）时退回 git_user_name（本就是真实名）。
- */
-function commitUserName(c: ProjectCommitItem, resolveName: (id?: string) => string): string {
-  if (c.user_id) {
-    const resolved = resolveName(c.user_id)
-    if (resolved !== c.user_id) return resolved
-  }
-  return c.git_user_name || c.user_name || c.user_id || '-'
-}
-
-/** ProjectCommit AI 代码占比 tag tone（直接当百分比，不 ×100，阈值 80/50）。 */
-function projectSilicaTone(v: number): 'success' | 'primary' | 'info' {
-  if (v >= 80) return 'success'
-  if (v >= 50) return 'primary'
-  return 'info'
-}
-
-/**
- * Need 干净度标签：不合格 / 日历异常 / 工作量异常 / 干净。
- * 按口径区分异常：日历异常对应卡片「自动剔除」(日历口径)计数；工作量异常仅从工作量口径剔除、不计入「自动剔除」。
- * 故「日历异常」标签数 == 卡片自动剔除数；「工作量异常」单列，避免两口径异常混成一个标签后与计数对不上账。
- */
+/** Need 干净度标签：不合格 / 日历异常 / 工作量异常 / 干净。
+ * 「日历异常」对应核心指标「自动剔除」(日历口径)；「工作量异常」仅从工作量口径剔除、不计入「自动剔除」。 */
 function NeedStatusTag({ n }: { n: ProjectNeedItem }) {
   if (!n.coverage_eligible) return <Tag tone="info" title="未交付或低置信，不计入提效比">不合格</Tag>
   if (n.calendar_outlier_flag) return <Tag tone="warning" title={n.reason || '日历口径异常，从日历提效比剔除'}>日历异常</Tag>
   if (n.work_outlier_flag) return <Tag tone="warning" title={n.reason || '工作量口径异常，仅从工作量提效比剔除'}>工作量异常</Tag>
   return <Tag tone="success">干净</Tag>
+}
+
+/** repo 地址压缩展示（去协议前缀、保留尾部可辨识段）。 */
+function shortRepo(addr: string): string {
+  const s = addr.replace(/^https?:\/\//, '').replace(/^git@/, '').replace(/\.git$/, '')
+  return s.length > 28 ? `…${s.slice(-28)}` : s
 }
 
 // ============ 编辑项目 dialog ============
@@ -749,7 +465,7 @@ function EditModal({
     setSubmitting(true)
     setErr('')
     try {
-      // ⚠️ 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空。
+      // ⚠️ 必须回传 repos/task_ids/task_ids_silica 原值，否则后端清空（task 数据虽不展示但不销毁）。
       await updateProject(projectId, {
         name: name.trim(),
         description: (desc || '').trim(),
@@ -778,8 +494,8 @@ function EditModal({
   )
 }
 
-// ============ 添加 Task dialog ============
-function AddTaskModal({
+// ============ 添加 Need 来源 dialog（repo[/分支]，分支留空=全部分支） ============
+function SourceModal({
   open,
   projectId,
   onClose,
@@ -790,59 +506,37 @@ function AddTaskModal({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
-  const [keyword, setKeyword] = useState('')
-  const [options, setOptions] = useState<TaskListItem[]>([])
-  const [selected, setSelected] = useState<TaskListItem[]>([])
-  const [silica, setSilica] = useState('1.0')
-  const [searching, setSearching] = useState(false)
+  const [repoAddr, setRepoAddr] = useState('')
+  const [repoBranch, setRepoBranch] = useState('')
+  const [addrOptions, setAddrOptions] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
 
   useEffect(() => {
     if (!open) return
-    setKeyword('')
-    setOptions([])
-    setSelected([])
-    setSilica('1.0')
+    setRepoAddr('')
+    setRepoBranch('')
     setErr('')
+    getReposV2({ pageSize: 1000 })
+      .then((res) => setAddrOptions(Array.from(new Set((res.data || []).map((r: RepoListItem) => r.repo_addr).filter(Boolean)))))
+      .catch(() => setAddrOptions([]))
   }, [open])
 
-  async function search() {
-    setSearching(true)
-    try {
-      const today = new Date()
-      const end = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`
-      const res = await getTasksV2({ pageSize: 50, startDate: '20250101', endDate: end })
-      const kw = keyword.trim().toLowerCase()
-      const rows = (res.data || []).filter((t) =>
-        !kw ||
-        t.task_id.toLowerCase().includes(kw) ||
-        (t.user_name || '').toLowerCase().includes(kw) ||
-        (t.work_dir || '').toLowerCase().includes(kw) ||
-        (t.title || '').toLowerCase().includes(kw),
-      )
-      setOptions(rows)
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  function toggle(t: TaskListItem) {
-    setSelected((prev) => (prev.some((x) => x.task_id === t.task_id) ? prev.filter((x) => x.task_id !== t.task_id) : [...prev, t]))
-  }
-
   async function handleSubmit() {
-    if (selected.length === 0) {
-      setErr('请至少选择 1 个 Task')
+    if (!repoAddr.trim()) {
+      setErr('仓库地址必填')
       return
     }
     setSubmitting(true)
     setErr('')
     try {
-      const w = Number(silica)
-      await addTasksToProject(projectId, {
-        task_ids: selected.map((t) => t.task_id),
-        task_ids_silica: selected.map(() => (Number.isFinite(w) ? w : 1.0)),
+      await addRepoToProject(projectId, {
+        repo_addr: repoAddr.trim(),
+        repo_branch: repoBranch.trim(),
+        start_time: null,
+        end_time: null,
+        exclude_commits: [],
+        include_only_commits: [],
       })
       await onSaved()
     } catch (e: unknown) {
@@ -853,220 +547,20 @@ function AddTaskModal({
   }
 
   return (
-    <FormModal open={open} title="添加 Task" maxWidth={560} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
-      {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
-      <Field label="搜索 Task（ID / 用户 / 工作目录 / 标题）">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search() } }}
-            className={INPUT}
-            placeholder="输入关键词后点搜索"
-          />
-          <button type="button" onClick={search} disabled={searching} className="shrink-0 bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue">
-            {searching ? '搜索中...' : '搜索'}
-          </button>
-        </div>
-      </Field>
-      {options.length > 0 && (
-        <div className="max-h-56 overflow-y-auto glass rounded-lg p-1">
-          {options.map((t) => {
-            const checked = selected.some((x) => x.task_id === t.task_id)
-            return (
-              <label key={t.task_id} className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-apple-blue/5 dark:hover:bg-white/5 cursor-pointer">
-                <input type="checkbox" checked={checked} onChange={() => toggle(t)} className="mt-1 accent-apple-blue cursor-pointer" />
-                <div className="min-w-0">
-                  <div className="text-sm text-gray-800 dark:text-gray-100 truncate">
-                    <span className="font-mono text-apple-blue">{t.task_id.substring(0, 8)}</span>
-                    {t.user_name ? ` · ${t.user_name}` : ''}
-                  </div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500 truncate">{t.title || t.work_dir || ''}</div>
-                </div>
-              </label>
-            )
-          })}
-        </div>
-      )}
-      <Field label="AI 代码权重">
-        <input type="number" step={0.1} min={0} value={silica} onChange={(e) => setSilica(e.target.value)} className={INPUT} />
-      </Field>
-      <div className="text-xs text-gray-400 dark:text-gray-500">已选 {selected.length} 个 Task</div>
-    </FormModal>
-  )
-}
-
-// ============ 改 Task AI 代码权重 dialog ============
-function SilicaModal({
-  task,
-  projectId,
-  onClose,
-  onSaved,
-}: {
-  task: ProjectTaskItem | null
-  projectId: string
-  onClose: () => void
-  onSaved: () => Promise<void>
-}) {
-  const [silica, setSilica] = useState('1.0')
-  const [submitting, setSubmitting] = useState(false)
-  const [err, setErr] = useState('')
-
-  useEffect(() => {
-    if (!task) return
-    setSilica(String(task.silica ?? 1.0))
-    setErr('')
-  }, [task])
-
-  async function handleSubmit() {
-    if (!task) return
-    setSubmitting(true)
-    setErr('')
-    try {
-      await updateTaskSilicaInProject(projectId, { task_id: task.task_id, silica: Number(silica) })
-      await onSaved()
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : '保存失败')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <FormModal open={!!task} title="编辑 AI 代码权重" maxWidth={400} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
-      {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
-      <Field label="AI 代码权重">
-        <input type="number" step={0.1} min={0} value={silica} onChange={(e) => setSilica(e.target.value)} className={INPUT} />
-      </Field>
-    </FormModal>
-  )
-}
-
-// ============ 添加/编辑 Repo dialog ============
-function RepoModal({
-  open,
-  edit,
-  projectId,
-  onClose,
-  onSaved,
-}: {
-  open: boolean
-  edit: { index: number; repo: ProjectRepo } | null
-  projectId: string
-  onClose: () => void
-  onSaved: () => Promise<void>
-}) {
-  const [repoAddr, setRepoAddr] = useState('')
-  const [repoBranch, setRepoBranch] = useState('')
-  const [addrOptions, setAddrOptions] = useState<string[]>([])
-  const [endIsNow, setEndIsNow] = useState(false)
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
-  const [whitelist, setWhitelist] = useState(false)
-  const [includeText, setIncludeText] = useState('')
-  const [excludeText, setExcludeText] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [err, setErr] = useState('')
-
-  useEffect(() => {
-    if (!open) return
-    // 加载 repo 地址选项
-    getReposV2({ pageSize: 1000 })
-      .then((res) => {
-        const addrs = Array.from(new Set((res.data || []).map((r: RepoListItem) => r.repo_addr).filter(Boolean)))
-        setAddrOptions(addrs)
-      })
-      .catch(() => setAddrOptions([]))
-    if (edit) {
-      const r = edit.repo
-      setRepoAddr(r.repo_addr || '')
-      setRepoBranch(r.repo_branch || '')
-      setEndIsNow(isZeroTime(r.end_time))
-      setStartTime(toLocalInput(r.start_time))
-      setEndTime(isZeroTime(r.end_time) ? '' : toLocalInput(r.end_time))
-      const inc = r.include_only_commits || []
-      setWhitelist(inc.length > 0)
-      setIncludeText(inc.join('\n'))
-      setExcludeText((r.exclude_commits || []).join('\n'))
-    } else {
-      setRepoAddr('')
-      setRepoBranch('')
-      setEndIsNow(false)
-      setStartTime('')
-      setEndTime('')
-      setWhitelist(false)
-      setIncludeText('')
-      setExcludeText('')
-    }
-    setErr('')
-  }, [open, edit])
-
-  async function handleSubmit() {
-    if (!repoAddr.trim() || !repoBranch.trim()) {
-      setErr('仓库地址和分支必填')
-      return
-    }
-    setSubmitting(true)
-    setErr('')
-    const splitLines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean)
-    const body: AddRepoRequest = {
-      repo_addr: repoAddr.trim(),
-      repo_branch: repoBranch.trim(),
-      start_time: startTime === '' ? null : new Date(startTime).toISOString(),
-      end_time: endIsNow || endTime === '' ? null : new Date(endTime).toISOString(),
-      include_only_commits: whitelist ? splitLines(includeText) : [],
-      exclude_commits: whitelist ? [] : splitLines(excludeText),
-    }
-    try {
-      // ⚠️ 编辑 = 先按 index 删旧 + 再 add 新（index 漂移，操作后必 reload）。
-      if (edit) await removeRepoFromProject(projectId, edit.index)
-      await addRepoToProject(projectId, body)
-      await onSaved()
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : '保存失败')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <FormModal open={open} title={edit ? '编辑 Repo' : '添加 Repo'} maxWidth={560} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
+    <FormModal open={open} title="添加 Need 来源" maxWidth={520} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
       {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
       <Field label="仓库地址">
-        <input type="text" list="repo-addr-options" value={repoAddr} onChange={(e) => setRepoAddr(e.target.value)} className={INPUT} placeholder="选择或输入仓库地址" />
-        <datalist id="repo-addr-options">
+        <input type="text" list="source-repo-options" value={repoAddr} onChange={(e) => setRepoAddr(e.target.value)} className={INPUT} placeholder="选择或输入仓库地址" />
+        <datalist id="source-repo-options">
           {addrOptions.map((a) => <option key={a} value={a} />)}
         </datalist>
       </Field>
-      <Field label="分支">
-        <input type="text" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} className={INPUT} placeholder="如 main" />
+      <Field label="分支（留空=该仓库全部特性分支）">
+        <input type="text" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} className={INPUT} placeholder="如 feat/xxx，可留空" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="开始时间">
-          <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={INPUT} />
-        </Field>
-        <Field label="结束时间">
-          <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={endIsNow} className={`${INPUT} disabled:opacity-50`} />
-        </Field>
-      </div>
-      <label className="inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
-        <input type="checkbox" checked={endIsNow} onChange={(e) => setEndIsNow(e.target.checked)} className="accent-apple-blue cursor-pointer" />
-        结束时间至今（now）
-      </label>
-      <label className="inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
-        <input type="checkbox" checked={whitelist} onChange={(e) => setWhitelist(e.target.checked)} className="accent-apple-blue cursor-pointer" />
-        仅包含指定 Commits（白名单模式）
-      </label>
-      {whitelist ? (
-        <Field label="包含的 Commit IDs（每行一个）">
-          <textarea rows={3} value={includeText} onChange={(e) => setIncludeText(e.target.value)} className={`${INPUT} resize-y font-mono`} />
-        </Field>
-      ) : (
-        <Field label="排除的 Commit IDs（每行一个，可选）">
-          <textarea rows={3} value={excludeText} onChange={(e) => setExcludeText(e.target.value)} className={`${INPUT} resize-y font-mono`} />
-        </Field>
-      )}
+      <p className="text-xs text-gray-400 dark:text-gray-500">
+        将自动纳入该来源下、通过看板口径（非主干分支、已交付）的全部 Need；加入后可在列表中逐个勾选/排除。
+      </p>
     </FormModal>
   )
 }
@@ -1082,13 +576,8 @@ const TH_CENTER = 'px-3 py-2 text-center font-semibold text-gray-500 dark:text-g
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
 
-/** ISO/零时间 → datetime-local 输入值（本地）；零/空 → ''。 */
-function toLocalInput(iso: string | null | undefined): string {
-  if (isZeroTime(iso)) return ''
-  const d = new Date(iso as string)
-  if (Number.isNaN(d.getTime())) return ''
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+function MetaChip({ children }: { children: ReactNode }) {
+  return <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-white/10 px-2 py-0.5">{children}</span>
 }
 
 function BackButton({ onClick }: { onClick: () => void }) {
@@ -1096,7 +585,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded"
+      className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 mt-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded"
     >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -1148,41 +637,6 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">{children}</div>
 }
 
-function KvGrid({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">{children}</div>
-}
-
-function Kv({ label, children, mono = false, title }: { label: string; children: ReactNode; mono?: boolean; title?: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-gray-400 dark:text-gray-500" title={title}>
-        {label}
-        {title && (
-          <span className="ml-1 text-gray-300 dark:text-gray-600 cursor-help align-middle" aria-hidden="true">
-            <svg className="w-3 h-3 inline" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 15a1 1 0 110-2 1 1 0 010 2zm1.07-7.75l-.9.92c-.5.51-.67.95-.67 1.83h-2v-.5c0-.66.27-1.26.67-1.67l1.24-1.26c.37-.36.59-.86.59-1.41a2 2 0 10-4 0H6a4 4 0 118 0c0 .73-.3 1.4-.83 1.99z" />
-            </svg>
-          </span>
-        )}
-      </span>
-      <span className={`text-sm text-gray-800 dark:text-gray-100 break-words ${mono ? 'font-mono' : ''}`}>{children}</span>
-    </div>
-  )
-}
-
-/** 起止时间 manual 优先 + 删除线原值。 */
-function ManualTime({ manual, original }: { manual?: string | null; original?: string | null }) {
-  if (!isZeroTime(manual)) {
-    return (
-      <span className="inline-flex items-center gap-1.5 flex-wrap">
-        <span>{formatLocalTime(manual)}</span>
-        {!isZeroTime(original) && <span className="line-through text-gray-400 dark:text-gray-500">{formatLocalTime(original)}</span>}
-      </span>
-    )
-  }
-  return <span>{isZeroTime(original) ? '-' : formatLocalTime(original)}</span>
-}
-
 function LinkBtn({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -1204,7 +658,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/** 表单 Modal 壳（取消/提交 footer + 内容滚动）。 */
+/** 表单 Modal 壳（取消/提交 footer）。 */
 function FormModal({
   open,
   title,

@@ -846,7 +846,8 @@ export interface ProjectDetailResponse {
   need_baseline_work_min?: number | null
   need_eligible_count?: number // 计入指标的干净 Need 数
   need_excluded_count?: number // 因日历口径 outlier 自动剔除的 Need 数
-  need_total_count?: number // 候选池内（看板口径+已选）Need 总数
+  need_total_count?: number // 候选池内（看板口径）Need 总数（含未选/已排除/不合格）
+  need_total_loc_net?: number // 已选干净 Need 净 LOC 之和（生成代码量）
 }
 
 /** /v2/projects/{id}/needs 列表项：复用 NeedsV2Summary（小数口径）+ 当前是否被项目排除。 */
