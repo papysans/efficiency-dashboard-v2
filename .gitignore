@@ -164,6 +164,7 @@ rawdata/
 .DS_Store
 .claude/
 .codex/
+.agents/
 .idea/
 .vscode/
 AGENTS.md
@@ -204,3 +205,5 @@ docs/data/efficiency_v2_person_efficiency.csv
 
 # 客户交付说明书（含内部代码问题清单/口径备忘）——交付前需先审阅，暂不纳入仓库跟踪，本地保留
 docs/manual/
+# csc 上报字段映射（内部草稿/备忘，暂不纳入仓库跟踪，本地保留）
+docs/csc-rawdump-field-mapping.md
