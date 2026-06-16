@@ -102,6 +102,7 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         accent="#0071e3"
         loading={loading}
         onClick={() => navigate('/user-v2')}
+        linkLabel="用户明细"
       />
       <MetricScorecard
         label="效率"
@@ -113,6 +114,7 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         accent="#34c759"
         loading={loading}
         onClick={() => navigate('/distribution-v2')}
+        linkLabel="提效分布"
       />
       <MetricScorecard
         label="成本"
@@ -125,6 +127,7 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         accent="#ff9500"
         loading={loading}
         onClick={() => navigate('/project-v2')}
+        linkLabel="项目费用"
       />
       <MetricScorecard
         label="贡献"
@@ -135,7 +138,8 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         delta={compare.contribution}
         accent="#5e5ce6"
         loading={loading}
-        onClick={() => navigate('/user-v2')}
+        onClick={() => navigate('/commit-v2')}
+        linkLabel="提交代码"
       />
       <QualityPlaceholder tip={glossaryTip('silica')} />
     </div>

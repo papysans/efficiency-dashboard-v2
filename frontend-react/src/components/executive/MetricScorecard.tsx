@@ -24,6 +24,8 @@ interface MetricScorecardProps {
   accent?: string
   /** 下钻点击 */
   onClick?: () => void
+  /** 下钻目的地短标签（如"用户明细"），显示在卡片右下角 "↗ xx"，点前即知去哪、消除意外跳转 */
+  linkLabel?: string
   /** 加载态 */
   loading?: boolean
 }
@@ -38,13 +40,14 @@ export function MetricScorecard({
   higherIsBetter = true,
   accent = '#0071e3',
   onClick,
+  linkLabel,
   loading = false,
 }: MetricScorecardProps) {
   const clickable = !!onClick
   return (
     <div
       className={`glass rounded-2xl p-4 flex flex-col gap-2 transition-shadow ${
-        clickable ? 'cursor-pointer hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400' : ''
+        clickable ? 'group cursor-pointer hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400' : ''
       }`}
       style={{ borderLeft: `3px solid ${accent}` }}
       onClick={onClick}
@@ -76,6 +79,12 @@ export function MetricScorecard({
       <div className="mt-auto pt-1">
         <Sparkline data={series} color={accent} />
       </div>
+
+      {clickable && linkLabel && (
+        <div className="text-[11px] text-right text-gray-400 dark:text-gray-500 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+          ↗ {linkLabel}
+        </div>
+      )}
     </div>
   )
 }
