@@ -31,21 +31,26 @@ export default function Overview() {
         <ScorecardStrip startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row3 周提效趋势（整宽） */}
+      {/* Row3 AI 渗透率（单独卡：渗透 / 覆盖 / 切散缺口） */}
       <Cell index={2} className="col-span-12">
+        <AIPenetrationCard startDate={startDate} endDate={endDate} />
+      </Cell>
+
+      {/* Row4 周提效趋势（整宽） */}
+      <Cell index={3} className="col-span-12">
         <TrendCard startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row4 部门 PK + Top 榜（需求 / 人） */}
-      <Cell index={3} className="col-span-12 lg:col-span-6">
+      {/* Row5 部门 PK + Top 榜（需求 / 人） */}
+      <Cell index={4} className="col-span-12 lg:col-span-6">
         <DeptPKCard startDate={startDate} endDate={endDate} />
       </Cell>
-      <Cell index={4} className="col-span-12 lg:col-span-6">
+      <Cell index={5} className="col-span-12 lg:col-span-6">
         <TopRankCard startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row5 规模概览 */}
-      <Cell index={5} className="col-span-12">
+      {/* Row6 规模概览 */}
+      <Cell index={6} className="col-span-12">
         <CountsCard startDate={startDate} endDate={endDate} />
       </Cell>
     </div>
@@ -151,6 +156,41 @@ function CountsCard({ startDate, endDate }: { startDate: string; endDate: string
           <MetricCard label="总 Commit" value={formatNumber(data.total_commits)} hint={`代码行 ${formatNumber(data.total_commit_lines)}`} />
           <MetricCard label="总代码行" value={formatNumber(data.total_commit_lines)} hint="commit 净改动行数" />
           <MetricCard label="活跃用户(V2)" value={formatNumber(data.total_users_v2)} hint="需求口径参与者" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * AI 渗透率卡（单独）：渗透率(作者实际在用 AI 的需求占比，含被 need 边界切散到别仓库/别分支的) +
+ * 数据覆盖率(看板能直接关联到 AI 会话的占比) + 切散缺口(用了 AI 但被切散、未进计算的)。
+ * 口径与需求列表折叠一致；完整勘探见 docs/2026-06-16-needs-ai-code-ratio-dash-investigation.md。
+ */
+function AIPenetrationCard({ startDate, endDate }: { startDate: string; endDate: string }) {
+  const { data, isLoading, error } = useDashboardSummary({ startDate, endDate })
+  const pen = data?.ai_penetration_rate ?? null
+  const cov = data?.ai_coverage_rate ?? null
+  const gap = pen != null && cov != null ? pen - cov : null
+
+  return (
+    <div className="glass rounded-2xl p-5 md:p-6 hover:shadow-lg transition-shadow flex flex-col">
+      <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">AI 渗透率</h2>
+      {error ? (
+        <div className="flex-1 flex items-center justify-center text-sm text-rose-600 dark:text-rose-400 min-h-[7rem]">
+          加载失败：{(error as Error).message}
+        </div>
+      ) : isLoading || !data ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="skeleton h-20 rounded-2xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <MetricCard label="AI 渗透率" value={formatV2Ratio(pen)} hint="作者实际在用 AI 的需求占比（含被切散）" />
+          <MetricCard label="数据覆盖率" value={formatV2Ratio(cov)} hint="看板能直接关联到 AI 会话的占比" />
+          <MetricCard label="切散缺口" value={formatV2Ratio(gap)} hint="用了 AI 但被 need 边界切散、未进计算" />
         </div>
       )}
     </div>

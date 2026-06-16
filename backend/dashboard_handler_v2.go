@@ -40,6 +40,10 @@ type DashboardSummaryResponse struct {
 	NeedCalendarRatio       *float64 `json:"need_calendar_ratio"`
 	NeedWorkRatio           *float64 `json:"need_work_ratio"`
 	AICodeRatio             *float64 `json:"ai_code_ratio"`
+	// AI 渗透率卡：覆盖率 = eligible/total（看板能直接看到 AI 数据的）；渗透率 = 作者同期有会话/total
+	// （实际在用 AI，含被 need 边界切散的）。缺口（渗透−覆盖）= 被切散，前端算。total=0 时为 nil。
+	AICoverageRate    *float64 `json:"ai_coverage_rate"`
+	AIPenetrationRate *float64 `json:"ai_penetration_rate"`
 }
 
 // efficiencyV2Ratio 返回 v2 小数口径提效比 (baseline - actual) / actual；actual<=0 返回 nil。
@@ -228,6 +232,19 @@ func getDashboardSummary(c *gin.Context) {
 		return
 	}
 
+	// AI 渗透率卡：覆盖率(eligible/total) + 渗透率(作者同期有会话/total)，口径同列表折叠(看板口径+NOT outlier)。
+	penAgg, err := QueryAIPenetration(statDB, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	var aiCoverageRate, aiPenetrationRate *float64
+	if penAgg.Total > 0 {
+		cov := float64(penAgg.Eligible) / float64(penAgg.Total)
+		pen := float64(penAgg.AuthorActive) / float64(penAgg.Total)
+		aiCoverageRate, aiPenetrationRate = &cov, &pen
+	}
+
 	taskRatio := utils.CalcEfficiencyRatio(taskAgg.TotalAncientMinutes, taskAgg.TotalRealMinutes)
 	commitRatio := utils.CalcEfficiencyRatio(commitAgg.TotalAncientMinutes, commitAgg.TotalRealMinutes)
 
@@ -252,6 +269,8 @@ func getDashboardSummary(c *gin.Context) {
 		NeedCalendarRatio:         needCalendarRatio,
 		NeedWorkRatio:             needWorkRatio,
 		AICodeRatio:               calcNeedAICodeRatio(needAgg.AICoveredLoc, needAgg.TotalLocNet),
+		AICoverageRate:            aiCoverageRate,
+		AIPenetrationRate:         aiPenetrationRate,
 		TotalTasks:                taskAgg.TotalTasks,
 		TotalUsers:                totalUsers,
 		TotalWorkDirs:             taskAgg.TotalWorkDirs,

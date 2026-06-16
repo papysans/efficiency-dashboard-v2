@@ -154,6 +154,7 @@ export default function NeedList() {
 
   const [rows, setRows] = useState<NeedsV2Summary[]>([])
   const [total, setTotal] = useState(0)
+  const [foldedCount, setFoldedCount] = useState(0) // 默认折叠掉的(coverage_eligible=false)条数，供"已折叠N个"提示
   const [loading, setLoading] = useState(false)
   const [errMsg, setErrMsg] = useState('')
 
@@ -182,11 +183,13 @@ export default function NeedList() {
         if (aborted) return
         setRows(res.data || [])
         setTotal(res.total || 0)
+        setFoldedCount(res.folded_count || 0)
       })
       .catch((err: unknown) => {
         if (aborted) return
         setRows([])
         setTotal(0)
+        setFoldedCount(0)
         setErrMsg(err instanceof Error ? err.message : '获取 Need 列表失败')
       })
       .finally(() => {
@@ -341,6 +344,13 @@ export default function NeedList() {
           </button>
         </div>
       </header>
+
+      {/* 折叠提示：列表默认只显示进计算(coverage_eligible)的 need，折叠掉无 AI 数据的那批；勾上方"显示全部"放开 */}
+      {foldedCount > 0 && (
+        <div className="px-1 text-sm text-gray-500 dark:text-gray-400">
+          已折叠 <span className="font-medium text-gray-700 dark:text-gray-200">{foldedCount}</span> 个无 AI 数据的 need（未进提效计算）；勾选上方“显示全部”查看。
+        </div>
+      )}
 
       {/* table card */}
       <section className="glass rounded-2xl overflow-hidden">

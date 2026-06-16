@@ -1487,6 +1487,53 @@ func queryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNe
 	return &agg, nil
 }
 
+// aiPenetrationAggSelectSQL：AI 渗透率三数的聚合 SELECT（提为常量便于无库形态回归断言，见 db_test.go）。
+// author_active 用相关子查询 EXISTS 判"作者同期(dev±2天)有会话"，含被 need 边界切散的 → 反映"实际在用 AI"。
+const aiPenetrationAggSelectSQL = `
+	COUNT(*) AS total,
+	COUNT(*) FILTER (WHERE coverage_eligible) AS eligible,
+	COUNT(*) FILTER (WHERE EXISTS(
+		SELECT 1 FROM session_stage_metrics m
+		WHERE m.user_id = needs.primary_user_id
+		  AND m.session_start_ts::date BETWEEN needs.dev_start_ts::date - 2
+		                                   AND COALESCE(needs.dev_end_ts, needs.dev_start_ts)::date + 2
+	)) AS author_active`
+
+// aiPenetrationAgg：AI 渗透率指标卡的三个标量，口径与列表折叠一致（applyNeedCaliberFilter + NOT outlier_flag）。
+//   - Total：分母（看板口径全部 need）
+//   - Eligible：覆盖分子（coverage_eligible，即看板能直接看到 AI 数据/进计算的）→ 覆盖率 = Eligible/Total ≈ 28%
+//   - AuthorActive：渗透分子（need 作者在 dev±2 天内有任何会话，含被 need 边界切散到别仓库/别分支的，
+//     反映"实际在用 AI"）→ 渗透率 = AuthorActive/Total ≈ 72%；缺口 = 渗透 − 覆盖 ≈ 44%（被切散，二阶段救）
+type aiPenetrationAgg struct {
+	Total        int64 `gorm:"column:total"`
+	Eligible     int64 `gorm:"column:eligible"`
+	AuthorActive int64 `gorm:"column:author_active"`
+}
+
+// queryAIPenetration 算 AI 渗透率三数。AuthorActive 用相关子查询 EXISTS 判"作者同期(dev±2天)有会话"，
+// 走 idx_session_stage_metrics_user_start (user_id, session_start_ts)；总览低频、行级子查询代价可接受。
+func queryAIPenetration(db *gorm.DB, startTime, endTime string) (*aiPenetrationAgg, error) {
+	var agg aiPenetrationAgg
+	q := applyNeedCaliberFilter(db.Model(&models.Need{})).
+		Where("NOT outlier_flag").
+		Select(aiPenetrationAggSelectSQL)
+	if startTime != "" {
+		q = q.Where("dev_end_ts >= ?", startTime)
+	}
+	if endTime != "" {
+		q = q.Where("dev_end_ts <= ?", endTime)
+	}
+	if err := q.Scan(&agg).Error; err != nil {
+		return nil, fmt.Errorf("查询 AI 渗透率聚合失败: %w", err)
+	}
+	return &agg, nil
+}
+
+// QueryAIPenetration 导出包装，供 dashboard handler 调用。
+func QueryAIPenetration(db *gorm.DB, startTime, endTime string) (*aiPenetrationAgg, error) {
+	return queryAIPenetration(db, startTime, endTime)
+}
+
 // needsDistributionAgg 一次 SQL 取出"提效分布"面板所需的全部标量：
 // 计入/剔除计数、calendar/work 提效比分位数、提效比直方图(6桶×kept/excluded)、
 // 剔除原因计数、LOC 速率分档。供 GET /api/v2/needs/distribution 直接组装返回。

@@ -4,6 +4,8 @@
 /** 通用分页响应包（多数 list 端点） */
 export interface ApiList<T> {
   total: number
+  /** 仅需求列表：默认折叠掉的(coverage_eligible=false)条数，供"已折叠N个"提示；其它列表 / “显示全部”时为 0/缺省 */
+  folded_count?: number
   page: number
   pageSize: number
   data: T[]
@@ -54,6 +56,8 @@ export interface DashboardSummary {
   need_calendar_ratio: number | null // 小数口径
   need_work_ratio: number | null // 小数口径
   ai_code_ratio?: number | null // 小数口径
+  ai_coverage_rate?: number | null // AI 渗透率卡：覆盖率 = 看板能直接看到 AI 数据的 need 占比（≈0.28）
+  ai_penetration_rate?: number | null // AI 渗透率卡：渗透率 = 作者实际在用 AI 的 need 占比（≈0.72，含被切散）；缺口=渗透−覆盖前端算
 }
 
 /** /v2/dashboard/trends 单周点（efficiency_ratio 小数口径，actual<=0 时为 null） */

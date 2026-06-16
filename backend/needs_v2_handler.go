@@ -16,10 +16,11 @@ import (
 )
 
 type NeedsV2ListResponse struct {
-	Total    int64            `json:"total"`
-	Page     int              `json:"page"`
-	PageSize int              `json:"pageSize"`
-	Data     []NeedsV2Summary `json:"data"`
+	Total       int64            `json:"total"`
+	FoldedCount int64            `json:"folded_count"` // 默认折叠掉的(coverage_eligible=false)条数,供需求页"已折叠N个"提示;includeAll 时为 0
+	Page        int              `json:"page"`
+	PageSize    int              `json:"pageSize"`
+	Data        []NeedsV2Summary `json:"data"`
 }
 
 type NeedsV2Summary struct {
@@ -116,6 +117,7 @@ func listNeedsV2(c *gin.Context) {
 		ConfidenceLevel:    c.Query("confidenceLevel"),
 		OutlierOnly:        c.Query("outlierOnly") == "true",
 		IncludeAll:         c.Query("includeAll") == "true",
+		FoldNonEligible:    true, // 列表页：默认折叠 coverage_eligible=false 的 need（受 includeAll 放开）
 		Page:               parsePage(c.Query("page")),
 		PageSize:           parsePageSize(c.Query("pageSize")),
 		OrderField:         orderField,
@@ -301,6 +303,7 @@ type NeedsV2Filter struct {
 	ConfidenceLevel    string
 	OutlierOnly        bool
 	IncludeAll         bool
+	FoldNonEligible    bool // 仅 /v2/needs 列表页设 true：默认折叠 coverage_eligible=false 的 need；其它复用方(用户详情等)不设 → 不折叠，保数据完整
 	Page               int
 	PageSize           int
 	OrderField         string
@@ -360,8 +363,24 @@ func QueryNeedsV2(db *gorm.DB, filter NeedsV2Filter) (NeedsV2ListResponse, error
 		q = q.Where("NOT outlier_flag")
 	}
 
+	// 列表展示口径对齐计算口径：仅列表页(FoldNonEligible)默认折叠 coverage_eligible=false 的 need
+	// (commit-only/零日历/低置信/非 merged,即不进提效/省人天/AI 占比计算的那批),根治满屏 "-"。纯展示层、
+	// 不改任何计算口径;"显示全部"(includeAll)放开;折叠条件不进共用的 applyNeedCaliberFilter,故不影响总览/
+	// 渗透率分母。⚠️ 用户详情等复用 QueryNeedsV2 的调用方不设 FoldNonEligible → 不折叠(关联 need 列表完整)。
+	fold := filter.FoldNonEligible && !filter.IncludeAll
+	if fold {
+		base := q.Session(&gorm.Session{}) // clone：base 算口径内全部(折叠前),q 加折叠条件算折叠后
+		if err := base.Count(&resp.FoldedCount).Error; err != nil {
+			return resp, err
+		}
+		q = q.Where("coverage_eligible")
+	}
+
 	if err := q.Count(&resp.Total).Error; err != nil {
 		return resp, err
+	}
+	if fold {
+		resp.FoldedCount -= resp.Total // 折叠数 = 口径内全部 − 折叠后
 	}
 	offset := (resp.Page - 1) * resp.PageSize
 	var rows []models.Need
