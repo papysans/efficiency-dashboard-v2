@@ -84,11 +84,19 @@ export function MetricScorecard({
 function DeltaArrow({ delta, higherIsBetter }: { delta?: DashboardTrendDelta | null; higherIsBetter: boolean }) {
   if (!delta || delta.delta_pct == null) return null
   const pct = delta.delta_pct
-  const up = pct >= 0
+  // 零变化按中性灰处理，不误判为"涨且 good"。
+  if (pct === 0) {
+    return (
+      <span className="text-xs font-medium tabular-nums text-gray-400 dark:text-gray-500" title="环比：本期 vs 上期（持平）">
+        – 0%
+      </span>
+    )
+  }
+  const up = pct > 0
   const good = higherIsBetter ? up : !up
   const color = good ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
   return (
-    <span className={`text-xs font-medium tabular-nums ${color}`} title="环比：本期 vs 等长上期">
+    <span className={`text-xs font-medium tabular-nums ${color}`} title="环比：本期 vs 上期">
       {up ? '▲' : '▼'} {formatV2Ratio(Math.abs(pct), 0)}
     </span>
   )

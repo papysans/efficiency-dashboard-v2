@@ -54,9 +54,10 @@ export function DeptPKCard({ startDate, endDate }: DeptPKCardProps) {
   const [parentId, setParentId] = useState<string>(ROOT)
 
   const parentOptions = useMemo(() => collectParents(tree), [tree])
-  // 被排名的候选部门 = 选定父节点的直接子部门（默认 ROOT → 顶层一级部门）。
+  // 被排名的候选部门 = 选定父节点的直接子部门。
+  // ROOT 默认：dept-sync 通常返回单个公司根节点 → 排其一级子部门；若返回多个顶层节点则直接排之。
   const candidates = useMemo<DeptTreeNode[]>(() => {
-    if (parentId === ROOT) return tree
+    if (parentId === ROOT) return tree.length === 1 ? tree[0].children ?? [] : tree
     return findNode(tree, parentId)?.children ?? []
   }, [tree, parentId])
 
