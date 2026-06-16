@@ -588,6 +588,8 @@ export interface Conversation {
   id?: number
   session_id?: string
   request_id?: string
+  user_id?: string
+  username?: string
   task_id?: string
   sender?: string
   prompt_mode?: string
@@ -979,6 +981,8 @@ export interface ChatDetailQueryReq {
   end_time: string
   universal_id?: string
   request_id?: string
+  user_id?: string
+  username?: string
   /** true=仅错误，false=仅成功，缺省=全部 */
   has_error?: boolean
   model?: string
