@@ -7,13 +7,12 @@ import { MetricCard } from '@/components/ui/MetricCard'
 import { MetricScorecard } from '@/components/executive/MetricScorecard'
 import { HeroSaving } from '@/components/executive/HeroSaving'
 import { TrendCard } from '@/components/executive/TrendCard'
-import { AdoptionCard } from '@/components/executive/AdoptionCard'
 import { TopRankCard } from '@/components/executive/TopRankCard'
 import { DeptPKCard } from '@/components/executive/DeptPKCard'
 
 // 高管提效总览大屏。Bento 12 列网格 + 玻璃拟态 + 卡片 staggered 渐入。
-// ① Hero 省人天/AI花费/净节省/提效 ② 使用/贡献速览 + AI采纳环形 ③ 周提效趋势 ④ 部门PK + Top榜 ⑤ 规模概览。
-// 成本/质量/效率不在 ② 单列：成本与 Hero 的 AI 花费口径不同易混淆、质量本轮无数据、效率与 Hero 综合提效重复。
+// ① Hero 省人天/AI花费/净节省/提效 ② 使用/贡献/AI占比 速览(同款卡,等高) ③ 周提效趋势 ④ 部门PK + Top榜 ⑤ 规模概览。
+// ② 不含成本/质量/效率：成本与 Hero 全平台 AI 花费口径不同易混淆、质量本轮无数据、效率与 Hero 综合提效重复。
 export default function Overview() {
   const [startDate, endDate] = useMemo(() => {
     const [s, e] = getDefaultDateRangeWide()
@@ -27,29 +26,26 @@ export default function Overview() {
         <HeroSaving startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row2 使用/贡献 速览 + AI 采纳环形 */}
-      <Cell index={1} className="col-span-12 lg:col-span-8">
+      {/* Row2 使用/贡献/AI占比 速览（同款卡，三张等高） */}
+      <Cell index={1} className="col-span-12">
         <ScorecardStrip startDate={startDate} endDate={endDate} />
-      </Cell>
-      <Cell index={2} className="col-span-12 lg:col-span-4">
-        <AdoptionCard startDate={startDate} endDate={endDate} />
       </Cell>
 
       {/* Row3 周提效趋势（整宽） */}
-      <Cell index={3} className="col-span-12">
+      <Cell index={2} className="col-span-12">
         <TrendCard startDate={startDate} endDate={endDate} />
       </Cell>
 
       {/* Row4 部门 PK + Top 榜（需求 / 人） */}
-      <Cell index={4} className="col-span-12 lg:col-span-6">
+      <Cell index={3} className="col-span-12 lg:col-span-6">
         <DeptPKCard startDate={startDate} endDate={endDate} />
       </Cell>
-      <Cell index={5} className="col-span-12 lg:col-span-6">
+      <Cell index={4} className="col-span-12 lg:col-span-6">
         <TopRankCard startDate={startDate} endDate={endDate} />
       </Cell>
 
       {/* Row5 规模概览 */}
-      <Cell index={6} className="col-span-12">
+      <Cell index={5} className="col-span-12">
         <CountsCard startDate={startDate} endDate={endDate} />
       </Cell>
     </div>
@@ -69,8 +65,9 @@ function Cell({ index, className = '', children }: { index: number; className?: 
 }
 
 /**
- * 速览卡：使用人数 / 贡献净增行（各带 sparkline + 环比）。
- * 当期值取 dashboard/summary（组织级全局口径），sparkline + 环比取 dashboard/trends 周序列。
+ * 速览卡（同款 MetricScorecard，三张等高）：使用人数 / 贡献净增行 / AI 代码占比。
+ * 当期值取 dashboard/summary（组织级全局口径）；使用/贡献的 sparkline+环比取 dashboard/trends 周序列。
+ * AI 占比无周序列（周表无 AI 覆盖行数据）→ 不画 sparkline（卡内留高占位，与另两张等高）。
  * 纯展示、不跳转；ⓘ 看口径。
  * 已移除：成本（与 Hero 全平台 AI 花费口径不同，易混淆）、效率（与 Hero 综合日历提效重复）、质量（本轮无数据）。
  */
@@ -91,7 +88,7 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4">
       <MetricScorecard
         label="使用人数"
         value={s ? formatNumber(s.total_users_v2) : null}
@@ -110,6 +107,15 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         series={points.map((p) => p.commit_diff_lines)}
         delta={compare.contribution}
         accent="#5e5ce6"
+        loading={loading}
+      />
+      <MetricScorecard
+        label="AI 代码占比"
+        value={s ? formatV2Ratio(s.ai_code_ratio) : null}
+        hint={s ? `可计入 ${formatNumber(s.eligible_needs)}/${formatNumber(s.total_needs)} 需求` : undefined}
+        tip={glossaryTip('ai_code_ratio')}
+        series={[]}
+        accent="#00c7be"
         loading={loading}
       />
     </div>
