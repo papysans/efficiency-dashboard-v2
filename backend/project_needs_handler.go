@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"kanban/core/models"
+	"kanban/core/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -71,8 +72,10 @@ func buildProjectNeedScopeClause(scopes []projectNeedScope, applyNeedFilter bool
 		if strings.TrimSpace(s.RepoAddr) == "" {
 			continue
 		}
+		// 配置侧存原始地址（git@host:Org/Repo.git），needs.repo_addr 是 CanonRepoAddr 规范化值；
+		// 匹配前对配置地址做同款规范化，否则精确等值恒空（候选池 bug 根因）。needs 列不包函数，保索引。
 		cond := "(repo_addr = ?"
-		args = append(args, s.RepoAddr)
+		args = append(args, utils.CanonRepoAddr(s.RepoAddr))
 		if strings.TrimSpace(s.RepoBranch) != "" {
 			cond += " AND repo_branch = ?"
 			args = append(args, s.RepoBranch)
@@ -298,8 +301,9 @@ func getProjectNeedsV2(c *gin.Context) {
 // 与 buildProjectNeedScopeClause(scopes, true) 的 OR 展开完全同口径，支持通配分支与同 (repo,branch) 重复条目。
 func isNeedExcludedByScopes(scopes []projectNeedScope, repoAddr, repoBranch, needID string) bool {
 	matched := false
+	canonAddr := utils.CanonRepoAddr(repoAddr) // 入参来自 needs 行（已规范化），两边归一防脏数据
 	for _, s := range scopes {
-		if s.RepoAddr != repoAddr {
+		if utils.CanonRepoAddr(s.RepoAddr) != canonAddr {
 			continue
 		}
 		if s.RepoBranch != "" && s.RepoBranch != repoBranch {
@@ -387,8 +391,9 @@ func updateProjectNeedSelectionV2(c *gin.Context) {
 	}
 
 	matched := false
+	canonReqAddr := utils.CanonRepoAddr(req.RepoAddr) // 前端传 needs 行规范化地址，配置侧是原始地址，两边归一匹配
 	for i := range repos {
-		if repos[i].RepoAddr != req.RepoAddr {
+		if utils.CanonRepoAddr(repos[i].RepoAddr) != canonReqAddr {
 			continue
 		}
 		// branch 为空=通配该 repo 全部分支（与 collectProjectCommits/buildProjectNeedScopeClause 同语义）；

@@ -8,13 +8,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   addRepoToProject,
   deleteProject,
-  getReposV2,
+  getNeedRepoOptions,
   removeRepoFromProject,
   updateProject,
   updateProjectNeedSelection,
 } from '@/api/endpoints'
 import { useProjectDetail, useProjectNeeds } from '@/api/queries'
-import type { ProjectModel, ProjectNeedItem, ProjectRepo, RepoListItem } from '@/api/types'
+import type { NeedRepoOption, ProjectModel, ProjectNeedItem, ProjectRepo } from '@/api/types'
 import { fmtCost, formatV2Ratio } from '@/lib/formatters'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Tag } from '@/components/ui/Tag'
@@ -194,8 +194,18 @@ export default function ProjectDetail() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => setEditOpen(true)}
+            onClick={() => setSourceAddOpen(true)}
             className="inline-flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            添加来源
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            className="inline-flex items-center gap-1.5 glass text-gray-700 dark:text-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-colors hover:text-apple-blue focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
           >
             编辑
           </button>
@@ -260,7 +270,6 @@ export default function ProjectDetail() {
       <Panel
         title="组成 · Needs"
         hint={`候选 ${data?.need_total_count ?? projectNeeds.length} · 合格 ${data?.need_eligible_count ?? 0}`}
-        action={<PanelAddButton onClick={() => setSourceAddOpen(true)}>添加来源</PanelAddButton>}
       >
         {/* 来源规则 chips */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -395,7 +404,7 @@ export default function ProjectDetail() {
       {project && (
         <>
           <EditModal open={editOpen} project={project} repos={repos} onClose={() => setEditOpen(false)} onSaved={async () => { setEditOpen(false); await reload() }} projectId={projectId as string} />
-          <SourceModal open={sourceAddOpen} onClose={() => setSourceAddOpen(false)} onSaved={async () => { setSourceAddOpen(false); await reload() }} projectId={projectId as string} />
+          <SourceModal open={sourceAddOpen} existingRepos={repos} onClose={() => setSourceAddOpen(false)} onSaved={async () => { setSourceAddOpen(false); await reload() }} projectId={projectId as string} />
         </>
       )}
 
@@ -433,6 +442,15 @@ function NeedStatusTag({ n }: { n: ProjectNeedItem }) {
 function shortRepo(addr: string): string {
   const s = addr.replace(/^https?:\/\//, '').replace(/^git@/, '').replace(/\.git$/, '')
   return s.length > 28 ? `…${s.slice(-28)}` : s
+}
+
+/** repo 地址拆成「主名 + 路径」：取最后一段做主名，其余做灰字路径（仓库选择器用）。 */
+function repoDisplay(addr: string): { name: string; path: string } {
+  const s = addr.replace(/^https?:\/\//, '').replace(/^git@/, '').replace(/\.git$/, '')
+  const segs = s.split(/[/:]/).filter(Boolean)
+  const name = segs.length ? segs[segs.length - 1] : s
+  const path = segs.slice(0, -1).join('/')
+  return { name, path }
 }
 
 // ============ 编辑项目 dialog ============
@@ -498,50 +516,114 @@ function EditModal({
   )
 }
 
-// ============ 添加 Need 来源 dialog（repo[/分支]，分支留空=全部分支） ============
+// ============ 添加 Need 来源 dialog（仓库选择器：needs 同源、多选 + 可选分支细化） ============
+// 取代旧的「手填 git 地址」：列表来自 /need-repo-options（与候选池同口径同源），勾选必命中。
+type BranchMode = 'all' | 'specific'
+interface RepoSelection {
+  mode: BranchMode
+  branches: Set<string>
+}
+
 function SourceModal({
   open,
   projectId,
+  existingRepos,
   onClose,
   onSaved,
 }: {
   open: boolean
   projectId: string
+  existingRepos: ProjectRepo[]
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
-  const [repoAddr, setRepoAddr] = useState('')
-  const [repoBranch, setRepoBranch] = useState('')
-  const [addrOptions, setAddrOptions] = useState<string[]>([])
+  const [options, setOptions] = useState<NeedRepoOption[]>([])
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [selection, setSelection] = useState<Map<string, RepoSelection>>(new Map())
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
 
   useEffect(() => {
     if (!open) return
-    setRepoAddr('')
-    setRepoBranch('')
+    setSearch('')
+    setSelection(new Map())
     setErr('')
-    getReposV2({ pageSize: 1000 })
-      .then((res) => setAddrOptions(Array.from(new Set((res.data || []).map((r: RepoListItem) => r.repo_addr).filter(Boolean)))))
-      .catch(() => setAddrOptions([]))
+    setLoading(true)
+    getNeedRepoOptions()
+      .then((res) => setOptions(res.data || []))
+      .catch(() => setErr('加载仓库列表失败'))
+      .finally(() => setLoading(false))
   }, [open])
 
+  // 已配置来源（精确 repo_addr）标记"已添加"，避免重复勾选；仅 UI 提示，重复添加也无害。
+  const existingAddrs = useMemo(() => new Set(existingRepos.map((r) => r.repo_addr)), [existingRepos])
+
+  const filtered = useMemo(() => {
+    const kw = search.trim().toLowerCase()
+    if (!kw) return options
+    return options.filter((o) => o.repo_addr.toLowerCase().includes(kw))
+  }, [options, search])
+
+  function toggleRepo(addr: string) {
+    setSelection((prev) => {
+      const next = new Map(prev)
+      if (next.has(addr)) next.delete(addr)
+      else next.set(addr, { mode: 'all', branches: new Set() })
+      return next
+    })
+  }
+  function setMode(addr: string, mode: BranchMode) {
+    setSelection((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(addr) || { mode: 'all', branches: new Set<string>() }
+      next.set(addr, { ...cur, mode })
+      return next
+    })
+  }
+  function toggleBranch(addr: string, branch: string) {
+    setSelection((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(addr) || { mode: 'specific', branches: new Set<string>() }
+      const bs = new Set(cur.branches)
+      if (bs.has(branch)) bs.delete(branch)
+      else bs.add(branch)
+      next.set(addr, { mode: 'specific', branches: bs })
+      return next
+    })
+  }
+
+  const selectedCount = selection.size
+
   async function handleSubmit() {
-    if (!repoAddr.trim()) {
-      setErr('仓库地址必填')
+    if (selectedCount === 0) {
+      setErr('请至少勾选一个仓库')
       return
+    }
+    for (const [addr, sel] of selection) {
+      if (sel.mode === 'specific' && sel.branches.size === 0) {
+        setErr(`仓库「${repoDisplay(addr).name}」选了"指定分支"但未勾选任何分支`)
+        return
+      }
     }
     setSubmitting(true)
     setErr('')
     try {
-      await addRepoToProject(projectId, {
-        repo_addr: repoAddr.trim(),
-        repo_branch: repoBranch.trim(),
-        start_time: null,
-        end_time: null,
-        exclude_commits: [],
-        include_only_commits: [],
-      })
+      // 顺序逐条写：addRepoToProject 在后端是 read→append→write（无事务/加锁），并发会丢失更新
+      // （都读同一份初始 repos，后写覆盖先写），故按序 await 让每条读到上一条的结果。
+      for (const [addr, sel] of selection) {
+        const branches = sel.mode === 'all' ? [''] : Array.from(sel.branches)
+        for (const b of branches) {
+          await addRepoToProject(projectId, {
+            repo_addr: addr,
+            repo_branch: b,
+            start_time: null,
+            end_time: null,
+            exclude_commits: [],
+            include_only_commits: [],
+          })
+        }
+      }
       await onSaved()
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : '添加失败')
@@ -551,19 +633,95 @@ function SourceModal({
   }
 
   return (
-    <FormModal open={open} title="添加 Need 来源" maxWidth={520} submitting={submitting} onClose={onClose} onSubmit={handleSubmit}>
+    <FormModal
+      open={open}
+      title="添加 Need 来源"
+      maxWidth={560}
+      submitting={submitting}
+      submitLabel={`加入${selectedCount ? ` (${selectedCount})` : ''}`}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+    >
       {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
-      <Field label="仓库地址">
-        <input type="text" list="source-repo-options" value={repoAddr} onChange={(e) => setRepoAddr(e.target.value)} className={INPUT} placeholder="选择或输入仓库地址" />
-        <datalist id="source-repo-options">
-          {addrOptions.map((a) => <option key={a} value={a} />)}
-        </datalist>
-      </Field>
-      <Field label="分支（留空=该仓库全部特性分支）">
-        <input type="text" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} className={INPUT} placeholder="如 feat/xxx，可留空" />
-      </Field>
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={INPUT}
+        placeholder="🔍 搜索仓库名"
+        aria-label="搜索仓库名"
+      />
+      <div className="max-h-[360px] overflow-y-auto -mx-1 px-1 space-y-1">
+        {loading ? (
+          <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">加载中…</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">无可选仓库</div>
+        ) : (
+          filtered.map((o) => {
+            const sel = selection.get(o.repo_addr)
+            const already = existingAddrs.has(o.repo_addr)
+            const disp = repoDisplay(o.repo_addr)
+            return (
+              <div key={o.repo_addr} className="rounded-lg border border-gray-200/60 dark:border-white/10">
+                <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!sel}
+                    disabled={already}
+                    onChange={() => toggleRepo(o.repo_addr)}
+                    className="w-4 h-4 accent-apple-blue cursor-pointer disabled:opacity-40"
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-medium text-gray-900 dark:text-white">{disp.name}</span>
+                    {disp.path && <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{disp.path}</span>}
+                    {already && <span className="ml-1.5 text-xs text-emerald-600 dark:text-emerald-400">已添加</span>}
+                  </span>
+                  <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                    {o.need_count} Need · {fmtDate(o.last_active)}
+                  </span>
+                </label>
+                {sel && (
+                  <div className="px-3 pb-2.5 pl-9 space-y-1.5">
+                    <div className="flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name={`bm-${o.repo_addr}`} checked={sel.mode === 'all'} onChange={() => setMode(o.repo_addr, 'all')} className="accent-apple-blue cursor-pointer" />
+                        全部特性分支
+                      </label>
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input type="radio" name={`bm-${o.repo_addr}`} checked={sel.mode === 'specific'} onChange={() => setMode(o.repo_addr, 'specific')} className="accent-apple-blue cursor-pointer" />
+                        指定分支
+                      </label>
+                    </div>
+                    {sel.mode === 'specific' && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {o.branches.length === 0 ? (
+                          <span className="text-xs text-gray-400 dark:text-gray-500">该仓库无特性分支</span>
+                        ) : (
+                          o.branches.map((b) => {
+                            const on = sel.branches.has(b.repo_branch)
+                            return (
+                              <button
+                                type="button"
+                                key={b.repo_branch}
+                                onClick={() => toggleBranch(o.repo_addr, b.repo_branch)}
+                                className={`rounded-full px-2 py-0.5 text-xs border transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${on ? 'bg-apple-blue text-white border-apple-blue' : 'border-gray-300 dark:border-white/15 text-gray-600 dark:text-gray-300 hover:border-apple-blue'}`}
+                              >
+                                {b.repo_branch} <span className={on ? 'text-white/70' : 'text-gray-400'}>{b.need_count}</span>
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })
+        )}
+      </div>
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        将自动纳入该来源下、通过看板口径（非主干分支、已交付）的全部 Need；加入后可在列表中逐个勾选/排除。
+        勾选仓库即纳入其全部特性分支（已交付、非主干）的 Need；可改"指定分支"细选。加入后在下方列表逐个勾选/排除。
       </p>
     </FormModal>
   )
@@ -595,21 +753,6 @@ function BackButton({ onClick }: { onClick: () => void }) {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
       </svg>
       返回
-    </button>
-  )
-}
-
-function PanelAddButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 text-apple-blue hover:text-apple-blue-hover cursor-pointer bg-transparent border-none p-0 text-sm font-medium focus:outline-none focus-visible:underline"
-    >
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-      </svg>
-      {children}
     </button>
   )
 }
@@ -668,6 +811,7 @@ function FormModal({
   title,
   maxWidth,
   submitting,
+  submitLabel = '保存',
   onClose,
   onSubmit,
   children,
@@ -676,6 +820,7 @@ function FormModal({
   title: string
   maxWidth?: number
   submitting: boolean
+  submitLabel?: string
   onClose: () => void
   onSubmit: () => void
   children: ReactNode
@@ -701,7 +846,7 @@ function FormModal({
             disabled={submitting}
             className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
           >
-            {submitting ? '保存中...' : '保存'}
+            {submitting ? '保存中...' : submitLabel}
           </button>
         </>
       }

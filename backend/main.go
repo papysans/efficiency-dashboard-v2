@@ -133,6 +133,8 @@ func main() {
 		v2.GET("/repos", listReposV2)
 		v2.GET("/repos/detail", getRepoDetailV2)
 		v2.GET("/repos/branches", listRepoBranchesV2)
+		// 项目「添加来源」仓库选择器数据源（needs 同源，与候选池一致）；顶层路由避开 /needs/*needId catch-all。
+		v2.GET("/need-repo-options", listNeedRepoOptionsV2)
 
 		v2.GET("/orgs", listOrgsV2Native)
 		v2.GET("/orgs/detail", getOrgDetailV2)

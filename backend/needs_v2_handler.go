@@ -3,11 +3,13 @@ package main
 import (
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -587,4 +589,111 @@ func parsePageSize(s string) int {
 		return 200
 	}
 	return v
+}
+
+// ============================================================
+// 项目「添加来源」仓库选择器数据源 —— 从 needs 表聚合"可作为项目来源的仓库"
+// （规范化 repo_addr，与候选池 buildProjectNeedScopeClause 同源、同口径），
+// 取代旧的手填 git 地址 / commits 源下拉：勾选的仓库一定能圈到 Need。
+// ============================================================
+
+// NeedRepoBranchOption 仓库下一条特性分支的可选项（候选 Need 计数 + 最近活跃）。
+type NeedRepoBranchOption struct {
+	RepoBranch string     `json:"repo_branch"`
+	NeedCount  int64      `json:"need_count"`
+	LastActive *time.Time `json:"last_active"`
+}
+
+// NeedRepoOption 一个可作为项目来源的仓库（规范化地址 + 候选 Need 计数 + 最近活跃 + 分支清单）。
+type NeedRepoOption struct {
+	RepoAddr   string                 `json:"repo_addr"`
+	NeedCount  int64                  `json:"need_count"`
+	LastActive *time.Time             `json:"last_active"`
+	Branches   []NeedRepoBranchOption `json:"branches"`
+}
+
+// listNeedRepoOptionsV2 GET /api/v2/need-repo-options
+// @Summary 可作为项目来源的仓库清单
+// @Description 从 needs 表按看板口径聚合仓库（规范化 repo_addr + 候选 Need 数 + 最近活跃 + 分支清单），供项目「添加来源」选择器；不含主干/未交付（与候选池一致）
+// @Tags Projects
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/need-repo-options [get]
+func listNeedRepoOptionsV2(c *gin.Context) {
+	type aggRow struct {
+		RepoAddr   string     `gorm:"column:repo_addr"`
+		RepoBranch string     `gorm:"column:repo_branch"`
+		NeedCount  int64      `gorm:"column:need_count"`
+		LastActive *time.Time `gorm:"column:last_active"`
+	}
+	var rows []aggRow
+	q := applyNeedCaliberFilter(statDB.Model(&models.Need{})).
+		Select("repo_addr, repo_branch, COUNT(*) AS need_count, MAX(dev_end_ts) AS last_active").
+		Where("repo_addr <> ''").
+		Group("repo_addr, repo_branch")
+	if err := q.Scan(&rows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库选项失败: " + err.Error()})
+		return
+	}
+
+	// 内存按 CanonRepoAddr 汇总：① 剥离 userinfo token（oauth2/glpat/gho，绝不进 UI）；
+	// ② 同仓库多写法（带/不带 token、协议差异）归一合并；③ 返回值即候选池匹配口径，前端选了必命中。
+	// 不假设 needs.repo_addr 已规范化（历史脏数据可能含 token），读侧主动归一更稳健。
+	type repoAgg struct {
+		opt      *NeedRepoOption
+		branchIx map[string]int // repo_branch -> opt.Branches 下标，按分支合并去重
+	}
+	idx := make(map[string]*repoAgg)
+	out := make([]*NeedRepoOption, 0)
+	for _, r := range rows {
+		addr := utils.CanonRepoAddr(r.RepoAddr)
+		if addr == "" {
+			continue // 退化值（"/"、".git"、裸 scheme 等）canon 后为空，不是有效来源，与 buildProjectNeedScopeClause 空地址跳过一致
+		}
+		ra := idx[addr]
+		if ra == nil {
+			ra = &repoAgg{opt: &NeedRepoOption{RepoAddr: addr, Branches: []NeedRepoBranchOption{}}, branchIx: map[string]int{}}
+			idx[addr] = ra
+			out = append(out, ra.opt)
+		}
+		ra.opt.NeedCount += r.NeedCount
+		if r.LastActive != nil && (ra.opt.LastActive == nil || r.LastActive.After(*ra.opt.LastActive)) {
+			ra.opt.LastActive = r.LastActive
+		}
+		if b := strings.TrimSpace(r.RepoBranch); b != "" {
+			if bi, ok := ra.branchIx[b]; ok {
+				br := &ra.opt.Branches[bi]
+				br.NeedCount += r.NeedCount
+				if r.LastActive != nil && (br.LastActive == nil || r.LastActive.After(*br.LastActive)) {
+					br.LastActive = r.LastActive
+				}
+			} else {
+				ra.branchIx[b] = len(ra.opt.Branches)
+				ra.opt.Branches = append(ra.opt.Branches, NeedRepoBranchOption{RepoBranch: b, NeedCount: r.NeedCount, LastActive: r.LastActive})
+			}
+		}
+	}
+
+	// 排序：最近活跃降序（nil 沉底），活跃相同按 Need 数降序——稳定可读，仓库与分支同口径。
+	moreRecent := func(ai, aj *time.Time, ci, cj int64) bool {
+		if (ai == nil) != (aj == nil) {
+			return aj == nil // 非 nil 在前
+		}
+		if ai != nil && aj != nil && !ai.Equal(*aj) {
+			return ai.After(*aj)
+		}
+		return ci > cj
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return moreRecent(out[i].LastActive, out[j].LastActive, out[i].NeedCount, out[j].NeedCount)
+	})
+	for _, o := range out {
+		b := o.Branches
+		sort.SliceStable(b, func(i, j int) bool {
+			return moreRecent(b[i].LastActive, b[j].LastActive, b[i].NeedCount, b[j].NeedCount)
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": out})
 }

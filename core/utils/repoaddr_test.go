@@ -1,4 +1,4 @@
-package governance
+package utils
 
 import "testing"
 
@@ -23,10 +23,17 @@ func TestCanonRepoAddr(t *testing.T) {
 		{"空串原样返回", "", ""},
 		{"双写法归一相等-1", "git@10.2.3.4:mom/momproject.git", "10.2.3.4/mom/momproject"},
 		{"双写法归一相等-2", "https://10.2.3.4/mom/momproject", "10.2.3.4/mom/momproject"},
-		// URL userinfo（含凭据）必须剥离：token 不属于仓库身份，更不能进 need 边界 key
+		// scp 风格内网仓库（与 needs 写入侧一致的真实场景）
+		{"内网 scp 多级路径", "git@cs.devops.sangfor.org:SDS/SRC/EDS/phxrep.git", "cs.devops.sangfor.org/sds/src/eds/phxrep"},
+		{"内网带端口", "git@cs.devops.sangfor.org:19670/iap.git", "cs.devops.sangfor.org:19670/iap"},
+		// URL userinfo（含凭据）必须剥离：token 不属于仓库身份，更不能进 need 边界 key / UI
 		{"内嵌 token", "http://oauth2:glpat-abc.01.xyz@gitlab/root/scan-repo.git", "gitlab/root/scan-repo"},
 		{"内嵌用户名", "https://deploy@github.com/acme/repo.git", "github.com/acme/repo"},
 		{"带 token 与裸地址归一", "http://oauth2:tok@gitlab.example.com/g/r", "gitlab.example.com/g/r"},
+		{"https 单 token@", "https://gho_16c7e42f@github.com/o/r.git", "github.com/o/r"},
+		// ssh:// 非 git@ 的 userinfo（含凭据 + 端口）也必须剥 scheme 与 userinfo，否则泄露
+		{"ssh 非 git userinfo 带端口", "ssh://oauth2:tok@host:29418/o/r.git", "host:29418/o/r"},
+		{"ssh 裸地址无 userinfo", "ssh://host/o/r.git", "host/o/r"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -763,6 +763,21 @@ export interface UpdateCommitManualRequest {
 
 // ============ Projects（PR4b，百分比口径；列表无分页） ============
 
+/** 项目「添加来源」仓库选择器：仓库下一条特性分支可选项（need-repo-options 端点）。 */
+export interface NeedRepoBranchOption {
+  repo_branch: string
+  need_count: number
+  last_active?: string | null
+}
+
+/** 项目「添加来源」仓库选择器：一个可作为来源的仓库（needs 同源，规范化地址，选了必命中）。 */
+export interface NeedRepoOption {
+  repo_addr: string
+  need_count: number
+  last_active?: string | null
+  branches: NeedRepoBranchOption[]
+}
+
 /** 项目内 repo filter 配置（project.repos JSON 数组项）。 */
 export interface ProjectRepo {
   repo_addr: string

@@ -34,6 +34,7 @@ import type {
   DeptTreeNode,
   GlobalConfig,
   ListParams,
+  NeedRepoOption,
   NeedsV2DetailResponse,
   NeedsV2Summary,
   OrgDetailResponse,
@@ -189,6 +190,11 @@ export function updateCommitManualV2(commitId: string, body: UpdateCommitManualR
 // ---- Repos（⚠️ 百分比口径：efficiency_ratio = CalcEfficiencyRatio(ancient,real)，不 ×100） ----
 export function getReposV2(params: ListParams) {
   return apiGet<ApiList<RepoListItem>>('/v2/repos', params)
+}
+
+/** 项目「添加来源」仓库选择器数据源：GET /v2/need-repo-options（needs 同源、规范化地址，与候选池一致）。 */
+export function getNeedRepoOptions() {
+  return apiGet<ApiData<NeedRepoOption>>('/v2/need-repo-options')
 }
 
 export function getRepoDetailV2(params: { repoAddr: string; repoBranch?: string; startDate?: string; endDate?: string }) {
