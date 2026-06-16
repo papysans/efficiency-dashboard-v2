@@ -142,8 +142,10 @@ func getDashboardTrends(c *gin.Context) {
 			return
 		}
 		dur := end.Sub(*start)
-		prevEnd := *start
-		prevStart := start.Add(-dur)
+		// 上期 = 紧邻当前窗口、等长且不重叠的前一区间。prevEnd 必须严格早于 start，
+		// 否则 week_start==start 的那一周会同时落进本期(week_start>=start)与上期(week_start<=prevEnd)被双算。
+		prevEnd := start.Add(-time.Second)
+		prevStart := prevEnd.Add(-dur)
 		prev, err := queryDashboardTrendWindowAgg(statDB, &prevStart, &prevEnd)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
