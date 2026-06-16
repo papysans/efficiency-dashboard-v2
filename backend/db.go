@@ -1599,3 +1599,71 @@ func QueryDashboardCommitAgg(db *gorm.DB, startTime, endTime string) (*dashboard
 func QueryDashboardNeedAgg(db *gorm.DB, startTime, endTime string) (*dashboardNeedAgg, error) {
 	return queryDashboardNeedAgg(db, startTime, endTime)
 }
+
+// dashboardTrendWeekRow 是 user_productivity_v2 跨用户按 week_start 的单周聚合行（首页趋势 sparkline 用）。
+// 周表本身是 efficiency-v2 个人周投影(口径见 design.md §4)，这里只跨人求和；提效比在读侧按
+// "先汇总分钟再求比" 重算（efficiencyV2Ratio），不是平均个人比，避免 Simpson 悖论，与 summary 同口径。
+type dashboardTrendWeekRow struct {
+	WeekStart           time.Time `gorm:"column:week_start"`
+	ActiveUsers         int64     `gorm:"column:active_users"`
+	MergedNeedCount     int64     `gorm:"column:merged_need_count"`
+	Cost                float64   `gorm:"column:cost"`
+	CommitDiffLines     int64     `gorm:"column:commit_diff_lines"`
+	ActualCalendarMin   float64   `gorm:"column:actual_calendar_min"`
+	BaselineCalendarMin float64   `gorm:"column:baseline_calendar_min"`
+}
+
+// dashboardTrendWindowAgg 是某个日期窗口内（无 GROUP BY）的整体聚合，用于"本期 vs 上期"环比。
+// 活跃用户用 COUNT(DISTINCT user_id) 取整窗去重，不能把各周 active_users 相加（会重复计数）。
+type dashboardTrendWindowAgg struct {
+	DistinctUsers       int64   `gorm:"column:distinct_users"`
+	MergedNeedCount     int64   `gorm:"column:merged_need_count"`
+	Cost                float64 `gorm:"column:cost"`
+	CommitDiffLines     int64   `gorm:"column:commit_diff_lines"`
+	ActualCalendarMin   float64 `gorm:"column:actual_calendar_min"`
+	BaselineCalendarMin float64 `gorm:"column:baseline_calendar_min"`
+}
+
+// queryDashboardTrendWeekly 跨用户按 week_start 聚合 user_productivity_v2，得到周趋势序列（升序）。
+func queryDashboardTrendWeekly(db *gorm.DB, start, end *time.Time) ([]dashboardTrendWeekRow, error) {
+	var rows []dashboardTrendWeekRow
+	q := db.Model(&models.UserProductivityV2{}).Select(`week_start,
+		COUNT(DISTINCT user_id) as active_users,
+		COALESCE(SUM(merged_need_count), 0) as merged_need_count,
+		COALESCE(SUM(cost), 0) as cost,
+		COALESCE(SUM(commit_diff_lines), 0) as commit_diff_lines,
+		COALESCE(SUM(actual_calendar_min), 0) as actual_calendar_min,
+		COALESCE(SUM(baseline_calendar_min), 0) as baseline_calendar_min`)
+	if start != nil {
+		q = q.Where("week_start >= ?", *start)
+	}
+	if end != nil {
+		q = q.Where("week_start <= ?", *end)
+	}
+	if err := q.Group("week_start").Order("week_start ASC").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("查询首页周趋势聚合失败: %w", err)
+	}
+	return rows, nil
+}
+
+// queryDashboardTrendWindowAgg 取某窗口内整体聚合（活跃用户整窗去重），供环比计算。
+func queryDashboardTrendWindowAgg(db *gorm.DB, start, end *time.Time) (*dashboardTrendWindowAgg, error) {
+	var agg dashboardTrendWindowAgg
+	q := db.Model(&models.UserProductivityV2{}).Select(`
+		COUNT(DISTINCT user_id) as distinct_users,
+		COALESCE(SUM(merged_need_count), 0) as merged_need_count,
+		COALESCE(SUM(cost), 0) as cost,
+		COALESCE(SUM(commit_diff_lines), 0) as commit_diff_lines,
+		COALESCE(SUM(actual_calendar_min), 0) as actual_calendar_min,
+		COALESCE(SUM(baseline_calendar_min), 0) as baseline_calendar_min`)
+	if start != nil {
+		q = q.Where("week_start >= ?", *start)
+	}
+	if end != nil {
+		q = q.Where("week_start <= ?", *end)
+	}
+	if err := q.Scan(&agg).Error; err != nil {
+		return nil, fmt.Errorf("查询首页趋势窗口聚合失败: %w", err)
+	}
+	return &agg, nil
+}

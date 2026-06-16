@@ -2,6 +2,7 @@ package main
 
 import (
 	"kanban/core/utils"
+	"math"
 	"net/http"
 	"time"
 
@@ -48,6 +49,113 @@ func efficiencyV2Ratio(baseline, actual float64) *float64 {
 	}
 	r := (baseline - actual) / actual
 	return &r
+}
+
+// DashboardTrendPoint 首页趋势单周点。efficiency_ratio 小数口径（前端用 RatioPill），actual<=0 时为 null。
+type DashboardTrendPoint struct {
+	WeekStart       string   `json:"week_start"` // YYYY-MM-DD（ISO 周一）
+	EfficiencyRatio *float64 `json:"efficiency_ratio"`
+	ActiveUsers     int64    `json:"active_users"`
+	MergedNeedCount int64    `json:"merged_need_count"`
+	Cost            float64  `json:"cost"`
+	CommitDiffLines int64    `json:"commit_diff_lines"`
+}
+
+// DashboardTrendDelta 单维度"本期 vs 等长上期"环比。delta_pct 在上期为 0 时为 null（前端不画箭头）。
+type DashboardTrendDelta struct {
+	Current  float64  `json:"current"`
+	Previous float64  `json:"previous"`
+	DeltaPct *float64 `json:"delta_pct"`
+}
+
+// DashboardTrendsResponse 首页 4 维趋势 + 环比。compare 键：efficiency/usage/cost/contribution。
+type DashboardTrendsResponse struct {
+	Granularity string                         `json:"granularity"`
+	Points      []DashboardTrendPoint          `json:"points"`
+	Compare     map[string]DashboardTrendDelta `json:"compare"`
+}
+
+// trendDelta 组装单维度环比；上期非 0 时给出相对变化率(有符号)，否则 delta_pct 为 nil。
+func trendDelta(current, previous float64) DashboardTrendDelta {
+	d := DashboardTrendDelta{Current: current, Previous: previous}
+	if previous != 0 {
+		p := (current - previous) / math.Abs(previous)
+		d.DeltaPct = &p
+	}
+	return d
+}
+
+// windowRatio 整窗提效比：先汇总分钟再求比；actual<=0 返回 0（环比按 0 处理，不画箭头由 previous 决定）。
+func windowRatio(agg *dashboardTrendWindowAgg) float64 {
+	if agg == nil || agg.ActualCalendarMin <= 0 {
+		return 0
+	}
+	return (agg.BaselineCalendarMin - agg.ActualCalendarMin) / agg.ActualCalendarMin
+}
+
+// getDashboardTrends GET /api/v2/dashboard/trends
+// @Summary 首页 4 维周趋势 + 环比
+// @Description 跨用户按周聚合 user_productivity_v2，返回使用/效率/成本/贡献的周序列(sparkline)与本期vs等长上期环比
+// @Tags Dashboard
+// @Produce json
+// @Param startDate query string false "开始日期(YYYYMMDD 或 YYYY-MM-DD)"
+// @Param endDate query string false "结束日期(YYYYMMDD 或 YYYY-MM-DD)"
+// @Success 200 {object} DashboardTrendsResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v2/dashboard/trends [get]
+func getDashboardTrends(c *gin.Context) {
+	start, err := parseStartDate(c.Query("startDate"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + err.Error()})
+		return
+	}
+	end, err := parseEndDate(c.Query("endDate"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + err.Error()})
+		return
+	}
+
+	rows, err := queryDashboardTrendWeekly(statDB, start, end)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+	points := make([]DashboardTrendPoint, 0, len(rows))
+	for _, r := range rows {
+		points = append(points, DashboardTrendPoint{
+			WeekStart:       r.WeekStart.Format("2006-01-02"),
+			EfficiencyRatio: efficiencyV2Ratio(r.BaselineCalendarMin, r.ActualCalendarMin),
+			ActiveUsers:     r.ActiveUsers,
+			MergedNeedCount: r.MergedNeedCount,
+			Cost:            r.Cost,
+			CommitDiffLines: r.CommitDiffLines,
+		})
+	}
+
+	// 环比：本期 vs 等长前一区间；start/end 都有才计算（否则窗口长度不定）。
+	compare := map[string]DashboardTrendDelta{}
+	if start != nil && end != nil {
+		cur, err := queryDashboardTrendWindowAgg(statDB, start, end)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			return
+		}
+		dur := end.Sub(*start)
+		prevEnd := *start
+		prevStart := start.Add(-dur)
+		prev, err := queryDashboardTrendWindowAgg(statDB, &prevStart, &prevEnd)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+			return
+		}
+		compare["usage"] = trendDelta(float64(cur.DistinctUsers), float64(prev.DistinctUsers))
+		compare["efficiency"] = trendDelta(windowRatio(cur), windowRatio(prev))
+		compare["cost"] = trendDelta(cur.Cost, prev.Cost)
+		compare["contribution"] = trendDelta(float64(cur.CommitDiffLines), float64(prev.CommitDiffLines))
+	}
+
+	c.JSON(http.StatusOK, DashboardTrendsResponse{Granularity: "week", Points: points, Compare: compare})
 }
 
 // getDashboardSummary GET /api/v2/dashboard/summary
