@@ -56,6 +56,30 @@ export interface DashboardSummary {
   ai_code_ratio?: number | null // 小数口径
 }
 
+/** /v2/dashboard/trends 单周点（efficiency_ratio 小数口径，actual<=0 时为 null） */
+export interface DashboardTrendPoint {
+  week_start: string // YYYY-MM-DD
+  efficiency_ratio: number | null
+  active_users: number
+  merged_need_count: number
+  cost: number
+  commit_diff_lines: number
+}
+
+/** 单维度"本期 vs 等长上期"环比；delta_pct 在上期为 0 时为 null（不画箭头） */
+export interface DashboardTrendDelta {
+  current: number
+  previous: number
+  delta_pct: number | null
+}
+
+/** /v2/dashboard/trends 响应。compare 键：efficiency/usage/cost/contribution */
+export interface DashboardTrends {
+  granularity: string
+  points: DashboardTrendPoint[]
+  compare: Partial<Record<'efficiency' | 'usage' | 'cost' | 'contribution', DashboardTrendDelta>>
+}
+
 /** /v2/needs 列表项（§2.1，小数口径） */
 export interface NeedsV2Summary {
   need_id: string

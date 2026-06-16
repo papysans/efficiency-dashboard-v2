@@ -1,15 +1,18 @@
 import { useMemo, type ReactNode } from 'react'
-import { useDashboardSummary } from '@/api/queries'
+import { useNavigate } from 'react-router'
+import { useDashboardSummary, useDashboardTrends } from '@/api/queries'
 import { getDefaultDateRangeWide, formatDateParam } from '@/lib/date'
-import { formatNumber } from '@/lib/formatters'
+import { formatNumber, formatV2Ratio } from '@/lib/formatters'
+import { glossaryTip } from '@/lib/glossary'
 import { MetricCard } from '@/components/ui/MetricCard'
+import { MetricScorecard, QualityPlaceholder } from '@/components/executive/MetricScorecard'
 import { HeroSaving } from '@/components/executive/HeroSaving'
 import { TrendCard } from '@/components/executive/TrendCard'
 import { AdoptionCard } from '@/components/executive/AdoptionCard'
 import { TopRankCard } from '@/components/executive/TopRankCard'
 
-// 高管提效总览大屏（PR1）。Bento 12 列网格 + 玻璃拟态 + 卡片 staggered 渐入。
-// 四件套：① Hero 省人天&ROI ② 提效趋势 ③ Top 提效榜（需求/人）④ AI 代码占比环形。
+// 高管提效总览大屏。Bento 12 列网格 + 玻璃拟态 + 卡片 staggered 渐入。
+// ① Hero 省人天&ROI ② 4 维记分卡条(使用/效率/成本/贡献 + 质量占位) ③ 提效趋势 + 采用度 ④ Top 榜 + 规模。
 export default function Overview() {
   const [startDate, endDate] = useMemo(() => {
     const [s, e] = getDefaultDateRangeWide()
@@ -23,19 +26,24 @@ export default function Overview() {
         <HeroSaving startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row2 趋势 + 采用度 */}
-      <Cell index={1} className="col-span-12 lg:col-span-8">
+      {/* Row2 4 维记分卡条 */}
+      <Cell index={1} className="col-span-12">
+        <ScorecardStrip startDate={startDate} endDate={endDate} />
+      </Cell>
+
+      {/* Row3 趋势 + 采用度 */}
+      <Cell index={2} className="col-span-12 lg:col-span-8">
         <TrendCard startDate={startDate} endDate={endDate} />
       </Cell>
-      <Cell index={2} className="col-span-12 lg:col-span-4">
+      <Cell index={3} className="col-span-12 lg:col-span-4">
         <AdoptionCard startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row3 Top 榜（需求 / 人） + 规模概览 */}
-      <Cell index={3} className="col-span-12 lg:col-span-6">
+      {/* Row4 Top 榜（需求 / 人） + 规模概览 */}
+      <Cell index={4} className="col-span-12 lg:col-span-6">
         <TopRankCard startDate={startDate} endDate={endDate} />
       </Cell>
-      <Cell index={4} className="col-span-12 lg:col-span-6">
+      <Cell index={5} className="col-span-12 lg:col-span-6">
         <CountsCard startDate={startDate} endDate={endDate} />
       </Cell>
     </div>
@@ -50,6 +58,80 @@ function Cell({ index, className = '', children }: { index: number; className?: 
       style={{ animationDelay: `${index * 80}ms` }}
     >
       {children}
+    </div>
+  )
+}
+
+/**
+ * 4 维记分卡条：使用 / 效率 / 成本 / 贡献（+ 质量占位）。
+ * 当期值取 dashboard/summary（组织级全局口径），sparkline + 环比取 dashboard/trends 周序列。
+ * 每张卡点击下钻到该维度最相关现有页（Q4=A）。质量本轮无可靠数据，占位"数据建设中"。
+ */
+function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: string }) {
+  const navigate = useNavigate()
+  const summaryQ = useDashboardSummary({ startDate, endDate })
+  const trendsQ = useDashboardTrends({ startDate, endDate })
+  const s = summaryQ.data
+  const points = trendsQ.data?.points ?? []
+  const compare = trendsQ.data?.compare ?? {}
+  const loading = summaryQ.isLoading || trendsQ.isLoading
+
+  if (summaryQ.error) {
+    return (
+      <div className="glass rounded-2xl p-5 text-sm text-rose-600 dark:text-rose-400">
+        加载失败：{(summaryQ.error as Error).message}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-4">
+      <MetricScorecard
+        label="使用"
+        value={s ? formatNumber(s.total_users_v2) : null}
+        hint={s ? `需求 ${formatNumber(s.merged_needs)} 已合并` : undefined}
+        tip={glossaryTip('active_users')}
+        series={points.map((p) => p.active_users)}
+        delta={compare.usage}
+        accent="#0071e3"
+        loading={loading}
+        onClick={() => navigate('/user-v2')}
+      />
+      <MetricScorecard
+        label="效率"
+        value={s ? formatV2Ratio(s.need_calendar_ratio) : null}
+        hint="综合日历提效"
+        tip={glossaryTip('efficiency_ratio')}
+        series={points.map((p) => (p.efficiency_ratio == null ? NaN : p.efficiency_ratio))}
+        delta={compare.efficiency}
+        accent="#34c759"
+        loading={loading}
+        onClick={() => navigate('/distribution-v2')}
+      />
+      <MetricScorecard
+        label="成本"
+        value={s ? `¥${formatNumber(s.total_cost)}` : null}
+        hint={s ? `${formatNumber(s.total_tokens)} tokens` : undefined}
+        tip={glossaryTip('cost')}
+        series={points.map((p) => p.cost)}
+        delta={compare.cost}
+        higherIsBetter={false}
+        accent="#ff9500"
+        loading={loading}
+        onClick={() => navigate('/project-v2')}
+      />
+      <MetricScorecard
+        label="贡献"
+        value={s ? `${formatNumber(s.total_commit_lines)}` : null}
+        hint={s ? `AI ${formatV2Ratio(s.ai_code_ratio)} · 净增行` : undefined}
+        tip={glossaryTip('commit_diff_lines')}
+        series={points.map((p) => p.commit_diff_lines)}
+        delta={compare.contribution}
+        accent="#5e5ce6"
+        loading={loading}
+        onClick={() => navigate('/user-v2')}
+      />
+      <QualityPlaceholder tip={glossaryTip('silica')} />
     </div>
   )
 }

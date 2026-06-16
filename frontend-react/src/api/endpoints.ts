@@ -28,6 +28,7 @@ import type {
   CreateProjectRequest,
   CreateProjectResponse,
   DashboardSummary,
+  DashboardTrends,
   DeptMembersResponse,
   DeptTreeNode,
   GlobalConfig,
@@ -56,6 +57,11 @@ import type {
 // ---- Dashboard & Config ----
 export function getDashboardSummary(params: { startDate?: string; endDate?: string }) {
   return apiGet<DashboardSummary>('/v2/dashboard/summary', params)
+}
+
+/** 首页 4 维周趋势(sparkline) + 本期vs上期环比。跨用户聚合 user_productivity_v2 周表。 */
+export function getDashboardTrends(params: { startDate?: string; endDate?: string }) {
+  return apiGet<DashboardTrends>('/v2/dashboard/trends', params)
 }
 
 export function getGlobalConfig() {

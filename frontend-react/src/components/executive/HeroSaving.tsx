@@ -4,6 +4,7 @@ import { useChatSystemConfig, useDashboardSummary, useGlobalConfig } from '@/api
 import { chatGet } from '@/api/client'
 import { useCountUp } from '@/hooks/useCountUp'
 import { currencySymbol, formatNumber, personDaysValue, PERSON_DAY_MINUTES } from '@/lib/formatters'
+import { glossaryTip } from '@/lib/glossary'
 
 interface HeroSavingProps {
   startDate: string
@@ -58,6 +59,8 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
   const savedDays = savedMin / PERSON_DAY_MINUTES
   const grossSaving = personDaysValue(savedMin) * costPerPersonDay
   const netSaving = grossSaving - aiCost
+  // ROI = 折合节省成本 ÷ AI 成本（看板任务口径 total_cost）；total_cost<=0 时不展示。
+  const roi = data && data.total_cost > 0 ? grossSaving / data.total_cost : null
   // 综合日历提效（小数口径）→ 百分比数值用于滚动；null 时按 0 处理但展示加保护
   const ratio = data?.need_calendar_ratio
   const ratioPct = ratio == null ? 0 : ratio * 100
@@ -108,9 +111,19 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
             {aiAvailable && ' · AI 花费为全平台口径（按价格表估算）'}
           </p>
         </div>
-        <span className="text-xs px-3 py-1 rounded-full bg-white/50 dark:bg-white/10 text-gray-500 dark:text-gray-400 whitespace-nowrap">
-          {period}
-        </span>
+        <div className="flex items-center gap-2">
+          {roi != null && roi > 0 && (
+            <span
+              className="text-xs px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 whitespace-nowrap font-medium cursor-help tabular-nums"
+              title={glossaryTip('roi')}
+            >
+              ROI {roi.toFixed(1)}x
+            </span>
+          )}
+          <span className="text-xs px-3 py-1 rounded-full bg-white/50 dark:bg-white/10 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            {period}
+          </span>
+        </div>
       </div>
 
       {aiAvailable ? (

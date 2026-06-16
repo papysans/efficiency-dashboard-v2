@@ -6,6 +6,7 @@ import {
   getAllUsersV2,
   getCommitDetailV2,
   getDashboardSummary,
+  getDashboardTrends,
   getGlobalConfig,
   getDeptTreeV2,
   getNeedDetailV2,
@@ -26,6 +27,14 @@ export function useDashboardSummary(params: { startDate?: string; endDate?: stri
   return useQuery({
     queryKey: ['dashboard-summary', params],
     queryFn: () => getDashboardSummary(params),
+  })
+}
+
+/** 首页 4 维周趋势 + 环比（sparkline / 环比箭头用）。 */
+export function useDashboardTrends(params: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['dashboard-trends', params],
+    queryFn: () => getDashboardTrends(params),
   })
 }
 
