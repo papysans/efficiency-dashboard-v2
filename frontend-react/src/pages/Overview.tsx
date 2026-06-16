@@ -4,7 +4,7 @@ import { getDefaultDateRangeWide, formatDateParam } from '@/lib/date'
 import { formatNumber, formatV2Ratio } from '@/lib/formatters'
 import { glossaryTip } from '@/lib/glossary'
 import { MetricCard } from '@/components/ui/MetricCard'
-import { MetricScorecard, QualityPlaceholder } from '@/components/executive/MetricScorecard'
+import { MetricScorecard } from '@/components/executive/MetricScorecard'
 import { HeroSaving } from '@/components/executive/HeroSaving'
 import { TrendCard } from '@/components/executive/TrendCard'
 import { AdoptionCard } from '@/components/executive/AdoptionCard'
@@ -12,7 +12,8 @@ import { TopRankCard } from '@/components/executive/TopRankCard'
 import { DeptPKCard } from '@/components/executive/DeptPKCard'
 
 // 高管提效总览大屏。Bento 12 列网格 + 玻璃拟态 + 卡片 staggered 渐入。
-// ① Hero 省人天&ROI ② 4 维记分卡条(使用/效率/成本/贡献 + 质量占位) ③ 提效趋势 + 采用度 ④ Top 榜 + 规模。
+// ① Hero 省人天/AI花费/净节省/提效 ② 使用/贡献速览 + AI采纳环形 ③ 周提效趋势 ④ 部门PK + Top榜 ⑤ 规模概览。
+// 成本/质量/效率不在 ② 单列：成本与 Hero 的 AI 花费口径不同易混淆、质量本轮无数据、效率与 Hero 综合提效重复。
 export default function Overview() {
   const [startDate, endDate] = useMemo(() => {
     const [s, e] = getDefaultDateRangeWide()
@@ -26,17 +27,17 @@ export default function Overview() {
         <HeroSaving startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row2 4 维记分卡条 */}
-      <Cell index={1} className="col-span-12">
+      {/* Row2 使用/贡献 速览 + AI 采纳环形 */}
+      <Cell index={1} className="col-span-12 lg:col-span-8">
         <ScorecardStrip startDate={startDate} endDate={endDate} />
       </Cell>
-
-      {/* Row3 趋势 + 采用度 */}
-      <Cell index={2} className="col-span-12 lg:col-span-8">
-        <TrendCard startDate={startDate} endDate={endDate} />
-      </Cell>
-      <Cell index={3} className="col-span-12 lg:col-span-4">
+      <Cell index={2} className="col-span-12 lg:col-span-4">
         <AdoptionCard startDate={startDate} endDate={endDate} />
+      </Cell>
+
+      {/* Row3 周提效趋势（整宽） */}
+      <Cell index={3} className="col-span-12">
+        <TrendCard startDate={startDate} endDate={endDate} />
       </Cell>
 
       {/* Row4 部门 PK + Top 榜（需求 / 人） */}
@@ -68,9 +69,10 @@ function Cell({ index, className = '', children }: { index: number; className?: 
 }
 
 /**
- * 4 维记分卡条：使用 / 效率 / 成本 / 贡献（+ 质量占位）。
+ * 速览卡：使用人数 / 贡献净增行（各带 sparkline + 环比）。
  * 当期值取 dashboard/summary（组织级全局口径），sparkline + 环比取 dashboard/trends 周序列。
- * 纯展示、不跳转（无合适的单维度下钻页，跳现有列表页牵强）；ⓘ 看口径。质量本轮无可靠数据，占位"数据建设中"。
+ * 纯展示、不跳转；ⓘ 看口径。
+ * 已移除：成本（与 Hero 全平台 AI 花费口径不同，易混淆）、效率（与 Hero 综合日历提效重复）、质量（本轮无数据）。
  */
 function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: string }) {
   const summaryQ = useDashboardSummary({ startDate, endDate })
@@ -89,9 +91,9 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
       <MetricScorecard
-        label="使用"
+        label="使用人数"
         value={s ? formatNumber(s.total_users_v2) : null}
         hint={s ? `需求 ${formatNumber(s.merged_needs)} 已合并` : undefined}
         tip={glossaryTip('active_users')}
@@ -101,28 +103,7 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         loading={loading}
       />
       <MetricScorecard
-        label="效率"
-        value={s ? formatV2Ratio(s.need_calendar_ratio) : null}
-        hint="综合日历提效"
-        tip={glossaryTip('efficiency_ratio')}
-        series={points.map((p) => (p.efficiency_ratio == null ? NaN : p.efficiency_ratio))}
-        delta={compare.efficiency}
-        accent="#34c759"
-        loading={loading}
-      />
-      <MetricScorecard
-        label="成本"
-        value={s ? `¥${formatNumber(s.total_cost)}` : null}
-        hint={s ? `${formatNumber(s.total_tokens)} tokens` : undefined}
-        tip={glossaryTip('cost')}
-        series={points.map((p) => p.cost)}
-        delta={compare.cost}
-        higherIsBetter={false}
-        accent="#ff9500"
-        loading={loading}
-      />
-      <MetricScorecard
-        label="贡献"
+        label="贡献行数"
         value={s ? `${formatNumber(s.total_commit_lines)}` : null}
         hint={s ? `AI ${formatV2Ratio(s.ai_code_ratio)} · 净增行` : undefined}
         tip={glossaryTip('commit_diff_lines')}
@@ -131,7 +112,6 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         accent="#5e5ce6"
         loading={loading}
       />
-      <QualityPlaceholder tip={glossaryTip('silica')} />
     </div>
   )
 }

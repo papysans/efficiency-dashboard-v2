@@ -2,9 +2,9 @@ import type { ReactNode } from 'react'
 import { formatV2Ratio } from '@/lib/formatters'
 import type { DashboardTrendDelta } from '@/api/types'
 
-// 首页 4 维记分卡：维度名 + ⓘ名词解释 + 大数值 + 副信息 + 环比箭头 + 周趋势 sparkline。
+// 首页速览记分卡：维度名 + ⓘ名词解释 + 大数值 + 副信息 + 环比箭头 + 周趋势 sparkline。
 // 纯展示卡，不跳转（无合适的"单维度下钻页"，跳现有列表页只会牵强/意外）；ⓘ hover 看口径解释，
-// 下钻走左导航 / Top 榜 / 部门 PK。质量维度本轮无数据，用 placeholder 占位（见 QualityPlaceholder）。
+// 下钻走左导航 / Top 榜 / 部门 PK。
 
 interface MetricScorecardProps {
   /** 维度名（使用/效率/成本/贡献） */
@@ -118,23 +118,5 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
       <path d={line} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
       <circle cx={last[0]} cy={last[1]} r={2} fill={color} />
     </svg>
-  )
-}
-
-/** 质量维度占位卡（本轮无可靠数据，标"数据建设中"，与 4 维卡同形）。 */
-export function QualityPlaceholder({ tip }: { tip: string }) {
-  return (
-    <div className="glass rounded-2xl p-4 flex flex-col gap-2 opacity-70" style={{ borderLeft: '3px solid #9ca3af' }}>
-      <div className="flex items-center gap-1">
-        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">质量</span>
-        <span className="text-gray-400 cursor-help inline-flex" title={tip} aria-label={tip}>
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </span>
-      </div>
-      <div className="text-sm text-gray-400 dark:text-gray-500 mt-1">数据建设中</div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 mt-auto">质量信号采集完善后开放</div>
-    </div>
   )
 }
