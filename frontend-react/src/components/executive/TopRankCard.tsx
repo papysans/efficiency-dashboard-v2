@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useAllNeeds, useUsers } from '@/api/queries'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { sortRows } from '@/lib/sort'
@@ -30,6 +31,7 @@ function shortNeedId(id: string): string {
  * 后端不支持 efficiency_ratio order → 客户端 sortRows（null 沉底）取 top6。
  */
 export function TopRankCard({ startDate, endDate }: TopRankCardProps) {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('need')
   const needsQ = useAllNeeds({ startDate, endDate })
   // pageSize:1000 一次性全量（对齐 UserList）：/v2/users 默认 pageSize=50 会服务端截断，
@@ -83,6 +85,7 @@ export function TopRankCard({ startDate, endDate }: TopRankCardProps) {
               title={shortNeedId(r.need_id)}
               sub={r.repo_branch}
               pill={<RatioPill value={r.efficiency_ratio} />}
+              onClick={() => navigate(`/needs/${encodeURIComponent(r.need_id)}`)}
             />
           ))}
         </ul>
@@ -95,6 +98,7 @@ export function TopRankCard({ startDate, endDate }: TopRankCardProps) {
               title={r.user_name}
               sub={`合并需求 ${r.merged_need_count}`}
               pill={<RatioPill value={r.calendar_ratio} />}
+              onClick={() => navigate(`/user/${encodeURIComponent(r.user_id)}`)}
             />
           ))}
         </ul>
@@ -121,10 +125,32 @@ function TabBtn({ active, onClick, label }: { active: boolean; onClick: () => vo
   )
 }
 
-function RankRow({ rank, title, sub, pill }: { rank: number; title: string; sub: string; pill: React.ReactNode }) {
+function RankRow({
+  rank,
+  title,
+  sub,
+  pill,
+  onClick,
+}: {
+  rank: number
+  title: string
+  sub: string
+  pill: React.ReactNode
+  onClick?: () => void
+}) {
   const badge = rank <= 3 ? RANK_BADGE[rank - 1] : RANK_DEFAULT
+  const clickable = !!onClick
   return (
-    <li className="flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-white/40 dark:hover:bg-white/5 transition-colors">
+    <li
+      className={`flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-white/40 dark:hover:bg-white/5 transition-colors ${
+        clickable ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400' : ''
+      }`}
+      onClick={onClick}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick?.()) : undefined}
+      aria-label={clickable ? `${title}，点击查看详情` : undefined}
+    >
       <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold tabular-nums ${badge}`}>
         {rank}
       </span>
