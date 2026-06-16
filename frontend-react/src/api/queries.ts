@@ -8,6 +8,7 @@ import {
   getDashboardSummary,
   getDashboardTrends,
   getGlobalConfig,
+  getDeptRankingV2,
   getDeptTreeV2,
   getNeedDetailV2,
   getProjectDetail,
@@ -145,6 +146,15 @@ export function useDeptTree() {
   return useQuery({
     queryKey: ['dept-tree'],
     queryFn: () => getDeptTreeV2(),
+    staleTime: 5 * 60_000,
+  })
+}
+
+/** 部门排行（一次聚合）：parentDeptId 的各直接子部门整棵子树汇总，供首页部门 PK 一次性消费。 */
+export function useDeptRanking(params: { parentDeptId?: string; startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['dept-ranking', params],
+    queryFn: () => getDeptRankingV2(params),
     staleTime: 5 * 60_000,
   })
 }

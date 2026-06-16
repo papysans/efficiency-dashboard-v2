@@ -1,17 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useQueries } from '@tanstack/react-query'
-import { useDeptTree } from '@/api/queries'
-import { getDeptTreeMembersV2 } from '@/api/endpoints'
+import { useDeptTree, useDeptRanking } from '@/api/queries'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { formatNumber } from '@/lib/formatters'
 import { glossaryTip } from '@/lib/glossary'
 import type { DeptTreeNode } from '@/api/types'
 
 // 部门 PK Top5（Q3：只在首页放 Top5；Q1：前端可切层级）。
-// 数据源：dept-tree(树) + dept-tree/members?dept_id=（每部门含子树的提效/成本/AI汇总，小数口径）。
-// 默认排"全公司一级部门"；下拉可切到任意有子部门的父节点，排其直接子部门。
-// ⚠️ members 接口代理远程 dept-sync，本地 eval 环境不可达 → 优雅降级为"暂不可用"。
+// 数据源：dept-tree(树，仅出层级下拉) + dept-tree/ranking?parent_dept_id=（一次聚合返回各直接子部门含子树的提效/成本/AI汇总，小数口径）。
+// 默认排"全公司一级部门"（parent_dept_id 传空，交后端取配置根）；下拉可切到任意有子部门的父节点，排其直接子部门。
+// ⚠️ ranking 接口代理远程 dept-sync，本地 eval 环境不可达 → 优雅降级为"暂不可用"。
+// 性能：替代旧 useQueries 的 N× members 全表聚合，改为单次 ranking 端点（后端只跑一次 aggregateUsersV2）。
 
 interface DeptPKCardProps {
   startDate: string
@@ -37,16 +36,6 @@ function collectParents(nodes: DeptTreeNode[], depth = 0, acc: { id: string; lab
   return acc
 }
 
-/** DFS 找节点。 */
-function findNode(nodes: DeptTreeNode[], id: string): DeptTreeNode | null {
-  for (const n of nodes) {
-    if (n.dept_id === id) return n
-    const r = findNode(n.children ?? [], id)
-    if (r) return r
-  }
-  return null
-}
-
 export function DeptPKCard({ startDate, endDate }: DeptPKCardProps) {
   const navigate = useNavigate()
   const treeQ = useDeptTree()
@@ -54,35 +43,23 @@ export function DeptPKCard({ startDate, endDate }: DeptPKCardProps) {
   const [parentId, setParentId] = useState<string>(ROOT)
 
   const parentOptions = useMemo(() => collectParents(tree), [tree])
-  // 被排名的候选部门 = 选定父节点的直接子部门。
-  // ROOT 默认：dept-sync 通常返回单个公司根节点 → 排其一级子部门；若返回多个顶层节点则直接排之。
-  const candidates = useMemo<DeptTreeNode[]>(() => {
-    if (parentId === ROOT) return tree.length === 1 ? tree[0].children ?? [] : tree
-    return findNode(tree, parentId)?.children ?? []
-  }, [tree, parentId])
 
-  // 逐部门拉含子树汇总（并行）。dept-sync 不可达时各 query 自行 error，不互相阻塞。
-  const memberQs = useQueries({
-    queries: candidates.map((d) => ({
-      queryKey: ['dept-members', d.dept_id, startDate, endDate],
-      queryFn: () => getDeptTreeMembersV2({ deptId: d.dept_id, startDate, endDate }),
-      staleTime: 5 * 60_000,
-      retry: 1,
-    })),
+  // 一次聚合：ROOT → parent_dept_id 传空（后端默认取配置根，排「全公司一级部门」）；否则传选中父节点 id。
+  const rankingQ = useDeptRanking({
+    parentDeptId: parentId === ROOT ? undefined : parentId,
+    startDate,
+    endDate,
   })
 
+  // 按 calendar_ratio 降序（null 沉底）取 Top5。
   const top5 = useMemo(() => {
-    const rows = candidates
-      .map((d, i) => ({ dept: d, summary: memberQs[i]?.data?.summary }))
-      .filter((r) => r.summary != null && r.summary.calendar_ratio != null)
-    rows.sort((a, b) => (b.summary!.calendar_ratio ?? -Infinity) - (a.summary!.calendar_ratio ?? -Infinity))
+    const rows = (rankingQ.data?.items ?? []).filter((it) => it.summary?.calendar_ratio != null)
+    rows.sort((a, b) => (b.summary.calendar_ratio ?? -Infinity) - (a.summary.calendar_ratio ?? -Infinity))
     return rows.slice(0, 5)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates, memberQs.map((q) => q.dataUpdatedAt).join(',')])
+  }, [rankingQ.data])
 
-  const treeLoading = treeQ.isLoading
-  const membersLoading = candidates.length > 0 && memberQs.some((q) => q.isLoading)
-  const allErrored = candidates.length > 0 && memberQs.length > 0 && memberQs.every((q) => q.isError)
+  const loading = treeQ.isLoading || rankingQ.isLoading
+  const errored = treeQ.isError || rankingQ.isError
 
   return (
     <div className="glass rounded-2xl p-5 md:p-6 hover:shadow-lg transition-shadow flex flex-col">
@@ -108,11 +85,11 @@ export function DeptPKCard({ startDate, endDate }: DeptPKCardProps) {
         </select>
       </div>
 
-      {treeQ.error || allErrored ? (
+      {errored ? (
         <div className="flex-1 flex items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400 min-h-[14rem] px-4">
           部门数据暂不可用（需 dept-sync 服务连通）
         </div>
-      ) : treeLoading || membersLoading ? (
+      ) : loading ? (
         <ul className="flex-1 space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <li key={i} className="skeleton h-11 rounded-xl" />
@@ -126,23 +103,23 @@ export function DeptPKCard({ startDate, endDate }: DeptPKCardProps) {
         <ul className="flex-1 space-y-2">
           {top5.map((r, i) => {
             const badge = i < 3 ? RANK_BADGE[i] : RANK_DEFAULT
-            const sum = r.summary!
+            const sum = r.summary
             return (
               <li
-                key={r.dept.dept_id}
+                key={r.dept_id}
                 onClick={() => navigate('/org-tree-v2')}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), navigate('/org-tree-v2'))}
-                aria-label={`${r.dept.dept_name}，点击查看部门`}
+                aria-label={`${r.dept_name}，点击查看部门`}
                 className="flex items-center gap-3 rounded-xl px-2 py-1.5 cursor-pointer hover:bg-white/40 dark:hover:bg-white/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               >
                 <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold tabular-nums ${badge}`}>
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-gray-900 dark:text-white truncate" title={r.dept.dept_name}>
-                    {r.dept.dept_name}
+                  <div className="text-sm font-medium text-gray-900 dark:text-white truncate" title={r.dept_name}>
+                    {r.dept_name}
                   </div>
                   <div className="text-xs text-gray-400 dark:text-gray-500 truncate">
                     {formatNumber(sum.kanban_member_count)} 人 · 需求 {formatNumber(sum.merged_need_count)}

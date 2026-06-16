@@ -535,6 +535,19 @@ export interface DeptMembersResponse {
   members: DeptMember[]
 }
 
+/** /v2/dept-tree/ranking 一级子部门排行项（整棵子树汇总，复用 DeptMembersSummary 口径）。 */
+export interface DeptRankingItem {
+  dept_id: string
+  dept_name: string
+  summary: DeptMembersSummary
+}
+
+/** /v2/dept-tree/ranking 顶层响应：parent 的各直接子部门汇总排行（一次聚合，替代逐部门 N× members 调用）。 */
+export interface DeptRankingResponse {
+  parent_dept_id: string
+  items: DeptRankingItem[]
+}
+
 /** /v2/orgs/detail 顶层响应（§Org-7）。 */
 export interface OrgDetailResponse {
   org_path: string

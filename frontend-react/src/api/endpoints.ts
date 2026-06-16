@@ -30,6 +30,7 @@ import type {
   DashboardSummary,
   DashboardTrends,
   DeptMembersResponse,
+  DeptRankingResponse,
   DeptTreeNode,
   GlobalConfig,
   ListParams,
@@ -161,6 +162,13 @@ export function getDeptTreeV2() {
 export function getDeptTreeMembersV2(params: { deptId: string; startDate?: string; endDate?: string }) {
   const { deptId, ...rest } = params
   return apiGet<DeptMembersResponse>('/v2/dept-tree/members', { dept_id: deptId, ...rest })
+}
+
+// 部门排行（一次聚合）：返回 parentDeptId 的各直接子部门整棵子树汇总，供首页部门 PK 一次性消费。
+// parentDeptId 为空 → 后端默认取配置根（排「全公司一级部门」）。替代逐子部门 N× members 全表聚合。
+export function getDeptRankingV2(params: { parentDeptId?: string; startDate?: string; endDate?: string }) {
+  const { parentDeptId, ...rest } = params
+  return apiGet<DeptRankingResponse>('/v2/dept-tree/ranking', { parent_dept_id: parentDeptId, ...rest })
 }
 
 // ---- Commits（⚠️ 百分比口径：efficiency_ratio 300=300%，不 ×100） ----

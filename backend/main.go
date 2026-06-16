@@ -142,6 +142,7 @@ func main() {
 		// 组织树（dept-sync 权威全量树 + API 懒加载，代理 dept-sync /department/*）
 		v2.GET("/dept-tree", getDeptTreeV2)
 		v2.GET("/dept-tree/members", getDeptTreeMembersV2)
+		v2.GET("/dept-tree/ranking", getDeptRankingV2)
 
 		// 平台客观指标（全量反代 chat-indicator-statistics，见 chat_proxy_handler.go）
 		v2.Any("/chat/*path", proxyChatStatsV2)

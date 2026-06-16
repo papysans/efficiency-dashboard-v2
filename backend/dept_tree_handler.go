@@ -103,6 +103,19 @@ type DeptMembersResponse struct {
 	Members []DeptMember       `json:"members"`
 }
 
+// DeptRankingItem 一级子部门的整棵子树汇总（复用 members 接口的 DeptMembersSummary 口径）。
+type DeptRankingItem struct {
+	DeptId   string             `json:"dept_id"`
+	DeptName string             `json:"dept_name"`
+	Summary  DeptMembersSummary `json:"summary"`
+}
+
+// DeptRankingResponse /api/v2/dept-tree/ranking 顶层响应：parent 的各直接子部门汇总排行。
+type DeptRankingResponse struct {
+	ParentDeptId string            `json:"parent_dept_id"`
+	Items        []DeptRankingItem `json:"items"`
+}
+
 // deptSyncGet 调 dept-sync 数据接口（带 X-Query-Key），解析统一包到 out。
 // 照搬 kbcli/cmd_import_dept.go 的同名实现（backend 不依赖 kbcli 包，故各自一份）。
 func deptSyncGet(baseURL, queryKey, path string, out interface{}) error {
@@ -367,4 +380,162 @@ func getDeptTreeMembersV2(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, DeptMembersResponse{Summary: summary, Members: members})
+}
+
+// findDeptNode 在单根嵌套树里按 dept_id DFS 定位节点（命中返回该节点指针，未命中 nil）。
+func findDeptNode(nodes []DeptTreeNode, id string) *DeptTreeNode {
+	for i := range nodes {
+		if nodes[i].DeptId == id {
+			return &nodes[i]
+		}
+		if found := findDeptNode(nodes[i].Children, id); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// collectDescendantDeptIDs 收集 node 整棵子树（含自身）的全部 dept_id。
+func collectDescendantDeptIDs(node DeptTreeNode, acc map[string]struct{}) {
+	acc[node.DeptId] = struct{}{}
+	for _, child := range node.Children {
+		collectDescendantDeptIDs(child, acc)
+	}
+}
+
+// getDeptRankingV2 GET /api/v2/dept-tree/ranking?parent_dept_id=&startDate=&endDate=
+// 返回 parent_dept_id 的【直接子部门】各自整棵子树的汇总指标（复用 members 接口的 DeptMembersSummary 口径），
+// 供首页部门 PK 排行一次性消费——替代「逐子部门各调一次 members（每次都跑全表 aggregateUsersV2）」的 N× 全表聚合。
+//
+// 性能要点（一次聚合替代 N×）：
+//   - 只调一次 dept-sync 花名册（GET /department/{parentId}/users?include_children=true，parent 为根即全公司全量）；
+//   - 只调一次 aggregateUsersV2(startDate, endDate, "") 建 rowByUser map；
+//   - 把每名成员按其直属 dept_id 归到「一级祖先目标子部门」的桶，累加进各桶 summary（累加/重算逻辑与 members 接口完全一致）。
+//
+// parent_dept_id 为空时默认用配置根（rebuildSingleRootTree 的单根节点），即排「全公司一级部门」。
+func getDeptRankingV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	baseURL, err := deptSyncConfigured()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// 1. 取单根嵌套部门树（复用 getDeptTreeV2 的 /department/tree + rebuildSingleRootTree）。
+	var treeResp deptSyncTreeResp
+	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/tree", &treeResp); err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
+		return
+	}
+	if treeResp.Data == nil {
+		treeResp.Data = []DeptTreeNode{}
+	}
+	tree := rebuildSingleRootTree(treeResp.Data)
+
+	// 定位 parent 节点：空 → 取单根；否则按 dept_id DFS 查。
+	parentDeptID := strings.TrimSpace(c.Query("parent_dept_id"))
+	var parent *DeptTreeNode
+	if parentDeptID == "" {
+		if len(tree) > 0 {
+			parent = &tree[0]
+			parentDeptID = parent.DeptId
+		}
+	} else {
+		parent = findDeptNode(tree, parentDeptID)
+	}
+	if parent == nil || len(parent.Children) == 0 {
+		// parent 不存在或无子部门：返回空排行（前端显示「该层级暂无可计入部门数据」）。
+		c.JSON(http.StatusOK, DeptRankingResponse{ParentDeptId: parentDeptID, Items: []DeptRankingItem{}})
+		return
+	}
+
+	// 2. 预计算：descendantDeptId -> 目标一级子部门 dept_id（含子部门自身），用于把成员按一级祖先归桶。
+	bucketByDeptID := make(map[string]string)
+	for _, child := range parent.Children {
+		descendants := make(map[string]struct{})
+		collectDescendantDeptIDs(child, descendants)
+		for did := range descendants {
+			bucketByDeptID[did] = child.DeptId
+		}
+	}
+
+	// 3. 只调一次 dept-sync 花名册：parent 整棵子树全量成员（parent 为根即全公司全量，~11154 人，靠 120s 超时兜住）。
+	var membersResp deptSyncMembersResp
+	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/"+parentDeptID+"/users?include_children=true", &membersResp); err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + err.Error()})
+		return
+	}
+
+	// 4. 只调一次 aggregateUsersV2，建 rowByUser map（user_id == universal_id）。
+	startDate := c.Query("startDate")
+	endDate := c.Query("endDate")
+	v2rows, err := aggregateUsersV2(startDate, endDate, "")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "聚合看板 V2 指标失败: " + err.Error()})
+		return
+	}
+	rowByUser := make(map[string]UserV2Row, len(v2rows))
+	for _, r := range v2rows {
+		rowByUser[r.UserId] = r
+	}
+
+	// 5. 每个目标子部门一个累加桶（summary + 提效比/AI占比重算所需的中间量）。
+	type deptBucket struct {
+		summary           DeptMembersSummary
+		totalActualWork   float64
+		totalBaselineWork float64
+		totalAICoveredLoc int64
+		totalLocNet       int64
+	}
+	buckets := make(map[string]*deptBucket, len(parent.Children))
+	for _, child := range parent.Children {
+		buckets[child.DeptId] = &deptBucket{summary: DeptMembersSummary{DeptId: child.DeptId}}
+	}
+
+	// 6. 遍历花名册：按成员直属 dept_id 定位一级祖先目标子部门，左连看板指标累加（逻辑与 members 接口一致）。
+	for _, src := range membersResp.Data {
+		bucketID, ok := bucketByDeptID[src.DeptId]
+		if !ok {
+			continue // 不在任何目标子部门子树内（如直属 parent 本级）→ 跳过。
+		}
+		b := buckets[bucketID]
+		b.summary.MemberCount++
+		if src.UniversalId == "" {
+			continue
+		}
+		row, ok := rowByUser[src.UniversalId]
+		if !ok {
+			continue
+		}
+		b.summary.KanbanMemberCount++
+		b.summary.MergedNeedCount += row.MergedNeedCount
+		b.summary.ActualCalendarMin += row.ActualCalendarMin
+		b.summary.BaselineCalendarMin += row.BaselineCalendarMin
+		b.summary.CommitCount += row.CommitCount
+		b.summary.CommitDiffLines += row.CommitDiffLines
+		b.summary.Cost += row.Cost
+		b.totalActualWork += row.ActualWorkMin
+		b.totalBaselineWork += row.BaselineWorkMin
+		b.totalAICoveredLoc += row.aiCoveredLoc
+		b.totalLocNet += row.totalLocNet
+	}
+
+	// 7. 重算各桶提效比/AI占比（小数口径，与 members 接口一致），按部门树 order 输出（稳定序，前端再排）。
+	items := make([]DeptRankingItem, 0, len(parent.Children))
+	for _, child := range parent.Children {
+		b := buckets[child.DeptId]
+		b.summary.CalendarRatio = efficiencyV2Ratio(b.summary.BaselineCalendarMin, b.summary.ActualCalendarMin)
+		b.summary.WorkRatio = efficiencyV2Ratio(b.totalBaselineWork, b.totalActualWork)
+		b.summary.AICodeRatio = calcNeedAICodeRatio(b.totalAICoveredLoc, b.totalLocNet)
+		items = append(items, DeptRankingItem{
+			DeptId:   child.DeptId,
+			DeptName: child.DeptName,
+			Summary:  b.summary,
+		})
+	}
+
+	c.JSON(http.StatusOK, DeptRankingResponse{ParentDeptId: parentDeptID, Items: items})
 }
