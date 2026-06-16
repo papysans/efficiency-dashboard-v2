@@ -1667,3 +1667,28 @@ func queryDashboardTrendWindowAgg(db *gorm.DB, start, end *time.Time) (*dashboar
 	}
 	return &agg, nil
 }
+
+// queryDashboardTrendPrevWindow 取 before(不含)之前最近 n 个"有数据周"的 [最早, 最晚] 边界，
+// 供环比上期窗口使用：按周对齐取与本期相同周数，规避日历跨度非 7 天整数倍导致的"上期多/少一周"偏置。
+// 无更早数据时返回 (nil, nil, nil)，调用方按"无上期"处理（delta_pct 为 nil → 前端不画箭头）。
+func queryDashboardTrendPrevWindow(db *gorm.DB, before time.Time, n int) (*time.Time, *time.Time, error) {
+	if n <= 0 {
+		return nil, nil, nil
+	}
+	var weeks []time.Time
+	err := db.Model(&models.UserProductivityV2{}).
+		Where("week_start < ?", before).
+		Group("week_start").
+		Order("week_start DESC").
+		Limit(n).
+		Pluck("week_start", &weeks).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("查询环比上期窗口边界失败: %w", err)
+	}
+	if len(weeks) == 0 {
+		return nil, nil, nil
+	}
+	earliest := weeks[len(weeks)-1] // DESC 排序，末尾为最早
+	latest := weeks[0]
+	return &earliest, &latest, nil
+}

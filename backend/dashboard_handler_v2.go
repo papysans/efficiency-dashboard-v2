@@ -85,12 +85,13 @@ func trendDelta(current, previous float64) DashboardTrendDelta {
 	return d
 }
 
-// windowRatio 整窗提效比：先汇总分钟再求比；actual<=0 返回 0（环比按 0 处理，不画箭头由 previous 决定）。
-func windowRatio(agg *dashboardTrendWindowAgg) float64 {
+// windowRatio 整窗提效比：先汇总分钟再求比；actual<=0 返回 nil（本期无数据时不参与环比，避免假跌）。
+func windowRatio(agg *dashboardTrendWindowAgg) *float64 {
 	if agg == nil || agg.ActualCalendarMin <= 0 {
-		return 0
+		return nil
 	}
-	return (agg.BaselineCalendarMin - agg.ActualCalendarMin) / agg.ActualCalendarMin
+	r := (agg.BaselineCalendarMin - agg.ActualCalendarMin) / agg.ActualCalendarMin
+	return &r
 }
 
 // getDashboardTrends GET /api/v2/dashboard/trends
@@ -133,28 +134,44 @@ func getDashboardTrends(c *gin.Context) {
 		})
 	}
 
-	// 环比：本期 vs 等长前一区间；start/end 都有才计算（否则窗口长度不定）。
+	// 环比：本期 vs 上期（按周对齐取相同周数，规避日历跨度非 7 天整数倍的周数不等偏置）。
+	// 需 start/end 都有且本期有数据周才算（rows 升序，rows[0] 为本期最早周）。
 	compare := map[string]DashboardTrendDelta{}
-	if start != nil && end != nil {
+	if start != nil && end != nil && len(rows) > 0 {
 		cur, err := queryDashboardTrendWindowAgg(statDB, start, end)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
-		dur := end.Sub(*start)
-		// 上期 = 紧邻当前窗口、等长且不重叠的前一区间。prevEnd 必须严格早于 start，
-		// 否则 week_start==start 的那一周会同时落进本期(week_start>=start)与上期(week_start<=prevEnd)被双算。
-		prevEnd := start.Add(-time.Second)
-		prevStart := prevEnd.Add(-dur)
-		prev, err := queryDashboardTrendWindowAgg(statDB, &prevStart, &prevEnd)
+		// 上期 = 紧邻本期最早周、前 N 个有数据周（N=本期周数）。无更早数据则按全 0 处理。
+		prev := &dashboardTrendWindowAgg{}
+		prevStart, prevEnd, err := queryDashboardTrendPrevWindow(statDB, rows[0].WeekStart, len(rows))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return
 		}
+		if prevStart != nil && prevEnd != nil {
+			prev, err = queryDashboardTrendWindowAgg(statDB, prevStart, prevEnd)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+				return
+			}
+		}
 		compare["usage"] = trendDelta(float64(cur.DistinctUsers), float64(prev.DistinctUsers))
-		compare["efficiency"] = trendDelta(windowRatio(cur), windowRatio(prev))
 		compare["cost"] = trendDelta(cur.Cost, prev.Cost)
 		compare["contribution"] = trendDelta(float64(cur.CommitDiffLines), float64(prev.CommitDiffLines))
+		// 效率：本期无数据(actual<=0)时整条省略，不出假箭头；上期无数据时只给值不给 delta。
+		if cr := windowRatio(cur); cr != nil {
+			d := DashboardTrendDelta{Current: *cr}
+			if pr := windowRatio(prev); pr != nil {
+				d.Previous = *pr
+				if *pr != 0 {
+					p := (*cr - *pr) / math.Abs(*pr)
+					d.DeltaPct = &p
+				}
+			}
+			compare["efficiency"] = d
+		}
 	}
 
 	c.JSON(http.StatusOK, DashboardTrendsResponse{Granularity: "week", Points: points, Compare: compare})
