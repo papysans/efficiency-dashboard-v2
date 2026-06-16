@@ -10,6 +10,7 @@ import { HeroSaving } from '@/components/executive/HeroSaving'
 import { TrendCard } from '@/components/executive/TrendCard'
 import { AdoptionCard } from '@/components/executive/AdoptionCard'
 import { TopRankCard } from '@/components/executive/TopRankCard'
+import { DeptPKCard } from '@/components/executive/DeptPKCard'
 
 // 高管提效总览大屏。Bento 12 列网格 + 玻璃拟态 + 卡片 staggered 渐入。
 // ① Hero 省人天&ROI ② 4 维记分卡条(使用/效率/成本/贡献 + 质量占位) ③ 提效趋势 + 采用度 ④ Top 榜 + 规模。
@@ -39,11 +40,16 @@ export default function Overview() {
         <AdoptionCard startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row4 Top 榜（需求 / 人） + 规模概览 */}
+      {/* Row4 部门 PK + Top 榜（需求 / 人） */}
       <Cell index={4} className="col-span-12 lg:col-span-6">
-        <TopRankCard startDate={startDate} endDate={endDate} />
+        <DeptPKCard startDate={startDate} endDate={endDate} />
       </Cell>
       <Cell index={5} className="col-span-12 lg:col-span-6">
+        <TopRankCard startDate={startDate} endDate={endDate} />
+      </Cell>
+
+      {/* Row5 规模概览 */}
+      <Cell index={6} className="col-span-12">
         <CountsCard startDate={startDate} endDate={endDate} />
       </Cell>
     </div>
