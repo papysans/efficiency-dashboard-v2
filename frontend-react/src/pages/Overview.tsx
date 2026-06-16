@@ -1,5 +1,4 @@
 import { useMemo, type ReactNode } from 'react'
-import { useNavigate } from 'react-router'
 import { useDashboardSummary, useDashboardTrends } from '@/api/queries'
 import { getDefaultDateRangeWide, formatDateParam } from '@/lib/date'
 import { formatNumber, formatV2Ratio } from '@/lib/formatters'
@@ -71,10 +70,9 @@ function Cell({ index, className = '', children }: { index: number; className?: 
 /**
  * 4 维记分卡条：使用 / 效率 / 成本 / 贡献（+ 质量占位）。
  * 当期值取 dashboard/summary（组织级全局口径），sparkline + 环比取 dashboard/trends 周序列。
- * 每张卡点击下钻到该维度最相关现有页（Q4=A）。质量本轮无可靠数据，占位"数据建设中"。
+ * 纯展示、不跳转（无合适的单维度下钻页，跳现有列表页牵强）；ⓘ 看口径。质量本轮无可靠数据，占位"数据建设中"。
  */
 function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: string }) {
-  const navigate = useNavigate()
   const summaryQ = useDashboardSummary({ startDate, endDate })
   const trendsQ = useDashboardTrends({ startDate, endDate })
   const s = summaryQ.data
@@ -101,8 +99,6 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         delta={compare.usage}
         accent="#0071e3"
         loading={loading}
-        onClick={() => navigate('/user-v2')}
-        linkLabel="用户明细"
       />
       <MetricScorecard
         label="效率"
@@ -113,8 +109,6 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         delta={compare.efficiency}
         accent="#34c759"
         loading={loading}
-        onClick={() => navigate('/distribution-v2')}
-        linkLabel="提效分布"
       />
       <MetricScorecard
         label="成本"
@@ -126,8 +120,6 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         higherIsBetter={false}
         accent="#ff9500"
         loading={loading}
-        onClick={() => navigate('/project-v2')}
-        linkLabel="项目费用"
       />
       <MetricScorecard
         label="贡献"
@@ -138,8 +130,6 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
         delta={compare.contribution}
         accent="#5e5ce6"
         loading={loading}
-        onClick={() => navigate('/commit-v2')}
-        linkLabel="提交代码"
       />
       <QualityPlaceholder tip={glossaryTip('silica')} />
     </div>

@@ -3,7 +3,8 @@ import { formatV2Ratio } from '@/lib/formatters'
 import type { DashboardTrendDelta } from '@/api/types'
 
 // 首页 4 维记分卡：维度名 + ⓘ名词解释 + 大数值 + 副信息 + 环比箭头 + 周趋势 sparkline。
-// 可点下钻（onClick → 该维度最相关现有页）。质量维度本轮无数据，用 placeholder 占位（见 QualityPlaceholder）。
+// 纯展示卡，不跳转（无合适的"单维度下钻页"，跳现有列表页只会牵强/意外）；ⓘ hover 看口径解释，
+// 下钻走左导航 / Top 榜 / 部门 PK。质量维度本轮无数据，用 placeholder 占位（见 QualityPlaceholder）。
 
 interface MetricScorecardProps {
   /** 维度名（使用/效率/成本/贡献） */
@@ -22,10 +23,6 @@ interface MetricScorecardProps {
   higherIsBetter?: boolean
   /** sparkline / accent 颜色（CSS 颜色值） */
   accent?: string
-  /** 下钻点击 */
-  onClick?: () => void
-  /** 下钻目的地短标签（如"用户明细"），显示在卡片右下角 "↗ xx"，点前即知去哪、消除意外跳转 */
-  linkLabel?: string
   /** 加载态 */
   loading?: boolean
 }
@@ -39,22 +36,12 @@ export function MetricScorecard({
   delta,
   higherIsBetter = true,
   accent = '#0071e3',
-  onClick,
-  linkLabel,
   loading = false,
 }: MetricScorecardProps) {
-  const clickable = !!onClick
   return (
     <div
-      className={`glass rounded-2xl p-4 flex flex-col gap-2 transition-shadow ${
-        clickable ? 'group cursor-pointer hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400' : ''
-      }`}
+      className="glass rounded-2xl p-4 flex flex-col gap-2"
       style={{ borderLeft: `3px solid ${accent}` }}
-      onClick={onClick}
-      role={clickable ? 'button' : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      onKeyDown={clickable ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick?.()) : undefined}
-      aria-label={clickable ? `${label}，点击下钻` : undefined}
     >
       <div className="flex items-center gap-1">
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</span>
@@ -79,12 +66,6 @@ export function MetricScorecard({
       <div className="mt-auto pt-1">
         <Sparkline data={series} color={accent} />
       </div>
-
-      {clickable && linkLabel && (
-        <div className="text-[11px] text-right text-gray-400 dark:text-gray-500 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
-          ↗ {linkLabel}
-        </div>
-      )}
     </div>
   )
 }
