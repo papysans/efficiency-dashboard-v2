@@ -131,6 +131,100 @@ func TestParseEfficiencyV2LLMResponse_TotalAutoComputedFromComponents(t *testing
 	}
 }
 
+// 内网 MiniMax-M2.7-Local 等推理模型以 <think>...</think> 开头，旧 parser 见 '<' 即失败。
+// 必须先剥推理块再取 JSON，且 work + 工期都要正确解出。
+func TestParseEfficiencyV2LLMResponse_ReasoningModelThinkBlockThenFencedJSON(t *testing.T) {
+	raw := "<think>\n先分析：两人协作，含评审往返，dev_span 3 天……\n所以单人约 40 分钟。\n</think>\n```json\n{\"think_min\":10,\"exec_min\":25,\"verify_min\":5,\"total_min\":40,\"elapsed_min\":220,\"confidence\":\"medium\",\"reason\":\"两人协作含评审\"}\n```"
+	result := parseEfficiencyV2LLMResponse(raw)
+	if result.TotalMin == nil || *result.TotalMin != 40 {
+		t.Fatalf("total = %v, want 40 (must strip <think> + fence)", result.TotalMin)
+	}
+	if result.ElapsedMin == nil || *result.ElapsedMin != 220 {
+		t.Fatalf("elapsed = %v, want 220", result.ElapsedMin)
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_ReasoningModelThinkBlockThenBareJSON(t *testing.T) {
+	// 推理块后直接裸 JSON（无 fence），且推理文本里含会误导朴素扫描的花括号 { 和 }。
+	raw := "<THINK>估算框架: 用 {loc, commits} 推 work；多人需 elapsed。结论如下</THINK>{\"total_min\":40,\"elapsed_min\":180,\"confidence\":\"high\",\"reason\":\"ok\"}"
+	result := parseEfficiencyV2LLMResponse(raw)
+	if result.TotalMin == nil || *result.TotalMin != 40 {
+		t.Fatalf("total = %v, want 40 (bare JSON after think block)", result.TotalMin)
+	}
+	if result.ElapsedMin == nil || *result.ElapsedMin != 180 {
+		t.Fatalf("elapsed = %v, want 180", result.ElapsedMin)
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_LeadingAndTrailingProseAroundJSON(t *testing.T) {
+	raw := "好的，根据数据我的估算是：\n{\"total_min\":50,\"elapsed_min\":300,\"confidence\":\"medium\",\"reason\":\"中等复杂\"}\n以上，如需调整请告知。"
+	result := parseEfficiencyV2LLMResponse(raw)
+	if result.TotalMin == nil || *result.TotalMin != 50 {
+		t.Fatalf("total = %v, want 50 (prose around single JSON object)", result.TotalMin)
+	}
+	if result.ElapsedMin == nil || *result.ElapsedMin != 300 {
+		t.Fatalf("elapsed = %v, want 300", result.ElapsedMin)
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_ReasonTextWithBracesStillBalances(t *testing.T) {
+	// reason 字符串字面量里含花括号与转义引号，配平扫描须把字符串内的 {}/" 跳过。
+	raw := `{"total_min":30,"elapsed_min":120,"confidence":"low","reason":"模板 {x} 里的 \"占位符\" 多"}`
+	result := parseEfficiencyV2LLMResponse(raw)
+	if result.TotalMin == nil || *result.TotalMin != 30 {
+		t.Fatalf("total = %v, want 30 (braces inside string must not break balance)", result.TotalMin)
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_PureHTMLErrorStillFails(t *testing.T) {
+	// 真错误（如 502 网关 HTML，无任何 {}）：必须仍失败、返 low-conf，别误吞成估算。
+	result := parseEfficiencyV2LLMResponse("<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>")
+	if result.TotalMin != nil {
+		t.Fatalf("pure HTML must not parse into an estimate, got total=%v", *result.TotalMin)
+	}
+	if result.Confidence != "low" {
+		t.Fatalf("confidence = %q, want low for HTML error", result.Confidence)
+	}
+	if !strings.Contains(result.Reason, "no_json") {
+		t.Fatalf("reason should be no_json for HTML without braces, got %q", result.Reason)
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_ThinkBlockWithNoJSONFails(t *testing.T) {
+	// 推理块吞掉全部内容、剥完无 JSON：仍失败返 low-conf（别把空当估算）。
+	result := parseEfficiencyV2LLMResponse("<think>我需要更多信息才能估算，无法给出数字。</think>")
+	if result.TotalMin != nil {
+		t.Fatalf("think-only response must not parse, got total=%v", *result.TotalMin)
+	}
+	if !strings.Contains(result.Reason, "no_json") {
+		t.Fatalf("reason should be no_json, got %q", result.Reason)
+	}
+}
+
+// 直接对提取器做单元覆盖（边界更细）。
+func TestExtractEfficiencyV2JSON_StripsMultipleThinkBlocks(t *testing.T) {
+	raw := "<think>第一段推理</think>噪声<think>第二段推理 {含括号}</think>{\"total_min\":5}"
+	got := extractEfficiencyV2JSON(raw)
+	if got != `{"total_min":5}` {
+		t.Fatalf("extracted = %q, want clean JSON after stripping both think blocks", got)
+	}
+}
+
+func TestExtractEfficiencyV2JSON_FirstBalancedObjectNotGreedyLastBrace(t *testing.T) {
+	// 首个 JSON 对象是答案；后面若还有 } 不应被贪婪吞进来。验证正向配平取首个对象。
+	raw := `{"total_min":40,"elapsed_min":200} 备注: 结束}`
+	got := extractEfficiencyV2JSON(raw)
+	if got != `{"total_min":40,"elapsed_min":200}` {
+		t.Fatalf("extracted = %q, want first balanced object only", got)
+	}
+}
+
+func TestExtractEfficiencyV2JSON_NoBracesReturnsEmpty(t *testing.T) {
+	if got := extractEfficiencyV2JSON("纯文本无 JSON 502 error"); got != "" {
+		t.Fatalf("no-brace input should yield empty extraction, got %q", got)
+	}
+}
+
 func TestPersistEfficiencyV2BaselineCOnNeed_NullableFields(t *testing.T) {
 	need := models.Need{NeedId: "n-1"}
 	PersistEfficiencyV2BaselineCOnNeed(&need, EfficiencyV2LLMResult{Confidence: "low", Reason: "llm:disabled"})

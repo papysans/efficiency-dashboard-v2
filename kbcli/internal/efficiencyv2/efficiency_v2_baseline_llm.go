@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"kanban/kbcli/internal/llm"
+	"kanban/kbcli/internal/logx"
+	"regexp"
 	"strings"
 	"time"
 
@@ -307,13 +309,98 @@ func CallAIForNeedEstimationV4(summary EfficiencyV2NeedStructuredSummary, aiCfg 
 	return retryResult
 }
 
+// efficiencyV2ThinkBlockRe 匹配推理模型(如内网 MiniMax-M2.7-Local)的 <think>...</think>
+// 推理块（大小写不敏感、跨行、可能多个）。这些块在 JSON 前/中夹带，且含 } 等字符会
+// 误导朴素的"最后一个 }"扫描，必须先整段剥掉。
+var efficiencyV2ThinkBlockRe = regexp.MustCompile(`(?is)<think>.*?</think>`)
+
+// efficiencyV2JSONFenceRe 匹配 markdown ```json ... ``` 代码块（沿用 llm.ExtractJSON 的 fence 处理）。
+var efficiencyV2JSONFenceRe = regexp.MustCompile("(?s)```(?:json)?\\s*\\n?(.*?)\\n?```")
+
+// extractEfficiencyV2JSON 对推理模型 / 前后缀文本鲁棒地提取最外层 JSON 对象。
+// 顺序：① strip <think>...</think> 推理块 → ② 若整体即合法 JSON 直接用 → ③ 取 markdown fence
+// 内容（若合法）→ ④ 找第一个 '{' 起、括号配平（且跳过 JSON 字符串字面量内的花括号）的匹配 '}'，
+// 对该子串校验。全不命中返回 ""（调用方据此记 no_json）。
+// 注意：不复用 llm.ExtractJSON——它走"最后一个 }"反向扫描，推理模型的 reasoning 里若有 JSON 片段
+// 会落错括号；这里用首个 '{' 正向配平更稳，且需先 strip <think>（共享版不剥）。
+func extractEfficiencyV2JSON(raw string) string {
+	text := efficiencyV2ThinkBlockRe.ReplaceAllString(raw, "")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if json.Valid([]byte(text)) {
+		return text
+	}
+	if m := efficiencyV2JSONFenceRe.FindStringSubmatch(text); len(m) > 1 {
+		if candidate := strings.TrimSpace(m[1]); json.Valid([]byte(candidate)) {
+			return candidate
+		}
+	}
+	if candidate := efficiencyV2FirstBalancedJSONObject(text); candidate != "" {
+		return candidate
+	}
+	return ""
+}
+
+// efficiencyV2FirstBalancedJSONObject 从首个 '{' 起做括号配平扫描，返回第一个完整且合法的
+// JSON 对象子串。字符串字面量内的 { } " 不计入配平（处理 reason 文本里含花括号/转义引号的情况）。
+func efficiencyV2FirstBalancedJSONObject(text string) string {
+	start := strings.IndexByte(text, '{')
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inStr := false
+	escaped := false
+	for i := start; i < len(text); i++ {
+		c := text[i]
+		if inStr {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				candidate := strings.TrimSpace(text[start : i+1])
+				if json.Valid([]byte(candidate)) {
+					return candidate
+				}
+				return "" // 首个配平对象却非法 JSON：不再贪婪往后找，交由 no_json 诊断
+			}
+		}
+	}
+	return ""
+}
+
+// logEfficiencyV2LLMParseFailure 记录 LLM 响应解析失败时的截断原文（前 ~500 字），
+// 否则只看 reason 无法知道模型实际返了什么（推理块/HTML 错误页/截断）——诊断要靠它。
+func logEfficiencyV2LLMParseFailure(reason, rawContent string) {
+	logx.Warnf("efficiency-v2 LLM 估算解析失败(%s)，原始响应(截断)=%q", reason, truncateForPrompt(strings.TrimSpace(rawContent), 500))
+}
+
 func parseEfficiencyV2LLMResponse(rawContent string) EfficiencyV2LLMResult {
-	jsonText := llm.ExtractJSON(rawContent)
+	jsonText := extractEfficiencyV2JSON(rawContent)
 	if strings.TrimSpace(jsonText) == "" {
+		// 没提到任何 {...}（纯 HTML/502/推理无结论等）：log 截断原文供诊断，别静默吞。
+		logEfficiencyV2LLMParseFailure("no_json", rawContent)
 		return EfficiencyV2LLMResult{Confidence: efficiencyV2StageConfidenceLow, Reason: "llm:no_json", RawResponse: rawContent}
 	}
 	var parsed efficiencyV2LLMParseResponse
 	if err := json.Unmarshal([]byte(jsonText), &parsed); err != nil {
+		logEfficiencyV2LLMParseFailure(fmt.Sprintf("invalid_json:%v", err), rawContent)
 		return EfficiencyV2LLMResult{Confidence: efficiencyV2StageConfidenceLow, Reason: fmt.Sprintf("llm:invalid_json:%v", err), RawResponse: rawContent}
 	}
 	if parsed.ThinkMin < 0 || parsed.ExecMin < 0 || parsed.VerifyMin < 0 || parsed.TotalMin < 0 {
