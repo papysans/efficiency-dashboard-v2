@@ -219,6 +219,66 @@ func TestGetIntParam(t *testing.T) {
 	}
 }
 
+// 远程 efficiency-v2 必须按 project/force_llm 分支到项目级 LLM，而非退化成全量（防 429）。
+func TestEfficiencyV2RemoteProjectParams(t *testing.T) {
+	tests := []struct {
+		name          string
+		params        map[string]interface{}
+		wantProject   string
+		wantForce     bool
+		wantIsProject bool
+	}{
+		{
+			name:          "project + force_llm forwarded",
+			params:        map[string]interface{}{"project": "proj-uuid", "force_llm": true},
+			wantProject:   "proj-uuid",
+			wantForce:     true,
+			wantIsProject: true,
+		},
+		{
+			name:          "project without force defaults false",
+			params:        map[string]interface{}{"project": "proj-uuid"},
+			wantProject:   "proj-uuid",
+			wantForce:     false,
+			wantIsProject: true,
+		},
+		{
+			name:          "project trimmed",
+			params:        map[string]interface{}{"project": "  proj-uuid  "},
+			wantProject:   "proj-uuid",
+			wantForce:     false,
+			wantIsProject: true,
+		},
+		{
+			name:          "blank project is not a project run",
+			params:        map[string]interface{}{"project": "   "},
+			wantIsProject: false,
+		},
+		{
+			name:          "missing project falls through to full run",
+			params:        map[string]interface{}{"start_date": "2026-06-01"},
+			wantIsProject: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			project, force, isProject := efficiencyV2RemoteProjectParams(tt.params)
+			if isProject != tt.wantIsProject {
+				t.Fatalf("isProject = %v, want %v", isProject, tt.wantIsProject)
+			}
+			if !isProject {
+				return
+			}
+			if project != tt.wantProject {
+				t.Errorf("project = %q, want %q", project, tt.wantProject)
+			}
+			if force != tt.wantForce {
+				t.Errorf("force = %v, want %v", force, tt.wantForce)
+			}
+		})
+	}
+}
+
 func TestCreateTaskExecutor(t *testing.T) {
 	tests := []struct {
 		name    string

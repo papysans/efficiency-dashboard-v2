@@ -229,6 +229,75 @@ func TestComputeEfficiencyV2Fusion_LocRateFlagsBothCalibers(t *testing.T) {
 	}
 }
 
+// 块3工期维度：LLM 直接估的 elapsed(>0) 必须直接作为日历基线（不走 fused/density 换算）。
+func TestComputeEfficiencyV2Fusion_CalendarUsesLLMElapsedWhenPresent(t *testing.T) {
+	algo := 100.0
+	knn := 100.0
+	elapsed := 900.0 // LLM 估"同等团队无 AI 自然工期"=900min
+	// 回退口径会算成 fused/density = 100/0.25 = 400；LLM 锚定应覆盖为 900。
+	need := models.Need{TotalCalendarMin: 300}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin:        &algo,
+		KNNMin:         &knn,
+		LLMCalendarMin: &elapsed,
+		Weights:        EfficiencyV2BaselineDefaults{WeightAlgo: 0.5, WeightKNN: 0.5, TeamWorkDensity: 0.25},
+	}, EfficiencyV2Config{})
+	if result.CalendarMin == nil || *result.CalendarMin != 900 {
+		t.Fatalf("calendar = %v, want 900 (LLM elapsed wins over density fallback)", result.CalendarMin)
+	}
+	if result.CalendarSource != "llm_elapsed" {
+		t.Fatalf("calendar_source = %q, want llm_elapsed", result.CalendarSource)
+	}
+	// efficiency_ratio = (900-300)/300 = 2.0，从 LLM 工期派生而非 density。
+	if result.EfficiencyRatio == nil || math.Abs(*result.EfficiencyRatio-2.0) > 1e-9 {
+		t.Fatalf("efficiency_ratio = %v, want 2.0 from LLM elapsed", result.EfficiencyRatio)
+	}
+	// LLM 单点估计无 spread → 不给误差带。
+	if result.EfficiencyLow != nil || result.EfficiencyHigh != nil {
+		t.Fatalf("LLM-anchored calendar should not produce bands, got low=%v high=%v", result.EfficiencyLow, result.EfficiencyHigh)
+	}
+	if !reasonsContainPrefix(result.Reasons, "band:llm_no_spread") {
+		t.Fatalf("reason should record band:llm_no_spread, got %#v", result.Reasons)
+	}
+}
+
+// 块3工期维度：LLM 未给/无效 elapsed 时，日历基线回退 fused/density 并打 calendar:fallback_density。
+func TestComputeEfficiencyV2Fusion_CalendarFallsBackToDensityWhenNoLLMElapsed(t *testing.T) {
+	algo := 100.0
+	knn := 100.0
+	need := models.Need{TotalCalendarMin: 300}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin: &algo,
+		KNNMin:  &knn,
+		// LLMCalendarMin 为 nil → 回退
+		Weights: EfficiencyV2BaselineDefaults{WeightAlgo: 0.5, WeightKNN: 0.5, TeamWorkDensity: 0.25},
+	}, EfficiencyV2Config{})
+	if result.CalendarMin == nil || *result.CalendarMin != 400 {
+		t.Fatalf("calendar = %v, want 400 (fused/density fallback)", result.CalendarMin)
+	}
+	if result.CalendarSource != "density" {
+		t.Fatalf("calendar_source = %q, want density", result.CalendarSource)
+	}
+	if !reasonsContainPrefix(result.Reasons, "calendar:fallback_density") {
+		t.Fatalf("reason should record calendar:fallback_density, got %#v", result.Reasons)
+	}
+}
+
+// elapsed<=0 视为无效，与 nil 同样回退（parse 已挡 0/负，这里双保险防直接构造 inputs 的调用方）。
+func TestComputeEfficiencyV2Fusion_CalendarZeroLLMElapsedFallsBack(t *testing.T) {
+	algo := 100.0
+	zero := 0.0
+	need := models.Need{TotalCalendarMin: 300}
+	result := ComputeEfficiencyV2Fusion(need, EfficiencyV2FusionInputs{
+		AlgoMin:        &algo,
+		LLMCalendarMin: &zero,
+		Weights:        EfficiencyV2BaselineDefaults{WeightAlgo: 1, TeamWorkDensity: 0.25},
+	}, EfficiencyV2Config{})
+	if result.CalendarSource != "density" {
+		t.Fatalf("zero elapsed should fall back to density, got source=%q", result.CalendarSource)
+	}
+}
+
 func reasonsContainPrefix(reasons []string, prefix string) bool {
 	for _, r := range reasons {
 		if strings.HasPrefix(r, prefix) {

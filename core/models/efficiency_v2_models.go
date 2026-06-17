@@ -185,29 +185,35 @@ type Need struct {
 	BaselineLLMExecutionWorkMin     *float64   `gorm:"column:baseline_llm_execution_work_min;type:float8" json:"baseline_llm_execution_work_min"`
 	BaselineLLMVerificationWorkMin  *float64   `gorm:"column:baseline_llm_verification_work_min;type:float8" json:"baseline_llm_verification_work_min"`
 	BaselineLLMTotalWorkMin         *float64   `gorm:"column:baseline_llm_total_work_min;type:float8" json:"baseline_llm_total_work_min"`
-	BaselineLLMConfidence           string     `gorm:"column:baseline_llm_confidence;type:varchar(50)" json:"baseline_llm_confidence"`
-	BaselineLLMReason               string     `gorm:"column:baseline_llm_reason;type:text" json:"baseline_llm_reason"`
-	BaselineFusedWorkMin            *float64   `gorm:"type:float8" json:"baseline_fused_work_min"`
-	BaselineSpreadWorkMin           *float64   `gorm:"type:float8" json:"baseline_spread_work_min"`
-	BaselineCalendarMin             *float64   `gorm:"type:float8" json:"baseline_calendar_min"`
-	TeamWorkDensityUsed             *float64   `gorm:"type:float8" json:"team_work_density_used"`
-	TeamProfileUsed                 string     `gorm:"type:varchar(100)" json:"team_profile_used"`
-	EfficiencyRatio                 *float64   `gorm:"type:float8" json:"efficiency_ratio"`
-	EfficiencyLowerBand             *float64   `gorm:"column:efficiency_band_low;type:float8" json:"efficiency_band_low"`
-	EfficiencyUpperBand             *float64   `gorm:"column:efficiency_band_high;type:float8" json:"efficiency_band_high"`
-	WorkEfficiencyRatio             *float64   `gorm:"type:float8" json:"work_efficiency_ratio"`
-	ConfidenceLevel                 string     `gorm:"type:varchar(50);index" json:"confidence_level"`
-	OutlierFlag                     bool       `gorm:"type:boolean;default:false;index" json:"outlier_flag"`          // 派生 = calendar_outlier_flag OR work_outlier_flag（供前端 tag/筛选/原因诊断兼容）
-	CalendarOutlierFlag             bool       `gorm:"type:boolean;default:false;index" json:"calendar_outlier_flag"` // 日历提效口径异常（efficiency_ratio / loc_rate 触发）→ 日历聚合剔除
-	WorkOutlierFlag                 bool       `gorm:"type:boolean;default:false;index" json:"work_outlier_flag"`     // 工作量提效口径异常（actual_to_baseline / loc_rate 触发）→ 工作量聚合剔除
-	CoverageEligible                bool       `gorm:"type:boolean;default:false;index" json:"coverage_eligible"`
-	FeatureDependencyRisk           string     `gorm:"type:varchar(50)" json:"feature_dependency_risk"`
-	SilicaSignal                    string     `gorm:"type:varchar(50)" json:"silica_signal"`
-	AICodeRatioSignal               string     `gorm:"column:ai_code_ratio_signal;type:varchar(50)" json:"ai_code_ratio_signal"`
-	UncoveredWorkSignal             string     `gorm:"type:varchar(50)" json:"uncovered_work_signal"`
-	Reason                          string     `gorm:"type:text" json:"reason"`
-	CreatedAt                       time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt                       time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	// BaselineLLMCalendarMin = LLM 直接估的「同等团队无 AI 自然日历工期(elapsed_min)」，
+	// 块3工期维度独立锚定日历口径提效比（绕开 work/density 单流换算）。nil=模型未给/无效→融合回退。
+	BaselineLLMCalendarMin *float64 `gorm:"column:baseline_llm_calendar_min;type:float8" json:"baseline_llm_calendar_min"`
+	BaselineLLMConfidence  string   `gorm:"column:baseline_llm_confidence;type:varchar(50)" json:"baseline_llm_confidence"`
+	BaselineLLMReason      string   `gorm:"column:baseline_llm_reason;type:text" json:"baseline_llm_reason"`
+	// LLMInputHash = SHA over changed_loc+排序 commit_ids+排序 session_ids+排序 touched_files，
+	// 块1缓存指纹：批量重算时命中且已有 baseline_llm_total_work_min → 复用缓存、跳过 LLM 网络调用（防 429）。
+	LLMInputHash          string    `gorm:"column:llm_input_hash;type:varchar(64)" json:"llm_input_hash"`
+	BaselineFusedWorkMin  *float64  `gorm:"type:float8" json:"baseline_fused_work_min"`
+	BaselineSpreadWorkMin *float64  `gorm:"type:float8" json:"baseline_spread_work_min"`
+	BaselineCalendarMin   *float64  `gorm:"type:float8" json:"baseline_calendar_min"`
+	TeamWorkDensityUsed   *float64  `gorm:"type:float8" json:"team_work_density_used"`
+	TeamProfileUsed       string    `gorm:"type:varchar(100)" json:"team_profile_used"`
+	EfficiencyRatio       *float64  `gorm:"type:float8" json:"efficiency_ratio"`
+	EfficiencyLowerBand   *float64  `gorm:"column:efficiency_band_low;type:float8" json:"efficiency_band_low"`
+	EfficiencyUpperBand   *float64  `gorm:"column:efficiency_band_high;type:float8" json:"efficiency_band_high"`
+	WorkEfficiencyRatio   *float64  `gorm:"type:float8" json:"work_efficiency_ratio"`
+	ConfidenceLevel       string    `gorm:"type:varchar(50);index" json:"confidence_level"`
+	OutlierFlag           bool      `gorm:"type:boolean;default:false;index" json:"outlier_flag"`          // 派生 = calendar_outlier_flag OR work_outlier_flag（供前端 tag/筛选/原因诊断兼容）
+	CalendarOutlierFlag   bool      `gorm:"type:boolean;default:false;index" json:"calendar_outlier_flag"` // 日历提效口径异常（efficiency_ratio / loc_rate 触发）→ 日历聚合剔除
+	WorkOutlierFlag       bool      `gorm:"type:boolean;default:false;index" json:"work_outlier_flag"`     // 工作量提效口径异常（actual_to_baseline / loc_rate 触发）→ 工作量聚合剔除
+	CoverageEligible      bool      `gorm:"type:boolean;default:false;index" json:"coverage_eligible"`
+	FeatureDependencyRisk string    `gorm:"type:varchar(50)" json:"feature_dependency_risk"`
+	SilicaSignal          string    `gorm:"type:varchar(50)" json:"silica_signal"`
+	AICodeRatioSignal     string    `gorm:"column:ai_code_ratio_signal;type:varchar(50)" json:"ai_code_ratio_signal"`
+	UncoveredWorkSignal   string    `gorm:"type:varchar(50)" json:"uncovered_work_signal"`
+	Reason                string    `gorm:"type:text" json:"reason"`
+	CreatedAt             time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt             time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Need) TableName() string { return "needs" }
@@ -348,6 +354,8 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 		{"needs contributor emp nos default", `ALTER TABLE needs ALTER COLUMN contributor_emp_nos SET DEFAULT '[]'::jsonb`},
 		{"needs emp no count column", `ALTER TABLE needs ADD COLUMN IF NOT EXISTS emp_no_count bigint DEFAULT 0`},
 		{"needs emp no count default", `ALTER TABLE needs ALTER COLUMN emp_no_count SET DEFAULT 0`},
+		{"needs baseline llm calendar min column", `ALTER TABLE needs ADD COLUMN IF NOT EXISTS baseline_llm_calendar_min float8`},
+		{"needs llm input hash column", `ALTER TABLE needs ADD COLUMN IF NOT EXISTS llm_input_hash varchar(64)`},
 		{"needs session ids default", `ALTER TABLE needs ALTER COLUMN session_ids SET DEFAULT '[]'::jsonb`},
 		{"needs commit ids default", `ALTER TABLE needs ALTER COLUMN commit_ids SET DEFAULT '[]'::jsonb`},
 		{"needs touched files default", `ALTER TABLE needs ALTER COLUMN touched_files SET DEFAULT '[]'::jsonb`},

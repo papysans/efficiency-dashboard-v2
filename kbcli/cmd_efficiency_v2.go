@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/efficiencyv2"
@@ -26,13 +27,21 @@ var efficiencyV2Cmd = &cobra.Command{
 		startDate, _ := cmd.Flags().GetString("start-date")
 		endDate, _ := cmd.Flags().GetString("end-date")
 		remote, _ := cmd.Flags().GetString("remote")
+		projectID, _ := cmd.Flags().GetString("project")
+		forceLLM, _ := cmd.Flags().GetBool("force-llm")
 
 		if remote != "" {
 			return util.SendToRemote(remote, "efficiency-v2", map[string]interface{}{
 				"date":       dateStr,
 				"start_date": startDate,
 				"end_date":   endDate,
+				"project":    projectID,
+				"force_llm":  forceLLM,
 			})
+		}
+		// 项目级按需 LLM：只对该项目候选池内 merged+有会话的 need 跑 LLM+重融合（不走全量管线，防 429）。
+		if strings.TrimSpace(projectID) != "" {
+			return runEfficiencyV2ProjectLLM(strings.TrimSpace(projectID), forceLLM)
 		}
 		// 未显式传 start-date 且非单日(date)模式时，套全局分析起始日下界。
 		if dateStr == "" {
@@ -48,6 +57,8 @@ func init() {
 	efficiencyV2Cmd.Flags().String("start-date", "", "限定起始日期，格式YYYYMMDD")
 	efficiencyV2Cmd.Flags().String("end-date", "", "限定结束日期，格式YYYYMMDD")
 	efficiencyV2Cmd.Flags().String("remote", "", "远程kbcli服务地址")
+	efficiencyV2Cmd.Flags().String("project", "", "只对该项目候选池内的 Need 跑 LLM 估算+重融合（按需触发，不跑全量管线）")
+	efficiencyV2Cmd.Flags().Bool("force-llm", false, "强制重发 LLM（忽略 llm_input_hash 缓存），配合 --project 使用")
 	rootCmd.AddCommand(efficiencyV2Cmd)
 	validTaskTypes["efficiency-v2"] = true
 }
@@ -135,6 +146,96 @@ func runEfficiencyV2(startDateStr, endDateStr, dateStr string) error {
 		AIEstimation:   appconfig.Cfg.AIEstimation,
 		AlgoEstimation: appconfig.Cfg.AlgoEstimation,
 	})
+}
+
+// efficiencyV2ProjectRepo 是 projects.repos JSONB 里单个 repo 条目的子集（仅取按 Need 估算所需字段）。
+// 字段名与 backend ProjectRepo 序列化口径一致；这里独立声明避免 kbcli 依赖 backend(package main)。
+type efficiencyV2ProjectRepo struct {
+	RepoAddr         string   `json:"repo_addr"`
+	RepoBranch       string   `json:"repo_branch"`
+	StartTime        *string  `json:"start_time"`
+	EndTime          *string  `json:"end_time"`
+	ExcludeNeeds     []string `json:"exclude_needs"`
+	IncludeOnlyNeeds []string `json:"include_only_needs"`
+}
+
+// runEfficiencyV2ProjectLLM 项目级按需 LLM：加载项目→解析 repos 候选池→按 canon repo 反查
+// 池内 merged+有会话的 Need，只对这些 Need 跑 LLM 估算(块3工期维度)+重融合，不触全量管线。
+// 复用 RunEfficiencyV2BaselineAndFusion 同一估算底座（后续 backend 端点亦复用）。
+func runEfficiencyV2ProjectLLM(projectID string, forceLLM bool) error {
+	db, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
+	if err != nil {
+		return fmt.Errorf("连接数据库失败: %w", err)
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+
+	var project models.Project
+	if err := db.Where("project_id = ?", projectID).First(&project).Error; err != nil {
+		return fmt.Errorf("加载项目 %s 失败: %w", projectID, err)
+	}
+
+	scopes, err := efficiencyV2ProjectScopes(&project)
+	if err != nil {
+		return err
+	}
+	needs, err := efficiencyv2.ResolveEfficiencyV2ProjectNeeds(db, scopes)
+	if err != nil {
+		return err
+	}
+	if len(needs) == 0 {
+		logx.Infof("efficiency-v2 --project %s: 候选池内无 merged+有会话的 Need，跳过", projectID)
+		return nil
+	}
+	logx.Infof("efficiency-v2 --project %s: 命中 %d 个 Need，开始 LLM 估算+重融合 (force_llm=%v)", projectID, len(needs), forceLLM)
+
+	// repo 地址归一开关由治理配置注入（与全量管线同口径）。项目级 LLM 不重跑 commit governance
+	// （不改 commits 排除标记），只复用已持久化的 need 数据做 baseline+fusion。
+	govCfg, err := governance.Load(appconfig.Cfg.GovernanceFile)
+	if err != nil {
+		return fmt.Errorf("加载治理配置失败: %w", err)
+	}
+	effCfg := appconfig.Cfg.EfficiencyV2
+	effCfg.RepoAddrCanon = govCfg.Normalization.RepoAddrCanon
+	effCfg.BlockedUserIds = govCfg.Identity.BlockedUserIds
+
+	args := EfficiencyV2PipelineArgs{
+		EfficiencyV2:   efficiencyv2.NormalizeEfficiencyV2Config(effCfg),
+		AIEstimation:   appconfig.Cfg.AIEstimation,
+		AlgoEstimation: efficiencyv2.NormalizeEfficiencyV2AlgoConfig(appconfig.Cfg.AlgoEstimation),
+	}
+	if err := RunEfficiencyV2BaselineAndFusion(db, needs, args, forceLLM); err != nil {
+		return fmt.Errorf("项目级 baseline+fusion 失败: %w", err)
+	}
+	logx.Infof("efficiency-v2 --project %s: 完成 %d 个 Need 的 LLM 估算+重融合", projectID, len(needs))
+	return nil
+}
+
+// efficiencyV2ProjectScopes 把 project.Repos JSONB 解析成 Need 反查 scope（与 backend collectProjectRepoBranches 同口径）。
+func efficiencyV2ProjectScopes(project *models.Project) ([]efficiencyv2.EfficiencyV2ProjectNeedScope, error) {
+	var repos []efficiencyV2ProjectRepo
+	if len(project.Repos) > 0 && string(project.Repos) != "null" && string(project.Repos) != "[]" {
+		if err := json.Unmarshal([]byte(project.Repos), &repos); err != nil {
+			return nil, fmt.Errorf("解析 project.repos 失败: %w", err)
+		}
+	}
+	scopes := make([]efficiencyv2.EfficiencyV2ProjectNeedScope, 0, len(repos))
+	for _, rf := range repos {
+		s := efficiencyv2.EfficiencyV2ProjectNeedScope{
+			RepoAddr:         rf.RepoAddr,
+			RepoBranch:       rf.RepoBranch,
+			ExcludeNeeds:     rf.ExcludeNeeds,
+			IncludeOnlyNeeds: rf.IncludeOnlyNeeds,
+		}
+		if rf.StartTime != nil {
+			s.StartTime = *rf.StartTime
+		}
+		if rf.EndTime != nil {
+			s.EndTime = *rf.EndTime
+		}
+		scopes = append(scopes, s)
+	}
+	return scopes, nil
 }
 
 type EfficiencyV2PipelineArgs struct {
@@ -228,7 +329,8 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 	} else {
 		logx.Infof("efficiency-v2: 写入 %d 行 need_emp_attribution（按工号拆交付物/努力）", attributionRows)
 	}
-	if err := RunEfficiencyV2BaselineAndFusion(db, needs, args); err != nil {
+	// 批量重算默认不 force LLM：指纹命中复用缓存、只本地重融合（块1缓存解耦，防 429）。
+	if err := RunEfficiencyV2BaselineAndFusion(db, needs, args, false); err != nil {
 		return counts, fmt.Errorf("baseline+fusion: %w", err)
 	}
 	counts.Needs = len(needs)
@@ -277,8 +379,9 @@ func ReloadEfficiencyV2Needs(db *gorm.DB, needs []models.Need) ([]models.Need, e
 }
 
 // RunEfficiencyV2BaselineAndFusion computes Baseline A, B, C and fusion for
-// every Need, then persists the results.
-func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args EfficiencyV2PipelineArgs) error {
+// every Need, then persists the results. forceLLM=true 跳过指纹缓存、强制每条都
+// 重发 LLM（按需/项目级触发用）；false 时指纹命中且已有 work 估算则复用缓存、跳过网络调用。
+func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args EfficiencyV2PipelineArgs, forceLLM bool) error {
 	if len(needs) == 0 {
 		return nil
 	}
@@ -338,15 +441,22 @@ func RunEfficiencyV2BaselineAndFusion(db *gorm.DB, needs []models.Need, args Eff
 		knnResult := efficiencyv2.ComputeEfficiencyV2BaselineB(efficiencyv2.BuildEfficiencyV2NeedFeatureVector(*need, sessions), anchors, efficiencyv2.EfficiencyV2KNNDefaultK)
 		efficiencyv2.PersistEfficiencyV2BaselineBOnNeed(need, knnResult)
 
-		llmResult := efficiencyv2.CallAIForNeedEstimationV4(efficiencyv2.BuildEfficiencyV2NeedStructuredSummary(*need, sessions, commits, tasks), args.AIEstimation)
-		efficiencyv2.PersistEfficiencyV2BaselineCOnNeed(need, llmResult)
+		// 块1缓存解耦：指纹命中且已有 work 估算 → 复用缓存的 LLM 列，跳过网络调用（防 429）；
+		// force / 输入变化才真正调 LLM。无论是否调用都刷新 llm_input_hash 记录当前输入。
+		shouldCall, inputHash := efficiencyv2.EfficiencyV2ShouldCallLLM(*need, forceLLM)
+		if shouldCall {
+			llmResult := efficiencyv2.CallAIForNeedEstimationV4(efficiencyv2.BuildEfficiencyV2NeedStructuredSummary(*need, sessions, commits, tasks), args.AIEstimation)
+			efficiencyv2.PersistEfficiencyV2BaselineCOnNeed(need, llmResult)
+		}
+		need.LLMInputHash = inputHash
 
 		fusionResult := efficiencyv2.ComputeEfficiencyV2Fusion(*need, efficiencyv2.EfficiencyV2FusionInputs{
-			AlgoMin:     algoResult.TotalMin,
-			KNNMin:      knnResult.Estimate,
-			LLMMin:      llmResult.TotalMin,
-			Weights:     weights,
-			TeamDensity: density,
+			AlgoMin:        algoResult.TotalMin,
+			KNNMin:         knnResult.Estimate,
+			LLMMin:         need.BaselineLLMTotalWorkMin,
+			LLMCalendarMin: need.BaselineLLMCalendarMin,
+			Weights:        weights,
+			TeamDensity:    density,
 		}, args.EfficiencyV2)
 		efficiencyv2.PersistEfficiencyV2FusionOnNeed(need, fusionResult, args.EfficiencyV2)
 	}
@@ -370,8 +480,10 @@ func persistEfficiencyV2NeedBaselineFusion(db *gorm.DB, needs []models.Need) err
 			"baseline_llm_execution_work_min":     needs[i].BaselineLLMExecutionWorkMin,
 			"baseline_llm_verification_work_min":  needs[i].BaselineLLMVerificationWorkMin,
 			"baseline_llm_total_work_min":         needs[i].BaselineLLMTotalWorkMin,
+			"baseline_llm_calendar_min":           needs[i].BaselineLLMCalendarMin,
 			"baseline_llm_confidence":             needs[i].BaselineLLMConfidence,
 			"baseline_llm_reason":                 needs[i].BaselineLLMReason,
+			"llm_input_hash":                      needs[i].LLMInputHash,
 			"baseline_fused_work_min":             needs[i].BaselineFusedWorkMin,
 			"baseline_spread_work_min":            needs[i].BaselineSpreadWorkMin,
 			"baseline_calendar_min":               needs[i].BaselineCalendarMin,

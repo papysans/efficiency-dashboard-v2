@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/logx"
+	"strings"
 	"time"
 )
 
@@ -188,7 +189,24 @@ func executeImport(params map[string]interface{}) error {
 	})
 }
 
+// efficiencyV2RemoteProjectParams 解析远程 efficiency-v2 任务里的项目级 LLM 参数。
+// 发送端 RunE 转发 project/force_llm；接收端据此分支，与本地 RunE 一致，避免
+// --remote --project 在远程退化成全量重算（违背"只跑一个项目防 429"）。
+// 返回 (projectID 已 trim, forceLLM, isProjectRun)。
+func efficiencyV2RemoteProjectParams(params map[string]interface{}) (string, bool, bool) {
+	project := strings.TrimSpace(getStringParam(params, "project", ""))
+	if project == "" {
+		return "", false, false
+	}
+	return project, getBoolParam(params, "force_llm", false), true
+}
+
 func executeEfficiencyV2(params map[string]interface{}) error {
+	// 项目级按需 LLM：接收端必须同样分支到 runEfficiencyV2ProjectLLM，否则
+	// --remote --project 会在远程跑全量、违背"只跑一个项目防 429"。
+	if project, forceLLM, isProject := efficiencyV2RemoteProjectParams(params); isProject {
+		return runEfficiencyV2ProjectLLM(project, forceLLM)
+	}
 	// 注意：efficiency-v2 不应用 days 增量窗——窗内 commit 重解析会覆盖跨窗 need 的 commit_ids、
 	// 丢掉窗外老 commit。只接受显式 start_date/end_date/date（调用方明确窗内 need 完整时才用）。
 	startDate := getStringParam(params, "start_date", "")

@@ -4,6 +4,7 @@ import (
 	"kanban/kbcli/internal/llm"
 	"strings"
 	"testing"
+	"time"
 
 	"kanban/core/models"
 )
@@ -136,10 +137,224 @@ func TestPersistEfficiencyV2BaselineCOnNeed_NullableFields(t *testing.T) {
 	if need.BaselineLLMTotalWorkMin != nil {
 		t.Fatalf("total should remain nil")
 	}
+	if need.BaselineLLMCalendarMin != nil {
+		t.Fatalf("calendar should remain nil when LLM gives no elapsed")
+	}
 	if need.BaselineLLMConfidence != "low" {
 		t.Fatalf("confidence = %q, want low", need.BaselineLLMConfidence)
 	}
 	if need.BaselineLLMReason != "llm:disabled" {
 		t.Fatalf("reason = %q, want llm:disabled", need.BaselineLLMReason)
+	}
+}
+
+// 块3工期维度：summary 必须携带 contributor_count / dev_span_days / total_wall_min。
+func TestBuildEfficiencyV2NeedStructuredSummary_DurationDimensions(t *testing.T) {
+	start := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 4, 9, 0, 0, 0, time.UTC) // 3 天跨度
+	need := models.Need{
+		NeedId:             "n-1",
+		Status:             "merged",
+		ContributorUserIds: models.StringJSON(`["u-alice","u-bob","u-carol"]`),
+		DevStartTs:         &start,
+		DevEndTs:           &end,
+		TotalWallMin:       720,
+	}
+	summary := BuildEfficiencyV2NeedStructuredSummary(need, nil, nil, nil)
+	if summary.ContributorCount != 3 {
+		t.Fatalf("contributor_count = %d, want 3", summary.ContributorCount)
+	}
+	if summary.DevSpanDays != 3 {
+		t.Fatalf("dev_span_days = %.2f, want 3", summary.DevSpanDays)
+	}
+	if summary.TotalWallMin != 720 {
+		t.Fatalf("total_wall_min = %.1f, want 720", summary.TotalWallMin)
+	}
+}
+
+func TestBuildEfficiencyV2NeedStructuredSummary_DevSpanZeroWhenMissingTs(t *testing.T) {
+	summary := BuildEfficiencyV2NeedStructuredSummary(models.Need{NeedId: "n-1"}, nil, nil, nil)
+	if summary.DevSpanDays != 0 {
+		t.Fatalf("dev_span_days should be 0 when ts missing, got %.2f", summary.DevSpanDays)
+	}
+	if summary.ContributorCount != 0 {
+		t.Fatalf("contributor_count should be 0 for empty list, got %d", summary.ContributorCount)
+	}
+}
+
+func TestBuildEfficiencyV2LLMPrompt_AsksForElapsedMin(t *testing.T) {
+	prompt, err := BuildEfficiencyV2LLMPrompt(EfficiencyV2NeedStructuredSummary{NeedID: "n-1", ContributorCount: 2})
+	if err != nil {
+		t.Fatalf("build prompt: %v", err)
+	}
+	if !strings.Contains(prompt, "elapsed_min") {
+		t.Fatalf("prompt must request elapsed_min (自然日历工期)")
+	}
+	if !strings.Contains(prompt, "contributor_count") {
+		t.Fatalf("prompt must reference contributor_count for same-team anchoring")
+	}
+}
+
+// 块3工期维度：parse 必须解出 elapsed_min（正值采纳；0/负/缺省 → nil 回退）。
+func TestParseEfficiencyV2LLMResponse_ElapsedMinParsed(t *testing.T) {
+	raw := `{"think_min":10,"exec_min":20,"verify_min":5,"total_min":35,"elapsed_min":180,"confidence":"medium","reason":"两人协作含评审"}`
+	result := parseEfficiencyV2LLMResponse(raw)
+	if result.ElapsedMin == nil || *result.ElapsedMin != 180 {
+		t.Fatalf("elapsed = %v, want 180", result.ElapsedMin)
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_ElapsedMinMissingStaysNil(t *testing.T) {
+	result := parseEfficiencyV2LLMResponse(`{"think_min":10,"exec_min":20,"verify_min":5,"total_min":35,"confidence":"high","reason":"ok"}`)
+	if result.TotalMin == nil {
+		t.Fatalf("total should parse")
+	}
+	if result.ElapsedMin != nil {
+		t.Fatalf("elapsed should be nil when model omits it, got %v", *result.ElapsedMin)
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_ElapsedMinZeroOrNegativeRejected(t *testing.T) {
+	for _, raw := range []string{
+		`{"total_min":35,"elapsed_min":0,"reason":"x"}`,
+		`{"total_min":35,"elapsed_min":-5,"reason":"x"}`,
+	} {
+		result := parseEfficiencyV2LLMResponse(raw)
+		if result.ElapsedMin != nil {
+			t.Fatalf("elapsed %s should be rejected → nil, got %v", raw, *result.ElapsedMin)
+		}
+		// total 仍应可用（elapsed 无效不连累 work 估算）
+		if result.TotalMin == nil {
+			t.Fatalf("total should still parse for %s", raw)
+		}
+	}
+}
+
+func TestParseEfficiencyV2LLMResponse_PersistCalendarMin(t *testing.T) {
+	result := parseEfficiencyV2LLMResponse(`{"total_min":40,"elapsed_min":200,"confidence":"high","reason":"ok"}`)
+	need := models.Need{NeedId: "n-1"}
+	PersistEfficiencyV2BaselineCOnNeed(&need, result)
+	if need.BaselineLLMCalendarMin == nil || *need.BaselineLLMCalendarMin != 200 {
+		t.Fatalf("baseline_llm_calendar_min = %v, want 200", need.BaselineLLMCalendarMin)
+	}
+}
+
+// 块1缓存：指纹覆盖 changed_loc + 排序 commit/session/touched_files，集合等价输入产生同一指纹。
+func TestEfficiencyV2NeedLLMInputHash_OrderIndependentStable(t *testing.T) {
+	a := models.Need{
+		ChangedLoc:   500,
+		CommitIds:    models.StringJSON(`["c2","c1"]`),
+		SessionIds:   models.StringJSON(`["s2","s1"]`),
+		TouchedFiles: models.StringJSON(`["b.go","a.go"]`),
+	}
+	b := models.Need{
+		ChangedLoc:   500,
+		CommitIds:    models.StringJSON(`["c1","c2"]`),
+		SessionIds:   models.StringJSON(`["s1","s2"]`),
+		TouchedFiles: models.StringJSON(`["a.go","b.go"]`),
+	}
+	if EfficiencyV2NeedLLMInputHash(a) != EfficiencyV2NeedLLMInputHash(b) {
+		t.Fatalf("hash must be order-independent for equivalent sets")
+	}
+}
+
+func TestEfficiencyV2NeedLLMInputHash_ChangesWhenInputChanges(t *testing.T) {
+	base := models.Need{ChangedLoc: 500, CommitIds: models.StringJSON(`["c1"]`)}
+	h0 := EfficiencyV2NeedLLMInputHash(base)
+	// changed_loc 变
+	if EfficiencyV2NeedLLMInputHash(models.Need{ChangedLoc: 501, CommitIds: models.StringJSON(`["c1"]`)}) == h0 {
+		t.Fatalf("hash should change when changed_loc changes")
+	}
+	// commit 集合变
+	if EfficiencyV2NeedLLMInputHash(models.Need{ChangedLoc: 500, CommitIds: models.StringJSON(`["c1","c2"]`)}) == h0 {
+		t.Fatalf("hash should change when commit set changes")
+	}
+}
+
+// 块3工期输入也必须驱动指纹：contributor_user_ids / dev_start_ts / dev_end_ts 任一变化都要重算，
+// 否则 dev_ts 的 now-clamp（时区双偏移修正）会在 LOC/commit 不变时悄悄换跨度、服旧的日历基线。
+func TestEfficiencyV2NeedLLMInputHash_ChangesWhenDurationInputsChange(t *testing.T) {
+	t0 := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 6, 4, 9, 0, 0, 0, time.UTC)
+	t1b := time.Date(2026, 6, 5, 9, 0, 0, 0, time.UTC) // dev_end 漂了一天（clamp 场景）
+	base := models.Need{
+		ChangedLoc:         500,
+		CommitIds:          models.StringJSON(`["c1"]`),
+		ContributorUserIds: models.StringJSON(`["u-alice"]`),
+		DevStartTs:         &t0,
+		DevEndTs:           &t1,
+	}
+	h0 := EfficiencyV2NeedLLMInputHash(base)
+
+	// contributor 集合变（多人 → 工期不同）
+	withMoreContributors := base
+	withMoreContributors.ContributorUserIds = models.StringJSON(`["u-alice","u-bob"]`)
+	if EfficiencyV2NeedLLMInputHash(withMoreContributors) == h0 {
+		t.Fatalf("hash should change when contributor_user_ids changes")
+	}
+
+	// dev_end_ts 漂移（now-clamp 改了跨度，LOC/commit 不变）
+	withDrift := base
+	withDrift.DevEndTs = &t1b
+	if EfficiencyV2NeedLLMInputHash(withDrift) == h0 {
+		t.Fatalf("hash should change when dev_end_ts drifts (clamp scenario)")
+	}
+
+	// dev_start_ts 变
+	withStartShift := base
+	withStartShift.DevStartTs = &t1b
+	if EfficiencyV2NeedLLMInputHash(withStartShift) == h0 {
+		t.Fatalf("hash should change when dev_start_ts changes")
+	}
+}
+
+// dev_ts 统一 UTC 序列化：同一时刻不同时区写法（offset）不应产生不同指纹。
+func TestEfficiencyV2NeedLLMInputHash_DevTsTimezoneNormalized(t *testing.T) {
+	utc := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	shanghai := utc.In(time.FixedZone("CST", 8*3600)) // 同一时刻，+08:00 表示
+	a := models.Need{ChangedLoc: 1, DevStartTs: &utc}
+	b := models.Need{ChangedLoc: 1, DevStartTs: &shanghai}
+	if EfficiencyV2NeedLLMInputHash(a) != EfficiencyV2NeedLLMInputHash(b) {
+		t.Fatalf("same instant in different zones must hash identically")
+	}
+}
+
+// 块1缓存解耦：指纹命中且已有 work 估算 → 不调 LLM；变化/无估算/force → 调 LLM。
+func TestEfficiencyV2ShouldCallLLM_CacheHitSkips(t *testing.T) {
+	total := 120.0
+	need := models.Need{ChangedLoc: 500, CommitIds: models.StringJSON(`["c1"]`), BaselineLLMTotalWorkMin: &total}
+	need.LLMInputHash = EfficiencyV2NeedLLMInputHash(need)
+	should, hash := EfficiencyV2ShouldCallLLM(need, false)
+	if should {
+		t.Fatalf("should skip LLM on cache hit with existing estimate")
+	}
+	if hash != need.LLMInputHash {
+		t.Fatalf("returned hash must equal current input hash")
+	}
+}
+
+func TestEfficiencyV2ShouldCallLLM_InvalidatedRecalls(t *testing.T) {
+	total := 120.0
+	need := models.Need{ChangedLoc: 500, CommitIds: models.StringJSON(`["c1"]`), BaselineLLMTotalWorkMin: &total}
+	need.LLMInputHash = "stale-hash-from-old-input"
+	if should, _ := EfficiencyV2ShouldCallLLM(need, false); !should {
+		t.Fatalf("must re-call LLM when input hash no longer matches")
+	}
+}
+
+func TestEfficiencyV2ShouldCallLLM_NoPriorEstimateRecalls(t *testing.T) {
+	need := models.Need{ChangedLoc: 500, CommitIds: models.StringJSON(`["c1"]`)}
+	need.LLMInputHash = EfficiencyV2NeedLLMInputHash(need) // hash matches but no prior estimate
+	if should, _ := EfficiencyV2ShouldCallLLM(need, false); !should {
+		t.Fatalf("must call LLM when no prior baseline_llm_total_work_min exists")
+	}
+}
+
+func TestEfficiencyV2ShouldCallLLM_ForceAlwaysCalls(t *testing.T) {
+	total := 120.0
+	need := models.Need{ChangedLoc: 500, CommitIds: models.StringJSON(`["c1"]`), BaselineLLMTotalWorkMin: &total}
+	need.LLMInputHash = EfficiencyV2NeedLLMInputHash(need)
+	if should, _ := EfficiencyV2ShouldCallLLM(need, true); !should {
+		t.Fatalf("force=true must always call LLM even on cache hit")
 	}
 }

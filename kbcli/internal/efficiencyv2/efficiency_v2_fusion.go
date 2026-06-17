@@ -18,11 +18,14 @@ const (
 )
 
 type EfficiencyV2FusionInputs struct {
-	AlgoMin     *float64
-	KNNMin      *float64
-	LLMMin      *float64
-	Weights     EfficiencyV2BaselineDefaults
-	TeamDensity float64
+	AlgoMin *float64
+	KNNMin  *float64
+	LLMMin  *float64
+	// LLMCalendarMin = LLM 直接估的「同等团队无 AI 自然日历工期」（块3工期维度）。
+	// >0 时作为日历基线锚定（绕 work/density 换算）；nil/<=0 回退 fused/density。
+	LLMCalendarMin *float64
+	Weights        EfficiencyV2BaselineDefaults
+	TeamDensity    float64
 }
 
 type EfficiencyV2FusionResult struct {
@@ -34,7 +37,9 @@ type EfficiencyV2FusionResult struct {
 	EfficiencyHigh  *float64
 	WorkEfficiency  *float64
 	ConfidenceLevel string
-	OutlierFlag     bool // 派生 = CalendarOutlierFlag || WorkOutlierFlag
+	// CalendarSource = "llm_elapsed"（LLM 直接估工期锚定）| "density"（回退 fused/density 派生）。
+	CalendarSource string
+	OutlierFlag    bool // 派生 = CalendarOutlierFlag || WorkOutlierFlag
 	// 按口径拆分异常隔离：日历提效与工作量提效分别判 outlier，避免单口径极端值
 	// 把同一 need 另一口径的合理提效一并隐藏（详见 design.md）。
 	CalendarOutlierFlag bool
@@ -197,14 +202,31 @@ func ComputeEfficiencyV2Fusion(need models.Need, inputs EfficiencyV2FusionInputs
 	if calib <= 0 {
 		calib = 1.0
 	}
-	calendar := (fused / density) * calib
+	// 块3工期维度：日历基线优先用 LLM 直接估的「同等团队无 AI 自然工期(elapsed)」，
+	// 它对多人 need 有独立锚定（绕开 work/density 单流换算虚高，见 PRD）。
+	// LLM 未给/无效(<=0)时回退 (fused/density)*calib，并打 reason 标低置信。
+	// LLM 工期不经 calib（calib 是给 density 换算用的缩放，LLM 已直接是日历量纲）。
+	densityCalendar := (fused / density) * calib
+	calendar := densityCalendar
+	calendarSource := "density"
+	if inputs.LLMCalendarMin != nil && *inputs.LLMCalendarMin > 0 {
+		calendar = *inputs.LLMCalendarMin
+		calendarSource = "llm_elapsed"
+	} else {
+		result.Reasons = append(result.Reasons, "calendar:fallback_density")
+	}
 	result.CalendarMin = &calendar
+	result.CalendarSource = calendarSource
 
 	if need.TotalCalendarMin > 0 && calendar > 0 {
 		ratio := (calendar - need.TotalCalendarMin) / need.TotalCalendarMin
 		result.EfficiencyRatio = &ratio
 
-		if result.SpreadWorkMin != nil && *result.SpreadWorkMin > 0 {
+		// 误差带只在密度派生口径下可算（spread 是融合工作量口径的离散度）。
+		// LLM 工期是单点估计、无 spread，故 LLM 锚定时不给带（band:llm_no_spread）。
+		if calendarSource == "llm_elapsed" {
+			result.Reasons = append(result.Reasons, "band:llm_no_spread")
+		} else if result.SpreadWorkMin != nil && *result.SpreadWorkMin > 0 {
 			// 设计 §Step 6：下界 = baseline 偏低时的 eff = (baseline-spread/2 - actual) / actual
 			//              上界 = baseline 偏高时的 eff = (baseline+spread/2 - actual) / actual
 			baselineCalendarLow := (fused - *result.SpreadWorkMin/2) / density * calib
@@ -346,7 +368,7 @@ func PersistEfficiencyV2FusionOnNeed(need *models.Need, result EfficiencyV2Fusio
 }
 
 var efficiencyV2FusionReasonPrefixes = []string{
-	"fusion:", "outlier:", "band:",
+	"fusion:", "outlier:", "band:", "calendar:",
 }
 
 func stripEfficiencyV2FusionReasons(existing string) string {
