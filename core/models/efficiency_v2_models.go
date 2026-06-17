@@ -141,6 +141,8 @@ type Need struct {
 	RepoBranch                      string     `gorm:"type:varchar(500)" json:"repo_branch"`
 	PrimaryUserId                   string     `gorm:"type:varchar(255);index" json:"primary_user_id"`
 	ContributorUserIds              StringJSON `gorm:"type:jsonb;default:'[]'" json:"contributor_user_ids"`
+	ContributorEmpNos               StringJSON `gorm:"type:jsonb;default:'[]'" json:"contributor_emp_nos"` // 贡献者按工号(emp_no)去重后的稳定人身份集合；user_id 是碎片，集成流降级数工号不数 user_id（见 efficiency_v2_identity.go）。primary_emp_no 留给后续 PR
+	EmpNoCount                      int64      `gorm:"type:bigint;default:0" json:"emp_no_count"`          // len(ContributorEmpNos)：去重后的有效贡献者(人)数
 	SessionIds                      StringJSON `gorm:"type:jsonb;default:'[]'" json:"session_ids"`
 	CommitIds                       StringJSON `gorm:"type:jsonb;default:'[]'" json:"commit_ids"`
 	TouchedFiles                    StringJSON `gorm:"type:jsonb;default:'[]'" json:"touched_files"`
@@ -321,6 +323,10 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 		{"session_stage_metrics confidence index", `CREATE INDEX IF NOT EXISTS idx_session_stage_metrics_confidence ON session_stage_metrics (stage_confidence)`},
 		{"needs boundary evidence default", `ALTER TABLE needs ALTER COLUMN boundary_evidence SET DEFAULT '{}'::jsonb`},
 		{"needs contributor user ids default", `ALTER TABLE needs ALTER COLUMN contributor_user_ids SET DEFAULT '[]'::jsonb`},
+		{"needs contributor emp nos column", `ALTER TABLE needs ADD COLUMN IF NOT EXISTS contributor_emp_nos jsonb DEFAULT '[]'::jsonb`},
+		{"needs contributor emp nos default", `ALTER TABLE needs ALTER COLUMN contributor_emp_nos SET DEFAULT '[]'::jsonb`},
+		{"needs emp no count column", `ALTER TABLE needs ADD COLUMN IF NOT EXISTS emp_no_count bigint DEFAULT 0`},
+		{"needs emp no count default", `ALTER TABLE needs ALTER COLUMN emp_no_count SET DEFAULT 0`},
 		{"needs session ids default", `ALTER TABLE needs ALTER COLUMN session_ids SET DEFAULT '[]'::jsonb`},
 		{"needs commit ids default", `ALTER TABLE needs ALTER COLUMN commit_ids SET DEFAULT '[]'::jsonb`},
 		{"needs touched files default", `ALTER TABLE needs ALTER COLUMN touched_files SET DEFAULT '[]'::jsonb`},

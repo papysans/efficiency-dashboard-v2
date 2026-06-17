@@ -94,7 +94,15 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config) ([]m
 		return nil, 0, fmt.Errorf("query commits: %w", err)
 	}
 
-	needs := ResolveEfficiencyV2Needs(metrics, events, commits, cfg)
+	// 身份层：把 user_id→工号 映射在 stage 入口加载一次（commits.git_user_email JOIN
+	// dept_user 校验），供 need 构建按工号去重贡献者 / 重判集成流。dept_user 未灌入或
+	// 全 orphan 时返回空映射，efficiencyV2BuildNeed 回退按 user_id 旧口径，不破坏行为。
+	empMap, err := LoadEfficiencyV2UserEmpMap(db)
+	if err != nil {
+		return nil, 0, fmt.Errorf("load user→emp map: %w", err)
+	}
+
+	needs := ResolveEfficiencyV2NeedsWithEmpMap(metrics, events, commits, cfg, empMap)
 	if len(needs) == 0 {
 		return needs, 0, nil
 	}
@@ -110,6 +118,8 @@ func ResolveAndUpsertEfficiencyV2Needs(db *gorm.DB, cfg EfficiencyV2Config) ([]m
 			"repo_branch",
 			"primary_user_id",
 			"contributor_user_ids",
+			"contributor_emp_nos",
+			"emp_no_count",
 			"session_ids",
 			"commit_ids",
 			"touched_files",
@@ -198,7 +208,16 @@ func updateEfficiencyV2StageMetricNeedIDs(db *gorm.DB, needs []models.Need) erro
 	return nil
 }
 
+// ResolveEfficiencyV2Needs 不带工号映射的入口（emp map = nil）：贡献者计数 /
+// 集成流判定回退按 user_id 数（旧口径）。单测与不依赖工号的调用方用此入口。
 func ResolveEfficiencyV2Needs(stageMetrics []models.SessionStageMetric, events []models.ConversationEvent, commits []models.Commit, cfg EfficiencyV2Config) []models.Need {
+	return ResolveEfficiencyV2NeedsWithEmpMap(stageMetrics, events, commits, cfg, nil)
+}
+
+// ResolveEfficiencyV2NeedsWithEmpMap 带工号映射构建 need：集成流降级按工号去重后的
+// 有效贡献者数判定（不数碎片 user_id），并把去重工号集写入 need.ContributorEmpNos /
+// EmpNoCount。empMap 为 nil 时与旧行为等价。
+func ResolveEfficiencyV2NeedsWithEmpMap(stageMetrics []models.SessionStageMetric, events []models.ConversationEvent, commits []models.Commit, cfg EfficiencyV2Config, empMap *EfficiencyV2UserEmpMap) []models.Need {
 	cfg = NormalizeEfficiencyV2Config(cfg)
 	if cfg.MaxNeedSpanDays == 0 {
 		cfg.MaxNeedSpanDays = efficiencyV2DefaultMaxNeedSpanDays
@@ -250,7 +269,7 @@ func ResolveEfficiencyV2Needs(stageMetrics []models.SessionStageMetric, events [
 	needs := make([]models.Need, 0, len(bucketKeys))
 	for _, key := range bucketKeys {
 		for _, episode := range efficiencyV2SplitBucketEpisodes(*bucketsByKey[key], idleThreshold) {
-			needs = append(needs, efficiencyV2BuildNeed(episode, cfg))
+			needs = append(needs, efficiencyV2BuildNeed(episode, cfg, empMap))
 		}
 	}
 	return needs
@@ -488,7 +507,7 @@ func efficiencyV2ResolveNaturalBoundary(candidate efficiencyV2BoundaryCandidate)
 	return efficiencyV2BoundaryOrphan, efficiencyV2ConfidenceVeryLow, efficiencyV2OrphanKey(candidate.userID, candidate.start)
 }
 
-func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config) models.Need {
+func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config, empMap *EfficiencyV2UserEmpMap) models.Need {
 	contributors := make(map[string]bool)
 	sessions := make(map[string]bool)
 	commits := make(map[string]bool)
@@ -553,6 +572,16 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		primaryUser = contributorIDs[0]
 	}
 
+	// 工号去重：把碎片 user_id 折叠成稳定工号集（丢 orphan / 共享账号）。
+	// empNos 为空有两种原因——empMap=nil（不带映射的调用方/单测）或全 orphan
+	// （dept_user 未灌入、开源/CI 作者）——两者都回退按 user_id 数判集成流，
+	// 不破坏旧行为；有工号时 effectiveContributorCount = 工号数（数人不数账号）。
+	empNos := empMap.DistinctEmpNos(contributorIDs)
+	effectiveContributorCount := len(empNos)
+	if effectiveContributorCount == 0 {
+		effectiveContributorCount = len(contributorIDs)
+	}
+
 	if status == "active" && len(commits) > 0 {
 		status = "merged"
 	}
@@ -565,13 +594,16 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 	// 多人集成流降级：episode 切分后仍然跨度长且多人贡献的段（如长命集成分支）
 	// 不是单个可归属的需求，个体提效比不可解释——confidence 降为 low，
 	// 由既有 eligible 规则（仅 high/medium 可入）自动踢出，不加新 flag。
+	// 贡献者数按 effectiveContributorCount（工号去重后的人数，非碎片 user_id 数）：
+	// 实测一人多账号（工号 25163 挂 3 个 user_id）会被旧的 user_id 计数误判 ≥3 人
+	// 而错误降级；改数工号后单工号 need 不再触发，恢复 eligible（research 实锤 105 个）。
 	confidence := bucket.confidence
 	integrationFlow := false
 	if (confidence == efficiencyV2ConfidenceHigh || confidence == efficiencyV2ConfidenceMedium) &&
 		cfg.IntegrationFlowSpanDays > 0 && cfg.IntegrationFlowMinContributors > 0 &&
 		!devStart.IsZero() && !devEnd.IsZero() &&
 		devEnd.Sub(devStart) > time.Duration(cfg.IntegrationFlowSpanDays)*24*time.Hour &&
-		len(contributorIDs) >= cfg.IntegrationFlowMinContributors {
+		effectiveContributorCount >= cfg.IntegrationFlowMinContributors {
 		confidence = efficiencyV2ConfidenceLow
 		integrationFlow = true
 	}
@@ -601,6 +633,8 @@ func efficiencyV2BuildNeed(bucket efficiencyV2NeedBucket, cfg EfficiencyV2Config
 		RepoBranch:         branch,
 		PrimaryUserId:      primaryUser,
 		ContributorUserIds: EfficiencyV2StringJSON(contributorIDs),
+		ContributorEmpNos:  EfficiencyV2StringJSON(empNos),
+		EmpNoCount:         int64(len(empNos)),
 		SessionIds:         EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(sessions)),
 		CommitIds:          EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(commits)),
 		TouchedFiles:       EfficiencyV2StringJSON(efficiencyV2SortedMapKeys(files)),
