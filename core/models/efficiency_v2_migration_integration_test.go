@@ -39,6 +39,7 @@ func assertEfficiencyV2Tables(t *testing.T, db *sql.DB) {
 		"conversation_events",
 		"session_stage_metrics",
 		"needs",
+		"need_emp_attribution",
 		"user_productivity_v2",
 		"anchor_set",
 		"baseline_coefficients",

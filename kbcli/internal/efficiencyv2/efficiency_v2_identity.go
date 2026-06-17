@@ -25,6 +25,10 @@ type EfficiencyV2UserEmpMap struct {
 	// SharedAccountUIDs：commit 工号 ≥2 的 user_id（共享/默认账号）。其会话努力无法
 	// 单工号归属，调用方应回退团队级，不计入个人。
 	SharedAccountUIDs map[string]bool
+	// RegisteredEmpNos：所有经 dept_user 花名册校验在册的工号（commit git_user_email
+	// 前缀 JOIN dept_user 的并集）。供按 commit 拆交付物时校验工号是否在册——一个在册
+	// 工号可能没有任何"干净" user_id 指向它（如共享账号的 committer），仍应认作工号。
+	RegisteredEmpNos map[string]bool
 }
 
 // EmpForUID 返回 user_id 对应工号；orphan（未映射）或共享账号返回 ""。
@@ -37,6 +41,33 @@ func (m *EfficiencyV2UserEmpMap) EmpForUID(uid string) string {
 		return ""
 	}
 	return m.EmpByUID[uid]
+}
+
+// EmpForCommit 按 commit 的 git_user_email 前缀(split_part @)取工号，并要求该工号在
+// dept_user 花名册在册；不在册 / 空邮箱返回 ""（调用方归 residual）。拆交付物按 committer
+// 的工号分组（数据已在 commits.git_user_email），不依赖 user_id 映射。
+func (m *EfficiencyV2UserEmpMap) EmpForCommit(gitUserEmail string) string {
+	emp := efficiencyV2EmpNoFromEmail(gitUserEmail)
+	if emp == "" {
+		return ""
+	}
+	if m == nil || !m.RegisteredEmpNos[emp] {
+		return ""
+	}
+	return emp
+}
+
+// efficiencyV2EmpNoFromEmail 取 git_user_email 的 @ 前缀作工号（split_part(email,'@',1)），
+// 镜像 dept-sync / LoadEfficiencyV2UserEmpMap 的提取口径，不做在册校验。
+func efficiencyV2EmpNoFromEmail(gitUserEmail string) string {
+	email := strings.TrimSpace(gitUserEmail)
+	if email == "" {
+		return ""
+	}
+	if idx := strings.IndexByte(email, '@'); idx >= 0 {
+		return strings.TrimSpace(email[:idx])
+	}
+	return email
 }
 
 // DistinctEmpNos 把一组 user_id 去重为工号集（丢弃 orphan 与共享账号），用于按"人"
@@ -69,10 +100,16 @@ type efficiencyV2EmpCommitRow struct {
 // 空 user_id / 空 emp_no 行忽略。
 func BuildEfficiencyV2UserEmpMapFromRows(rows []efficiencyV2EmpCommitRow) *EfficiencyV2UserEmpMap {
 	empSetByUID := make(map[string]map[string]bool)
+	registered := make(map[string]bool)
 	for _, r := range rows {
 		uid := strings.TrimSpace(r.UserId)
 		emp := strings.TrimSpace(r.EmpNo)
-		if uid == "" || emp == "" {
+		if emp == "" {
+			continue
+		}
+		// 行来自 commits JOIN dept_user，故每个 emp_no 都在册（即便其 user_id 为空/碎片）。
+		registered[emp] = true
+		if uid == "" {
 			continue
 		}
 		if empSetByUID[uid] == nil {
@@ -83,6 +120,7 @@ func BuildEfficiencyV2UserEmpMapFromRows(rows []efficiencyV2EmpCommitRow) *Effic
 	m := &EfficiencyV2UserEmpMap{
 		EmpByUID:          make(map[string]string, len(empSetByUID)),
 		SharedAccountUIDs: make(map[string]bool),
+		RegisteredEmpNos:  registered,
 	}
 	for uid, set := range empSetByUID {
 		if len(set) == 1 {

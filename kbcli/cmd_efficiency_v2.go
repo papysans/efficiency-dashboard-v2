@@ -215,6 +215,19 @@ func RunEfficiencyV2PipelineWithCounts(db *gorm.DB, args EfficiencyV2PipelineArg
 	if err != nil {
 		return counts, fmt.Errorf("reload needs: %w", err)
 	}
+	// P1：把每个 need 的交付物(commit LOC/AI)与努力(会话人时)按工号(emp_no)拆进
+	// need_emp_attribution。emp map 在 need 边界 stage 已加载一次，这里复用同口径加载器
+	// 单独取一份（仅 commits JOIN dept_user，开销小），供按 committer 工号拆交付物。
+	// 需在 need 聚合+reload 之后跑：依赖已持久化的 commit_ids/session_ids 与 emp_no_count。
+	empMap, err := efficiencyv2.LoadEfficiencyV2UserEmpMap(db)
+	if err != nil {
+		return counts, fmt.Errorf("load user→emp map for attribution: %w", err)
+	}
+	if attributionRows, err := efficiencyv2.AggregateAndUpsertEfficiencyV2NeedEmpAttribution(db, needs, empMap, args.EfficiencyV2); err != nil {
+		return counts, fmt.Errorf("need emp attribution: %w", err)
+	} else {
+		logx.Infof("efficiency-v2: 写入 %d 行 need_emp_attribution（按工号拆交付物/努力）", attributionRows)
+	}
 	if err := RunEfficiencyV2BaselineAndFusion(db, needs, args); err != nil {
 		return counts, fmt.Errorf("baseline+fusion: %w", err)
 	}

@@ -78,3 +78,33 @@ func TestEfficiencyV2DistinctEmpNos(t *testing.T) {
 		t.Fatalf("nil map EmpForUID 应空")
 	}
 }
+
+// EmpForCommit：按 git_user_email 前缀取工号 + dept_user 在册校验。共享账号的 committer
+// 工号(33844 无干净 user_id 指向)只要在册仍认；不在册前缀 / 空邮箱 / nil map 一律空。
+func TestEfficiencyV2EmpForCommit(t *testing.T) {
+	m := BuildEfficiencyV2UserEmpMapFromRows([]efficiencyV2EmpCommitRow{
+		{UserId: "a1", EmpNo: "25163"},
+		{UserId: "sh", EmpNo: "11910"},
+		{UserId: "sh", EmpNo: "33844"}, // 共享账号下的在册工号，无干净 user_id
+	})
+	cases := []struct {
+		email string
+		want  string
+	}{
+		{"25163@sangfor.com", "25163"},     // 在册
+		{"33844@sundray.com", "33844"},     // 在册（即便其 user_id 是共享账号）
+		{"99999@sangfor.com", ""},          // 前缀不在册
+		{"noreply@github.com", ""},         // 外部贡献者 → 不在册
+		{"", ""},                           // 空邮箱
+		{"  25163@sangfor.com  ", "25163"}, // 两侧空白
+	}
+	for _, c := range cases {
+		if got := m.EmpForCommit(c.email); got != c.want {
+			t.Fatalf("EmpForCommit(%q) = %q, want %q", c.email, got, c.want)
+		}
+	}
+	var nilMap *EfficiencyV2UserEmpMap
+	if got := nilMap.EmpForCommit("25163@sangfor.com"); got != "" {
+		t.Fatalf("nil map EmpForCommit 应空，得 %q", got)
+	}
+}

@@ -212,6 +212,27 @@ type Need struct {
 
 func (Need) TableName() string { return "needs" }
 
+// NeedEmpAttribution 是 (need × 工号) 的归属事实表：把一个 need 的交付物(commit LOC/AI)
+// 与努力(会话人时)按稳定人身份工号(emp_no)拆开，供后续个人/部门聚合读。
+// 工号 = split_part(commits.git_user_email,'@',1) 且经 dept_user 花名册校验；不在册 /
+// 空邮箱的 commit、以及映不到工号的会话(orphan / 共享账号)归 emp_no=” 的 residual 行。
+// LOC 守恒：同 need 内所有行(含 residual) loc_net 之和 == needs.total_loc_net。
+// attribution_kind：need 工号数<=1 → 全 solo；否则在册工号行 split、emp_no=” 行 residual。
+// 本表只拆 LOC/commit/ai/工时 + 分类；per-工号 baseline/efficiency_ratio 留给后续 PR。
+type NeedEmpAttribution struct {
+	NeedId          string    `gorm:"primaryKey;type:varchar(500);index" json:"need_id"`
+	EmpNo           string    `gorm:"primaryKey;type:varchar(100);index" json:"emp_no"`
+	CommitCount     int64     `gorm:"type:bigint;default:0" json:"commit_count"`
+	LocNet          int64     `gorm:"type:bigint;default:0" json:"loc_net"`
+	AICoveredLoc    int64     `gorm:"column:ai_covered_loc;type:bigint;default:0" json:"ai_covered_loc"`
+	ActiveWorkMin   float64   `gorm:"type:float8;default:0" json:"active_work_min"`
+	AttributionKind string    `gorm:"type:varchar(20);index" json:"attribution_kind"` // solo | split | residual
+	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (NeedEmpAttribution) TableName() string { return "need_emp_attribution" }
+
 type UserProductivityV2 struct {
 	UserProductivityV2Id         string     `gorm:"primaryKey;type:varchar(255)" json:"user_productivity_v2_id"`
 	WeekStart                    time.Time  `gorm:"type:date;not null;index" json:"week_start"`
@@ -341,6 +362,9 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 		{"needs outlier index", `CREATE INDEX IF NOT EXISTS idx_needs_outlier_flag ON needs (outlier_flag)`},
 		{"needs calendar outlier index", `CREATE INDEX IF NOT EXISTS idx_needs_calendar_outlier_flag ON needs (calendar_outlier_flag)`},
 		{"needs work outlier index", `CREATE INDEX IF NOT EXISTS idx_needs_work_outlier_flag ON needs (work_outlier_flag)`},
+		{"need_emp_attribution need index", `CREATE INDEX IF NOT EXISTS idx_need_emp_attribution_need_id ON need_emp_attribution (need_id)`},
+		{"need_emp_attribution emp index", `CREATE INDEX IF NOT EXISTS idx_need_emp_attribution_emp_no ON need_emp_attribution (emp_no)`},
+		{"need_emp_attribution kind index", `CREATE INDEX IF NOT EXISTS idx_need_emp_attribution_kind ON need_emp_attribution (attribution_kind)`},
 		{"user_productivity_v2 need ids default", `ALTER TABLE user_productivity_v2 ALTER COLUMN need_ids SET DEFAULT '[]'::jsonb`},
 		{"user_productivity_v2 user week unique index", `CREATE UNIQUE INDEX IF NOT EXISTS ux_user_productivity_v2_user_week ON user_productivity_v2 (user_id, week_start)`},
 		{"user_productivity_v2 week index", `CREATE INDEX IF NOT EXISTS idx_user_productivity_v2_week_start ON user_productivity_v2 (week_start)`},

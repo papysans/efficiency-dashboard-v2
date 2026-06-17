@@ -365,6 +365,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&ConversationEvent{},
 		&SessionStageMetric{},
 		&Need{},
+		&NeedEmpAttribution{},
 		&UserProductivityV2{},
 		&AnchorSet{},
 		&BaselineCoefficient{},
