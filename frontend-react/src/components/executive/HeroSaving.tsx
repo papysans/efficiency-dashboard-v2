@@ -57,6 +57,9 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
 
   const savedMin = Math.max(0, (data?.need_baseline_calendar_min || 0) - (data?.need_actual_calendar_min || 0))
   const savedDays = savedMin / PERSON_DAY_MINUTES
+  // 人均节省 = 总节省人天 ÷ 活跃用户数（total_users_v2 = 需求口径去重参与者，即「活跃用户」）。
+  const activeUsers = data?.total_users_v2 || 0
+  const perCapitaDays = activeUsers > 0 ? savedDays / activeUsers : 0
   const grossSaving = personDaysValue(savedMin) * costPerPersonDay
   const netSaving = grossSaving - aiCost
   // ROI = 折合节省成本 ÷ AI 成本（看板任务口径 total_cost）；total_cost<=0 时不展示。
@@ -66,7 +69,7 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
   const ratioPct = ratio == null ? 0 : ratio * 100
   const ratioAvailable = ratio != null && Number.isFinite(Number(ratio))
 
-  const daysCount = useCountUp(savedDays)
+  const perCapitaCount = useCountUp(perCapitaDays)
   const grossCount = useCountUp(Math.round(grossSaving))
   const aiCount = useCountUp(Math.round(aiCost))
   const netCount = useCountUp(Math.round(netSaving))
@@ -107,7 +110,7 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">AI 提效总览</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            按 {cur}{formatNumber(costPerPersonDay)}/人天估算 · 基于可计入且非异常的已合并需求
+            按 {cur}{formatNumber(costPerPersonDay)}/人天估算 · 基于可计入且非异常的已合并需求 · 人均 = 总节省人天 ÷ 活跃用户数
             {aiAvailable && ' · AI 花费为全平台口径（按价格表估算）'}
           </p>
         </div>
@@ -129,7 +132,7 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
       {aiAvailable ? (
         // 净节省口径四格：省人天 / AI 花费 / 净节省（毛−AI）/ 综合提效
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-8 gap-y-6 flex-1">
-          <BigStat label="为团队节省" value={savedDays > 0 ? daysCount.toFixed(1) : '-'} unit="人天" tone={emerald} compact />
+          <BigStat label="平均人均节省" value={perCapitaDays > 0 ? perCapitaCount.toFixed(2) : '-'} unit="人天" tone={emerald} compact />
           <BigStat label="AI 花费" value={`${cur}${formatNumber(Math.round(aiCount))}`} unit="" tone={neutral} compact />
           <BigStat
             label="净节省"
@@ -143,7 +146,7 @@ export function HeroSaving({ startDate, endDate }: HeroSavingProps) {
       ) : (
         // 降级三格（chat 未启用 / 加载中 / 失败）：保持原布局
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 flex-1">
-          <BigStat label="为团队节省" value={savedDays > 0 ? daysCount.toFixed(1) : '-'} unit="人天" tone={emerald} />
+          <BigStat label="平均人均节省" value={perCapitaDays > 0 ? perCapitaCount.toFixed(2) : '-'} unit="人天" tone={emerald} />
           <BigStat
             label="折合节省成本"
             value={grossSaving > 0 ? `${cur}${formatNumber(Math.round(grossCount))}` : '-'}
