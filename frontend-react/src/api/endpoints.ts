@@ -32,6 +32,7 @@ import type {
   DeptMembersResponse,
   DeptRankingResponse,
   DeptTreeNode,
+  EfficiencyV2AggregateResponse,
   GlobalConfig,
   ListParams,
   NeedRepoOption,
@@ -104,6 +105,13 @@ export async function getAllNeedsV2(params: ListParams): Promise<NeedsV2Summary[
     if (rows.length === 0 || all.length >= total) break
   }
   return all
+}
+
+// ---- Efficiency 周聚合（user_productivity_v2 周表，小数口径 efficiency_ratio）----
+// 返回 user×week 行（week_start/efficiency_ratio/work_efficiency_ratio/actual_calendar_min...），
+// 支持日期范围 + userId 过滤。供「效率」维度时间线按周聚合（一次拉回全部周，前端分桶，无需切窗）。
+export function getEfficiencyV2(params: { startDate?: string; endDate?: string; userId?: string }) {
+  return apiGet<EfficiencyV2AggregateResponse>('/v2/efficiency', params)
 }
 
 // ---- Users（小数口径） ----

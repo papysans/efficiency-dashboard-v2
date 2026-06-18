@@ -54,21 +54,34 @@ const TH_NUM = 'px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
 
-export default function UserDetail() {
-  const { userId } = useParams<{ userId: string }>()
+/**
+ * UserDetail 既是独立路由页（/user/:userId，从 URL 取 userId/日期），
+ * 也可被「个人·效率」聚焦态壳内嵌（传 userIdProp + dateRangeProp，隐藏返回按钮/标题外框）。
+ */
+interface UserDetailProps {
+  userIdProp?: string
+  dateRangeProp?: [string, string]
+  /** 嵌入壳内时设 true：去掉「返回」按钮与外层标题，避免与壳的面包屑/标题重复。 */
+  embedded?: boolean
+}
+
+export default function UserDetail({ userIdProp, dateRangeProp, embedded = false }: UserDetailProps = {}) {
+  const routeParams = useParams<{ userId: string }>()
+  const userId = userIdProp ?? routeParams.userId
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { theme } = useTheme()
   // 用 commits 的 git_user_name 把 user_id(UUID) 解析为真实名。
   const { resolveName } = useUserNameMap()
 
-  // 日期取 URL（YYYYMMDD/YYYY-MM-DD）→ ISO；缺则近 90 天。
+  // 日期：嵌入态用 prop（全局 timeRange）；独立页取 URL（YYYYMMDD/YYYY-MM-DD）→ ISO；缺则近 90 天。
   const dateRange = useMemo<[string, string]>(() => {
+    if (dateRangeProp) return dateRangeProp
     const startRaw = normalizeDateQuery(searchParams.get('startDate'))
     const endRaw = normalizeDateQuery(searchParams.get('endDate'))
     if (startRaw && endRaw) return [startRaw[0], endRaw[0]]
     return getDefaultDateRangeWide()
-  }, [searchParams])
+  }, [searchParams, dateRangeProp])
 
   const params = useMemo(
     () => ({ startDate: dateRange[0].replace(/-/g, ''), endDate: dateRange[1].replace(/-/g, '') }),
@@ -111,25 +124,27 @@ export default function UserDetail() {
 
   return (
     <div className={`space-y-5 ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}>
-      {/* Header */}
-      <header className="space-y-3">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          返回
-        </button>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户详情</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono break-all">
-            {resolveName(summary?.user_id || userId)}
-          </p>
-        </div>
-      </header>
+      {/* Header（嵌入壳内时省略：壳已有标题/面包屑/对象选择器） */}
+      {!embedded && (
+        <header className="space-y-3">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            返回
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户详情</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono break-all">
+              {resolveName(summary?.user_id || userId)}
+            </p>
+          </div>
+        </header>
+      )}
 
       {/* 6 张 MetricCard */}
       <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

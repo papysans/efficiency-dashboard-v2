@@ -2,18 +2,18 @@
 // 逻辑/列/口径/交互 1:1 按 research/pr3-user-repo-org.md §User-1；视觉换玻璃拟态（不照搬 .kanban-native）。
 // 关键：小数口径 → RatioPill（×100）；**纯客户端排序**（snake_case 字段 + sortRows，不传 order 给后端）；
 //       keyword 客户端过滤 + 客户端分页；URL 同步 startDate/endDate/order。
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { getAllUsersV2 } from '@/api/endpoints'
 import type { UserV2Row } from '@/api/types'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
+import { useViewState } from '@/store/viewState'
 import { formatDuration, formatNumber } from '@/lib/formatters'
-import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
+import { formatDateParam } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
-import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { MetricCard } from '@/components/ui/MetricCard'
 
 // ---- 纯函数（移植 UserViewV2）----
@@ -52,39 +52,12 @@ function getterFor(field: string): (row: UserV2Row) => unknown {
   return (row) => String((row as unknown as Record<string, unknown>)[field] ?? '')
 }
 
-function normalizeDateQuery(value: string | null): string {
-  if (!value) return ''
-  const s = String(value).trim()
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  return ''
-}
-
 /** 中位数（用于「日历提效中位」MetricCard）。 */
 function median(values: number[]): number | null {
   const arr = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b)
   if (!arr.length) return null
   const mid = Math.floor(arr.length / 2)
   return arr.length % 2 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2
-}
-
-interface PageState {
-  dateRange: [string, string]
-  order: string
-}
-
-function stateFromParams(sp: URLSearchParams): PageState {
-  const start = normalizeDateQuery(sp.get('startDate'))
-  const end = normalizeDateQuery(sp.get('endDate'))
-  const dateRange: [string, string] = start && end ? [start, end] : getDefaultDateRangeWide()
-  return { dateRange, order: sp.get('order') || '' }
-}
-
-function buildQuery(s: PageState): Record<string, string> {
-  const [start, end] = s.dateRange
-  const q: Record<string, string> = { startDate: formatDateParam(start), endDate: formatDateParam(end) }
-  if (s.order) q.order = s.order
-  return q
 }
 
 const TH = 'px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
@@ -95,14 +68,15 @@ const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dar
 export default function UserList() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  // 全局时间范围（顶部统一 DateRangePicker）——本页不再有自己的日期 picker/state。
+  const { timeRange } = useViewState()
 
   // user_name 字段多为 UUID（无用），用 commits 的 git_user_name 建映射解析真实名。
   const { resolveName } = useUserNameMap()
 
-  const state = useMemo(() => stateFromParams(searchParams), [searchParams])
-  const parsedOrder = useMemo(() => parseOrder(state.order), [state.order])
+  const order = searchParams.get('order') || ''
+  const parsedOrder = useMemo(() => parseOrder(order), [order])
 
-  const [draftRange, setDraftRange] = useState<[string, string]>(state.dateRange)
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
@@ -111,22 +85,19 @@ export default function UserList() {
   const [loading, setLoading] = useState(false)
   const [errMsg, setErrMsg] = useState('')
 
-  const commit = useCallback(
-    (next: PageState) => {
-      setSearchParams(buildQuery(next), { replace: true })
-    },
-    [setSearchParams],
+  const dateParams = useMemo(
+    () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
+    [timeRange],
   )
 
-  // URL 变化时一次性全量拉（pageSize 1000，分页/排序/过滤全客户端）。
+  // 全局时间范围变化时一次性全量拉（分页/排序/过滤全客户端）。
   useEffect(() => {
     let aborted = false
-    const s = stateFromParams(searchParams)
     setLoading(true)
     setErrMsg('')
     // 翻页拉全（getAllUsersV2 内部循环到 total）：单次 pageSize:1000 会在 total>1000 时截断（内网 1462 被截到 1000）。
     // 本页分页/排序/过滤全在客户端做，必须先把全量拉回来。
-    getAllUsersV2({ startDate: formatDateParam(s.dateRange[0]), endDate: formatDateParam(s.dateRange[1]) })
+    getAllUsersV2(dateParams)
       .then((rows) => {
         if (aborted) return
         setAllRows(rows || [])
@@ -142,12 +113,7 @@ export default function UserList() {
     return () => {
       aborted = true
     }
-  }, [searchParams])
-
-  useEffect(() => {
-    setDraftRange(state.dateRange)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [dateParams])
 
   // 改 keyword 时回到第 1 页
   useEffect(() => {
@@ -181,32 +147,17 @@ export default function UserList() {
     return { merged, commits, medianRatio: median(ratios) }
   }, [filteredRows])
 
-  function applyFilters() {
-    commit({ dateRange: draftRange, order: state.order })
-    setPage(1)
-  }
-
-  function resetFilters() {
-    const range = getDefaultDateRangeWide()
-    setDraftRange(range)
-    setKeyword('')
-    setPage(1)
-    commit({ dateRange: range, order: '' })
-  }
-
-  // 仅更新草稿日期；真正查询走「查询」按钮（applyFilters），对齐 Vue UserViewV2（DateRangePicker 只 v-model）。
-  function onDateChange(range: [string, string]) {
-    setDraftRange(range)
-  }
-
-  // 三态循环：无→升→降→无。换列从升序开始。回到第 1 页。
+  // 三态循环：无→升→降→无。换列从升序开始。回到第 1 页。order 持久化到 URL。
   function onSortChange(field: string) {
     const cur = parsedOrder
     let nextOrder: string | undefined
     if (!cur || cur.field !== field) nextOrder = toOrder(field, false)
     else if (!cur.desc) nextOrder = toOrder(field, true)
     else nextOrder = undefined
-    commit({ dateRange: draftRange, order: nextOrder || '' })
+    const next = new URLSearchParams(searchParams)
+    if (nextOrder) next.set('order', nextOrder)
+    else next.delete('order')
+    setSearchParams(next, { replace: true })
     setPage(1)
   }
 
@@ -215,10 +166,9 @@ export default function UserList() {
 
   function goToDetail(row: UserV2Row) {
     if (!row?.user_id) return
-    const [start, end] = state.dateRange
     navigate({
       pathname: `/user/${encodeURIComponent(row.user_id)}`,
-      search: `?${new URLSearchParams({ startDate: formatDateParam(start), endDate: formatDateParam(end) }).toString()}`,
+      search: `?${new URLSearchParams(dateParams).toString()}`,
     })
   }
 
@@ -228,37 +178,16 @@ export default function UserList() {
 
   return (
     <div className="space-y-5">
-      <header className="space-y-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户看板</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            按用户聚合需求提效，日历提效看交付周期缩短了多少，人力提效看人工投入节省了多少。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <DateRangePicker value={draftRange} onChange={onDateChange} />
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="用户名/ID 过滤"
-            className={`${inputCls} w-[200px]`}
-          />
-          <button
-            type="button"
-            onClick={applyFilters}
-            disabled={loading}
-            className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
-          >
-            查询
-          </button>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="glass rounded-lg px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
-          >
-            重置
-          </button>
-        </div>
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          按用户聚合需求提效，日历提效看交付周期缩短了多少，人力提效看人工投入节省了多少。
+        </p>
+        <input
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="用户名/ID 过滤"
+          className={`${inputCls} w-[200px]`}
+        />
       </header>
 
       {/* 4 张 MetricCard */}

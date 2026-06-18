@@ -131,12 +131,9 @@ export default function ProjectList() {
   return (
     <div className="space-y-5">
       <header className="space-y-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">项目 Project 提效</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            项目 = 一组 Need(branch)。提效比 / AI占比为 Need 小数口径（守恒聚合、只计干净 Need），点项目进详情查看组成与贡献者。
-          </p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          项目 = 一组 Need(branch)。提效比 / AI占比为 Need 小数口径（守恒聚合、只计干净 Need），点项目进详情查看组成与贡献者。
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"

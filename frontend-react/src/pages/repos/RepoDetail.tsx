@@ -77,21 +77,32 @@ const TH_CENTER = 'px-3 py-2 text-center font-semibold text-gray-500 dark:text-g
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
 
-export default function RepoDetail() {
+/**
+ * RepoDetail 既是独立路由页（/repo/:repoAddr/:repoBranch?），也可被「仓库·效率」聚焦态壳内嵌
+ * （传 repoAddrProp + dateRangeProp + embedded）。嵌入态：日期用全局 timeRange、分支走内部 state 不离开壳。
+ */
+interface RepoDetailProps {
+  repoAddrProp?: string
+  dateRangeProp?: [string, string]
+  embedded?: boolean
+}
+
+export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = false }: RepoDetailProps = {}) {
   const { repoAddr: repoAddrRaw, repoBranch: repoBranchRaw } = useParams<{ repoAddr: string; repoBranch?: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // 路由 param 由 React Router 已 decode。
-  const repoAddr = repoAddrRaw || ''
+  // 路由 param 由 React Router 已 decode；嵌入态用 prop。
+  const repoAddr = repoAddrProp ?? repoAddrRaw ?? ''
 
-  // 日期取 URL（YYYYMMDD/YYYY-MM-DD）；缺则近 90 天。
+  // 日期：嵌入态用 prop（全局 timeRange）；独立页取 URL（YYYYMMDD/YYYY-MM-DD）；缺则近 90 天。
   const dateRange = useMemo<[string, string]>(() => {
+    if (dateRangeProp) return dateRangeProp
     const start = normalizeDateQuery(searchParams.get('startDate'))
     const end = normalizeDateQuery(searchParams.get('endDate'))
     if (start && end) return [start, end]
     return getDefaultDateRangeWide()
-  }, [searchParams])
+  }, [searchParams, dateRangeProp])
 
   const params = useMemo(
     () => ({ startDate: dateRange[0].replace(/-/g, ''), endDate: dateRange[1].replace(/-/g, '') }),
@@ -101,8 +112,9 @@ export default function RepoDetail() {
   const { data: branchesData } = useRepoBranches(repoAddr)
   const branches = branchesData?.branches || []
 
-  // 当前分支：URL param 优先；空则取 branches[0]（待加载）。
-  const currentBranch = repoBranchRaw || branches[0] || ''
+  // 嵌入态分支用内部 state（不导航离开壳）；独立页分支走 URL param。
+  const [embeddedBranch, setEmbeddedBranch] = useState('')
+  const currentBranch = embedded ? embeddedBranch || branches[0] || '' : repoBranchRaw || branches[0] || ''
 
   const { data, isLoading, error } = useRepoDetail({
     repoAddr,
@@ -193,6 +205,10 @@ export default function RepoDetail() {
   }, [commits])
 
   function handleBranchChange(branch: string) {
+    if (embedded) {
+      setEmbeddedBranch(branch)
+      return
+    }
     const q = new URLSearchParams({ startDate: params.startDate, endDate: params.endDate })
     navigate({
       pathname: `/repo/${encodeURIComponent(repoAddr)}/${encodeURIComponent(branch)}`,
@@ -220,17 +236,19 @@ export default function RepoDetail() {
       {/* 标题栏 */}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            返回
-          </button>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">仓库详情</h1>
+          {!embedded && (
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              返回
+            </button>
+          )}
+          {!embedded && <h1 className="text-2xl font-bold text-gray-900 dark:text-white">仓库详情</h1>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {branches.length > 0 && (
@@ -247,7 +265,7 @@ export default function RepoDetail() {
               ))}
             </select>
           )}
-          <DateRangePicker value={dateRange} onChange={onDateChange} />
+          {!embedded && <DateRangePicker value={dateRange} onChange={onDateChange} />}
           <button
             type="button"
             onClick={() => setAddOpen(true)}

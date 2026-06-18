@@ -54,8 +54,18 @@ interface Contributor {
   aiRatio: number | null
 }
 
-export default function ProjectDetail() {
-  const { projectId } = useParams<{ projectId: string }>()
+/**
+ * ProjectDetail 既是独立路由页（/project/:projectId），也可被「项目·效率」聚焦态壳内嵌
+ * （传 projectIdProp + embedded 隐藏返回按钮，壳已有面包屑）。管理操作（添加来源/编辑/删除）两态都保留。
+ */
+interface ProjectDetailProps {
+  projectIdProp?: string
+  embedded?: boolean
+}
+
+export default function ProjectDetail({ projectIdProp, embedded = false }: ProjectDetailProps = {}) {
+  const routeParams = useParams<{ projectId: string }>()
+  const projectId = projectIdProp ?? routeParams.projectId
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data, isLoading, error } = useProjectDetail(projectId)
@@ -180,7 +190,7 @@ export default function ProjectDetail() {
       {/* ① 标题栏 */}
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <BackButton onClick={() => navigate(-1)} />
+          {!embedded && <BackButton onClick={() => navigate(-1)} />}
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{project?.name || '项目详情'}</h1>
             {project?.description && <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{project.description}</p>}

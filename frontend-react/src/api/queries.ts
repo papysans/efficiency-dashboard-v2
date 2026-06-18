@@ -10,6 +10,7 @@ import {
   getGlobalConfig,
   getDeptRankingV2,
   getDeptTreeV2,
+  getEfficiencyV2,
   getNeedDetailV2,
   getProjectDetail,
   getProjectNeeds,
@@ -61,6 +62,18 @@ export function useAllNeeds(params: ListParams) {
   return useQuery({
     queryKey: ['needs-all', params],
     queryFn: () => getAllNeedsV2(params),
+  })
+}
+
+/**
+ * 效率周聚合（user_productivity_v2 周表）。一次拉回区间内全部 user×week 行，
+ * 前端按周分桶成时间线（无需切窗）。userId 非空 → 单用户（个人聚焦态）；空 → 全量（前端再按部门成员过滤）。
+ */
+export function useEfficiencyV2(params: { startDate?: string; endDate?: string; userId?: string }, enabled = true) {
+  return useQuery({
+    queryKey: ['efficiency-v2', params],
+    queryFn: () => getEfficiencyV2(params),
+    enabled,
   })
 }
 

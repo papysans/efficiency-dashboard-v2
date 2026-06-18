@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { useDashboardSummary, useDashboardTrends } from '@/api/queries'
-import { getDefaultDateRangeWide, formatDateParam } from '@/lib/date'
+import { useViewState } from '@/store/viewState'
+import { formatDateParam } from '@/lib/date'
 import { formatNumber, formatV2Ratio } from '@/lib/formatters'
 import { glossaryTip } from '@/lib/glossary'
 import { MetricCard } from '@/components/ui/MetricCard'
@@ -14,10 +15,12 @@ import { DeptPKCard } from '@/components/executive/DeptPKCard'
 // ① Hero 省人天/AI花费/净节省/提效 ② 使用/贡献/AI占比 速览(同款卡,等高) ③ 周提效趋势 ④ 部门PK + Top榜 ⑤ 规模概览。
 // ② 不含成本/质量/效率：成本与 Hero 全平台 AI 花费口径不同易混淆、质量本轮无数据、效率与 Hero 综合提效重复。
 export default function Overview() {
-  const [startDate, endDate] = useMemo(() => {
-    const [s, e] = getDefaultDateRangeWide()
-    return [formatDateParam(s), formatDateParam(e)]
-  }, [])
+  // 全局时间范围（顶部统一 DateRangePicker），切日期联动总览各卡。
+  const { timeRange } = useViewState()
+  const [startDate, endDate] = useMemo(
+    () => [formatDateParam(timeRange[0]), formatDateParam(timeRange[1])],
+    [timeRange],
+  )
 
   return (
     <div className="grid grid-cols-12 gap-4 lg:gap-6">

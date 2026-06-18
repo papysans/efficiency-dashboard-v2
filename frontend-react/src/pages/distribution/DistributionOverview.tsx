@@ -9,7 +9,8 @@ import { useAllNeeds, useAllUsers, useProjectList, useRepos } from '@/api/querie
 import type { NeedsV2Summary, ProjectListItem, RepoListItem, UserV2Row } from '@/api/types'
 import { useTheme } from '@/hooks/useTheme'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
-import { getDefaultDateRangeWide, formatDateParam } from '@/lib/date'
+import { useViewState } from '@/store/viewState'
+import { formatDateParam } from '@/lib/date'
 import { formatV2Ratio, formatNumber } from '@/lib/formatters'
 import { sortRows } from '@/lib/sort'
 import {
@@ -27,7 +28,6 @@ import {
 } from '@/lib/distribution'
 import { Glass } from '@/components/ui/Glass'
 import { MetricCard } from '@/components/ui/MetricCard'
-import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { Tag } from '@/components/ui/Tag'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { PercentPill } from '@/components/ui/PercentPill'
@@ -46,42 +46,33 @@ type RankTab = 'user' | 'repo' | 'project'
 const DEFAULT_TAB: RankTab = 'user'
 const RANK_TOP_N = 10
 
+// 日期来自全局 timeRange（顶部统一 picker），不再进 URL；URL 只持有 caliber/bins/tab（及壳的 object/sub）。
 interface DistState {
-  dateRange: [string, string]
   caliber: Caliber
   bins: number
   tab: RankTab
 }
 
-function normalizeDate(v: string | null): string {
-  if (!v) return ''
-  const s = String(v).trim()
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  return ''
-}
-
 function readState(sp: URLSearchParams): DistState {
-  const start = normalizeDate(sp.get('startDate'))
-  const end = normalizeDate(sp.get('endDate'))
-  const dateRange: [string, string] = start && end ? [start, end] : getDefaultDateRangeWide(30)
   const caliber: Caliber = sp.get('caliber') === 'work' ? 'work' : 'calendar'
   let bins = Number(sp.get('bins'))
   if (!Number.isFinite(bins) || bins <= 0) bins = DEFAULT_BINS
   bins = Math.max(MIN_BINS, Math.min(MAX_BINS, Math.round(bins)))
   const tabParam = sp.get('tab')
   const tab: RankTab = tabParam === 'repo' || tabParam === 'project' ? tabParam : DEFAULT_TAB
-  return { dateRange, caliber, bins, tab }
+  return { caliber, bins, tab }
 }
 
-/** 组装 URL query（省默认值：caliber=calendar / bins=6 / tab=user 不入 URL）。 */
-function buildQuery(s: DistState): Record<string, string> {
-  const [start, end] = s.dateRange
-  const q: Record<string, string> = { startDate: formatDateParam(start), endDate: formatDateParam(end) }
-  if (s.caliber !== 'calendar') q.caliber = s.caliber
-  if (s.bins !== DEFAULT_BINS) q.bins = String(s.bins)
-  if (s.tab !== DEFAULT_TAB) q.tab = s.tab
-  return q
+/** 把分布自身的 caliber/bins/tab 合并进现有 URL（保留壳的 object/sub/全局态；省默认值则删除该键）。 */
+function applyToParams(sp: URLSearchParams, s: DistState): URLSearchParams {
+  const next = new URLSearchParams(sp)
+  if (s.caliber !== 'calendar') next.set('caliber', s.caliber)
+  else next.delete('caliber')
+  if (s.bins !== DEFAULT_BINS) next.set('bins', String(s.bins))
+  else next.delete('bins')
+  if (s.tab !== DEFAULT_TAB) next.set('tab', s.tab)
+  else next.delete('tab')
+  return next
 }
 
 /** 双口径堆叠直方图 option（kept 蓝 + excluded 黄堆叠；barOption 工厂不支持堆叠，故手写）。 */
@@ -445,9 +436,11 @@ function ProjectRanking() {
 export default function DistributionOverview() {
   const { theme } = useTheme()
   const [sp, setSp] = useSearchParams()
+  // 全局时间范围（顶部统一 DateRangePicker）——本页不再有自己的日期 picker。
+  const { timeRange } = useViewState()
   const state = useMemo(() => readState(sp), [sp])
-  const { dateRange, caliber, bins, tab } = state
-  const [startStr, endStr] = dateRange
+  const { caliber, bins, tab } = state
+  const [startStr, endStr] = timeRange
   const caliberLabel = caliber === 'calendar' ? '日历' : '人力'
 
   // 拉两次合并：默认(NOT outlier)=kept，outlierOnly=excluded；都在看板口径内（不传 includeAll）。
@@ -515,21 +508,17 @@ export default function DistributionOverview() {
   const exclPct = total > 0 ? (dist.excludedCount / total) * 100 : 0
 
   function commit(next: DistState) {
-    setSp(buildQuery(next), { replace: true })
+    setSp(applyToParams(sp, next), { replace: true })
   }
 
   return (
     <div className="space-y-5">
       {/* header */}
       <header className="space-y-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">提效分布</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            全量 Need 的提效比分布与数据质量诊断。可切换日历 / 人力口径、手调分档粒度，即时重算（不重新查询）。
-          </p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          全量 Need 的提效比分布与数据质量诊断。可切换日历 / 人力口径、手调分档粒度，即时重算（不重新查询）。
+        </p>
         <div className="flex flex-wrap items-center gap-3">
-          <DateRangePicker value={dateRange} onChange={(r) => commit({ ...state, dateRange: r })} />
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-400 dark:text-gray-500">口径</span>
             <Segmented<Caliber>

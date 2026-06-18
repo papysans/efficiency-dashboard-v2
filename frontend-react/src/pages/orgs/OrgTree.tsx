@@ -6,17 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useDeptTree } from '@/api/queries'
 import type { DeptTreeNode } from '@/api/types'
-import { getDefaultDateRangeWide } from '@/lib/date'
-import { DateRangePicker } from '@/components/ui/DateRangePicker'
+import { useViewState } from '@/store/viewState'
 import { DeptMembersPanel } from './DeptMembersPanel'
-
-function normalizeDateQuery(value: string | null): string {
-  if (!value) return ''
-  const s = String(value).trim()
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  return ''
-}
 
 // 初始态：第一层全部展开、第二层全部闭合。
 // 单根（公司根节点）时展开根 + 根的直接子部门；多根（森林）时展开所有顶层部门。
@@ -121,18 +112,14 @@ function TreeNode({ node, depth, selectedId, expanded, onToggle, onSelect }: Tre
 export default function OrgTree() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: tree, isLoading, error } = useDeptTree()
+  // 全局时间范围（顶部统一 DateRangePicker）——本页不再有自己的日期 picker/state。
+  const { timeRange } = useViewState()
 
   const nodes: DeptTreeNode[] = useMemo(() => tree || [], [tree])
 
-  const selectedId = searchParams.get('dept_id') || ''
+  // 部门选中：壳的对象选择器写 ?object=（聚焦），树点选写 ?dept_id=（探索）；两者皆视为选中（object 优先）。
+  const selectedId = searchParams.get('object') || searchParams.get('dept_id') || ''
   const selectedNode = useMemo(() => (selectedId ? findNodeById(nodes, selectedId) : undefined), [nodes, selectedId])
-
-  const dateRange = useMemo<[string, string]>(() => {
-    const start = normalizeDateQuery(searchParams.get('startDate'))
-    const end = normalizeDateQuery(searchParams.get('endDate'))
-    if (start && end) return [start, end]
-    return getDefaultDateRangeWide()
-  }, [searchParams])
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
@@ -154,20 +141,13 @@ export default function OrgTree() {
     })
   }, [])
 
+  // 树点选写 ?object=（与壳的对象选择器/面包屑同源），保留其它 query；进入聚焦清掉 ?sub（与壳 onSelect 一致）。
   const select = useCallback(
     (id: string) => {
       const next = new URLSearchParams(searchParams)
-      next.set('dept_id', id)
-      setSearchParams(next, { replace: true })
-    },
-    [searchParams, setSearchParams],
-  )
-
-  const onDateChange = useCallback(
-    (range: [string, string]) => {
-      const next = new URLSearchParams(searchParams)
-      next.set('startDate', range[0].replace(/-/g, ''))
-      next.set('endDate', range[1].replace(/-/g, ''))
+      next.set('object', id)
+      next.delete('dept_id')
+      next.delete('sub')
       setSearchParams(next, { replace: true })
     },
     [searchParams, setSearchParams],
@@ -175,16 +155,10 @@ export default function OrgTree() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">组织</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            左树为 dept-sync 权威部门树；点部门查看其直属成员花名册（按 universal_id 对到看板指标，无活动成员也列出）。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <DateRangePicker value={dateRange} onChange={onDateChange} />
-        </div>
+      <header>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          左树为 dept-sync 权威部门树；点部门查看其直属成员花名册（按 universal_id 对到看板指标，无活动成员也列出）。
+        </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-[20rem_1fr] gap-5 items-start">
@@ -226,7 +200,7 @@ export default function OrgTree() {
 
         {/* 右：部门成员（dept-sync 花名册 + 看板 V2 指标） */}
         <div className="min-w-0">
-          <DeptMembersPanel deptId={selectedId} deptName={selectedNode?.dept_name || ''} dateRange={dateRange} />
+          <DeptMembersPanel deptId={selectedId} deptName={selectedNode?.dept_name || ''} dateRange={timeRange} />
         </div>
       </div>
     </div>

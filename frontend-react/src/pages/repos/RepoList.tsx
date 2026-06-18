@@ -10,12 +10,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { getReposV2 } from '@/api/endpoints'
 import type { RepoListItem } from '@/api/types'
+import { useViewState } from '@/store/viewState'
 import { formatDuration } from '@/lib/formatters'
-import { formatDateParam, getDefaultDateRangeWide } from '@/lib/date'
+import { formatDateParam } from '@/lib/date'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { Pagination } from '@/components/ui/Pagination'
-import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { PercentPill } from '@/components/ui/PercentPill'
 import { RatioPill } from '@/components/ui/RatioPill'
 
@@ -28,16 +28,7 @@ const CLIENT_GETTERS: Record<string, (r: RepoListItem) => number | null | undefi
   efficiencyRatio: (r) => r.efficiency_ratio,
 }
 
-function normalizeDateQuery(value: string | null): string {
-  if (!value) return ''
-  const s = String(value).trim()
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  return ''
-}
-
 interface PageState {
-  dateRange: [string, string]
   page: number
   pageSize: number
   order: string
@@ -46,30 +37,25 @@ interface PageState {
 const DEFAULT_PAGE_SIZE = 250
 
 function stateFromParams(sp: URLSearchParams): PageState {
-  const start = normalizeDateQuery(sp.get('startDate'))
-  const end = normalizeDateQuery(sp.get('endDate'))
-  const dateRange: [string, string] = start && end ? [start, end] : getDefaultDateRangeWide()
   const page = Number(sp.get('page')) > 0 ? Number(sp.get('page')) : 1
   const pageSize = Number(sp.get('pageSize')) > 0 ? Number(sp.get('pageSize')) : DEFAULT_PAGE_SIZE
-  return { dateRange, page, pageSize, order: sp.get('order') || '' }
+  return { page, pageSize, order: sp.get('order') || '' }
 }
 
-/** URL 省略默认值（page=1/pageSize=250/无 order 不入 URL）。 */
+/** URL 省略默认值（page=1/pageSize=250/无 order 不入 URL）。日期走全局 timeRange，不入 URL。 */
 function buildQuery(s: PageState): Record<string, string> {
-  const [start, end] = s.dateRange
-  const q: Record<string, string> = { startDate: formatDateParam(start), endDate: formatDateParam(end) }
+  const q: Record<string, string> = {}
   if (s.page !== 1) q.page = String(s.page)
   if (s.pageSize !== DEFAULT_PAGE_SIZE) q.pageSize = String(s.pageSize)
   if (s.order) q.order = s.order
   return q
 }
 
-/** 请求参数：仅服务端列才下发 order（其余客户端列后端不消费）。 */
-function buildParams(s: PageState): Record<string, string | number> {
-  const [start, end] = s.dateRange
+/** 请求参数：仅服务端列才下发 order（其余客户端列后端不消费）。日期由调用方传入（全局 timeRange）。 */
+function buildParams(s: PageState, dateParams: { startDate: string; endDate: string }): Record<string, string | number> {
   const params: Record<string, string | number> = {
-    startDate: formatDateParam(start),
-    endDate: formatDateParam(end),
+    startDate: dateParams.startDate,
+    endDate: dateParams.endDate,
     page: s.page,
     pageSize: s.pageSize,
   }
@@ -87,11 +73,17 @@ const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dar
 export default function RepoList() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  // 全局时间范围（顶部统一 DateRangePicker）——本页不再有自己的日期 picker/state。
+  const { timeRange } = useViewState()
 
   const state = useMemo(() => stateFromParams(searchParams), [searchParams])
   const parsedOrder = useMemo(() => parseOrder(state.order), [state.order])
 
-  const [draftRange, setDraftRange] = useState<[string, string]>(state.dateRange)
+  const dateParams = useMemo(
+    () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
+    [timeRange],
+  )
+
   const [rows, setRows] = useState<RepoListItem[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -104,13 +96,13 @@ export default function RepoList() {
     [setSearchParams],
   )
 
-  // URL 变化重新拉数据
+  // URL（page/pageSize/order）或全局时间范围变化时重新拉数据。
   useEffect(() => {
     let aborted = false
     const s = stateFromParams(searchParams)
     setLoading(true)
     setErrMsg('')
-    getReposV2(buildParams(s))
+    getReposV2(buildParams(s, dateParams))
       .then((res) => {
         if (aborted) return
         setRows(res.data || [])
@@ -128,13 +120,7 @@ export default function RepoList() {
     return () => {
       aborted = true
     }
-  }, [searchParams])
-
-  // URL 外部变化时回填草稿日期
-  useEffect(() => {
-    setDraftRange(state.dateRange)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, dateParams])
 
   // 客户端列排序（命中 CLIENT_GETTERS 才在前端排；服务端列后端已排，原样）。
   const displayRows = useMemo(() => {
@@ -144,15 +130,11 @@ export default function RepoList() {
     return rows
   }, [rows, parsedOrder])
 
-  function onDateChange(range: [string, string]) {
-    setDraftRange(range)
-    commit({ ...state, dateRange: range, page: 1 })
-  }
   function handleSizeChange(size: number) {
-    commit({ ...state, dateRange: draftRange, pageSize: size, page: 1 })
+    commit({ ...state, pageSize: size, page: 1 })
   }
   function handlePageChange(p: number) {
-    commit({ ...state, dateRange: draftRange, page: p })
+    commit({ ...state, page: p })
   }
 
   // 三态循环：服务端列变 order 即重拉（page=1）；客户端列只改 order（本地重排），不动 page。
@@ -163,7 +145,7 @@ export default function RepoList() {
     else if (!cur.desc) nextOrder = toOrder(field, true)
     else nextOrder = undefined
     const isServer = SERVER_FIELDS.has(field)
-    commit({ ...state, dateRange: draftRange, order: nextOrder || '', page: isServer ? 1 : state.page })
+    commit({ ...state, order: nextOrder || '', page: isServer ? 1 : state.page })
   }
 
   const isSortActive = (field: string) => parsedOrder?.field === field
@@ -176,16 +158,10 @@ export default function RepoList() {
 
   return (
     <div className="space-y-5">
-      <header className="space-y-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">仓库 Repo 提效</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            按仓库聚合古法预估 vs 实际耗时，提效比为百分比口径（300 表示提速到 4 倍）。每仓库取首选分支。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <DateRangePicker value={draftRange} onChange={onDateChange} />
-        </div>
+      <header>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          按仓库聚合古法预估 vs 实际耗时，提效比为百分比口径（300 表示提速到 4 倍）。每仓库取首选分支。
+        </p>
       </header>
 
       <section className="glass rounded-2xl overflow-hidden">

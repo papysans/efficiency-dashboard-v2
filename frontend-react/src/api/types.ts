@@ -270,6 +270,10 @@ export interface UserProductivityV2 {
   merged_need_count?: number
   active_need_count?: number
   abandoned_need_count?: number
+  actual_calendar_min?: number
+  baseline_calendar_min?: number
+  actual_active_work_corrected_min?: number
+  baseline_fused_work_min?: number
   efficiency_ratio?: number | null // 小数口径
   work_efficiency_ratio?: number | null // 小数口径
   commit_count?: number
@@ -280,6 +284,12 @@ export interface UserProductivityV2 {
   upstream_tokens?: number
   downstream_tokens?: number
   [k: string]: unknown
+}
+
+/** /v2/efficiency 顶层响应（user×week 周聚合行，小数口径 efficiency_ratio）。 */
+export interface EfficiencyV2AggregateResponse {
+  total: number
+  data: UserProductivityV2[]
 }
 
 /** /v2/users/{id} 顶层响应（§User-2，summary 小数口径） */
