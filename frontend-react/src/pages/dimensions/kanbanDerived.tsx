@@ -60,13 +60,17 @@ export function KanbanUsage({
       </div>
     )
   }
-  return entity === 'project' ? <ProjectUsageAggregate /> : <RepoUsageAggregate timeRange={timeRange} />
+  return entity === 'project' ? <ProjectUsageAggregate timeRange={timeRange} /> : <RepoUsageAggregate timeRange={timeRange} />
 }
 
-function ProjectUsageAggregate() {
+function ProjectUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
   const navigate = useNavigate()
   const goToProject = useProjectNav(navigate)
-  const { data, isLoading, error } = useProjectList()
+  const dateParams = useMemo(
+    () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
+    [timeRange],
+  )
+  const { data, isLoading, error } = useProjectList(dateParams)
   const rows = useMemo<ProjectListItem[]>(() => data?.data ?? [], [data])
 
   // 按 AI 占比降序（null 沉底）——使用维度看 AI 渗透。
@@ -259,7 +263,7 @@ export function KanbanCost({
       </div>
     )
   }
-  return entity === 'project' ? <ProjectCostAggregate /> : <RepoCostAggregate timeRange={timeRange} />
+  return entity === 'project' ? <ProjectCostAggregate timeRange={timeRange} /> : <RepoCostAggregate timeRange={timeRange} />
 }
 
 /** 单卡成本顶部说明（与 user/org 双卡区分：project/repo 平台无口径，只有看板费用单卡）。 */
@@ -277,16 +281,21 @@ function SingleCostNotice() {
   )
 }
 
-function ProjectCostAggregate() {
+function ProjectCostAggregate({ timeRange }: { timeRange: [string, string] }) {
   const navigate = useNavigate()
   const goToProject = useProjectNav(navigate)
-  const { data, isLoading, error } = useProjectList()
+  const dateParams = useMemo(
+    () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
+    [timeRange],
+  )
+  const { data, isLoading, error } = useProjectList(dateParams)
   const rows = useMemo<ProjectListItem[]>(() => data?.data ?? [], [data])
   const ranked = useMemo(() => sortRows(rows, (r) => r.need_cost, true), [rows])
   const totalCost = useMemo(() => rows.reduce((s, r) => s + (r.need_cost || 0), 0), [rows])
   const totalLoc = useMemo(() => rows.reduce((s, r) => s + (r.need_total_loc_net || 0), 0), [rows])
-  const totalNeeds = useMemo(() => rows.reduce((s, r) => s + (r.need_total_count || 0), 0), [rows])
-  const costPerNeed = totalNeeds > 0 ? totalCost / totalNeeds : null
+  // ¥/完成需求：分母用各项目已完成（status='merged'）需求数合计，比候选池总数更贴近「已交付成本」。
+  const totalDone = useMemo(() => rows.reduce((s, r) => s + (r.need_done_count || 0), 0), [rows])
+  const costPerDone = totalDone > 0 ? totalCost / totalDone : null
 
   if (error) return <DerivedError msg={(error as Error).message} />
 
@@ -295,7 +304,7 @@ function ProjectCostAggregate() {
       <SingleCostNotice />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard label="总费用" value={`¥${fmtCost(totalCost)}`} hint="各项目需求费用合计" />
-        <MetricCard label="¥/需求" value={costPerNeed != null ? `¥${fmtCost(costPerNeed)}` : '-'} hint="总费用 / 需求总数" />
+        <MetricCard label="¥/完成需求" value={costPerDone != null ? `¥${fmtCost(costPerDone)}` : '-'} hint="总费用 / 已完成(merged)需求数" />
         <MetricCard label="平均单价" value={totalLoc > 0 ? `¥${fmtCost((totalCost / totalLoc) * 1000)} /千行` : '-'} hint="费用 / 生成代码千行" />
         <MetricCard label="生成代码(合计)" value={totalLoc > 0 ? `${formatNumber(totalLoc)} 行` : '-'} />
       </div>

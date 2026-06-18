@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useDeptCostTree } from './platformDeptCostTree'
 import type { CostTreeNode } from './costTreeRollup'
-import { useAllUsers, useDashboardSummary, useGlobalConfig } from '@/api/queries'
+import { useAllUsers, useDashboardSummary, useDeptRanking, useGlobalConfig } from '@/api/queries'
 import type { UserV2Row } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
@@ -104,6 +104,53 @@ function CompanyKanbanCostCard({ cost, loading }: { cost: number | null; loading
       )}
       <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
         当前仅支持全公司合计（看板暂无按部门聚合的会话费用），部门级待后端。
+        与平台 AI 花费（Token 调用花费）不同源，勿混读。
+      </p>
+    </section>
+  )
+}
+
+/**
+ * 部门聚焦态：单部门看板会话费用卡（dept-ranking self.cost = 该部门整棵子树成员经 universal_id 左连看板的
+ * tasks.cost 累加，与项目/仓库会话费用同源）。self 可空（部门无子部门走早返回）或 ranking 不可达时回落建设中占位。
+ */
+function DeptKanbanCostCard({
+  cost,
+  loading,
+  objectLabel,
+}: {
+  cost: number | null
+  loading: boolean
+  objectLabel: string
+}) {
+  if (!loading && cost == null) {
+    // self 不可得（无子部门早返回 / ranking 服务不可达）→ 保留建设中占位，不编造 ¥0。
+    return <KanbanSessionCostPlaceholder subject="部门" />
+  }
+  return (
+    <section className="glass rounded-2xl p-5 flex flex-col" style={{ borderLeft: '3px solid #0071e3' }}>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center gap-1">
+          会话费用（看板·部门子树）
+          <span className="text-gray-400 cursor-help inline-flex" title={SESSION_COST_TIP} aria-label={SESSION_COST_TIP}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+        </h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">{objectLabel} · 子树 tasks.cost 聚合</span>
+      </div>
+      {loading ? (
+        <div className="grid grid-cols-1 gap-3">
+          <div className="skeleton h-20 rounded-xl" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          <MetricCard label="会话费用合计" value={fmtYuan(cost)} hint="该部门整棵子树成员 tasks.cost 聚合（非人天×单价）" />
+        </div>
+      )}
+      <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+        会话费用 = 该部门<b className="font-medium">整棵子树成员</b>（经 universal_id 对到看板）的模型调用花费（tasks.cost 聚合，与项目/仓库会话费用同源）。
         与平台 AI 花费（Token 调用花费）不同源，勿混读。
       </p>
     </section>
@@ -521,6 +568,12 @@ function OrgCostContent({
   //   聚合态显真实全公司会话费用；聚焦态(单部门)无看板会话费用聚合 → 建设中占位。
   const summaryQ = useDashboardSummary({ startDate: formatDateParam(start), endDate: formatDateParam(end) })
   const companyKanbanCost = summaryQ.data?.total_cost ?? null
+  // 部门聚焦态：该部门整棵子树看板会话费用 = dept-ranking self.cost（universal_id 左连看板 tasks.cost 累加）。
+  //   只在聚焦态拉；self 可空（无子部门早返回）/ranking 不可达 → 卡内回落建设中占位。
+  const deptCostQ = useDeptRanking(
+    focused ? { parentDeptId: object, startDate: start, endDate: end } : { parentDeptId: undefined },
+  )
+  const deptKanbanCost = focused ? deptCostQ.data?.self?.cost ?? null : null
 
   const trendSeries = useMemo(
     () => [
@@ -553,9 +606,9 @@ function OrgCostContent({
           // 聚合态 KPI：树根（公司）子树合计 = 全树平台 AI 花费总额（含所有子部门 rollup）。
           <DeptTreeCostCard cost={aggCost} activeMembers={aggActive} loading={treeQ.loading} />
         )}
-        {/* 看板侧会话费用卡：聚合态显真实全公司 tasks.cost；聚焦态(单部门)看板无聚合端点 → 建设中占位。 */}
+        {/* 看板侧会话费用卡：聚合态显真实全公司 tasks.cost；聚焦态(单部门)用 dept-ranking self.cost(子树 tasks.cost)。 */}
         {focused ? (
-          <KanbanSessionCostPlaceholder subject="部门" />
+          <DeptKanbanCostCard cost={deptKanbanCost} loading={deptCostQ.isLoading} objectLabel={objectLabel || object} />
         ) : (
           <CompanyKanbanCostCard cost={companyKanbanCost} loading={summaryQ.isLoading} />
         )}

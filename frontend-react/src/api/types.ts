@@ -385,14 +385,15 @@ export interface RepoListItem {
   cost?: number // 看板派生费用（Need→session→tasks.cost 跨分支聚合）；无 tasks 数据的库为 0
 }
 
-/** /v2/repo-trend、/v2/project-trend 的周聚合点（EfficiencyPct 已是百分比，前端直接画不再 ×100）。 */
+/** /v2/repo-trend、/v2/project-trend 的周聚合点（efficiency_pct 已是百分比提效率，前端直接画不再 ×100）。 */
 export interface EntityTrendPoint {
   week_start: string // 该周周一 YYYY-MM-DD
-  efficiency_pct: number // 百分比口径（300=300%）
+  efficiency_pct: number // 提效率百分比(gain%，200=2倍提升)；项目侧=每周Σbaseline/Σactual守恒，与项目卡片同口径
   commit_count: number // 仓库口径：本周提交数
   diff_lines: number // 仓库口径：本周代码行
   need_count: number // 项目口径：本周干净 Need 数
   loc: number // 项目口径：本周生成代码净行
+  cost?: number // 仓库口径：本周会话费用(Need→session→tasks.cost,按 dev_end_ts 分桶);archive 库恒 0
 }
 
 export interface EntityTrendResponse {
@@ -577,6 +578,9 @@ export interface DeptRankingItem {
 export interface DeptRankingResponse {
   parent_dept_id: string
   items: DeptRankingItem[]
+  /** 批次4：parent 整棵子树（含直属 parent 本级）全部成员守恒汇总；parent 无子部门走早返回时缺省/为 null。
+   *  self.dept_id == parent_dept_id；calendar_ratio/work_ratio 小数倍数口径(RatioPill)；cost 元。 */
+  self?: DeptMembersSummary | null
 }
 
 /** /v2/orgs/detail 顶层响应（§Org-7）。 */
@@ -870,6 +874,11 @@ export interface ProjectListItem {
   need_cost?: number | null
   need_eligible_count?: number
   need_total_count?: number
+  // —— 批次3：per-项目 baseline/actual 合计（跨项目守恒均值用 Σbaseline/Σactual，绝不对各项目比值取算术平均）——
+  need_baseline_calendar_min?: number // 日历基线分钟合计 Σbaseline
+  need_actual_calendar_min?: number // 日历实际分钟合计 Σactual
+  need_baseline_work_min?: number // 工作量基线分钟合计（配 need_actual_work_min 做工作量守恒）
+  need_done_count?: number // 已完成（status='merged'）需求数，供「¥/完成需求」分母
   [k: string]: unknown
 }
 

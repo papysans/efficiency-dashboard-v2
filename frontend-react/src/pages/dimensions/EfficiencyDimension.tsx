@@ -113,7 +113,7 @@ function EfficiencyTrend({
     return focused ? (
       <ProjectFocusTrend object={object} objectLabel={objectLabel} dateParams={dateParams} />
     ) : (
-      <ProjectAggregateSummary />
+      <ProjectAggregateSummary dateParams={dateParams} />
     )
   }
 
@@ -206,33 +206,35 @@ function ProjectFocusTrend({
  * 删除串味卡（AI占比→使用维 / 费用→成本维 / 生成代码·贡献者→贡献维，各有专属维度）。
  * 全用 useProjectList()(ProjectListItem) 现成字段（与项目列表/详情同源、纯 Need(branch) 口径），
  * 提效比为**小数口径**（formatV2Ratio）。
- * 平均提效比 = 各项目 need_*_efficiency_ratio 的算术均值（仅计有限值，与项目排行同源）；
- * ⚠️ 加权（Σbaseline/Σactual）口径待后端（批次3）暴露 per-项目 baseline/actual 合计字段。
+ * 批次3：平均提效比改**守恒口径** = Σ(need_baseline_*_min)/Σ(need_actual_*_min) 跨项目求和相除，
+ *   绝不对各项目 need_*_efficiency_ratio 取算术平均（守恒铁律）。startDate/endDate 透传后端，随全局窗变化。
  */
-function ProjectAggregateSummary() {
-  const { data, isLoading, error } = useProjectList()
+function ProjectAggregateSummary({ dateParams }: { dateParams: { startDate: string; endDate: string } }) {
+  const { data, isLoading, error } = useProjectList(dateParams)
   const rows = useMemo<ProjectListItem[]>(() => data?.data ?? [], [data])
 
   const agg = useMemo(() => {
     let eligible = 0
     let total = 0
-    const calRatios: number[] = []
-    const workRatios: number[] = []
+    // 守恒：跨项目 Σbaseline / Σactual（日历 & 工作量各一对）。
+    let calBaseline = 0
+    let calActual = 0
+    let workBaseline = 0
+    let workActual = 0
     for (const r of rows) {
       eligible += r.need_eligible_count ?? 0
       total += r.need_total_count ?? 0
-      const cal = Number(r.need_calendar_efficiency_ratio)
-      if (r.need_calendar_efficiency_ratio != null && Number.isFinite(cal)) calRatios.push(cal)
-      const work = Number(r.need_work_efficiency_ratio)
-      if (r.need_work_efficiency_ratio != null && Number.isFinite(work)) workRatios.push(work)
+      calBaseline += r.need_baseline_calendar_min ?? 0
+      calActual += r.need_actual_calendar_min ?? 0
+      workBaseline += r.need_baseline_work_min ?? 0
+      workActual += r.need_actual_work_min ?? 0
     }
-    const mean = (xs: number[]) => (xs.length > 0 ? xs.reduce((s, v) => s + v, 0) / xs.length : null)
     return {
       projectCount: rows.length,
       eligible,
       total,
-      avgCalRatio: mean(calRatios),
-      avgWorkRatio: mean(workRatios),
+      avgCalRatio: calActual > 0 ? calBaseline / calActual : null,
+      avgWorkRatio: workActual > 0 ? workBaseline / workActual : null,
     }
   }, [rows])
 
@@ -266,13 +268,13 @@ function ProjectAggregateSummary() {
           <MetricCard
             label="平均日历提效比"
             value={formatV2Ratio(agg.avgCalRatio)}
-            tip="各项目日历提效比（小数口径）的算术均值；加权口径（Σbaseline/Σactual）待后端（批次3）"
+            tip="守恒口径：跨项目 Σ(日历基线分钟) / Σ(日历实际分钟)（小数倍数），非各项目比值的算术平均"
             tone={agg.avgCalRatio != null && agg.avgCalRatio < 0 ? 'neg' : 'pos'}
           />
           <MetricCard
             label="平均人力提效比"
             value={formatV2Ratio(agg.avgWorkRatio)}
-            tip="各项目人力(工作量)提效比（小数口径）的算术均值；加权口径（Σbaseline/Σactual）待后端（批次3）"
+            tip="守恒口径：跨项目 Σ(工作量基线分钟) / Σ(工作量实际分钟)（小数倍数），非各项目比值的算术平均"
             tone={agg.avgWorkRatio != null && agg.avgWorkRatio < 0 ? 'neg' : 'pos'}
           />
         </div>
@@ -304,7 +306,7 @@ function AggregateContent({ entity, timeRange }: { entity: string; timeRange: [s
  *     project = need_calendar_efficiency_ratio（小数）｜ repo = efficiency_ratio（百分比）｜ user = calendar_ratio（小数）。
  */
 function EntityDistribution({ entity, timeRange }: { entity: string; timeRange: [string, string] }) {
-  if (entity === 'project') return <ProjectRatioDistribution />
+  if (entity === 'project') return <ProjectRatioDistribution timeRange={timeRange} />
   if (entity === 'repo') return <RepoRatioDistribution timeRange={timeRange} />
   if (entity === 'user') return <UserRatioDistribution timeRange={timeRange} />
   // 组织：保留全量需求分布（= 组织/公司口径的需求分布）+ 口径说明。
@@ -318,9 +320,11 @@ function EntityDistribution({ entity, timeRange }: { entity: string; timeRange: 
   )
 }
 
-/** 项目分布：各项目 need_calendar_efficiency_ratio（小数口径）分桶。数据现成（useProjectList，与日期无关）。 */
-function ProjectRatioDistribution() {
-  const { data, isLoading, error } = useProjectList()
+/** 项目分布：各项目 need_calendar_efficiency_ratio（小数口径）分桶。startDate/endDate 透传后端随全局窗变化。 */
+function ProjectRatioDistribution({ timeRange }: { timeRange: [string, string] }) {
+  const startDate = formatDateParam(timeRange[0])
+  const endDate = formatDateParam(timeRange[1])
+  const { data, isLoading, error } = useProjectList({ startDate, endDate })
   const ratios = useMemo(() => (data?.data ?? []).map((r) => r.need_calendar_efficiency_ratio), [data])
   return (
     <EntityRatioHistogram

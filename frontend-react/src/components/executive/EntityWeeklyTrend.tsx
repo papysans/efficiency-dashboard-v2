@@ -11,7 +11,7 @@ import { getPalette } from '@/components/charts/chartTheme'
 import { formatNumber } from '@/lib/formatters'
 import type { EntityTrendPoint } from '@/api/types'
 
-export type TrendMetric = 'efficiency' | 'commits' | 'loc' | 'needs'
+export type TrendMetric = 'efficiency' | 'commits' | 'loc' | 'needs' | 'cost'
 
 interface MetricCfg {
   pick: (p: EntityTrendPoint) => number
@@ -23,6 +23,7 @@ const METRIC_CFG: Record<TrendMetric, MetricCfg> = {
   commits: { pick: (p) => p.commit_count, label: '提交数', fmt: (v) => formatNumber(v) },
   loc: { pick: (p) => p.diff_lines, label: '代码行', fmt: (v) => `${formatNumber(v)} 行` },
   needs: { pick: (p) => p.need_count, label: '需求数', fmt: (v) => formatNumber(v) },
+  cost: { pick: (p) => p.cost ?? 0, label: '会话费用', fmt: (v) => `¥${formatNumber(v, 2)}` },
 }
 
 interface Props {

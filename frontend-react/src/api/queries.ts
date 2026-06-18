@@ -192,8 +192,9 @@ export function useDeptRanking(params: { parentDeptId?: string; startDate?: stri
   })
 }
 
-/** 项目列表（百分比口径；无分页，客户端筛选/排序）。 */
-export function useProjectList(params?: { order?: string }) {
+/** 项目列表（百分比口径；无分页，客户端筛选/排序）。startDate/endDate 透传后端，让项目聚合态吃全局时间窗
+ *  （聚合 SUM / 候选池计数 / 完成计数随窗变化；不传=全量）。 */
+export function useProjectList(params?: { order?: string; startDate?: string; endDate?: string }) {
   return useQuery({
     queryKey: ['project-list', params],
     queryFn: () => getProjects(params),

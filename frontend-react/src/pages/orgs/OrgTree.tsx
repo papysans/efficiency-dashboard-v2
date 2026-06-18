@@ -170,6 +170,16 @@ export default function OrgTree() {
     return map
   }, [rootRankingQ.data])
 
+  // 公司根节点（单根树）的守恒提效汇总：根的 dept_id 不在 rootRankingQ.items（那是根的子部门）里，
+  // 故单独按 parentDeptId=根 拉一次，取后端 self（整棵子树含直属根本级 Σbaseline/Σactual 守恒汇总）挂到根节点。
+  const singleRootId = nodes.length === 1 ? nodes[0].dept_id : undefined
+  const rootSelfRankingQ = useDeptRanking(
+    singleRootId
+      ? { parentDeptId: singleRootId, startDate: timeRange[0], endDate: timeRange[1] }
+      : { parentDeptId: undefined, startDate: undefined, endDate: undefined },
+  )
+  const rootSelfSummary = singleRootId ? rootSelfRankingQ.data?.self ?? undefined : undefined
+
   // 部门选中：壳的对象选择器写 ?object=（聚焦），树点选写 ?dept_id=（探索）；两者皆视为选中（object 优先）。
   const selectedId = searchParams.get('object') || searchParams.get('dept_id') || ''
   const selectedNode = useMemo(() => (selectedId ? findNodeById(nodes, selectedId) : undefined), [nodes, selectedId])
@@ -246,7 +256,8 @@ export default function OrgTree() {
                     expanded={expanded}
                     onToggle={toggle}
                     onSelect={select}
-                    effSummary={rootSummaryById.get(n.dept_id)}
+                    // 单根公司节点用 self 守恒 rollup（dept-ranking 该根 self）；森林/无 self 时回落原 items 映射。
+                    effSummary={(singleRootId === n.dept_id ? rootSelfSummary : undefined) ?? rootSummaryById.get(n.dept_id)}
                     timeRange={timeRange}
                   />
                 ))}
