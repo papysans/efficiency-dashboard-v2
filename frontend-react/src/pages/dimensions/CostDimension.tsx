@@ -6,6 +6,8 @@
 // 降级护栏：开关 false / 请求失败 → 平台卡显示「未接入平台」，看板人天卡照常（也是建设中）；不空页不抛错。
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useDeptCostTree } from './platformDeptCostTree'
+import type { CostTreeNode } from './costTreeRollup'
 import { useGlobalConfig } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
@@ -22,7 +24,6 @@ import {
   type ChatUserRankingRow,
 } from './platformUserData'
 import {
-  useDeptPlatformRanking,
   useDeptPlatformFocused,
   useDeptWeekSeries,
   type DeptPlatformAgg,
@@ -344,7 +345,8 @@ function OrgCostContent({
   const goDept = useDeptFocus()
 
   const series = useDeptWeekSeries({ startDate: start, endDate: end, deptId: focused ? object : undefined }, true)
-  const rankQ = useDeptPlatformRanking({ startDate: start, endDate: end }, !focused)
+  // 聚合态：成本树（整棵 dept-tree 各部门子树成本 rollup，替代一级部门平铺排行）。聚焦态不需要 → 不拉。
+  const treeQ = useDeptCostTree({ startDate: start, endDate: end }, !focused)
   const focusQ = useDeptPlatformFocused({ startDate: start, endDate: end, deptId: object }, focused)
 
   const trendSeries = useMemo(
@@ -354,10 +356,12 @@ function OrgCostContent({
     [series.windows, series.aggByKey],
   )
 
-  const platformError = (!focused && rankQ.error) || (focused && focusQ.error)
-  const platformErrMsg = (!focused ? rankQ.error : focusQ.error) ?? undefined
+  const platformError = (!focused && treeQ.error) || (focused && focusQ.error)
+  const platformErrMsg = (!focused ? treeQ.error : focusQ.error) ?? undefined
 
-  const items = (rankQ.items ?? []).slice().sort((a, b) => b.estimatedTotalCost - a.estimatedTotalCost)
+  // 聚合态 KPI 卡：树根（公司）子树合计 = 全树平台 AI 花费总额。
+  const aggCost = useMemo(() => treeQ.nodes.reduce((s, n) => s + n.subtreeCost, 0), [treeQ.nodes])
+  const aggActive = useMemo(() => treeQ.nodes.reduce((s, n) => s + n.subtreeActive, 0), [treeQ.nodes])
 
   return (
     <div className="flex flex-col gap-5">
@@ -370,14 +374,11 @@ function OrgCostContent({
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">AI 调用花费（平台·部门聚合）</h2>
             <PlatformNotConnected reason="error" detail={platformErrMsg ?? undefined} />
           </section>
+        ) : focused ? (
+          <DeptPlatformCostCard focusedAgg={focusQ.agg} loading={focusQ.loading} objectLabel={objectLabel || object} />
         ) : (
-          <DeptPlatformCostCard
-            focused={focused}
-            focusedAgg={focusQ.agg}
-            items={items}
-            loading={focused ? focusQ.loading : rankQ.loading}
-            objectLabel={objectLabel || object}
-          />
+          // 聚合态 KPI：树根（公司）子树合计 = 全树平台 AI 花费总额（含所有子部门 rollup）。
+          <DeptTreeCostCard cost={aggCost} activeMembers={aggActive} loading={treeQ.loading} />
         )}
         <PersonDayCostCard subject="部门" />
       </div>
@@ -385,7 +386,7 @@ function OrgCostContent({
       {!platformError && (
         <PlatformWeekTrend
           title="AI 花费趋势（平台·部门聚合）"
-          subtitle={focused ? `部门 · ${objectLabel || object} · 按周 · 仅直属成员` : '全部一级部门 · 按周 · 仅直属成员'}
+          subtitle={focused ? `部门 · ${objectLabel || object} · 按周 · 仅直属成员` : '全部部门 · 按周 · 仅直属成员'}
           windows={series.windows}
           series={trendSeries}
           loading={series.loading}
@@ -395,40 +396,199 @@ function OrgCostContent({
         />
       )}
 
-      {/* P1-2：部门聚合按 Top 500 全量排行命中求和，区间真实人数更大时漏算排行外成员 → 醒目标注。 */}
-      {!focused && !platformError && rankQ.truncated && <TruncationNote total={rankQ.rankingTotal} />}
+      {/* P1-2：直属成本由全量排行 Top 500 命中求和，区间真实人数更大时漏算排行外成员 → 子树成本整体偏小，醒目标注。 */}
+      {!focused && !platformError && treeQ.truncated && <TruncationNote total={treeQ.rankingTotal} />}
 
       {!focused && !platformError && (
-        <ChartCard title="部门 AI 花费排行（平台·直属成员聚合）" sub="区间聚合 · 一级部门 · 按花费倒序 · 点行下钻">
-          <DeptCostRankingTable items={items} loading={rankQ.loading} onRowClick={goDept} />
+        <ChartCard
+          title="部门 AI 花费成本树（平台·子树递归 rollup）"
+          sub={`部门层级 · 节点 = 其子树所有成员平台 AI 花费合计 · 点节点下钻 · 拉取 ${treeQ.deptRequestCount} 个部门花名册`}
+        >
+          <CostTree nodes={treeQ.nodes} loading={treeQ.loading} onSelect={goDept} />
         </ChartCard>
       )}
     </div>
   )
 }
 
+// ============================ 成本树（聚合态）：可展开/折叠的部门层级，节点显子树成本¥ ============================
+/**
+ * 复用 OrgTree 的树渲染范式（缩进 + 展开按钮 + 懒渲染折叠子树），但聚焦成本：每节点显**子树成本¥**（递归 rollup）。
+ * 不直接复用 OrgTree（它绑定 DeptMembersPanel/选中态/URL 探索语义，且每行无成本列）→ 在此建一个聚焦成本的版本。
+ * 展开态用本地 state；点节点名 → onSelect(dept_id) 写 ?object= 进聚焦态（复用 useDeptFocus）。
+ */
+function CostTree({
+  nodes,
+  loading,
+  onSelect,
+}: {
+  nodes: CostTreeNode[]
+  loading: boolean
+  onSelect: (deptId: string) => void
+}) {
+  // 默认展开第一层（根/一级部门），其余折叠 —— 与 OrgTree 初始态一致语气。
+  const initialOpen = useMemo(() => {
+    const s = new Set<string>()
+    for (const n of nodes) if (n.deptId) s.add(n.deptId)
+    return s
+  }, [nodes])
+  const [expanded, setExpanded] = useState<Set<string>>(initialOpen)
+  // 树到达/切换时重置默认展开（仅当当前为空，避免覆盖用户手动展开）。
+  useEffect(() => {
+    setExpanded((prev) => (prev.size > 0 ? prev : initialOpen))
+  }, [initialOpen])
+
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  // 同层按子树成本倒序（与原排行倒序口径一致）。
+  const sorted = useMemo(() => nodes.slice().sort((a, b) => b.subtreeCost - a.subtreeCost), [nodes])
+
+  if (loading && nodes.length === 0) {
+    return (
+      <div className="space-y-2 p-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="skeleton h-8 rounded" />
+        ))}
+      </div>
+    )
+  }
+  if (nodes.length === 0) {
+    return <EmptyHint compact />
+  }
+
+  return (
+    <div className="max-h-[560px] overflow-y-auto">
+      <ul role="tree" aria-label="部门成本树" className="list-none m-0 p-0">
+        {sorted.map((n) => (
+          <CostTreeRow key={n.deptId} node={n} expanded={expanded} onToggle={toggle} onSelect={onSelect} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function CostTreeRow({
+  node,
+  expanded,
+  onToggle,
+  onSelect,
+}: {
+  node: CostTreeNode
+  expanded: Set<string>
+  onToggle: (id: string) => void
+  onSelect: (deptId: string) => void
+}) {
+  const isOpen = expanded.has(node.deptId)
+  // 同层子节点按子树成本倒序。
+  const children = useMemo(
+    () => node.children.slice().sort((a, b) => b.subtreeCost - a.subtreeCost),
+    [node.children],
+  )
+
+  return (
+    <li role="treeitem" aria-expanded={node.hasChildren ? isOpen : undefined}>
+      <div
+        className="flex items-center gap-1 rounded-lg pr-2 py-1.5 transition-colors text-gray-700 dark:text-gray-200 hover:bg-white/50 dark:hover:bg-white/10"
+        style={{ paddingLeft: `${node.depth * 16 + 8}px` }}
+      >
+        {node.hasChildren && node.children.length > 0 ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle(node.deptId)
+            }}
+            aria-label={isOpen ? '收起' : '展开'}
+            className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-apple-blue bg-transparent border-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+          >
+            <svg className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        ) : (
+          <span className="shrink-0 w-5 h-5" aria-hidden="true" />
+        )}
+        <button
+          type="button"
+          onClick={() => node.deptId && onSelect(node.deptId)}
+          disabled={!node.deptId}
+          className="flex-1 min-w-0 inline-flex items-center justify-between gap-3 text-left text-sm bg-transparent border-none p-0 cursor-pointer text-inherit focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue rounded disabled:cursor-default"
+        >
+          <span className="truncate font-medium" title={node.deptName}>{node.deptName}</span>
+          <span className="shrink-0 inline-flex items-center gap-2 tabular-nums">
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400"
+              title={`子树成员 ${node.subtreeMembers} 人，其中活跃 ${node.subtreeActive} 人`}
+            >
+              {node.subtreeActive}/{node.subtreeMembers}人
+            </span>
+            <span className="font-semibold text-gray-900 dark:text-white" title={`子树合计 ¥${node.subtreeCost.toFixed(2)}`}>
+              ¥{shortToken(node.subtreeCost)}
+            </span>
+          </span>
+        </button>
+      </div>
+      {/* 懒渲染：折叠节点不渲染子节点 DOM（大树不一次性铺 DOM）。 */}
+      {node.hasChildren && isOpen && children.length > 0 ? (
+        <ul role="group" className="list-none m-0 p-0">
+          {children.map((ch) => (
+            <CostTreeRow key={ch.deptId} node={ch} expanded={expanded} onToggle={onToggle} onSelect={onSelect} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  )
+}
+
+/** 聚合态 KPI 卡：成本树根合计（全树平台 AI 花费总额）。 */
+function DeptTreeCostCard({ cost, activeMembers, loading }: { cost: number; activeMembers: number; loading: boolean }) {
+  return (
+    <section className="glass rounded-2xl p-5 flex flex-col" style={{ borderLeft: '3px solid #af52de' }}>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">AI 调用花费（平台·全树合计）</h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">全部部门子树 rollup · Token 调用花费</span>
+      </div>
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="skeleton h-20 rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard label="AI 花费合计" value={fmtYuan(cost)} hint="全树 estimated_total_cost rollup" />
+          <MetricCard label="活跃成员" value={formatNumber(activeMembers)} hint="区间内有平台记录的成员数" />
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** 组织聚焦态 KPI 卡：单部门直属成员平台花费合计（成本树点节点 → ?object= → 此卡）。 */
 function DeptPlatformCostCard({
-  focused,
   focusedAgg,
-  items,
   loading,
   objectLabel,
 }: {
-  focused: boolean
   focusedAgg: DeptPlatformAgg | null
-  items: DeptPlatformAgg[]
   loading: boolean
   objectLabel: string
 }) {
-  const cost = focused ? focusedAgg?.estimatedTotalCost ?? null : items.reduce((s, it) => s + (it.estimatedTotalCost || 0), 0)
-  const tokens = focused ? focusedAgg?.sumTotalTokens ?? null : items.reduce((s, it) => s + (it.sumTotalTokens || 0), 0)
-  const cacheTokens = focused ? focusedAgg?.sumCacheTokens ?? null : items.reduce((s, it) => s + (it.sumCacheTokens || 0), 0)
+  const cost = focusedAgg?.estimatedTotalCost ?? null
+  const tokens = focusedAgg?.sumTotalTokens ?? null
+  const cacheTokens = focusedAgg?.sumCacheTokens ?? null
 
   return (
     <section className="glass rounded-2xl p-5 flex flex-col" style={{ borderLeft: '3px solid #af52de' }}>
       <div className="flex items-center justify-between mb-3 gap-3">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">AI 调用花费（平台·部门聚合）</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">{focused ? objectLabel : '全部部门合计'} · 仅直属成员</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500">{objectLabel} · 仅直属成员</span>
       </div>
       {loading ? (
         <div className="grid grid-cols-3 gap-3">
@@ -436,7 +596,7 @@ function DeptPlatformCostCard({
             <div key={i} className="skeleton h-20 rounded-xl" />
           ))}
         </div>
-      ) : focused && (!focusedAgg || focusedAgg.activePlatformUsers === 0) ? (
+      ) : !focusedAgg || focusedAgg.activePlatformUsers === 0 ? (
         <div className="flex-1 flex items-center justify-center py-8 text-sm text-gray-500 dark:text-gray-400">
           该部门直属成员在所选区间内无平台花费记录。
         </div>
@@ -448,78 +608,5 @@ function DeptPlatformCostCard({
         </div>
       )}
     </section>
-  )
-}
-
-function DeptCostRankingTable({
-  items,
-  loading,
-  onRowClick,
-}: {
-  items: DeptPlatformAgg[]
-  loading: boolean
-  onRowClick: (deptId: string) => void
-}) {
-  return (
-    <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead className="sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
-          <tr className="border-b border-gray-200/50 dark:border-white/10">
-            <th className={TH_NUM}>排名</th>
-            <th className={TH}>部门</th>
-            <th className={TH_NUM}>AI 花费（¥）</th>
-            <th className={TH_NUM}>总 Token</th>
-            <th className={TH_NUM}>活跃成员</th>
-            <th className={TH_NUM}>请求数</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading && items.length === 0 ? (
-            <tr>
-              <td colSpan={6} className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">加载中…</td>
-            </tr>
-          ) : items.length === 0 ? (
-            <tr>
-              <td colSpan={6}>
-                <EmptyHint compact />
-              </td>
-            </tr>
-          ) : (
-            items.map((it, i) => (
-              <tr
-                key={it.deptId || i}
-                onClick={it.deptId ? () => onRowClick(it.deptId) : undefined}
-                className={`border-b border-gray-100/50 dark:border-white/5 ${it.deptId ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors' : ''}`}
-              >
-                <td className={TD_NUM}>{i + 1}</td>
-                <td className={TD}>
-                  {it.deptId ? (
-                    <button
-                      type="button"
-                      className="max-w-[220px] truncate text-left font-medium text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
-                      title={it.deptName}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onRowClick(it.deptId)
-                      }}
-                    >
-                      {it.deptName}
-                    </button>
-                  ) : (
-                    <div className="max-w-[220px] truncate" title={it.deptName}>{it.deptName}</div>
-                  )}
-                </td>
-                <td className={TD_NUM}>{(it.estimatedTotalCost || 0).toFixed(2)}</td>
-                <td className={TD_NUM} title={formatNumber(it.sumTotalTokens)}>
-                  {shortToken(it.sumTotalTokens)}
-                </td>
-                <td className={TD_NUM}>{formatNumber(it.activePlatformUsers)}</td>
-                <td className={TD_NUM}>{formatNumber(it.totalRequests)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
   )
 }

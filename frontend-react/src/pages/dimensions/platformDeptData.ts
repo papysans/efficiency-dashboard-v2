@@ -96,7 +96,7 @@ function topLevelDepts(tree: DeptTreeNode[]): DeptTreeNode[] {
 }
 
 /** 全量平台用户排行一次拉回（大页，前端按部门命中求和）。区间聚合（吃 start/end）。 */
-function useFullRanking(params: { startDate: string; endDate: string }, enabled: boolean) {
+export function useFullRanking(params: { startDate: string; endDate: string }, enabled: boolean) {
   const { startDate, endDate } = params
   return useQuery({
     queryKey: ['dim-dept-full-ranking', startDate, endDate],
