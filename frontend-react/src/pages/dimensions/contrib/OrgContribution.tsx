@@ -10,9 +10,8 @@
 //   聚合态(object 空)：贡献 KPI 卡（整体）+ 部门贡献 PK 榜（各直接子部门，点行下钻 → 写 ?object= 进聚焦）。
 //   聚焦态(object=dept_id)：该部门成员贡献明细（DeptMembersPanel，含按成员的合并需求/代码行/提交）。
 //
-// 时间线：聚焦态(单部门) → 该部门整棵子树成员周表按 ISO 周的「合并需求」时序（/v2/dept-tree/trend，
-//   EntityWeeklyTrend metric=needs=need_count）；聚合态(全公司·按部门排行) 仍无按周时序（排行端点为区间聚合）
-//   → DimensionTrend unavailable 诚实空态。时间范围读全局 useViewState().timeRange。
+// 时间线：合并需求按 ISO 周（/v2/dept-tree/trend，EntityWeeklyTrend metric=needs=need_count）。
+//   聚焦态=单部门整棵子树成员；聚合态=全公司（dept-trend dept_id 空→后端默认公司根）。时间范围读全局 useViewState().timeRange。
 //
 // 本地降级：dept-tree/ranking 端点本地常 503（statDB 未连 / dept-sync 未配置）→ error 分支优雅占位
 //   （参考 OrgTree 左树 error 分支），不白屏不崩。
@@ -25,7 +24,6 @@ import { useDeptRanking, useDeptTrend } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
 import { formatDateParam } from '@/lib/date'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
-import { DimensionTrend } from '@/components/executive/DimensionTrend'
 import { EntityWeeklyTrend } from '@/components/executive/EntityWeeklyTrend'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { ChartCard, EmptyHint } from '@/pages/platform/platformShared'
@@ -47,19 +45,9 @@ export default function OrgContribution() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* 页首：贡献时间线。聚焦态(单部门) → 走部门整棵子树周表的「合并需求」按周时序（/v2/dept-tree/trend）；
-          聚合态(全公司·按部门排行) 仍无按周时序（排行端点为区间聚合）→ 诚实空态，不编造。 */}
-      {focused ? (
-        <DeptContribTrend object={object} objectLabel={objectLabel} timeRange={timeRange} />
-      ) : (
-        <DimensionTrend
-          rows={[]}
-          unavailable
-          title="贡献趋势"
-          subtitle="全公司 · 按部门"
-          unavailableNote="按部门的贡献周趋势建设中（部门排行端点为区间聚合，无按周时序）。下方为看板派生的部门贡献排行 / 成员明细。"
-        />
-      )}
+      {/* 页首：贡献时间线（合并需求按 ISO 周）。聚焦态=单部门整棵子树；聚合态=全公司（dept-trend 默认公司根）。
+          均走 /v2/dept-tree/trend（user_productivity_v2 周表守恒聚合）。 */}
+      <DeptContribTrend object={object} objectLabel={objectLabel} timeRange={timeRange} />
 
       {focused ? (
         // 聚焦态：复用 DeptMembersPanel 给该部门成员贡献明细（含合并需求/代码行/提交，仅直属成员，非递归）。
@@ -91,6 +79,7 @@ function DeptContribTrend({
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
     [timeRange],
   )
+  // object 空 = 聚合态(全公司)：deptId 传空，后端默认公司根 → 全公司整树周趋势。
   const q = useDeptTrend({ deptId: object, ...dateParams })
   return (
     <EntityWeeklyTrend
@@ -98,7 +87,11 @@ function DeptContribTrend({
       loading={q.isLoading}
       error={q.error ? (q.error as Error).message : null}
       title="贡献趋势"
-      subtitle={`部门 · ${objectLabel || object} · 按 ISO 周（子树成员合并需求）`}
+      subtitle={
+        object
+          ? `部门 · ${objectLabel || object} · 按 ISO 周（子树成员合并需求）`
+          : '全公司 · 按 ISO 周（各部门子树成员合并需求）'
+      }
       metric="needs"
     />
   )

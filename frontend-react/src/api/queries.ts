@@ -176,11 +176,12 @@ export function useProjectTrend(params: { projectId?: string; startDate?: string
 }
 
 /** 部门按周时间线（整棵子树成员周表现聚合）：deptId 空 → enabled:false 不发请求（org 非聚焦态）。 */
-export function useDeptTrend(params: { deptId: string; startDate?: string; endDate?: string }) {
+/** 部门周趋势。deptId 空 = 全公司（后端默认公司根）→ org 贡献聚合态用，对齐 useProjectTrend/useRepoTrend 的聚合模式。 */
+export function useDeptTrend(params: { deptId?: string; startDate?: string; endDate?: string }, enabled = true) {
   return useQuery({
     queryKey: ['dept-trend', params],
     queryFn: () => getDeptTreeTrendV2(params),
-    enabled: !!params.deptId,
+    enabled,
   })
 }
 
