@@ -16,20 +16,20 @@ import { useEfficiencyV2, useProjectList, useAllUsers, useRepos, useRepoTrend, u
 import type { ProjectListItem } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { formatDateParam } from '@/lib/date'
-import { fmtCost, formatNumber, formatV2Ratio } from '@/lib/formatters'
+import { formatNumber, formatV2Ratio } from '@/lib/formatters'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { DimensionTrend } from '@/components/executive/DimensionTrend'
 import { EntityWeeklyTrend } from '@/components/executive/EntityWeeklyTrend'
 import { MetricCard } from '@/components/ui/MetricCard'
 import OrgTree from '@/pages/orgs/OrgTree'
-import UserList from '@/pages/users/UserList'
 import UserDetail from '@/pages/users/UserDetail'
 import ProjectList from '@/pages/projects/ProjectList'
 import ProjectDetail from '@/pages/projects/ProjectDetail'
-import RepoList from '@/pages/repos/RepoList'
 import RepoDetail from '@/pages/repos/RepoDetail'
 import DistributionOverview from '@/pages/distribution/DistributionOverview'
 import { EntityRatioHistogram } from '@/pages/distribution/EntityRatioHistogram'
+import EfficiencyUserRanking from './EfficiencyUserRanking'
+import EfficiencyRepoRanking from './EfficiencyRepoRanking'
 
 type SubView = 'overview' | 'distribution'
 
@@ -79,7 +79,7 @@ export default function EfficiencyDimension() {
       ) : entity === 'org' ? (
         <OrgTree />
       ) : (
-        <AggregateContent entity={entity} />
+        <AggregateContent entity={entity} timeRange={timeRange} />
       )}
     </div>
   )
@@ -201,10 +201,13 @@ function ProjectFocusTrend({
 }
 
 /**
- * #2 项目聚合态时间线位的替代：项目级聚合 KPI（项目维度天然无按周时序，聚合信息更有用）。
- * 全用 useProjectList()(ProjectListItem) 现成字段（与项目列表/详情同源、纯 Need(branch) 口径）求和/取均，
- * 口径不混：提效比/AI占比为**小数口径**（formatV2Ratio ×100 / RatioPill），费用为 ¥。
- * 平均日历提效比 = 各项目 need_calendar_efficiency_ratio 的算术均值（仅计有限值，与项目排行同源）。
+ * #2 项目聚合态时间线位的替代：项目级「纯效率」KPI（项目维度天然无按周时序，聚合信息更有用）。
+ * 批次2 瘦身：只保留效率字段（项目数/合格需求/平均日历提效比/平均人力提效比），
+ * 删除串味卡（AI占比→使用维 / 费用→成本维 / 生成代码·贡献者→贡献维，各有专属维度）。
+ * 全用 useProjectList()(ProjectListItem) 现成字段（与项目列表/详情同源、纯 Need(branch) 口径），
+ * 提效比为**小数口径**（formatV2Ratio）。
+ * 平均提效比 = 各项目 need_*_efficiency_ratio 的算术均值（仅计有限值，与项目排行同源）；
+ * ⚠️ 加权（Σbaseline/Σactual）口径待后端（批次3）暴露 per-项目 baseline/actual 合计字段。
  */
 function ProjectAggregateSummary() {
   const { data, isLoading, error } = useProjectList()
@@ -213,32 +216,23 @@ function ProjectAggregateSummary() {
   const agg = useMemo(() => {
     let eligible = 0
     let total = 0
-    let cost = 0
-    let loc = 0
-    let users = 0
     const calRatios: number[] = []
-    const aiRatios: number[] = []
+    const workRatios: number[] = []
     for (const r of rows) {
       eligible += r.need_eligible_count ?? 0
       total += r.need_total_count ?? 0
-      cost += r.need_cost ?? 0
-      loc += r.need_total_loc_net ?? 0
-      users += r.user_count ?? 0
       const cal = Number(r.need_calendar_efficiency_ratio)
       if (r.need_calendar_efficiency_ratio != null && Number.isFinite(cal)) calRatios.push(cal)
-      const ai = Number(r.need_ai_code_ratio)
-      if (r.need_ai_code_ratio != null && Number.isFinite(ai)) aiRatios.push(ai)
+      const work = Number(r.need_work_efficiency_ratio)
+      if (r.need_work_efficiency_ratio != null && Number.isFinite(work)) workRatios.push(work)
     }
     const mean = (xs: number[]) => (xs.length > 0 ? xs.reduce((s, v) => s + v, 0) / xs.length : null)
     return {
       projectCount: rows.length,
       eligible,
       total,
-      cost,
-      loc,
-      users,
       avgCalRatio: mean(calRatios),
-      avgAiRatio: mean(aiRatios),
+      avgWorkRatio: mean(workRatios),
     }
   }, [rows])
 
@@ -249,7 +243,7 @@ function ProjectAggregateSummary() {
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">项目提效概览</h2>
         <span className="text-xs text-gray-400 dark:text-gray-500 text-right">
-          项目=一组需求(branch) · 纯 Need 口径（守恒聚合、只计干净需求）
+          项目=一组需求(branch) · 纯 Need 口径（只计干净需求 · 仅效率字段）
         </span>
       </div>
 
@@ -257,7 +251,7 @@ function ProjectAggregateSummary() {
         <div className="text-sm text-rose-600 dark:text-rose-400">加载失败：{(error as Error).message}</div>
       ) : isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="skeleton h-20 rounded-2xl" />
           ))}
         </div>
@@ -272,32 +266,32 @@ function ProjectAggregateSummary() {
           <MetricCard
             label="平均日历提效比"
             value={formatV2Ratio(agg.avgCalRatio)}
-            tip="各项目日历提效比（小数口径）的算术均值"
+            tip="各项目日历提效比（小数口径）的算术均值；加权口径（Σbaseline/Σactual）待后端（批次3）"
             tone={agg.avgCalRatio != null && agg.avgCalRatio < 0 ? 'neg' : 'pos'}
           />
-          <MetricCard label="平均 AI 占比" value={formatV2Ratio(agg.avgAiRatio)} tip="各项目 AI 代码占比（小数口径）均值" />
-          <MetricCard label="费用合计" value={`¥${fmtCost(agg.cost)}`} hint="各项目干净需求费用之和" />
           <MetricCard
-            label="生成代码合计"
-            value={agg.loc > 0 ? `${formatNumber(agg.loc)} 行` : '-'}
-            hint="need_total_loc_net 之和"
+            label="平均人力提效比"
+            value={formatV2Ratio(agg.avgWorkRatio)}
+            tip="各项目人力(工作量)提效比（小数口径）的算术均值；加权口径（Σbaseline/Σactual）待后端（批次3）"
+            tone={agg.avgWorkRatio != null && agg.avgWorkRatio < 0 ? 'neg' : 'pos'}
           />
-          <MetricCard label="贡献者合计" value={formatNumber(agg.users)} hint="各项目贡献者人次之和" />
         </div>
       )}
     </div>
   )
 }
 
-/** 聚合态：现有列表/排行（点行下钻进独立详情；壳内选对象则进聚焦态）。org 由上层单独渲染 OrgTree。 */
-function AggregateContent({ entity }: { entity: string }) {
+/** 聚合态：纯效率排行/列表（点行下钻进独立详情；壳内选对象则进聚焦态）。org 由上层单独渲染 OrgTree。
+ *  user/repo 换成本批新建的「纯效率排行」组件（只展示效率字段，剔除使用/贡献/成本串味列）；
+ *  project 仍用 ProjectList（项目排行另有，不在本批换）。 */
+function AggregateContent({ entity, timeRange }: { entity: string; timeRange: [string, string] }) {
   switch (entity) {
     case 'user':
-      return <UserList />
+      return <EfficiencyUserRanking timeRange={timeRange} />
     case 'project':
       return <ProjectList />
     case 'repo':
-      return <RepoList />
+      return <EfficiencyRepoRanking timeRange={timeRange} />
     default:
       return null
   }
@@ -376,7 +370,8 @@ function UserRatioDistribution({ timeRange }: { timeRange: [string, string] }) {
   )
 }
 
-/** 聚焦态：复用现有详情组件（embedded，去掉返回/标题，壳保留面包屑）。org 不走此路（OrgTree 复合视图）。 */
+/** 聚焦态：先放 2-4 张本维度「效率速览」卡（下钻入口），再 embed 现有详情（详情=下钻明细）。
+ *  org 不走此路（OrgTree 复合视图）。 */
 function FocusContent({
   entity,
   object,
@@ -392,14 +387,167 @@ function FocusContent({
   void objectLabel
   switch (entity) {
     case 'user':
-      return <UserDetail userIdProp={object} dateRangeProp={timeRange} embedded />
+      return <UserFocus object={object} timeRange={timeRange} />
     case 'project':
-      return <ProjectDetail projectIdProp={object} embedded />
+      return <ProjectFocus object={object} />
     case 'repo':
-      return <RepoDetail repoAddrProp={object} dateRangeProp={timeRange} embedded />
+      return <RepoFocus object={object} timeRange={timeRange} />
     default:
       return null
   }
+}
+
+/** 效率速览卡条容器（聚焦态顶部，详情上方）。cards 传 (节点|null) 数组，无有效卡片则整条省略。 */
+function FocusEfficiencyStrip({ cards }: { cards: Array<React.ReactNode | null> }) {
+  const shown = cards.filter((c): c is React.ReactNode => c != null)
+  if (shown.length === 0) return null
+  return (
+    <div className="glass rounded-2xl p-5 md:p-6 space-y-4">
+      <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">效率速览</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {shown.map((c, i) => (
+          <div key={i} className="contents">
+            {c}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** 用户聚焦：从 useAllUsers 找该 user 行取效率字段（日历/人力提效比 + 合格需求 + 节省人天）。 */
+function UserFocus({ object, timeRange }: { object: string; timeRange: [string, string] }) {
+  const startDate = formatDateParam(timeRange[0])
+  const endDate = formatDateParam(timeRange[1])
+  const { data } = useAllUsers({ startDate, endDate })
+  const row = useMemo(() => (data ?? []).find((r) => r.user_id === object), [data, object])
+  // 节省人天 = (baseline_calendar_min - actual_calendar_min) / 1440（日历日，分钟换天）。
+  const calSavedDays =
+    row && row.baseline_calendar_min != null && row.actual_calendar_min != null
+      ? (row.baseline_calendar_min - row.actual_calendar_min) / 1440
+      : null
+  return (
+    <div className="flex flex-col gap-5">
+      <FocusEfficiencyStrip
+        cards={[
+          row ? (
+            <MetricCard
+              label="日历提效比"
+              value={formatV2Ratio(row.calendar_ratio)}
+              tip="该用户日历口径提效比（小数口径）"
+              tone={row.calendar_ratio != null && row.calendar_ratio < 0 ? 'neg' : 'pos'}
+            />
+          ) : null,
+          row ? (
+            <MetricCard
+              label="人力提效比"
+              value={formatV2Ratio(row.work_ratio)}
+              tip="该用户人力(工作量)口径提效比（小数口径）"
+              tone={row.work_ratio != null && row.work_ratio < 0 ? 'neg' : 'pos'}
+            />
+          ) : null,
+          row ? (
+            <MetricCard
+              label="合格需求"
+              value={formatNumber(row.merged_need_count)}
+              hint={`已合并需求数 · 候选 ${formatNumber(row.merged_need_count + row.active_need_count + row.abandoned_need_count)}`}
+            />
+          ) : null,
+          calSavedDays != null ? (
+            <MetricCard
+              label="节省（人天）"
+              value={formatNumber(calSavedDays, 1)}
+              hint={`日历口径 ${formatNumber(row!.baseline_calendar_min - row!.actual_calendar_min)} 分钟 ÷ 1440`}
+              tone={calSavedDays < 0 ? 'neg' : 'pos'}
+            />
+          ) : null,
+        ]}
+      />
+      <UserDetail userIdProp={object} dateRangeProp={timeRange} embedded />
+    </div>
+  )
+}
+
+/** 项目聚焦：从 useProjectList 找该 project 行取效率字段（日历/人力提效比 + 合格需求）。
+ *  ⚠️ ProjectListItem 无 per项目 baseline/actual 合计字段 → 节省人天卡省略（见 blockers）。 */
+function ProjectFocus({ object }: { object: string }) {
+  const { data } = useProjectList()
+  const row = useMemo(() => (data?.data ?? []).find((r) => r.project_id === object), [data, object])
+  const eligible = row?.need_eligible_count ?? null
+  const total = row?.need_total_count ?? null
+  return (
+    <div className="flex flex-col gap-5">
+      <FocusEfficiencyStrip
+        cards={[
+          row ? (
+            <MetricCard
+              label="日历提效比"
+              value={formatV2Ratio(row.need_calendar_efficiency_ratio)}
+              tip="该项目日历口径提效比（小数口径）"
+              tone={row.need_calendar_efficiency_ratio != null && row.need_calendar_efficiency_ratio < 0 ? 'neg' : 'pos'}
+            />
+          ) : null,
+          row ? (
+            <MetricCard
+              label="人力提效比"
+              value={formatV2Ratio(row.need_work_efficiency_ratio)}
+              tip="该项目人力(工作量)口径提效比（小数口径）"
+              tone={row.need_work_efficiency_ratio != null && row.need_work_efficiency_ratio < 0 ? 'neg' : 'pos'}
+            />
+          ) : null,
+          eligible != null ? (
+            <MetricCard
+              label="合格需求"
+              value={formatNumber(eligible)}
+              hint={total != null ? `合格/候选 ${formatNumber(eligible)} / ${formatNumber(total)}` : undefined}
+            />
+          ) : null,
+        ]}
+      />
+      <ProjectDetail projectIdProp={object} embedded />
+    </div>
+  )
+}
+
+/** 仓库聚焦：从 useRepos 找该 repo 行取效率字段（提效比=百分比口径，勿×100 + 节省人天）。 */
+function RepoFocus({ object, timeRange }: { object: string; timeRange: [string, string] }) {
+  const startDate = formatDateParam(timeRange[0])
+  const endDate = formatDateParam(timeRange[1])
+  const { data } = useRepos({ startDate, endDate, page: 1, pageSize: 1000 })
+  const row = useMemo(() => (data?.data ?? []).find((r) => r.repo_addr === object), [data, object])
+  // 仓库口径节省人天 = (sum_ancient_minutes - sum_real_minutes) / 480（工作日，分钟换人天）。
+  const savedDays =
+    row && row.sum_ancient_minutes != null && row.sum_real_minutes != null
+      ? (row.sum_ancient_minutes - row.sum_real_minutes) / 480
+      : null
+  return (
+    <div className="flex flex-col gap-5">
+      <FocusEfficiencyStrip
+        cards={[
+          row ? (
+            <MetricCard
+              label="提效比"
+              value={`${formatNumber(row.efficiency_ratio, 1)}%`}
+              tip="该仓库提效比（百分比口径，已是百分比不再×100）"
+              tone={row.efficiency_ratio < 0 ? 'neg' : 'pos'}
+            />
+          ) : null,
+          savedDays != null ? (
+            <MetricCard
+              label="节省（人天）"
+              value={formatNumber(savedDays, 1)}
+              hint={`工作量口径 ${formatNumber(row!.sum_ancient_minutes - row!.sum_real_minutes)} 分钟 ÷ 480`}
+              tone={savedDays < 0 ? 'neg' : 'pos'}
+            />
+          ) : null,
+          row ? (
+            <MetricCard label="提交数" value={formatNumber(row.commit_count)} hint="该仓库跨分支聚合提交数" />
+          ) : null,
+        ]}
+      />
+      <RepoDetail repoAddrProp={object} dateRangeProp={timeRange} embedded />
+    </div>
+  )
 }
 
 function SubTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
