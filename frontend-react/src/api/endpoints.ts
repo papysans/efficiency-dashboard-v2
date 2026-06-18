@@ -181,6 +181,13 @@ export function getDeptRankingV2(params: { parentDeptId?: string; startDate?: st
   return apiGet<DeptRankingResponse>('/v2/dept-tree/ranking', { parent_dept_id: parentDeptId, ...rest })
 }
 
+// 部门按周时间线（整棵子树成员 user_productivity_v2 周表现聚合）：efficiency_pct(百分比) + need_count/commit_count/diff_lines。
+// 复用 repo/project-trend 的 EntityTrendPoint（loc/cost 部门趋势恒 0）。dept-sync 不可达 → 502/503 或 {data:[]}。
+export function getDeptTreeTrendV2(params: { deptId: string; startDate?: string; endDate?: string }) {
+  const { deptId, ...rest } = params
+  return apiGet<EntityTrendResponse>('/v2/dept-tree/trend', { dept_id: deptId, ...rest })
+}
+
 // ---- Commits（⚠️ 百分比口径：efficiency_ratio 300=300%，不 ×100） ----
 export function getCommitsV2(params: ListParams) {
   return apiGet<ApiList<CommitListItem>>('/v2/commits', params)

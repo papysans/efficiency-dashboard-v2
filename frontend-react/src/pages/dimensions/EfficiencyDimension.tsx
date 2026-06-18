@@ -7,12 +7,12 @@
 // 时间线数据策略（见返回简报）：
 //   org/user → /v2/efficiency 周聚合行（一次拉回全部周，前端按周分桶；user 聚焦传 userId）。该端点是
 //     user×week 表，无 project/repo 维度。
-//   org 聚焦(单部门) → 该端点无「按部门」桶，且部门成员过滤需额外成员名册，本段诚实标注「按部门的周趋势建设中」，
-//     部门 KPI/成员明细照常由 DeptMembersPanel 给出。
+//   org 聚焦(单部门) → /v2/dept-tree/trend 周端点（该部门整棵子树成员周表按 ISO 周守恒聚合 efficiency_pct，
+//     EntityWeeklyTrend metric=efficiency）；部门 KPI/成员明细照常由 DeptMembersPanel 给出。
 //   project/repo → 该端点无对应维度 → 时间线诚实标注不适用；KPI/明细走各自看板派生口径。
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router'
-import { useEfficiencyV2, useProjectList, useAllUsers, useRepos, useRepoTrend, useProjectTrend } from '@/api/queries'
+import { useEfficiencyV2, useProjectList, useAllUsers, useRepos, useRepoTrend, useProjectTrend, useDeptTrend } from '@/api/queries'
 import type { ProjectListItem } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { formatDateParam } from '@/lib/date'
@@ -122,16 +122,9 @@ function EfficiencyTrend({
     return <RepoEfficiencyTrend object={object} objectLabel={objectLabel} dateParams={dateParams} focused={focused} />
   }
 
+  // 组织聚焦(单部门)：走「该部门整棵子树成员周表按 ISO 周提效」时间线（/v2/dept-tree/trend，efficiency_pct 已百分比口径）。
   if (entity === 'org' && focused) {
-    return (
-      <DimensionTrend
-        rows={[]}
-        unavailable
-        title="提效趋势"
-        subtitle={`部门 · ${objectLabel || object}`}
-        unavailableNote="按部门的周趋势建设中（周表按 用户×周 聚合，未带部门维度）。下方为该部门成员花名册与汇总指标。"
-      />
-    )
+    return <DeptEfficiencyTrend object={object} objectLabel={objectLabel} dateParams={dateParams} />
   }
 
   return (
@@ -172,6 +165,30 @@ function RepoEfficiencyTrend({
       error={q.error ? (q.error as Error).message : null}
       title="提效趋势"
       subtitle={focused ? `仓库 · ${objectLabel || object} · 按 ISO 周` : '全部仓库 · 按 ISO 周（commits 聚合）'}
+      metric="efficiency"
+    />
+  )
+}
+
+/** 组织聚焦态提效时间线：该部门整棵子树成员周表按 ISO 周守恒聚合（/v2/dept-tree/trend，efficiency_pct 已百分比口径）。
+ *  loading/error/空态由 EntityWeeklyTrend 内部统一处理；dept-sync 不可达时后端 502/{data:[]} → 走 error/空态。 */
+function DeptEfficiencyTrend({
+  object,
+  objectLabel,
+  dateParams,
+}: {
+  object: string
+  objectLabel: string
+  dateParams: { startDate: string; endDate: string }
+}) {
+  const q = useDeptTrend({ deptId: object, ...dateParams })
+  return (
+    <EntityWeeklyTrend
+      points={q.data?.data}
+      loading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+      title="提效趋势"
+      subtitle={`部门 · ${objectLabel || object} · 按 ISO 周（子树成员守恒）`}
       metric="efficiency"
     />
   )

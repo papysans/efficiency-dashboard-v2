@@ -9,6 +9,7 @@ import {
   getDashboardTrends,
   getGlobalConfig,
   getDeptRankingV2,
+  getDeptTreeTrendV2,
   getDeptTreeV2,
   getEfficiencyV2,
   getNeedDetailV2,
@@ -171,6 +172,15 @@ export function useProjectTrend(params: { projectId?: string; startDate?: string
     queryKey: ['project-trend', params],
     queryFn: () => getProjectTrendV2(params),
     enabled,
+  })
+}
+
+/** 部门按周时间线（整棵子树成员周表现聚合）：deptId 空 → enabled:false 不发请求（org 非聚焦态）。 */
+export function useDeptTrend(params: { deptId: string; startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['dept-trend', params],
+    queryFn: () => getDeptTreeTrendV2(params),
+    enabled: !!params.deptId,
   })
 }
 

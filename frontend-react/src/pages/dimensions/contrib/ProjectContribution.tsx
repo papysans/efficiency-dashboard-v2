@@ -4,14 +4,16 @@
 //   聚合态(object 空)：项目贡献排行表（Need 数 / 贡献者 / 生成代码）+ KPI 卡。
 //   聚焦态(选定 projectId)：复用 ProjectDetail（embedded，壳保留面包屑），其「贡献者」「组成·Needs」
 //     两块即贡献明细，无需重写守恒派生逻辑。
-// 时间线：项目无按周的时间序列数据（周表按 用户×周 聚合，无项目维度）→ DimensionTrend 走诚实空态，不编造。
+// 时间线：项目干净 Need 按 dev_end_ts 的 ISO 周现聚合（/v2/project-trend，EntityWeeklyTrend metric=loc=本周生成代码净行）。
+//   聚焦态=该项目候选池(projectId=object)；聚合态=全部干净 Need(projectId 空)。loc 为项目口径非 0。
 // 口径：need_* 为小数口径 → RatioPill（AI 占比同样小数口径，绝不用 PercentPill 百分比口径）。
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import { useProjectList } from '@/api/queries'
+import { useProjectList, useProjectTrend } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
+import { formatDateParam } from '@/lib/date'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
-import { DimensionTrend } from '@/components/executive/DimensionTrend'
+import { EntityWeeklyTrend } from '@/components/executive/EntityWeeklyTrend'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { ChartCard, EmptyHint } from '@/pages/platform/platformShared'
@@ -43,14 +45,9 @@ export default function ProjectContribution() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* 页首：贡献无按周时间序列 → 诚实空态（不编造趋势）。 */}
-      <DimensionTrend
-        rows={[]}
-        unavailable
-        title="贡献趋势"
-        subtitle="项目口径"
-        unavailableNote="项目暂无按周的贡献时间线（周表按 用户×周 聚合，无项目维度）。下方为看板派生的贡献排行与明细。"
-      />
+      {/* 页首：贡献时间线 —— 项目干净 Need 按 dev_end_ts 的 ISO 周现聚合（/v2/project-trend）。
+          聚焦态=该项目候选池；聚合态=全部干净 Need。贡献主指标=生成代码净行(loc，项目口径非 0)。 */}
+      <ProjectContribTrend object={object} focused={focused} timeRange={timeRange} />
 
       {focused ? (
         <div className="flex flex-col gap-4">
@@ -61,9 +58,35 @@ export default function ProjectContribution() {
       ) : (
         <ProjectContribAggregate />
       )}
-      {/* timeRange 由全局 store 提供（与其它维度一致）；项目贡献当前无时间维聚合，预留对齐签名。 */}
-      <span className="sr-only">{timeRange[0]}~{timeRange[1]}</span>
     </div>
+  )
+}
+
+/** 贡献时间线：项目干净 Need 按 dev_end_ts 的 ISO 周现聚合（/v2/project-trend，loc=本周生成代码净行，项目口径非 0）。
+ *  聚焦态=该项目候选池(projectId=object)；聚合态=全部干净 Need(projectId 空)。loading/error/空态由 EntityWeeklyTrend 处理。 */
+function ProjectContribTrend({
+  object,
+  focused,
+  timeRange,
+}: {
+  object: string
+  focused: boolean
+  timeRange: [string, string]
+}) {
+  const dateParams = useMemo(
+    () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
+    [timeRange],
+  )
+  const q = useProjectTrend({ projectId: focused ? object : undefined, ...dateParams })
+  return (
+    <EntityWeeklyTrend
+      points={q.data?.data}
+      loading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+      title="贡献趋势"
+      subtitle={focused ? `项目 · ${object} · 按 ISO 周（干净需求数）` : '全部项目 · 按 ISO 周（干净需求聚合）'}
+      metric="needs"
+    />
   )
 }
 

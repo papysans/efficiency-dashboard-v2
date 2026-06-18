@@ -1,7 +1,8 @@
 // 「成本」维度内容（按 entity 分支）。口径决策①：user/org 两套并列卡，各自标源，口径别混（成本双源陷阱）：
 //   ① AI 调用花费（平台·客观）= estimated_total_cost(¥) + tokens（shortToken）。
 //   ② 会话费用（看板）= tasks.cost 聚合（非人天×单价，看板无人天单价）：
-//        个人=该用户/全量 cost÷看板产出(单位产出成本)；org 聚合=全公司 total_cost(真实)，org 聚焦=部门级聚合建设中。
+//        个人=该用户/全量 cost÷看板产出(单位产出成本)；org 聚合=全公司 total_cost(真实)，
+//        org 聚焦=部门子树 self.cost（dept-ranking self，叶子部门也返 self → 真卡，archive 库恒 ¥0 但卡是活的）。
 //   project/repo → 平台无项目/仓库口径 → 看板费用**单卡**（KanbanCost，非双卡，显式注明）。
 // 时间线 = 平台 AI 花费周序列（切窗）。聚合态=对象 AI 花费排行；聚焦态=该对象花费明细。
 // 降级护栏：开关 false / 请求失败 → 平台卡显示「未接入平台」，看板会话费用卡照常；不空页不抛错。
