@@ -295,7 +295,7 @@ func listProjectsV2(c *gin.Context) {
 		var needLoc int64
 		var needWorkMin, needCost float64
 		var needBaselineCal, needActualCal, needBaselineWork float64
-		var needEligible, needTotal, needDone int
+		var needEligible, needTotal, needDone, needUsers int
 		if scopes, serr := collectProjectRepoBranches(&p); serr == nil {
 			if agg, aerr := queryProjectNeedAgg(statDB, scopes, globalStart, globalEnd); aerr == nil {
 				needCalR = efficiencyV2Ratio(agg.BaselineCalendarMin, agg.ActualCalendarMin)
@@ -309,6 +309,7 @@ func listProjectsV2(c *gin.Context) {
 				needEligible = agg.EligibleNeeds
 				needTotal = agg.TotalNeeds
 				needDone = agg.DoneNeeds
+				needUsers = agg.UserCount
 			} else {
 				log.Printf("listProjectsV2: project %s Need 聚合失败: %v", p.ProjectId, aerr)
 			}
@@ -331,6 +332,7 @@ func listProjectsV2(c *gin.Context) {
 			CreatedAt:                   p.CreatedAt,
 			UpdatedAt:                   p.UpdatedAt,
 			RepoCount:                   repoCount,
+			UserCount:                   needUsers,
 			NeedCalendarEfficiencyRatio: needCalR,
 			NeedWorkEfficiencyRatio:     needWorkR,
 			NeedAICodeRatio:             needAIR,

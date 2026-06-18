@@ -112,6 +112,7 @@ type projectNeedAgg struct {
 	EligibleNeeds       int
 	ExcludedNeeds       int
 	DoneNeeds           int // status='merged'（已交付/已合并）的候选池 Need 数，口径同 dashboard merged_needs
+	UserCount           int // 候选池内已选干净 Need 关联 commits 的 DISTINCT 贡献者（去重键=git_user_email/工号）
 	ActualCalendarMin   float64
 	BaselineCalendarMin float64
 	ActualWorkMin       float64
@@ -167,7 +168,42 @@ func queryProjectNeedAgg(db *gorm.DB, scopes []projectNeedScope, globalStart, gl
 		return nil, fmt.Errorf("查询项目 Need 完成数失败: %w", err)
 	}
 	agg.DoneNeeds = int(doneCount)
+
+	// ④ 贡献者数：候选池内"已选干净 Need"（套 need 名单 + coverage_eligible AND NOT outlier_flag，
+	// 与 ① eligible 同口径）关联 commits 的 DISTINCT 贡献者。去重键=commits.git_user_email（工号载体），
+	// 不用碎裂的 user_id。放在 ① Scan 之后赋值同理防 gorm Scan 清零。
+	userCount, ucErr := queryProjectContributorCount(db, scopes, globalStart, globalEnd)
+	if ucErr != nil {
+		return nil, ucErr
+	}
+	agg.UserCount = userCount
 	return &agg, nil
+}
+
+// queryProjectContributorCount 统计候选池内"已选干净 Need"关联 commits 的 DISTINCT 贡献者数。
+// 口径与 queryProjectNeedAgg 的 eligible 完全对齐：套 need 白/黑名单 + coverage_eligible AND NOT outlier_flag
+// + 同样的 globalStart/globalEnd 全局时间窗。去重键=commits.git_user_email（=工号 emp_no 载体；
+// user_id 是 UUID 会按账号碎裂，不用它去重）。空候选池/空 commit_ids 自然返回 0。
+// 关键：先对干净 Need 的 commit_ids（jsonb 数组）去重展开成 commit_id 子查询，再 JOIN commits
+// 求 COUNT(DISTINCT git_user_email)——一个 commit 只属一人，先按 commit 去重再按工号去重，避免跨 Need 重复。
+func queryProjectContributorCount(db *gorm.DB, scopes []projectNeedScope, globalStart, globalEnd string) (int, error) {
+	selClause, selArgs := buildProjectNeedScopeClause(scopes, true)
+	if selClause == "" {
+		return 0, nil // 空候选池
+	}
+	sub := applyNeedCaliberFilter(db.Model(&models.Need{})).
+		Select("DISTINCT jsonb_array_elements_text(commit_ids) AS cid").
+		Where(selClause, selArgs...).
+		Where("coverage_eligible AND NOT outlier_flag")
+	sub = applyNeedGlobalWindow(sub, globalStart, globalEnd)
+	var n int64
+	if err := db.Model(&models.Commit{}).
+		Select("COUNT(DISTINCT NULLIF(git_user_email,'')) AS cnt").
+		Where("commit_id IN (?)", sub).
+		Scan(&n).Error; err != nil {
+		return 0, fmt.Errorf("查询项目贡献者数失败: %w", err)
+	}
+	return int(n), nil
 }
 
 // applyNeedGlobalWindow 在 needs 查询上叠加全局时间窗（dev_end_ts ∈ [start,end]）。
