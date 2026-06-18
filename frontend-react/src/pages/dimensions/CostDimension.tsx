@@ -1,14 +1,15 @@
 // 「成本」维度内容（按 entity 分支）。口径决策①：user/org 两套并列卡，各自标源，口径别混（成本双源陷阱）：
 //   ① AI 调用花费（平台·客观）= estimated_total_cost(¥) + tokens（shortToken）。
-//   ② 人天成本（看板·折算）= 个人/部门人天成本**看板侧当前无数据 → 建设中占位**（不编造）。
+//   ② 会话费用（看板）= tasks.cost 聚合（非人天×单价，看板无人天单价）：
+//        个人=该用户/全量 cost÷看板产出(单位产出成本)；org 聚合=全公司 total_cost(真实)，org 聚焦=部门级聚合建设中。
 //   project/repo → 平台无项目/仓库口径 → 看板费用**单卡**（KanbanCost，非双卡，显式注明）。
 // 时间线 = 平台 AI 花费周序列（切窗）。聚合态=对象 AI 花费排行；聚焦态=该对象花费明细。
-// 降级护栏：开关 false / 请求失败 → 平台卡显示「未接入平台」，看板人天卡照常（也是建设中）；不空页不抛错。
+// 降级护栏：开关 false / 请求失败 → 平台卡显示「未接入平台」，看板会话费用卡照常；不空页不抛错。
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useDeptCostTree } from './platformDeptCostTree'
 import type { CostTreeNode } from './costTreeRollup'
-import { useAllUsers, useGlobalConfig } from '@/api/queries'
+import { useAllUsers, useDashboardSummary, useGlobalConfig } from '@/api/queries'
 import type { UserV2Row } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
@@ -42,34 +43,80 @@ const INPUT_CLS =
 
 const fmtYuan = (v: number | null | undefined) => (v != null ? `¥${Number(v).toFixed(2)}` : '-')
 
-/** 「人天成本（看板·折算）」卡 —— 个人/部门人天成本看板侧当前无数据，建设中占位（与平台¥口径分开标注）。 */
-function PersonDayCostCard({ subject = '个人' }: { subject?: string }) {
+// 会话费用口径 tooltip（看板侧成本卡统一悬浮注释）：与平台 AI 花费(Token 调用费)不同源，不可混算。
+const SESSION_COST_TIP =
+  '任务会话的模型调用费用（tasks.cost 聚合），非人天×单价的人力成本折算（看板无人天单价）。'
+
+/**
+ * 「会话费用（看板）· 建设中」占位卡 —— 部门聚焦态/平台关闭等取不到看板会话费用时用。
+ * 不再叫"人天成本"（看板无人天单价，名实不符）。会话费用 = tasks.cost 聚合，等后端补部门级聚合。
+ */
+function KanbanSessionCostPlaceholder({ subject = '个人' }: { subject?: string }) {
   return (
     <section className="glass rounded-2xl p-5 flex flex-col">
       <div className="flex items-center justify-between mb-3 gap-3">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">人天成本（看板·折算）</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">人力折算 · 建设中</span>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center gap-1">
+          会话费用（看板）
+          <span className="text-gray-400 cursor-help inline-flex" title={SESSION_COST_TIP} aria-label={SESSION_COST_TIP}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+        </h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">tasks.cost · 建设中</span>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center text-center py-8 gap-2">
         <svg className="w-9 h-9 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p className="text-sm text-gray-500 dark:text-gray-400">{subject}人天成本数据建设中</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{subject}会话费用（看板）聚合建设中</p>
         <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
-          口径 = 人力投入折算（人天 × 单价），与平台¥（Token 调用花费）不同源，请勿混用。
+          会话费用 = 任务会话的模型调用费用（tasks.cost 聚合），等后端按部门级聚合；与平台 AI 花费（Token 调用花费）不同源，请勿混用。
         </p>
       </div>
     </section>
   )
 }
 
+/** 部门聚合态：全公司看板会话费用 KPI 卡（DashboardSummary.total_cost = tasks.cost 全量聚合，真实数据）。 */
+function CompanyKanbanCostCard({ cost, loading }: { cost: number | null; loading: boolean }) {
+  return (
+    <section className="glass rounded-2xl p-5 flex flex-col" style={{ borderLeft: '3px solid #0071e3' }}>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center gap-1">
+          会话费用（看板·全公司）
+          <span className="text-gray-400 cursor-help inline-flex" title={SESSION_COST_TIP} aria-label={SESSION_COST_TIP}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+        </h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">tasks.cost 全量聚合</span>
+      </div>
+      {loading ? (
+        <div className="grid grid-cols-1 gap-3">
+          <div className="skeleton h-20 rounded-xl" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          <MetricCard label="会话费用合计" value={fmtYuan(cost)} hint="全公司 tasks.cost 聚合（非人天×单价）" />
+        </div>
+      )}
+      <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+        当前仅支持全公司合计（看板暂无按部门聚合的会话费用），部门级待后端。
+        与平台 AI 花费（Token 调用花费）不同源，勿混读。
+      </p>
+    </section>
+  )
+}
+
 /**
- * 「成本效率 · 单位产出成本」卡（个人维度，替代无数据的人天建设中卡）。
- * 跨源口径：分子 = 平台 AI 花费(¥, estimated_total_cost)；分母 = 看板产出（合并需求 / 生成代码行）。
- *   ¥/需求 = 平台AI花费 ÷ 看板合并需求数
- *   ¥/千行 = 平台AI花费 ÷ 看板生成代码行 ×1000
- * 两源按 universal_id == 看板 user_id 关联（同源，已实测）。聚合=总量÷总量；聚焦=该用户÷该用户。
- * 分母 0 或缺数据 → 显 '-'（不编造）。明确标注跨源（平台¥=Token 调用花费，看板=代码侧产出）。
+ * 「会话费用 · 单位产出成本」卡（个人维度）。
+ * 同源口径：分子分母都看板 —— 分子 = 看板会话费用(cost=tasks.cost 聚合)；分母 = 看板产出（合并需求 / 生成代码行）。
+ *   ¥/需求 = 看板会话费用 ÷ 看板合并需求数
+ *   ¥/千行 = 看板会话费用 ÷ 看板生成代码行 ×1000
+ * 聚合=总量÷总量；聚焦=该用户÷该用户。分母 0 或缺数据 → 显 '-'（不编造）。
+ * 会话费用 = 任务会话的模型调用费用，非人天×单价的人力成本折算（看板无人天单价）。
  */
 function CostEfficiencyCard({
   cost,
@@ -93,8 +140,15 @@ function CostEfficiencyCard({
   return (
     <section className="glass rounded-2xl p-5 flex flex-col" style={{ borderLeft: '3px solid #0071e3' }}>
       <div className="flex items-center justify-between mb-3 gap-3">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">成本效率（单位产出成本）</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">{caption} · 跨源</span>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center gap-1">
+          会话费用（看板·单位产出成本）
+          <span className="text-gray-400 cursor-help inline-flex" title={SESSION_COST_TIP} aria-label={SESSION_COST_TIP}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+        </h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">{caption} · 看板同源</span>
       </div>
       {loading ? (
         <div className="grid grid-cols-2 gap-3">
@@ -111,18 +165,19 @@ function CostEfficiencyCard({
           <MetricCard
             label="¥ / 完成需求"
             value={perNeed != null ? fmtYuan(perNeed) : '-'}
-            hint="平台AI花费 ÷ 看板合并需求数"
+            hint="会话费用(看板) ÷ 看板合并需求数"
           />
           <MetricCard
             label="¥ / 千行生成代码"
             value={perKLoc != null ? fmtYuan(perKLoc) : '-'}
-            hint="平台AI花费 ÷ 看板生成代码行 ×1000"
+            hint="会话费用(看板) ÷ 看板生成代码行 ×1000"
           />
         </div>
       )}
       <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-        跨源口径：分子 = <b className="text-gray-600 dark:text-gray-300">平台 AI 花费</b>（Token 调用花费），
-        分母 = <b className="text-gray-600 dark:text-gray-300">看板产出</b>（合并需求 / 代码行），两源别混读。
+        看板同源口径：分子 = <b className="text-gray-600 dark:text-gray-300">会话费用（看板）</b>（tasks.cost 聚合），
+        分母 = <b className="text-gray-600 dark:text-gray-300">看板产出</b>（合并需求 / 代码行），分子分母同源。
+        与平台 AI 花费（Token 调用花费）不是一回事，勿混读。
       </p>
     </section>
   )
@@ -142,14 +197,14 @@ export default function CostDimension() {
   }
 
   const subject = entity === 'org' ? '部门' : '个人'
-  // 个人：第二卡 = 成本效率（依赖平台¥分子）；部门：保留人天建设中卡（org 成本分支不动）。
+  // 个人：第二卡 = 会话费用（看板·单位产出成本，仅看板源）；部门：会话费用看板建设中卡（org 成本分支不动）。
+  // 注：个人会话费用卡实际在 CostContent(平台开关开时)内渲染；平台关时此处给占位，文案不再叫"成本效率"。
   const SecondCard =
     entity === 'org' ? (
-      <PersonDayCostCard subject={subject} />
+      <KanbanSessionCostPlaceholder subject={subject} />
     ) : (
-      // 成本效率卡的分子是平台¥，平台未就绪/未接入 → 优雅占位（与平台卡同语气）。
       <section className="glass rounded-2xl p-5">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">成本效率（单位产出成本）</h2>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">会话费用（看板·单位产出成本）</h2>
         <PlatformNotConnected reason={configResolved ? 'disabled' : 'error'} />
       </section>
     )
@@ -158,12 +213,12 @@ export default function CostDimension() {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="skeleton h-48 rounded-2xl" />
-        {entity === 'org' ? <PersonDayCostCard subject={subject} /> : <div className="skeleton h-48 rounded-2xl" />}
+        {entity === 'org' ? <KanbanSessionCostPlaceholder subject={subject} /> : <div className="skeleton h-48 rounded-2xl" />}
       </div>
     )
   }
 
-  // 降级：开关 false → 平台卡占位，但看板侧第二卡按主体照常（org 人天 / 个人成本效率占位，平台缺位不连累看板侧布局）。
+  // 降级：开关 false → 平台卡占位，但看板侧第二卡按主体照常（org 会话费用 / 个人会话费用占位，平台缺位不连累看板侧布局）。
   if (!chatEnabled) {
     return (
       <div className="flex flex-col gap-5">
@@ -214,7 +269,8 @@ function CostContent({
   const focusQ = useUserRankingFocused({ startDate: start, endDate: end, universalId: object }, focused)
   const focusedRow = focused ? pickFocusedRow(focusQ.data, object) : null
 
-  // 成本效率卡的看板侧产出（分母）：区间全量用户行（与 UserContribution 同口径同获取方式）。
+  // 会话费用卡的看板侧分子(cost)+产出分母：区间全量用户行（与 UserContribution 同口径同获取方式）。
+  //   分子分母同源(都看板)：cost=tasks.cost 聚合；产出=合并需求/生成代码行。
   //   聚合 = 全量求和；聚焦 = 取 user_id == object 的那行（universal_id 与看板 user_id 同源）。
   const kanbanUsersQ = useAllUsers({ startDate: formatDateParam(start), endDate: formatDateParam(end) })
   const kanbanOutput = useMemo(() => {
@@ -222,11 +278,13 @@ function CostContent({
     if (focused) {
       const row = rows.find((r) => r.user_id === object) ?? null
       return {
+        cost: row ? row.cost : null,
         mergedNeeds: row ? row.merged_need_count : null,
         diffLines: row ? row.commit_diff_lines : null,
       }
     }
     return {
+      cost: rows.reduce((s, r) => s + (r.cost || 0), 0),
       mergedNeeds: rows.reduce((s, r) => s + (r.merged_need_count || 0), 0),
       diffLines: rows.reduce((s, r) => s + (r.commit_diff_lines || 0), 0),
     }
@@ -240,21 +298,18 @@ function CostContent({
     return [{ name: 'AI 花费', color: '#af52de', values }]
   }, [focused, series.points, series.windows, series.aggByKey])
 
-  // 平台请求失败 → 平台两张卡都区域占位（成本效率卡的分子=平台¥，平台缺位则该卡也优雅占位）。
+  // 平台请求失败 → 仅平台 AI 花费卡区域占位（会话费用卡是看板单源，平台失败照常渲染）。
   const platformError = (!focused && rankQ.error) || (focused && focusQ.error)
   const platformErrMsg = ((rankQ.error || focusQ.error) as Error | undefined)?.message
 
   const rows = rankQ.data?.data ?? []
 
-  // 成本效率卡分子（平台 AI 花费）：与相邻 PlatformCostCard 同口径 —— 聚焦=该用户；聚合=当前 Top50 合计。
-  const platformCost = focused
-    ? focusedRow?.estimated_total_cost ?? null
-    : rows.reduce((s, r) => s + (r.estimated_total_cost || 0), 0)
-  const costEffLoading = (focused ? focusQ.isLoading : rankQ.isFetching) || kanbanUsersQ.isLoading
+  // 会话费用卡：分子分母同源(都看板)——分子=看板 cost(tasks.cost 聚合)，分母=看板产出。仅依赖看板用户行。
+  const costEffLoading = kanbanUsersQ.isLoading
 
   return (
     <div className="flex flex-col gap-5">
-      {/* 双卡口径标注（顶部 KPI 行：平台 AI 花费汇总 ‖ 成本效率·单位产出成本） */}
+      {/* 双卡口径标注（顶部 KPI 行：平台 AI 花费汇总 ‖ 会话费用·单位产出成本） */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {platformError ? (
           <section className="glass rounded-2xl p-5">
@@ -270,25 +325,19 @@ function CostContent({
             objectLabel={objectLabel || object}
           />
         )}
-        {platformError ? (
-          <section className="glass rounded-2xl p-5">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">成本效率（单位产出成本）</h2>
-            <PlatformNotConnected reason="error" detail={platformErrMsg} />
-          </section>
-        ) : (
-          <CostEfficiencyCard
-            cost={platformCost}
-            mergedNeeds={kanbanOutput.mergedNeeds}
-            diffLines={kanbanOutput.diffLines}
-            loading={costEffLoading}
-            caption={focused ? objectLabel || object : 'Top50 合计 ÷ 区间产出'}
-            emptyHint={
-              focused
-                ? '该用户在所选区间内无看板产出（合并需求 / 代码行为 0 或未关联）。'
-                : undefined
-            }
-          />
-        )}
+        {/* 会话费用卡=看板单源(cost÷产出)，不依赖平台，平台失败也照常渲染。 */}
+        <CostEfficiencyCard
+          cost={kanbanOutput.cost}
+          mergedNeeds={kanbanOutput.mergedNeeds}
+          diffLines={kanbanOutput.diffLines}
+          loading={costEffLoading}
+          caption={focused ? objectLabel || object : '全部用户合计 ÷ 区间产出'}
+          emptyHint={
+            focused
+              ? '该用户在所选区间内无看板产出（合并需求 / 代码行为 0 或未关联）。'
+              : undefined
+          }
+        />
       </div>
 
       {/* 平台 AI 花费时间线 */}
@@ -448,7 +497,7 @@ function CostRankingTable({
   )
 }
 
-// ============================ 组织（org）：平台部门聚合 AI 花费 ‖ 部门人天（建设中） ============================
+// ============================ 组织（org）：平台部门聚合 AI 花费 ‖ 看板会话费用（全公司真实/部门建设中） ============================
 function OrgCostContent({
   object,
   objectLabel,
@@ -468,6 +517,10 @@ function OrgCostContent({
   // 聚合态：成本树（整棵 dept-tree 各部门子树成本 rollup，替代一级部门平铺排行）。聚焦态不需要 → 不拉。
   const treeQ = useDeptCostTree({ startDate: start, endDate: end }, !focused)
   const focusQ = useDeptPlatformFocused({ startDate: start, endDate: end, deptId: object }, focused)
+  // 看板会话费用：仅全公司可取（DashboardSummary.total_cost = tasks.cost 全量聚合）；部门级看板暂无聚合端点。
+  //   聚合态显真实全公司会话费用；聚焦态(单部门)无看板会话费用聚合 → 建设中占位。
+  const summaryQ = useDashboardSummary({ startDate: formatDateParam(start), endDate: formatDateParam(end) })
+  const companyKanbanCost = summaryQ.data?.total_cost ?? null
 
   const trendSeries = useMemo(
     () => [
@@ -500,7 +553,12 @@ function OrgCostContent({
           // 聚合态 KPI：树根（公司）子树合计 = 全树平台 AI 花费总额（含所有子部门 rollup）。
           <DeptTreeCostCard cost={aggCost} activeMembers={aggActive} loading={treeQ.loading} />
         )}
-        <PersonDayCostCard subject="部门" />
+        {/* 看板侧会话费用卡：聚合态显真实全公司 tasks.cost；聚焦态(单部门)看板无聚合端点 → 建设中占位。 */}
+        {focused ? (
+          <KanbanSessionCostPlaceholder subject="部门" />
+        ) : (
+          <CompanyKanbanCostCard cost={companyKanbanCost} loading={summaryQ.isLoading} />
+        )}
       </div>
 
       {!platformError && (

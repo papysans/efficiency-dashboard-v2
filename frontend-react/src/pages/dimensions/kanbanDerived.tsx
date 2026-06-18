@@ -12,7 +12,7 @@ import { useProjectList, useRepos } from '@/api/queries'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { ChartCard, EmptyHint } from '@/pages/platform/platformShared'
-import { fmtCost, formatNumber, formatDuration } from '@/lib/formatters'
+import { fmtCost, formatNumber } from '@/lib/formatters'
 import { formatDateParam } from '@/lib/date'
 import { sortRows } from '@/lib/sort'
 import ProjectDetail from '@/pages/projects/ProjectDetail'
@@ -74,23 +74,33 @@ function ProjectUsageAggregate() {
 
   const kpi = useMemo(() => {
     const projects = rows.length
-    const contributors = rows.reduce((s, r) => s + (r.user_count || 0), 0)
     const needs = rows.reduce((s, r) => s + (r.need_total_count || 0), 0)
-    const aiVals = rows.map((r) => Number(r.need_ai_code_ratio)).filter((v) => Number.isFinite(v))
-    const avgAi = aiVals.length ? aiVals.reduce((a, b) => a + b, 0) / aiVals.length : null
-    return { projects, contributors, needs, avgAi }
+    const aiProjects = rows.filter((r) => r.need_ai_code_ratio != null).length
+    // LOC 加权守恒：Σ(ratio_i × loc_i) / Σ(loc_i)，仅累加 ratio 有限且 loc>0 的项目。
+    let aiNum = 0
+    let aiDen = 0
+    for (const r of rows) {
+      const ratio = Number(r.need_ai_code_ratio)
+      const loc = Number(r.need_total_loc_net)
+      if (Number.isFinite(ratio) && Number.isFinite(loc) && loc > 0) {
+        aiNum += ratio * loc
+        aiDen += loc
+      }
+    }
+    const avgAi = aiDen > 0 ? aiNum / aiDen : null
+    return { projects, needs, aiProjects, avgAi }
   }, [rows])
 
   if (error) return <DerivedError msg={(error as Error).message} />
 
   return (
     <div className="flex flex-col gap-5">
-      <PlatformNoCaliberNote what="使用口径（AI 渗透 / 贡献者）" />
+      <PlatformNoCaliberNote what="使用口径（AI 渗透 / 活动量）" />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard label="项目数" value={formatNumber(kpi.projects)} />
-        <MetricCard label="贡献者(累计)" value={formatNumber(kpi.contributors)} hint="各项目人数合计(可重复)" />
+        <MetricCard label="有 AI 数据项目数" value={formatNumber(kpi.aiProjects)} />
         <MetricCard label="需求总数" value={formatNumber(kpi.needs)} />
-        <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各项目 need_ai_code_ratio 均值" />
+        <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="按生成代码行加权" />
       </div>
       <ChartCard title="项目 AI 渗透排行（看板派生）" sub="按需求 AI 代码占比倒序 · 点行下钻">
         <table className="w-full text-sm border-collapse">
@@ -100,16 +110,14 @@ function ProjectUsageAggregate() {
               <th className={TH}>项目</th>
               <th className={TH_CENTER}>AI 占比</th>
               <th className={TH_NUM}>需求数</th>
-              <th className={TH_NUM}>贡献者</th>
-              <th className={TH_NUM}>生成代码</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <SkeletonRows cols={6} />
+              <SkeletonRows cols={4} />
             ) : ranked.length === 0 ? (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={4}>
                   <EmptyHint compact />
                 </td>
               </tr>
@@ -126,8 +134,6 @@ function ProjectUsageAggregate() {
                   </td>
                   <td className="px-3 py-2 align-middle text-center"><RatioPill value={r.need_ai_code_ratio ?? null} /></td>
                   <td className={TD_NUM}>{formatNumber(r.need_total_count)}</td>
-                  <td className={TD_NUM}>{formatNumber(r.user_count)}</td>
-                  <td className={TD_NUM}>{r.need_total_loc_net && r.need_total_loc_net > 0 ? `${formatNumber(r.need_total_loc_net)} 行` : '-'}</td>
                 </tr>
               ))
             )}
@@ -153,8 +159,18 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
   const kpi = useMemo(() => {
     const repos = rows.length
     const commits = rows.reduce((s, r) => s + (r.commit_count || 0), 0)
-    const aiVals = rows.map((r) => Number(r.ai_code_ratio)).filter((v) => Number.isFinite(v))
-    const avgAi = aiVals.length ? aiVals.reduce((a, b) => a + b, 0) / aiVals.length : null
+    // commit 加权守恒：Σ(ratio_i × commit_i) / Σ(commit_i)，仅累加 ratio 有限且 commit>0 的仓库。
+    let aiNum = 0
+    let aiDen = 0
+    for (const r of rows) {
+      const ratio = Number(r.ai_code_ratio)
+      const cc = Number(r.commit_count)
+      if (Number.isFinite(ratio) && Number.isFinite(cc) && cc > 0) {
+        aiNum += ratio * cc
+        aiDen += cc
+      }
+    }
+    const avgAi = aiDen > 0 ? aiNum / aiDen : null
     return { repos, commits, avgAi }
   }, [rows])
 
@@ -166,7 +182,7 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard label="仓库数" value={formatNumber(kpi.repos)} />
         <MetricCard label="Commit 总数" value={formatNumber(kpi.commits)} />
-        <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各仓库 ai_code_ratio 均值" />
+        <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="按 Commit 数加权" />
         <MetricCard label="有 AI 数据仓库" value={formatNumber(rows.filter((r) => r.ai_code_ratio != null).length)} />
       </div>
       <ChartCard title="仓库 AI 占比排行（看板派生）" sub="按 AI 代码占比倒序（整仓跨全部分支聚合）· 点行下钻进整仓详情">
@@ -269,6 +285,8 @@ function ProjectCostAggregate() {
   const ranked = useMemo(() => sortRows(rows, (r) => r.need_cost, true), [rows])
   const totalCost = useMemo(() => rows.reduce((s, r) => s + (r.need_cost || 0), 0), [rows])
   const totalLoc = useMemo(() => rows.reduce((s, r) => s + (r.need_total_loc_net || 0), 0), [rows])
+  const totalNeeds = useMemo(() => rows.reduce((s, r) => s + (r.need_total_count || 0), 0), [rows])
+  const costPerNeed = totalNeeds > 0 ? totalCost / totalNeeds : null
 
   if (error) return <DerivedError msg={(error as Error).message} />
 
@@ -277,9 +295,9 @@ function ProjectCostAggregate() {
       <SingleCostNotice />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard label="总费用" value={`¥${fmtCost(totalCost)}`} hint="各项目需求费用合计" />
-        <MetricCard label="项目数" value={formatNumber(rows.length)} />
-        <MetricCard label="生成代码(合计)" value={totalLoc > 0 ? `${formatNumber(totalLoc)} 行` : '-'} />
+        <MetricCard label="¥/需求" value={costPerNeed != null ? `¥${fmtCost(costPerNeed)}` : '-'} hint="总费用 / 需求总数" />
         <MetricCard label="平均单价" value={totalLoc > 0 ? `¥${fmtCost((totalCost / totalLoc) * 1000)} /千行` : '-'} hint="费用 / 生成代码千行" />
+        <MetricCard label="生成代码(合计)" value={totalLoc > 0 ? `${formatNumber(totalLoc)} 行` : '-'} />
       </div>
       <ChartCard title="项目费用排行（看板派生·单卡）" sub="按需求费用倒序 · 点行下钻">
         <table className="w-full text-sm border-collapse">
@@ -289,15 +307,14 @@ function ProjectCostAggregate() {
               <th className={TH}>项目</th>
               <th className={TH_NUM}>费用（¥）</th>
               <th className={TH_NUM}>生成代码</th>
-              <th className={TH_NUM}>实际工时</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <SkeletonRows cols={5} />
+              <SkeletonRows cols={4} />
             ) : ranked.length === 0 ? (
               <tr>
-                <td colSpan={5}>
+                <td colSpan={4}>
                   <EmptyHint compact />
                 </td>
               </tr>
@@ -314,7 +331,6 @@ function ProjectCostAggregate() {
                   </td>
                   <td className={TD_NUM}>{r.need_cost != null && r.need_cost > 0 ? fmtCost(r.need_cost) : '0.00'}</td>
                   <td className={TD_NUM}>{r.need_total_loc_net && r.need_total_loc_net > 0 ? `${formatNumber(r.need_total_loc_net)} 行` : '-'}</td>
-                  <td className={TD_NUM}>{r.need_actual_work_min && r.need_actual_work_min > 0 ? `${(r.need_actual_work_min / 480).toFixed(1)} 人天` : '-'}</td>
                 </tr>
               ))
             )}
@@ -337,7 +353,8 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
   // 费用从底层聚合：Need→session→tasks.cost（跨分支按 repo_addr 合并），与项目侧 need_cost 同口径。
   const ranked = useMemo(() => sortRows(rows, (r) => r.cost, true), [rows])
   const totalCost = useMemo(() => rows.reduce((s, r) => s + (r.cost || 0), 0), [rows])
-  const totalReal = useMemo(() => rows.reduce((s, r) => s + (r.sum_real_minutes || 0), 0), [rows])
+  const totalCommits = useMemo(() => rows.reduce((s, r) => s + (r.commit_count || 0), 0), [rows])
+  const costPerCommit = totalCommits > 0 ? totalCost / totalCommits : null
 
   if (error) return <DerivedError msg={(error as Error).message} />
 
@@ -346,13 +363,13 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
       <SingleCostNotice />
       <p className="text-xs text-gray-400 dark:text-gray-500">
         仓库费用 = 该仓库<b className="font-medium">干净需求的会话花费</b>（Need→session→task 链，按 session 去重，跨全部分支聚合），与项目侧同口径；
-        无 tasks 成本数据的库显示 ¥0。下方<b className="font-medium">实际耗时</b>为人力投入参考。
+        无 tasks 成本数据的库显示 ¥0。
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard label="总费用" value={`¥${fmtCost(totalCost)}`} hint="各仓库会话费用合计" />
         <MetricCard label="仓库数" value={formatNumber(rows.length)} />
-        <MetricCard label="实际耗时(合计)" value={formatDuration(totalReal)} hint="各仓库实际耗时合计（人力投入参考）" />
-        <MetricCard label="Commit 总数" value={formatNumber(rows.reduce((s, r) => s + (r.commit_count || 0), 0))} />
+        <MetricCard label="¥/Commit" value={costPerCommit != null ? `¥${fmtCost(costPerCommit)}` : '-'} hint="总费用 / Commit 总数" />
+        <MetricCard label="Commit 总数" value={formatNumber(totalCommits)} />
       </div>
       <ChartCard title="仓库费用排行（看板派生·单卡）" sub="按会话费用倒序（整仓跨全部分支聚合）· 点行下钻进整仓详情">
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
@@ -363,16 +380,15 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
                 <th className={TH}>仓库</th>
                 <th className={TH_NUM}>分支</th>
                 <th className={TH_NUM}>费用（¥）</th>
-                <th className={TH_NUM}>实际耗时</th>
                 <th className={TH_NUM}>Commit数</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <SkeletonRows cols={6} />
+                <SkeletonRows cols={5} />
               ) : ranked.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={5}>
                     <EmptyHint compact />
                   </td>
                 </tr>
@@ -389,7 +405,6 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
                     </td>
                     <td className={TD_NUM}>{r.branch_count ? `${formatNumber(r.branch_count)} 支` : '-'}</td>
                     <td className={TD_NUM}>{r.cost != null && r.cost > 0 ? fmtCost(r.cost) : '0.00'}</td>
-                    <td className={TD_NUM}>{formatDuration(r.sum_real_minutes)}</td>
                     <td className={TD_NUM}>{formatNumber(r.commit_count)}</td>
                   </tr>
                 ))

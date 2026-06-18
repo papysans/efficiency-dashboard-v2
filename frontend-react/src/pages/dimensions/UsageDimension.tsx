@@ -16,6 +16,7 @@ import { ChartCard, ChatUserCell, EmptyHint, shortToken } from '@/pages/platform
 import {
   DimSkeleton,
   DirectMembersNote,
+  PlatformFullVolumeHeadline,
   PlatformNotConnected,
   PlatformWeekTrend,
   TruncationNote,
@@ -131,6 +132,7 @@ function UserUsage({
 
   return (
     <div className="flex flex-col gap-5">
+      {!focused && <PlatformFullVolumeHeadline start={start} end={end} />}
       <PlatformWeekTrend
         title="使用趋势（平台）"
         subtitle={focused ? `个人 · ${objectLabel || object} · 按周` : '全部用户 · 按周'}
@@ -320,6 +322,8 @@ function OrgUsage({
   return (
     <div className="flex flex-col gap-5">
       <DirectMembersNotice />
+
+      {!focused && <PlatformFullVolumeHeadline start={start} end={end} />}
 
       <PlatformWeekTrend
         title="使用趋势（平台·部门聚合）"

@@ -4,13 +4,18 @@
 //     复用 platformShared 的 multiAreaOption / ChartCard / EmptyHint，对齐玻璃拟态。
 // 仅个人维度内部复用。
 import { useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
+import { chatGet } from '@/api/client'
+import { useDashboardSummary } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
 import { EChart } from '@/components/charts/EChart'
 import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
-import { ChartCard, EmptyHint, multiAreaOption, type AreaSeries } from '@/pages/platform/platformShared'
+import { MetricCard } from '@/components/ui/MetricCard'
+import { formatNumber } from '@/lib/formatters'
+import { ChartCard, EmptyHint, multiAreaOption, shortToken, type AreaSeries } from '@/pages/platform/platformShared'
 import { weekWindowLabel, type WeekWindow } from '@/lib/weekWindows'
 
 /**
@@ -277,5 +282,117 @@ export function PlatformWeekTrend({
         <EChart option={option} height={260} />
       )}
     </ChartCard>
+  )
+}
+
+// ============================ 全量÷全量 人均平台用量 headline ============================
+
+/** /stats/global/daily 行（daily_global_summary，字段与 PlatformObjectiveCard.ChatDailyGlobal 一致，仅取本块用到的）。 */
+interface ChatDailyGlobalRow {
+  date: string
+  total_requests: number
+  unique_task_count: number
+  sum_total_tokens: number
+  estimated_total_cost: number | null
+}
+
+/**
+ * 全公司全量平台用量 ÷ 看板全量活跃用户 的「人均」headline 卡组（org/user 使用维度【聚合态】顶部）。
+ *
+ * 自洽口径解释（区别于下方 Top-N 排行）：
+ *   - 分子（全公司全量·零截断）：/stats/global/daily 区间逐日求和。global/daily 是全公司日聚合，
+ *     无 Top-N 截断 → 是真·全量；逐用户/逐部门排行受 Top 500 截断（下方明细仍标注那一套）。
+ *   - 分母（看板全量活跃用户）：useDashboardSummary().total_users_v2（看板侧全量活跃口径，非平台日去重）。
+ *   - 人均 = 全量分子 ÷ 看板全量活跃用户。两源口径独立，仅做「全量人均」对照，不与排行混算。
+ *
+ * 降级：由调用方（UsageDimension）的 chat_stats_enabled 护栏在外层兜住（关闭时整支不渲染本组件）；
+ *   本组件内再兜请求失败/无数据 → 隐藏，不空页不抛错。
+ */
+export function PlatformFullVolumeHeadline({ start, end }: { start: string; end: string }) {
+  const enabled = !!start && !!end && start <= end
+
+  const dailyQ = useQuery({
+    queryKey: ['usage-headline-global-daily', start, end],
+    queryFn: () => chatGet<ChatDailyGlobalRow[]>('/stats/global/daily', { start_date: start, end_date: end }),
+    enabled,
+  })
+  const summaryQ = useDashboardSummary({ startDate: start, endDate: end })
+
+  const daily = useMemo(() => dailyQ.data ?? [], [dailyQ.data])
+  const agg = useMemo(() => {
+    const sum = (fn: (r: ChatDailyGlobalRow) => number | null | undefined) =>
+      daily.reduce((s, r) => s + (fn(r) || 0), 0)
+    return {
+      requests: sum((r) => r.total_requests),
+      sessions: sum((r) => r.unique_task_count),
+      tokens: sum((r) => r.sum_total_tokens),
+      cost: sum((r) => r.estimated_total_cost),
+    }
+  }, [daily])
+
+  // 看板全量活跃用户（分母）。
+  const activeUsers = summaryQ.data?.total_users_v2 ?? 0
+
+  // 加载骨架（首屏，两源任一在跑且尚无数据）。
+  if ((dailyQ.isLoading && daily.length === 0) || (summaryQ.isLoading && !summaryQ.data)) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="skeleton h-24 rounded-2xl" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // 请求失败或全量分子无数据 → 隐藏 headline（下方排行/趋势照常）。不空页、不抛错。
+  if (dailyQ.error || daily.length === 0) return null
+
+  // 人均（分母为 0 时显「-」，避免除零）。
+  const per = (numerator: number) => (activeUsers > 0 ? formatNumber(Math.round(numerator / activeUsers)) : '-')
+  const tipFull = '全公司全量（/stats/global/daily 区间求和·零截断）÷ 看板全量活跃用户（total_users_v2）'
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          人均平台用量（全量）
+        </h3>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">全公司全量 ÷ 看板全量活跃用户 · 零截断</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+        <MetricCard
+          label="活跃用户（看板全量）"
+          value={formatNumber(activeUsers)}
+          hint="人均分母 · total_users_v2"
+          tip="看板侧全量活跃用户（非平台日去重）。人均的分母。"
+        />
+        <MetricCard
+          label="人均请求"
+          value={per(agg.requests)}
+          hint={`总请求 ${formatNumber(agg.requests)}`}
+          tip={tipFull}
+        />
+        <MetricCard
+          label="人均会话"
+          value={per(agg.sessions)}
+          hint={`总会话 ${formatNumber(agg.sessions)}`}
+          tip={`${tipFull}。会话 = unique_task_count。`}
+        />
+        <MetricCard
+          label="人均 Token"
+          value={activeUsers > 0 ? shortToken(Math.round(agg.tokens / activeUsers)) : '-'}
+          hint={`总 Token ${shortToken(agg.tokens)}`}
+          tip={tipFull}
+        />
+        <MetricCard
+          label="人均 AI 花费"
+          value={activeUsers > 0 ? `¥${(agg.cost / activeUsers).toFixed(2)}` : '-'}
+          hint={`总花费 ¥${agg.cost.toFixed(2)} · 估算`}
+          tip={`${tipFull}。花费 = estimated_total_cost（Token 调用估算），非人天折算。`}
+        />
+      </div>
+    </div>
   )
 }

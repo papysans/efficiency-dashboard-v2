@@ -16,6 +16,7 @@ const TABS = [
 // 这些原始监控页保留为运维用途，归到设置下）。仅 chat_stats_enabled 时显示。
 const PLATFORM_TABS = [
   { to: '/settings/platform/overview', label: '平台总览' },
+  { to: '/settings/platform/health', label: 'AI 服务健康度' },
   { to: '/settings/platform/realtime', label: '实时态势' },
   { to: '/settings/platform/realtime/query', label: '明细查询' },
 ]

@@ -9,7 +9,7 @@
 //     代码行总数、贡献者数、分支数（来自 branches[]），并按 git_user_name 拆「按贡献者」小表（提交数 / 代码行）。
 //   · 时间线：仓库无按周的贡献时序端点（周表是 用户×周 聚合，无仓库维度，见 EfficiencyDimension）→
 //     DimensionTrend 走 unavailable 诚实空态，不假装有趋势。
-// 口径：efficiency_ratio 百分比口径 → PercentPill；ai_code_ratio 小数口径 → RatioPill。绝不互换。
+// 口径：ai_code_ratio 小数口径 → RatioPill。提效比（efficiency_ratio）为效率维专属，贡献维不展示。
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { useRepos, useRepoBranches, useRepoDetail, useRepoTrend } from '@/api/queries'
@@ -17,7 +17,6 @@ import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { useViewState } from '@/store/viewState'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
-import { PercentPill } from '@/components/ui/PercentPill'
 import { EntityWeeklyTrend } from '@/components/executive/EntityWeeklyTrend'
 import { ChartCard, EmptyHint } from '@/pages/platform/platformShared'
 import { formatNumber } from '@/lib/formatters'
@@ -125,15 +124,14 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
                 <th className={TH_NUM}>Commit数</th>
                 <th className={TH_NUM}>Task数</th>
                 <th className={TH_CENTER}>AI 占比</th>
-                <th className={TH_CENTER}>提效比</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <SkeletonRows cols={7} />
+                <SkeletonRows cols={6} />
               ) : ranked.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={6}>
                     <EmptyHint compact />
                   </td>
                 </tr>
@@ -162,7 +160,6 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
                     <td className={TD_NUM}>{formatNumber(r.commit_count)}</td>
                     <td className={TD_NUM}>{formatNumber(r.task_count)}</td>
                     <td className="px-3 py-2 align-middle text-center"><RatioPill value={r.ai_code_ratio ?? null} /></td>
-                    <td className="px-3 py-2 align-middle text-center"><PercentPill value={r.efficiency_ratio} /></td>
                   </tr>
                 ))
               )}

@@ -329,7 +329,7 @@ function AggregateContribution() {
 
       {/* KPI */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MetricCard label="贡献人数" value={formatNumber(kpi.contributors)} hint="可计入贡献的用户数" />
+        <MetricCard label="贡献人数" value={formatNumber(kpi.contributors)} hint="可计入贡献的用户数" tip="同一人可能多账号(工号去重待后续)，此处按账号计数。" />
         <MetricCard label="合并需求总数" value={formatNumber(kpi.merged)} />
         <MetricCard label="代码行总数" value={formatNumber(kpi.diffLines)} hint="commit diff 行合计" />
         <MetricCard label="提交总数" value={formatNumber(kpi.commits)} />

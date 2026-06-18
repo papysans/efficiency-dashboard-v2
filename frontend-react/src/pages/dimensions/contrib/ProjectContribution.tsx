@@ -109,7 +109,12 @@ function ProjectContribAggregate() {
           hint={`候选 ${formatNumber(kpi.needs)}`}
           tip="合格(干净)需求之和；候选=看板口径全量需求。"
         />
-        <MetricCard label="贡献者(累计)" value={formatNumber(kpi.contributors)} hint="各项目人数合计(可重复)" />
+        <MetricCard
+          label="贡献者(累计)"
+          value={formatNumber(kpi.contributors)}
+          hint="各项目人数合计(可重复)"
+          tip="同一人可能多账号(工号去重待后续)，跨项目累计可重复计数。"
+        />
         <MetricCard
           label="生成代码(合计)"
           value={kpi.loc > 0 ? `${formatNumber(kpi.loc)} 行` : '-'}
@@ -125,7 +130,7 @@ function ProjectContribAggregate() {
                 <th className={`${TH} min-w-[200px]`}>项目</th>
                 <th className={TH_NUM}>生成代码</th>
                 <th className={TH_NUM}>完成 / 候选需求</th>
-                <th className={TH_NUM}>贡献者</th>
+                <th className={TH_NUM} title="同一人可能多账号(工号去重待后续)">贡献者</th>
                 <th className={TH_CENTER}>AI 占比</th>
               </tr>
             </thead>

@@ -16,8 +16,8 @@
 // 本地降级：dept-tree/ranking 端点本地常 503（statDB 未连 / dept-sync 未配置）→ error 分支优雅占位
 //   （参考 OrgTree 左树 error 分支），不白屏不崩。
 //
-// ⚠️ 口径：summary 提效比/AI占比为小数口径 → RatioPill（×100）；合并需求/代码行/提交为计数 → formatNumber。
-//   贡献维度不用 PercentPill（无百分比直填字段）。
+// ⚠️ 口径：合并需求/代码行/提交为计数 → formatNumber。AI占比属使用/渗透维（codex 实锤本表混入），
+//   按「贡献=合并需求/代码行/提交/贡献者」口径已从本排行删除；提效比同属效率维亦不在此展示。
 import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import { useDeptRanking } from '@/api/queries'
@@ -25,7 +25,6 @@ import { useViewState } from '@/store/viewState'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { DimensionTrend } from '@/components/executive/DimensionTrend'
 import { MetricCard } from '@/components/ui/MetricCard'
-import { RatioPill } from '@/components/ui/RatioPill'
 import { ChartCard, EmptyHint } from '@/pages/platform/platformShared'
 import { DirectMembersNote } from '@/pages/dimensions/platformDimShared'
 import { DeptMembersPanel } from '@/pages/orgs/DeptMembersPanel'
@@ -35,7 +34,6 @@ import type { DeptRankingItem } from '@/api/types'
 
 const TH = 'px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TH_NUM = 'px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
-const TH_CENTER = 'px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
 const TD = 'px-3 py-2 align-middle text-gray-700 dark:text-gray-200 whitespace-nowrap'
 const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dark:text-gray-200'
 
@@ -146,15 +144,14 @@ function DeptContributionAggregate({ entity, timeRange }: { entity: string; time
                 <th className={TH_NUM}>代码行</th>
                 <th className={TH_NUM}>提交数</th>
                 <th className={TH_NUM}>活跃成员</th>
-                <th className={TH_CENTER}>AI 代码占比</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <SkeletonRows cols={7} />
+                <SkeletonRows cols={6} />
               ) : ranked.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={6}>
                     <EmptyHint compact />
                   </td>
                 </tr>
@@ -187,9 +184,6 @@ function DeptContributionAggregate({ entity, timeRange }: { entity: string; time
                     <td className={TD_NUM}>
                       {formatNumber(it.summary.kanban_member_count)}
                       <span className="text-gray-400 dark:text-gray-500"> / {formatNumber(it.summary.member_count)}</span>
-                    </td>
-                    <td className="px-3 py-2 align-middle text-center">
-                      <RatioPill value={it.summary.ai_code_ratio ?? null} />
                     </td>
                   </tr>
                 ))

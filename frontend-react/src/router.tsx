@@ -3,10 +3,8 @@ import AppShell from '@/components/layout/AppShell'
 import EntityDimensionLayout from '@/components/layout/EntityDimensionLayout'
 import EfficiencyDimension from '@/pages/dimensions/EfficiencyDimension'
 import UsageDimension from '@/pages/dimensions/UsageDimension'
-import QualityDimension from '@/pages/dimensions/QualityDimension'
 import CostDimension from '@/pages/dimensions/CostDimension'
 import ContributionDimension from '@/pages/dimensions/ContributionDimension'
-import { QualityComingSoon } from '@/components/ui/QualityComingSoon'
 import type { Entity } from '@/components/ui/DimensionTabs'
 import Overview from '@/pages/Overview'
 import Placeholder from '@/pages/Placeholder'
@@ -23,6 +21,7 @@ import CommitDetail from '@/pages/commits/CommitDetail'
 import WorkDirDetail from '@/pages/workdir/WorkDirDetail'
 import ProjectDetail from '@/pages/projects/ProjectDetail'
 import PlatformOverview from '@/pages/platform/PlatformOverview'
+import PlatformHealth from '@/pages/platform/PlatformHealth'
 import RealtimeReport from '@/pages/platform/RealtimeReport'
 import RealtimeQuery from '@/pages/platform/RealtimeQuery'
 import Pricing from '@/pages/settings/Pricing'
@@ -31,8 +30,8 @@ import SyncTasks from '@/pages/settings/SyncTasks'
 import SystemConfig from '@/pages/settings/SystemConfig'
 
 // 主体×维度矩阵 IA（A 主体优先）。一级导航选主体（组织/个人/项目/仓库），
-// 进下钻后页内一排维度 Tab（使用/质量/效率/成本/贡献）切「看什么」。
-// 4 下钻共用 EntityDimensionLayout 壳，维度走「静态段」子路由（usage|quality|efficiency|cost|contribution）。
+// 进下钻后页内一排维度 Tab（使用/效率/成本/贡献）切「看什么」。
+// 4 下钻共用 EntityDimensionLayout 壳，维度走「静态段」子路由（usage|efficiency|cost|contribution）。
 //
 // 路由冲突处理：维度段用「静态字符串」而非动态参数（dim 是固定枚举），所以与详情叶子
 // /user/:userId、/user/group/:groupId 不冲突——React Router 静态段优先级高于动态段，
@@ -72,24 +71,20 @@ function DistributionToEfficiency() {
   return <Navigate to={`/org/efficiency?${sp.toString()}`} replace />
 }
 
-// 一个主体下的 5 维度子路由（4 主体共用同一组维度组件，组件内部按 entity 分支自管口径/数据源）。
-//   效率 = EfficiencyDimension（时间线→KPI→排行/明细，聚合↔聚焦两态，分布并入）。
+// 一个主体下的 4 维度子路由（4 主体共用同一组维度组件，组件内部按 entity 分支自管口径/数据源）。
 //   使用 = UsageDimension（user→平台金源 / org→平台部门聚合 / project,repo→看板派生）。
-//   成本 = CostDimension（user,org→平台AI花费‖人天双卡 / project,repo→看板费用单卡）。
+//   效率 = EfficiencyDimension（时间线→KPI→排行/明细，聚合↔聚焦两态，分布并入）。
+//   成本 = CostDimension（user,org→平台AI花费‖看板会话费用双卡 / project,repo→看板费用单卡）。
 //   贡献 = ContributionDimension（全主体看板派生：合并需求/代码行/提交/贡献者，零平台请求）。
-//   质量 = AI服务健康度，只有平台错误率口径 → user/org 给 QualityDimension；project/repo 无该口径
-//     → QualityComingSoon 占位（且 DimensionTabs 把这俩的质量 Tab 灰显，不可点）。
+// 「质量」维已移除：AI 服务健康度（非代码质量）下沉到 /settings/platform/health；真代码质量暂无数据源。
 // 不带 dim → 默认重定向到 usage（第一个维度「使用」，保留 query）。
 function entityRoute(entity: Entity) {
-  // 质量维度：仅 user/org 有平台 AI 服务错误率口径；project/repo 无 → 建设中占位。
-  const hasPlatformQuality = entity === 'user' || entity === 'org'
   return {
     path: entity,
     element: <EntityDimensionLayout entity={entity} />,
     children: [
       { index: true, element: <IndexToUsage /> },
       { path: 'usage', element: <UsageDimension /> },
-      { path: 'quality', element: hasPlatformQuality ? <QualityDimension /> : <QualityComingSoon /> },
       { path: 'efficiency', element: <EfficiencyDimension /> },
       { path: 'cost', element: <CostDimension /> },
       { path: 'contribution', element: <ContributionDimension /> },
@@ -137,6 +132,7 @@ export const router = createBrowserRouter([
       { path: 'settings/sync', element: <SyncTasks /> },
       { path: 'settings/config', element: <SystemConfig /> },
       { path: 'settings/platform/overview', element: <PlatformOverview /> },
+      { path: 'settings/platform/health', element: <PlatformHealth /> },
       { path: 'settings/platform/realtime', element: <RealtimeReport /> },
       { path: 'settings/platform/realtime/query', element: <RealtimeQuery /> },
 
