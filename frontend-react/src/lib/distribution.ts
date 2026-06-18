@@ -176,6 +176,48 @@ export function computeDistribution(rows: DistInput[], caliber: Caliber, binCoun
   }
 }
 
+/** 各对象提效比直方图的单桶（counts=落该桶的对象个数）。 */
+export interface RatioHistBucket {
+  label: string
+  lo: number
+  hi: number
+  count: number
+}
+
+export interface RatioHistogramResult {
+  binCount: number
+  total: number // 计入直方图的对象个数（有限 ratio）
+  histogram: RatioHistBucket[]
+}
+
+/**
+ * 「各对象提效比」直方图：纵轴 = 对象个数（项目/仓库/用户 数），不分 kept/excluded。
+ * 复用 computeDistribution 的等宽分桶（emptyBuckets/bucketIndex/clampBins，共享 [0,600%] 主区间 +
+ * 负提效首桶 + 尾桶 + fmtPct 标签），仅把「需求行」换成「对象的 ratio 标量」。
+ *
+ * scale: 'decimal' 输入是小数口径（0.25=25%，项目/个人用）；'percent' 输入已是百分比数值
+ * （300=300%，仓库用）→ 先 /100 归一到小数再入桶，使两口径共享同一档边界。空/非有限值跳过。
+ */
+export function computeRatioHistogram(
+  ratios: Array<number | null | undefined>,
+  binCount: number,
+  scale: 'decimal' | 'percent' = 'decimal',
+): RatioHistogramResult {
+  const bins = clampBins(binCount)
+  const base = emptyBuckets(bins)
+  const histogram: RatioHistBucket[] = base.map((b) => ({ label: b.label, lo: b.lo, hi: b.hi, count: 0 }))
+  let total = 0
+  for (const raw of ratios) {
+    if (raw == null) continue
+    const num = Number(raw)
+    if (!Number.isFinite(num)) continue
+    const ratio = scale === 'percent' ? num / 100 : num
+    histogram[bucketIndex(ratio, bins)].count += 1
+    total += 1
+  }
+  return { binCount: bins, total, histogram }
+}
+
 // 剔除原因（reason 文本含子串，与后端 reason_loc/reason_eff/reason_atb 同口径；原因可重叠计数）。
 const REASON_DEFS: Array<{ key: string; label: string }> = [
   { key: 'impossible_loc_rate', label: '物理不可能(>1w行/日)' },

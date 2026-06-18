@@ -15,8 +15,10 @@ import {
   getProjectDetail,
   getProjectNeeds,
   getProjects,
+  getProjectTrendV2,
   getRepoBranches,
   getRepoDetailV2,
+  getRepoTrendV2,
   getReposV2,
   getTaskDetailV2,
   getUserDetailV2,
@@ -151,6 +153,24 @@ export function useRepoBranches(repoAddr: string | undefined) {
     queryKey: ['repo-branches', repoAddr],
     queryFn: () => getRepoBranches(repoAddr as string),
     enabled: !!repoAddr,
+  })
+}
+
+/** 仓库按周时间线（commits 现聚合；repoAddr 空=全部仓库聚合态，非空=单仓聚焦态）。 */
+export function useRepoTrend(params: { repoAddr?: string; startDate?: string; endDate?: string }, enabled = true) {
+  return useQuery({
+    queryKey: ['repo-trend', params],
+    queryFn: () => getRepoTrendV2(params),
+    enabled,
+  })
+}
+
+/** 项目按周时间线（干净 Need 现聚合；projectId 空=全部聚合态，非空=该项目聚焦态）。 */
+export function useProjectTrend(params: { projectId?: string; startDate?: string; endDate?: string }, enabled = true) {
+  return useQuery({
+    queryKey: ['project-trend', params],
+    queryFn: () => getProjectTrendV2(params),
+    enabled,
   })
 }
 

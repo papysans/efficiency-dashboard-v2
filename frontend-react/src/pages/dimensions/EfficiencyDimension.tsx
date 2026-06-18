@@ -12,11 +12,15 @@
 //   project/repo → 该端点无对应维度 → 时间线诚实标注不适用；KPI/明细走各自看板派生口径。
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router'
-import { useEfficiencyV2 } from '@/api/queries'
+import { useEfficiencyV2, useProjectList, useAllUsers, useRepos, useRepoTrend, useProjectTrend } from '@/api/queries'
+import type { ProjectListItem } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { formatDateParam } from '@/lib/date'
+import { fmtCost, formatNumber, formatV2Ratio } from '@/lib/formatters'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { DimensionTrend } from '@/components/executive/DimensionTrend'
+import { EntityWeeklyTrend } from '@/components/executive/EntityWeeklyTrend'
+import { MetricCard } from '@/components/ui/MetricCard'
 import OrgTree from '@/pages/orgs/OrgTree'
 import UserList from '@/pages/users/UserList'
 import UserDetail from '@/pages/users/UserDetail'
@@ -25,6 +29,7 @@ import ProjectDetail from '@/pages/projects/ProjectDetail'
 import RepoList from '@/pages/repos/RepoList'
 import RepoDetail from '@/pages/repos/RepoDetail'
 import DistributionOverview from '@/pages/distribution/DistributionOverview'
+import { EntityRatioHistogram } from '@/pages/distribution/EntityRatioHistogram'
 
 type SubView = 'overview' | 'distribution'
 
@@ -70,7 +75,7 @@ export default function EfficiencyDimension() {
           <FocusContent entity={entity} object={object} objectLabel={objectLabel} timeRange={timeRange} />
         )
       ) : subView === 'distribution' ? (
-        <DistributionOverview />
+        <EntityDistribution entity={entity} timeRange={timeRange} />
       ) : entity === 'org' ? (
         <OrgTree />
       ) : (
@@ -103,16 +108,18 @@ function EfficiencyTrend({
 
   const trendQ = useEfficiencyV2({ ...dateParams, userId }, enableTrend)
 
-  if (entity === 'project' || entity === 'repo') {
-    return (
-      <DimensionTrend
-        rows={[]}
-        unavailable
-        title="提效趋势"
-        subtitle={`${entity === 'project' ? '项目' : '仓库'}口径`}
-        unavailableNote="项目/仓库暂无按周的提效时间线（周表按 用户×周 聚合，无此维度）。下方为看板派生口径的提效与明细。"
-      />
+  // 项目：聚焦态走「该项目干净 Need 按周提效」时间线（/v2/project-trend）；聚合态仍用项目级聚合 KPI 概览。
+  if (entity === 'project') {
+    return focused ? (
+      <ProjectFocusTrend object={object} objectLabel={objectLabel} dateParams={dateParams} />
+    ) : (
+      <ProjectAggregateSummary />
     )
+  }
+
+  // 仓库：两态都走「commits 按周提效」时间线（/v2/repo-trend）。聚合=全部仓库，聚焦=单仓跨全部分支。
+  if (entity === 'repo') {
+    return <RepoEfficiencyTrend object={object} objectLabel={objectLabel} dateParams={dateParams} focused={focused} />
   }
 
   if (entity === 'org' && focused) {
@@ -144,6 +151,144 @@ function EfficiencyTrend({
   )
 }
 
+/** 仓库提效时间线：commits 按 ISO 周现聚合（/v2/repo-trend，efficiency_pct 已百分比口径）。
+ *  聚合态(repoAddr 空)=全部仓库；聚焦态=单仓跨全部分支。 */
+function RepoEfficiencyTrend({
+  object,
+  objectLabel,
+  dateParams,
+  focused,
+}: {
+  object: string
+  objectLabel: string
+  dateParams: { startDate: string; endDate: string }
+  focused: boolean
+}) {
+  const q = useRepoTrend({ repoAddr: focused ? object : undefined, ...dateParams })
+  return (
+    <EntityWeeklyTrend
+      points={q.data?.data}
+      loading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+      title="提效趋势"
+      subtitle={focused ? `仓库 · ${objectLabel || object} · 按 ISO 周` : '全部仓库 · 按 ISO 周（commits 聚合）'}
+      metric="efficiency"
+    />
+  )
+}
+
+/** 项目聚焦态提效时间线：该项目干净 Need 按 dev_end_ts 的 ISO 周现聚合（/v2/project-trend）。 */
+function ProjectFocusTrend({
+  object,
+  objectLabel,
+  dateParams,
+}: {
+  object: string
+  objectLabel: string
+  dateParams: { startDate: string; endDate: string }
+}) {
+  const q = useProjectTrend({ projectId: object, ...dateParams })
+  return (
+    <EntityWeeklyTrend
+      points={q.data?.data}
+      loading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+      title="提效趋势"
+      subtitle={`项目 · ${objectLabel || object} · 按 ISO 周（干净需求聚合）`}
+      metric="efficiency"
+    />
+  )
+}
+
+/**
+ * #2 项目聚合态时间线位的替代：项目级聚合 KPI（项目维度天然无按周时序，聚合信息更有用）。
+ * 全用 useProjectList()(ProjectListItem) 现成字段（与项目列表/详情同源、纯 Need(branch) 口径）求和/取均，
+ * 口径不混：提效比/AI占比为**小数口径**（formatV2Ratio ×100 / RatioPill），费用为 ¥。
+ * 平均日历提效比 = 各项目 need_calendar_efficiency_ratio 的算术均值（仅计有限值，与项目排行同源）。
+ */
+function ProjectAggregateSummary() {
+  const { data, isLoading, error } = useProjectList()
+  const rows = useMemo<ProjectListItem[]>(() => data?.data ?? [], [data])
+
+  const agg = useMemo(() => {
+    let eligible = 0
+    let total = 0
+    let cost = 0
+    let loc = 0
+    let users = 0
+    const calRatios: number[] = []
+    const aiRatios: number[] = []
+    for (const r of rows) {
+      eligible += r.need_eligible_count ?? 0
+      total += r.need_total_count ?? 0
+      cost += r.need_cost ?? 0
+      loc += r.need_total_loc_net ?? 0
+      users += r.user_count ?? 0
+      const cal = Number(r.need_calendar_efficiency_ratio)
+      if (r.need_calendar_efficiency_ratio != null && Number.isFinite(cal)) calRatios.push(cal)
+      const ai = Number(r.need_ai_code_ratio)
+      if (r.need_ai_code_ratio != null && Number.isFinite(ai)) aiRatios.push(ai)
+    }
+    const mean = (xs: number[]) => (xs.length > 0 ? xs.reduce((s, v) => s + v, 0) / xs.length : null)
+    return {
+      projectCount: rows.length,
+      eligible,
+      total,
+      cost,
+      loc,
+      users,
+      avgCalRatio: mean(calRatios),
+      avgAiRatio: mean(aiRatios),
+    }
+  }, [rows])
+
+  const eligiblePct = agg.total > 0 ? (agg.eligible / agg.total) * 100 : 0
+
+  return (
+    <div className="glass rounded-2xl p-5 md:p-6 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">项目提效概览</h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500 text-right">
+          项目=一组需求(branch) · 纯 Need 口径（守恒聚合、只计干净需求）
+        </span>
+      </div>
+
+      {error ? (
+        <div className="text-sm text-rose-600 dark:text-rose-400">加载失败：{(error as Error).message}</div>
+      ) : isLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton h-20 rounded-2xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetricCard label="项目数" value={formatNumber(agg.projectCount)} accent="#0071e3" />
+          <MetricCard
+            label="合格需求"
+            value={formatNumber(agg.eligible)}
+            hint={`合格/候选 ${formatNumber(agg.eligible)} / ${formatNumber(agg.total)} · ${eligiblePct.toFixed(1)}%`}
+          />
+          <MetricCard
+            label="平均日历提效比"
+            value={formatV2Ratio(agg.avgCalRatio)}
+            tip="各项目日历提效比（小数口径）的算术均值"
+            tone={agg.avgCalRatio != null && agg.avgCalRatio < 0 ? 'neg' : 'pos'}
+          />
+          <MetricCard label="平均 AI 占比" value={formatV2Ratio(agg.avgAiRatio)} tip="各项目 AI 代码占比（小数口径）均值" />
+          <MetricCard label="费用合计" value={`¥${fmtCost(agg.cost)}`} hint="各项目干净需求费用之和" />
+          <MetricCard
+            label="生成代码合计"
+            value={agg.loc > 0 ? `${formatNumber(agg.loc)} 行` : '-'}
+            hint="need_total_loc_net 之和"
+          />
+          <MetricCard label="贡献者合计" value={formatNumber(agg.users)} hint="各项目贡献者人次之和" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 聚合态：现有列表/排行（点行下钻进独立详情；壳内选对象则进聚焦态）。org 由上层单独渲染 OrgTree。 */
 function AggregateContent({ entity }: { entity: string }) {
   switch (entity) {
@@ -156,6 +301,79 @@ function AggregateContent({ entity }: { entity: string }) {
     default:
       return null
   }
+}
+
+/**
+ * #5 效率·分布 按主体口径区分：每个主体显「自己对象的提效比分布」，不再共用全局 Need 分布。
+ *   org  → DistributionOverview（全量需求提效比分布，原样保留 = 组织/公司口径）。
+ *   project/repo/user → 各对象提效比直方图（横轴=提效比分档，纵轴=对象个数），口径分流：
+ *     project = need_calendar_efficiency_ratio（小数）｜ repo = efficiency_ratio（百分比）｜ user = calendar_ratio（小数）。
+ */
+function EntityDistribution({ entity, timeRange }: { entity: string; timeRange: [string, string] }) {
+  if (entity === 'project') return <ProjectRatioDistribution />
+  if (entity === 'repo') return <RepoRatioDistribution timeRange={timeRange} />
+  if (entity === 'user') return <UserRatioDistribution timeRange={timeRange} />
+  // 组织：保留全量需求分布（= 组织/公司口径的需求分布）+ 口径说明。
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        组织 = 全量需求提效比分布（公司口径，含双口径与数据质量诊断）。按部门拆分排行需后端支持，暂以全量分布呈现。
+      </p>
+      <DistributionOverview />
+    </div>
+  )
+}
+
+/** 项目分布：各项目 need_calendar_efficiency_ratio（小数口径）分桶。数据现成（useProjectList，与日期无关）。 */
+function ProjectRatioDistribution() {
+  const { data, isLoading, error } = useProjectList()
+  const ratios = useMemo(() => (data?.data ?? []).map((r) => r.need_calendar_efficiency_ratio), [data])
+  return (
+    <EntityRatioHistogram
+      ratios={ratios}
+      scale="decimal"
+      entityLabel="项目"
+      caliberNote="日历提效比 · 小数口径"
+      loading={isLoading}
+      error={error ? (error as Error).message : null}
+    />
+  )
+}
+
+/** 仓库分布：各仓库 efficiency_ratio（⚠️百分比口径）分桶。pageSize 拉大客户端一次取回（对齐分布页仓库排行）。 */
+function RepoRatioDistribution({ timeRange }: { timeRange: [string, string] }) {
+  const startDate = formatDateParam(timeRange[0])
+  const endDate = formatDateParam(timeRange[1])
+  const { data, isLoading, error } = useRepos({ startDate, endDate, page: 1, pageSize: 1000 })
+  const ratios = useMemo(() => (data?.data ?? []).map((r) => r.efficiency_ratio), [data])
+  return (
+    <EntityRatioHistogram
+      ratios={ratios}
+      scale="percent"
+      entityLabel="仓库"
+      caliberNote="提效比 · 百分比口径"
+      loading={isLoading}
+      error={error ? (error as Error).message : null}
+    />
+  )
+}
+
+/** 个人分布：各用户 calendar_ratio（小数口径）分桶。useAllUsers 翻页拉全（对齐分布页用户排行）。 */
+function UserRatioDistribution({ timeRange }: { timeRange: [string, string] }) {
+  const startDate = formatDateParam(timeRange[0])
+  const endDate = formatDateParam(timeRange[1])
+  const { data, isLoading, error } = useAllUsers({ startDate, endDate })
+  const ratios = useMemo(() => (data ?? []).map((r) => r.calendar_ratio), [data])
+  return (
+    <EntityRatioHistogram
+      ratios={ratios}
+      scale="decimal"
+      entityLabel="用户"
+      caliberNote="日历提效比 · 小数口径"
+      loading={isLoading}
+      error={error ? (error as Error).message : null}
+    />
+  )
 }
 
 /** 聚焦态：复用现有详情组件（embedded，去掉返回/标题，壳保留面包屑）。org 不走此路（OrgTree 复合视图）。 */

@@ -1,10 +1,10 @@
 // 项目列表页（纯 Need(branch) 口径，与项目详情页对齐）。
 // 提效比/AI占比为**小数口径**，用 RatioPill（绝不用 PercentPill 百分比口径）。
 // 无分页（getProjects 返回全量 {data:[]}）；筛选(name/仅未结束) + 全客户端排序（need_* 字段已在响应里）。
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { createProject, deleteProject } from '@/api/endpoints'
+import { deleteProject } from '@/api/endpoints'
 import { useProjectList } from '@/api/queries'
 import type { ProjectListItem } from '@/api/types'
 import { fmtCost } from '@/lib/formatters'
@@ -12,6 +12,7 @@ import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { Modal } from '@/components/ui/Modal'
+import { CreateProjectModal } from '@/components/projects/CreateProjectModal'
 
 // 全客户端排序 getter（按显示值，所见即所排；null 由 sortRows 沉底）。
 const CLIENT_GETTERS: Record<string, (r: ProjectListItem) => number | null | undefined> = {
@@ -100,12 +101,6 @@ export default function ProjectList() {
   const isSortDesc = (field: string) => parsedOrder?.field === field && parsedOrder?.desc === true
 
   const [createOpen, setCreateOpen] = useState(false)
-
-  async function handleCreate(name: string, description: string) {
-    await createProject({ name: name.trim(), description: (description || '').trim() })
-    setCreateOpen(false)
-    await refetch()
-  }
 
   const [pendingDelete, setPendingDelete] = useState<ProjectListItem | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -274,7 +269,7 @@ export default function ProjectList() {
         </div>
       </section>
 
-      <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} onSubmit={handleCreate} />
+      <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => refetch()} />
 
       <Modal
         open={!!pendingDelete}
@@ -306,94 +301,5 @@ export default function ProjectList() {
         </p>
       </Modal>
     </div>
-  )
-}
-
-function CreateProjectModal({
-  open,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean
-  onClose: () => void
-  onSubmit: (name: string, description: string) => Promise<void>
-}) {
-  const [name, setName] = useState('')
-  const [desc, setDesc] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [err, setErr] = useState('')
-
-  useEffect(() => {
-    if (!open) return
-    setName('')
-    setDesc('')
-    setErr('')
-  }, [open])
-
-  async function handleSubmit() {
-    if (!name.trim()) {
-      setErr('请输入项目名称')
-      return
-    }
-    setSubmitting(true)
-    setErr('')
-    try {
-      await onSubmit(name, desc)
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : '创建失败')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const inputCls =
-    'glass rounded-lg px-3 py-1.5 text-sm w-full bg-transparent text-gray-900 dark:text-white ' +
-    'focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue'
-
-  return (
-    <Modal
-      open={open}
-      title="创建项目"
-      maxWidth={500}
-      onClose={onClose}
-      footer={
-        <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="glass rounded-lg px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-4 py-1.5 text-sm font-medium cursor-pointer transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
-          >
-            {submitting ? '创建中...' : '创建'}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
-        <Field label="项目名称">
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
-        </Field>
-        <Field label="描述（可选）">
-          <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} className={`${inputCls} resize-y`} />
-        </Field>
-      </div>
-    </Modal>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</span>
-      {children}
-    </label>
   )
 }

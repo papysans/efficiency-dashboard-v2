@@ -4,6 +4,7 @@ import {
   computeQuantiles,
   computeExclusionReasons,
   computeLocBands,
+  computeRatioHistogram,
   MIN_BINS,
   MAX_BINS,
   type DistInput,
@@ -91,6 +92,33 @@ describe('computeDistribution — kept/excluded 口径（对齐 backend db.go:15
     expect(computeDistribution([], 'calendar', 1).binCount).toBe(MIN_BINS)
     expect(computeDistribution([], 'calendar', 999).binCount).toBe(MAX_BINS)
     expect(computeDistribution([], 'calendar', 11.6).binCount).toBe(12)
+  })
+})
+
+describe('computeRatioHistogram — 各对象提效比分桶（复用等宽分桶，纵轴=对象个数）', () => {
+  it('小数口径：负提效首桶 / 主区间 / >=600% 尾桶；total = 有限值个数', () => {
+    const r = computeRatioHistogram([-0.5, 0.5, 7, null, undefined, NaN], 6, 'decimal')
+    expect(r.total).toBe(3) // null/undefined/NaN 跳过
+    expect(r.histogram[0].label).toBe('负提效')
+    expect(r.histogram[0].count).toBe(1) // -0.5
+    expect(r.histogram[r.histogram.length - 1].count).toBe(1) // 7 → 尾桶
+    // 主区间桶数 = bins，含首尾共 bins + 2
+    expect(r.histogram.length).toBe(6 + 2)
+  })
+
+  it('百分比口径 /100 后与小数口径落同一桶（口径不混）', () => {
+    const dec = computeRatioHistogram([2.5], 6, 'decimal') // 250%
+    const pct = computeRatioHistogram([250], 6, 'percent') // 250% → /100 = 2.5
+    const decIdx = dec.histogram.findIndex((b) => b.count === 1)
+    const pctIdx = pct.histogram.findIndex((b) => b.count === 1)
+    expect(decIdx).toBe(pctIdx)
+    expect(decIdx).toBeGreaterThan(0)
+  })
+
+  it('binCount 钳到 [MIN_BINS, MAX_BINS]；空输入 total=0', () => {
+    expect(computeRatioHistogram([], 1, 'decimal').binCount).toBe(MIN_BINS)
+    expect(computeRatioHistogram([], 999, 'decimal').binCount).toBe(MAX_BINS)
+    expect(computeRatioHistogram([], 6, 'decimal').total).toBe(0)
   })
 })
 

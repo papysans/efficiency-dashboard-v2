@@ -153,14 +153,15 @@ export default function RepoList() {
 
   function goToRepo(row: RepoListItem) {
     if (!row?.repo_addr) return
-    navigate(`/repo/${encodeURIComponent(row.repo_addr)}/${encodeURIComponent(row.repo_branch || '')}`)
+    // 整仓口径：repo_branch 已空，下钻进整仓详情（详情页内再切分支）。
+    navigate(`/repo/${encodeURIComponent(row.repo_addr)}/`)
   }
 
   return (
     <div className="space-y-5">
       <header>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          按仓库聚合古法预估 vs 实际耗时，提效比为百分比口径（300 表示提速到 4 倍）。每仓库取首选分支。
+          按仓库聚合古法预估 vs 实际耗时，提效比为百分比口径（300 表示提速到 4 倍）。整仓口径：跨该仓库全部分支聚合。
         </p>
       </header>
 
@@ -179,7 +180,7 @@ export default function RepoList() {
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={`${TH} min-w-[300px]`}>仓库地址</th>
-                <th className={`${TH} min-w-[100px]`}>分支</th>
+                <th className={`${TH_NUM} min-w-[80px]`}>分支数</th>
                 <th className={TH_NUM}>
                   <SortableTh field="commitCount" label="Commit数" numeric active={isSortActive('commitCount')} desc={isSortDesc('commitCount')} onSort={onSortChange} />
                 </th>
@@ -225,16 +226,14 @@ export default function RepoList() {
               ) : (
                 displayRows.map((row) => (
                   <tr
-                    key={`${row.repo_addr}#${row.repo_branch}`}
+                    key={row.repo_addr}
                     onClick={() => goToRepo(row)}
                     className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                   >
                     <td className={TD}>
                       <div className="max-w-[360px] truncate" title={row.repo_addr}>{row.repo_addr || '-'}</div>
                     </td>
-                    <td className={TD}>
-                      <div className="max-w-[180px] truncate" title={row.repo_branch}>{row.repo_branch || '-'}</div>
-                    </td>
+                    <td className={TD_NUM}>{row.branch_count ? `${row.branch_count} 支` : '-'}</td>
                     <td className={TD_NUM}>{row.commit_count}</td>
                     <td className={TD_NUM}>{row.task_count}</td>
                     <td className={TD_NUM}>{formatDuration(row.sum_ancient_minutes)}</td>

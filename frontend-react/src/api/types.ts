@@ -368,10 +368,12 @@ export interface OrgV2Row {
   cost: number
 }
 
-/** /v2/repos 列表项（§Repo-4，⚠️ 百分比口径 efficiency_ratio = CalcEfficiencyRatio(ancient,real)）。 */
+/** /v2/repos 列表项（§Repo-4，⚠️ 百分比口径 efficiency_ratio = CalcEfficiencyRatio(ancient,real)）。
+ *  整仓口径：后端跨全部分支聚合（一仓一行），repo_branch 为空、branch_count=合并分支数。 */
 export interface RepoListItem {
   repo_addr: string
-  repo_branch: string
+  repo_branch: string // 整仓聚合后为空；下钻进详情可切分支
+  branch_count?: number // 该仓库合并的分支数
   commit_count: number
   start_time: string
   end_time: string
@@ -380,6 +382,21 @@ export interface RepoListItem {
   task_count: number
   efficiency_ratio: number // 百分比口径
   ai_code_ratio?: number | null // 小数口径
+  cost?: number // 看板派生费用（Need→session→tasks.cost 跨分支聚合）；无 tasks 数据的库为 0
+}
+
+/** /v2/repo-trend、/v2/project-trend 的周聚合点（EfficiencyPct 已是百分比，前端直接画不再 ×100）。 */
+export interface EntityTrendPoint {
+  week_start: string // 该周周一 YYYY-MM-DD
+  efficiency_pct: number // 百分比口径（300=300%）
+  commit_count: number // 仓库口径：本周提交数
+  diff_lines: number // 仓库口径：本周代码行
+  need_count: number // 项目口径：本周干净 Need 数
+  loc: number // 项目口径：本周生成代码净行
+}
+
+export interface EntityTrendResponse {
+  data: EntityTrendPoint[]
 }
 
 /** /v2/repos/detail 的 efficiency 块（百分比口径）。 */

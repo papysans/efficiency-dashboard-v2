@@ -33,6 +33,7 @@ import type {
   DeptRankingResponse,
   DeptTreeNode,
   EfficiencyV2AggregateResponse,
+  EntityTrendResponse,
   GlobalConfig,
   ListParams,
   NeedRepoOption,
@@ -213,6 +214,11 @@ export function getRepoBranches(repoAddr: string) {
   return apiGet<RepoBranchesResponse>('/v2/repos/branches', { repoAddr })
 }
 
+/** 仓库按周时间线（commits 现聚合）：repoAddr 空=全部仓库，非空=单仓跨全部分支。 */
+export function getRepoTrendV2(params: { repoAddr?: string; startDate?: string; endDate?: string }) {
+  return apiGet<EntityTrendResponse>('/v2/repo-trend', params)
+}
+
 // ---- Tasks（⚠️ 百分比口径：efficiency_ratio 300=300%，不 ×100） ----
 export function getTasksV2(params: ListParams) {
   return apiGet<ApiList<TaskListItem>>('/v2/tasks', params)
@@ -243,6 +249,11 @@ export function getProjects(params?: ListParams) {
 
 export function getProjectDetail(projectId: string) {
   return apiGet<ProjectDetailResponse>(`/v2/projects/${encodeURIComponent(projectId)}`)
+}
+
+/** 项目按周时间线（干净 Need 按 dev_end_ts 现聚合）：projectId 空=全部干净 Need，非空=该项目候选池。 */
+export function getProjectTrendV2(params: { projectId?: string; startDate?: string; endDate?: string }) {
+  return apiGet<EntityTrendResponse>('/v2/project-trend', params)
 }
 
 /** 创建 Project：POST /v2/projects（返回含 project_id）。 */

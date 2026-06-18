@@ -4,10 +4,11 @@
 //
 // 聚焦对象（focus object）单一数据源 = URL query ?object=<id>（深链/刷新保持，切维度 Tab 不丢，
 // 因为切 Tab 只换 path 段不动 query）。维度内容（EfficiencyDimension 等）通过 useEntityFocus() 读 entity+object。
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Outlet, useOutletContext, useSearchParams } from 'react-router'
 import { DimensionTabs, type Entity } from '@/components/ui/DimensionTabs'
 import { ObjectSelector } from '@/components/ui/ObjectSelector'
+import { CreateProjectModal } from '@/components/projects/CreateProjectModal'
 import { useEntityObjects, type EntityOption } from '@/hooks/useEntityObjects'
 
 const ENTITY_TITLE: Record<Entity, string> = {
@@ -38,6 +39,9 @@ export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
   const object = searchParams.get(OBJECT_KEY) || ''
 
   const { options, loading } = useEntityObjects(entity)
+
+  // 「创建项目」仅在项目维度显示，任意子维度（使用/质量/效率/成本/贡献）都能新建。
+  const [createOpen, setCreateOpen] = useState(false)
 
   const objectLabel = useMemo<string>(() => {
     if (!object) return ''
@@ -92,8 +96,20 @@ export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
           </nav>
         </div>
 
-        {/* 对象选择器：聚合↔聚焦 */}
-        <div className="shrink-0">
+        {/* 对象选择器（聚合↔聚焦）+「创建项目」按钮（仅项目维度） */}
+        <div className="shrink-0 flex items-center gap-2">
+          {entity === 'project' && (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blue-hover text-white rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              创建项目
+            </button>
+          )}
           <ObjectSelector
             options={options}
             value={object}
@@ -112,6 +128,10 @@ export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
       <div>
         <Outlet context={focus} />
       </div>
+
+      {entity === 'project' && (
+        <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      )}
     </div>
   )
 }

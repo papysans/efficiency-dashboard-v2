@@ -12,13 +12,13 @@
 // 口径：efficiency_ratio 百分比口径 → PercentPill；ai_code_ratio 小数口径 → RatioPill。绝不互换。
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import { useRepos, useRepoBranches, useRepoDetail } from '@/api/queries'
+import { useRepos, useRepoBranches, useRepoDetail, useRepoTrend } from '@/api/queries'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { useViewState } from '@/store/viewState'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { PercentPill } from '@/components/ui/PercentPill'
-import { DimensionTrend } from '@/components/executive/DimensionTrend'
+import { EntityWeeklyTrend } from '@/components/executive/EntityWeeklyTrend'
 import { ChartCard, EmptyHint } from '@/pages/platform/platformShared'
 import { formatNumber } from '@/lib/formatters'
 import { formatDateParam } from '@/lib/date'
@@ -45,16 +45,22 @@ export default function RepoContribution() {
   const { object, objectLabel } = useEntityFocus()
   const { timeRange } = useViewState()
   const focused = object !== ''
+  const dateParams = useMemo(
+    () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
+    [timeRange],
+  )
+  // 页首主角：贡献时间线 = commits 按 ISO 周提交量（/v2/repo-trend 现聚合，贡献=交付活动节奏）。
+  const trendQ = useRepoTrend({ repoAddr: focused ? object : undefined, ...dateParams })
 
   return (
     <div className="flex flex-col gap-5">
-      {/* 页首主角：时间线（仓库贡献无周时序 → 诚实空态） */}
-      <DimensionTrend
-        rows={[]}
-        unavailable
+      <EntityWeeklyTrend
+        points={trendQ.data?.data}
+        loading={trendQ.isLoading}
+        error={trendQ.error ? (trendQ.error as Error).message : null}
         title="贡献趋势"
-        subtitle={focused ? `仓库 · ${objectLabel || object}` : '仓库口径'}
-        unavailableNote="仓库暂无按周的贡献时间线（周表按 用户×周 聚合，无仓库维度）。下方为看板派生口径的贡献排行与明细。"
+        subtitle={focused ? `仓库 · ${objectLabel || object} · 每周提交量` : '全部仓库 · 每周提交量（commits 聚合）'}
+        metric="commits"
       />
 
       {focused ? (
@@ -76,10 +82,10 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
   const { data, isLoading, error } = useRepos({ ...dateParams, page: 1, pageSize: 1000 })
   const rows = useMemo<RepoListItem[]>(() => data?.data ?? [], [data])
 
-  // 行下钻 → 仓库详情（repoBranch 可选段，与 RepoList.goToRepo 同址）。
+  // 行下钻 → 整仓详情（repo_branch 已空=整仓口径，进详情后再切分支）。
   function goToRepo(row: RepoListItem) {
     if (!row?.repo_addr) return
-    navigate(`/repo/${encodeURIComponent(row.repo_addr)}/${encodeURIComponent(row.repo_branch || '')}`)
+    navigate(`/repo/${encodeURIComponent(row.repo_addr)}/`)
   }
 
   // 贡献维度按提交数降序（null 沉底）——提交量是仓库贡献的主排序口径。
@@ -105,9 +111,9 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
         <MetricCard label="Task 总数" value={formatNumber(kpi.tasks)} hint="各仓库任务数合计" />
         <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各仓库 ai_code_ratio 均值" />
       </div>
-      <ChartCard title="仓库贡献排行（看板派生）" sub="按 Commit 数倒序（每仓库取首选分支）· 点行下钻">
+      <ChartCard title="仓库贡献排行（看板派生）" sub="按 Commit 数倒序（整仓跨全部分支聚合）· 点行下钻进整仓详情">
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-          仓库列表口径无代码行 / 分支数字段 → 进单仓库详情可见按贡献者拆分的代码行与分支明细。
+          整仓口径（跨全部分支合并）；进单仓库详情可见按贡献者拆分的代码行与各分支明细。
         </p>
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
@@ -115,7 +121,7 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={TH_NUM}>排名</th>
                 <th className={TH}>仓库</th>
-                <th className={TH}>分支</th>
+                <th className={TH_NUM}>分支</th>
                 <th className={TH_NUM}>Commit数</th>
                 <th className={TH_NUM}>Task数</th>
                 <th className={TH_CENTER}>AI 占比</th>
@@ -134,7 +140,7 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
               ) : (
                 ranked.map((r, i) => (
                   <tr
-                    key={`${r.repo_addr}#${r.repo_branch}`}
+                    key={r.repo_addr}
                     onClick={() => goToRepo(r)}
                     className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                   >
@@ -152,9 +158,7 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
                         {r.repo_addr || '-'}
                       </button>
                     </td>
-                    <td className={TD}>
-                      <div className="max-w-[160px] truncate" title={r.repo_branch}>{r.repo_branch || '-'}</div>
-                    </td>
+                    <td className={TD_NUM}>{r.branch_count ? `${formatNumber(r.branch_count)} 支` : '-'}</td>
                     <td className={TD_NUM}>{formatNumber(r.commit_count)}</td>
                     <td className={TD_NUM}>{formatNumber(r.task_count)}</td>
                     <td className="px-3 py-2 align-middle text-center"><RatioPill value={r.ai_code_ratio ?? null} /></td>

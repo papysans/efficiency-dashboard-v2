@@ -169,13 +169,14 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
         <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各仓库 ai_code_ratio 均值" />
         <MetricCard label="有 AI 数据仓库" value={formatNumber(rows.filter((r) => r.ai_code_ratio != null).length)} />
       </div>
-      <ChartCard title="仓库 AI 占比排行（看板派生）" sub="按 AI 代码占比倒序（每仓库取首选分支）· 点行下钻">
+      <ChartCard title="仓库 AI 占比排行（看板派生）" sub="按 AI 代码占比倒序（整仓跨全部分支聚合）· 点行下钻进整仓详情">
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={TH_NUM}>排名</th>
                 <th className={TH}>仓库</th>
+                <th className={TH_NUM}>分支</th>
                 <th className={TH_CENTER}>AI 占比</th>
                 <th className={TH_NUM}>Commit数</th>
                 <th className={TH_NUM}>Task数</th>
@@ -183,24 +184,25 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
             </thead>
             <tbody>
               {isLoading ? (
-                <SkeletonRows cols={5} />
+                <SkeletonRows cols={6} />
               ) : ranked.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <EmptyHint compact />
                   </td>
                 </tr>
               ) : (
                 ranked.map((r, i) => (
                   <tr
-                    key={`${r.repo_addr}#${r.repo_branch}`}
-                    onClick={() => goToRepo(r.repo_addr, r.repo_branch)}
+                    key={r.repo_addr}
+                    onClick={() => goToRepo(r.repo_addr)}
                     className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                   >
                     <td className={TD_NUM}>{i + 1}</td>
                     <td className={TD}>
-                      <RepoAddrButton addr={r.repo_addr} onClick={() => goToRepo(r.repo_addr, r.repo_branch)} />
+                      <RepoAddrButton addr={r.repo_addr} onClick={() => goToRepo(r.repo_addr)} />
                     </td>
+                    <td className={TD_NUM}>{r.branch_count ? `${formatNumber(r.branch_count)} 支` : '-'}</td>
                     <td className="px-3 py-2 align-middle text-center"><RatioPill value={r.ai_code_ratio ?? null} /></td>
                     <td className={TD_NUM}>{formatNumber(r.commit_count)}</td>
                     <td className={TD_NUM}>{formatNumber(r.task_count)}</td>
@@ -332,8 +334,9 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
   )
   const { data, isLoading, error } = useRepos({ ...dateParams, page: 1, pageSize: 1000 })
   const rows = useMemo<RepoListItem[]>(() => data?.data ?? [], [data])
-  // 仓库列表项无费用列 → 用实际耗时(人天)做费用代理排行（诚实标注口径）。
-  const ranked = useMemo(() => sortRows(rows, (r) => r.sum_real_minutes, true), [rows])
+  // 费用从底层聚合：Need→session→tasks.cost（跨分支按 repo_addr 合并），与项目侧 need_cost 同口径。
+  const ranked = useMemo(() => sortRows(rows, (r) => r.cost, true), [rows])
+  const totalCost = useMemo(() => rows.reduce((s, r) => s + (r.cost || 0), 0), [rows])
   const totalReal = useMemo(() => rows.reduce((s, r) => s + (r.sum_real_minutes || 0), 0), [rows])
 
   if (error) return <DerivedError msg={(error as Error).message} />
@@ -342,48 +345,51 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
     <div className="flex flex-col gap-5">
       <SingleCostNotice />
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        仓库列表口径无直接费用字段 → 此处成本以<b className="font-medium">实际耗时（人力投入）</b>代理；进单仓库详情可见会话费用明细。
+        仓库费用 = 该仓库<b className="font-medium">干净需求的会话花费</b>（Need→session→task 链，按 session 去重，跨全部分支聚合），与项目侧同口径；
+        无 tasks 成本数据的库显示 ¥0。下方<b className="font-medium">实际耗时</b>为人力投入参考。
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <MetricCard label="总费用" value={`¥${fmtCost(totalCost)}`} hint="各仓库会话费用合计" />
         <MetricCard label="仓库数" value={formatNumber(rows.length)} />
-        <MetricCard label="实际耗时(合计)" value={formatDuration(totalReal)} hint="各仓库实际耗时合计" />
-        <MetricCard label="传统预估(合计)" value={formatDuration(rows.reduce((s, r) => s + (r.sum_ancient_minutes || 0), 0))} />
+        <MetricCard label="实际耗时(合计)" value={formatDuration(totalReal)} hint="各仓库实际耗时合计（人力投入参考）" />
         <MetricCard label="Commit 总数" value={formatNumber(rows.reduce((s, r) => s + (r.commit_count || 0), 0))} />
       </div>
-      <ChartCard title="仓库成本排行（看板派生·实际耗时代理）" sub="按实际耗时倒序（每仓库取首选分支）· 点行下钻">
+      <ChartCard title="仓库费用排行（看板派生·单卡）" sub="按会话费用倒序（整仓跨全部分支聚合）· 点行下钻进整仓详情">
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={TH_NUM}>排名</th>
                 <th className={TH}>仓库</th>
+                <th className={TH_NUM}>分支</th>
+                <th className={TH_NUM}>费用（¥）</th>
                 <th className={TH_NUM}>实际耗时</th>
-                <th className={TH_NUM}>传统预估</th>
                 <th className={TH_NUM}>Commit数</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <SkeletonRows cols={5} />
+                <SkeletonRows cols={6} />
               ) : ranked.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <EmptyHint compact />
                   </td>
                 </tr>
               ) : (
                 ranked.map((r, i) => (
                   <tr
-                    key={`${r.repo_addr}#${r.repo_branch}`}
-                    onClick={() => goToRepo(r.repo_addr, r.repo_branch)}
+                    key={r.repo_addr}
+                    onClick={() => goToRepo(r.repo_addr)}
                     className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                   >
                     <td className={TD_NUM}>{i + 1}</td>
                     <td className={TD}>
-                      <RepoAddrButton addr={r.repo_addr} onClick={() => goToRepo(r.repo_addr, r.repo_branch)} />
+                      <RepoAddrButton addr={r.repo_addr} onClick={() => goToRepo(r.repo_addr)} />
                     </td>
+                    <td className={TD_NUM}>{r.branch_count ? `${formatNumber(r.branch_count)} 支` : '-'}</td>
+                    <td className={TD_NUM}>{r.cost != null && r.cost > 0 ? fmtCost(r.cost) : '0.00'}</td>
                     <td className={TD_NUM}>{formatDuration(r.sum_real_minutes)}</td>
-                    <td className={TD_NUM}>{formatDuration(r.sum_ancient_minutes)}</td>
                     <td className={TD_NUM}>{formatNumber(r.commit_count)}</td>
                   </tr>
                 ))
