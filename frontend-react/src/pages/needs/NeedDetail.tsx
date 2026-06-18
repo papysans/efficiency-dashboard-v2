@@ -159,7 +159,7 @@ export default function NeedDetail() {
   if (error) {
     return (
       <div className="glass rounded-2xl p-8 text-center text-sm text-rose-600 dark:text-rose-400">
-        {(error as Error).message || '获取 Need 详情失败'}
+        {(error as Error).message || '获取需求详情失败'}
       </div>
     )
   }
@@ -180,7 +180,7 @@ export default function NeedDetail() {
         </button>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">需求 Need 详情</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">需求看板</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono break-all">{need.need_id || '-'}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

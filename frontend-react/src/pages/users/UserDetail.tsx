@@ -207,11 +207,11 @@ export default function UserDetail({ userIdProp, dateRangeProp, embedded = false
       </div>
 
       {/* 关联需求 Need */}
-      <Panel title="关联需求 Need" hint={`${needs.length} 个`} bodyClass="overflow-x-auto">
+      <Panel title="关联需求" hint={`${needs.length} 个`} bodyClass="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10">
-              <th className={TH}>Need</th>
+              <th className={TH}>需求</th>
               <th className={TH}>状态</th>
               <th className={TH}>仓库</th>
               <th className={TH}>分支</th>
@@ -224,7 +224,7 @@ export default function UserDetail({ userIdProp, dateRangeProp, embedded = false
             {!needs.length ? (
               <tr>
                 <td colSpan={7}>
-                  <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">暂无 Need</div>
+                  <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">暂无需求</div>
                 </td>
               </tr>
             ) : (

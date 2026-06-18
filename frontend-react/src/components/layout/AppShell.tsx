@@ -4,6 +4,7 @@ import { useGlobalConfig } from '@/api/queries'
 import { useTheme } from '@/hooks/useTheme'
 import { useViewState } from '@/store/viewState'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
+import ScrollToTop from '@/components/layout/ScrollToTop'
 
 // 主体×维度矩阵 IA（A 主体优先）：一级导航选「谁」，进下钻后页内一排维度 Tab 选「看什么」。
 // 一级 6 项：总览 / 组织 / 个人 / 项目 / 仓库 / 需求。平台/设置进右侧工具区（齿轮 + 条件平台）。
@@ -53,6 +54,9 @@ export default function AppShell() {
 
   return (
     <div className="relative min-h-screen">
+      {/* 路由/聚焦切换时滚到页顶（pathname 变化 + ?object= 聚焦对象变化），不渲染 DOM。 */}
+      <ScrollToTop />
+
       {/* 背景渐变光球 */}
       <div className="bg-orb bg-orb-purple" />
       <div className="bg-orb bg-orb-blue" />

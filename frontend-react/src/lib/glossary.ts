@@ -73,9 +73,9 @@ export const GLOSSARY = {
     caliber: '上期 = 与当前日期窗等长、紧邻在前的区间；上期为 0 时不显示箭头。',
   },
   merged_need: {
-    term: 'Need / 需求',
+    term: '需求',
     short: '一个特性分支聚成的一条交付需求，是提效统计的基本单元。',
-    caliber: '主干分支(main/master/develop/release)提交不形成 Need。',
+    caliber: '主干分支(main/master/develop/release)提交不形成需求。',
   },
   silica: {
     term: '含硅量（Silica）',

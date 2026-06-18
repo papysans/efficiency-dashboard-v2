@@ -89,17 +89,17 @@ function ProjectUsageAggregate() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard label="项目数" value={formatNumber(kpi.projects)} />
         <MetricCard label="贡献者(累计)" value={formatNumber(kpi.contributors)} hint="各项目人数合计(可重复)" />
-        <MetricCard label="Need 总数" value={formatNumber(kpi.needs)} />
+        <MetricCard label="需求总数" value={formatNumber(kpi.needs)} />
         <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各项目 need_ai_code_ratio 均值" />
       </div>
-      <ChartCard title="项目 AI 渗透排行（看板派生）" sub="按 Need AI 代码占比倒序 · 点行下钻">
+      <ChartCard title="项目 AI 渗透排行（看板派生）" sub="按需求 AI 代码占比倒序 · 点行下钻">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10">
               <th className={TH_NUM}>排名</th>
               <th className={TH}>项目</th>
               <th className={TH_CENTER}>AI 占比</th>
-              <th className={TH_NUM}>Need 数</th>
+              <th className={TH_NUM}>需求数</th>
               <th className={TH_NUM}>贡献者</th>
               <th className={TH_NUM}>生成代码</th>
             </tr>
@@ -274,12 +274,12 @@ function ProjectCostAggregate() {
     <div className="flex flex-col gap-5">
       <SingleCostNotice />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MetricCard label="总费用" value={`¥${fmtCost(totalCost)}`} hint="各项目 Need 费用合计" />
+        <MetricCard label="总费用" value={`¥${fmtCost(totalCost)}`} hint="各项目需求费用合计" />
         <MetricCard label="项目数" value={formatNumber(rows.length)} />
         <MetricCard label="生成代码(合计)" value={totalLoc > 0 ? `${formatNumber(totalLoc)} 行` : '-'} />
         <MetricCard label="平均单价" value={totalLoc > 0 ? `¥${fmtCost((totalCost / totalLoc) * 1000)} /千行` : '-'} hint="费用 / 生成代码千行" />
       </div>
-      <ChartCard title="项目费用排行（看板派生·单卡）" sub="按 Need 费用倒序 · 点行下钻">
+      <ChartCard title="项目费用排行（看板派生·单卡）" sub="按需求费用倒序 · 点行下钻">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10">

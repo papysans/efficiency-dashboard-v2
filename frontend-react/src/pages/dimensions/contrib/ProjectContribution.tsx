@@ -30,7 +30,7 @@ const TD_NUM = 'px-3 py-2 align-middle text-right tabular-nums text-gray-700 dar
 function ContribCaliberNote() {
   return (
     <p className="text-xs text-gray-400 dark:text-gray-500">
-      贡献为<b className="font-medium">看板派生口径</b>（完成的 Need / 生成代码 / 贡献者）。平台（chat-stats）源无项目维度，
+      贡献为<b className="font-medium">看板派生口径</b>（完成的需求 / 生成代码 / 贡献者）。平台（chat-stats）源无项目维度，
       且 tokens 是消耗量非贡献，故贡献维度不接入平台。
     </p>
   )
@@ -104,16 +104,16 @@ function ProjectContribAggregate() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard label="项目数" value={formatNumber(kpi.projects)} />
         <MetricCard
-          label="完成 Need"
+          label="完成需求"
           value={formatNumber(kpi.eligible)}
           hint={`候选 ${formatNumber(kpi.needs)}`}
-          tip="合格(干净)Need 之和；候选=看板口径全量 Need。"
+          tip="合格(干净)需求之和；候选=看板口径全量需求。"
         />
         <MetricCard label="贡献者(累计)" value={formatNumber(kpi.contributors)} hint="各项目人数合计(可重复)" />
         <MetricCard
           label="生成代码(合计)"
           value={kpi.loc > 0 ? `${formatNumber(kpi.loc)} 行` : '-'}
-          tip="各项目干净 Need 净 LOC 之和。"
+          tip="各项目干净需求净 LOC 之和。"
         />
       </div>
       <ChartCard title="项目贡献排行（看板派生）" sub="按生成代码量倒序 · 点行下钻">
@@ -124,7 +124,7 @@ function ProjectContribAggregate() {
                 <th className={TH_NUM}>排名</th>
                 <th className={`${TH} min-w-[200px]`}>项目</th>
                 <th className={TH_NUM}>生成代码</th>
-                <th className={TH_NUM}>完成 / 候选 Need</th>
+                <th className={TH_NUM}>完成 / 候选需求</th>
                 <th className={TH_NUM}>贡献者</th>
                 <th className={TH_CENTER}>AI 占比</th>
               </tr>
@@ -168,7 +168,7 @@ function ProjectContribAggregate() {
                     <td className={TD_NUM}>
                       {r.need_total_loc_net && r.need_total_loc_net > 0 ? `${formatNumber(r.need_total_loc_net)} 行` : '-'}
                     </td>
-                    <td className={TD_NUM} title="完成(合格) / 候选 Need">
+                    <td className={TD_NUM} title="完成(合格) / 候选需求">
                       {r.need_eligible_count ?? 0}{' '}
                       <span className="text-gray-400 dark:text-gray-500">/ {r.need_total_count ?? 0}</span>
                     </td>

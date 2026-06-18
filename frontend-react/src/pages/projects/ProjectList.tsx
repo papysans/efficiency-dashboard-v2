@@ -132,7 +132,7 @@ export default function ProjectList() {
     <div className="space-y-5">
       <header className="space-y-3">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          项目 = 一组 Need(branch)。提效比 / AI占比为 Need 小数口径（守恒聚合、只计干净 Need），点项目进详情查看组成与贡献者。
+          项目 = 一组需求(branch)。提效比 / AI占比为需求小数口径（守恒聚合、只计干净需求），点项目进详情查看组成与贡献者。
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -181,7 +181,7 @@ export default function ProjectList() {
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={`${TH} min-w-[200px]`}>项目名称</th>
                 <th className={TH_NUM}>
-                  <SortableTh field="needCount" label="Needs" numeric active={isSortActive('needCount')} desc={isSortDesc('needCount')} onSort={onSortChange} />
+                  <SortableTh field="needCount" label="需求数" numeric active={isSortActive('needCount')} desc={isSortDesc('needCount')} onSort={onSortChange} />
                 </th>
                 <th className={TH_CENTER}>
                   <span className="inline-flex justify-center">
@@ -236,7 +236,7 @@ export default function ProjectList() {
                     <td className={TD}>
                       <div className="max-w-[240px] truncate font-medium text-gray-900 dark:text-white" title={row.name}>{row.name || '-'}</div>
                     </td>
-                    <td className={TD_NUM} title="合格 / 候选 Need">
+                    <td className={TD_NUM} title="合格 / 候选需求">
                       {row.need_eligible_count ?? 0} <span className="text-gray-400 dark:text-gray-500">/ {row.need_total_count ?? 0}</span>
                     </td>
                     <td className="px-3 py-2 align-middle text-center"><RatioPill value={row.need_calendar_efficiency_ratio ?? null} /></td>

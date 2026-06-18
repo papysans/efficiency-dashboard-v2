@@ -516,7 +516,7 @@ export default function DistributionOverview() {
       {/* header */}
       <header className="space-y-3">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          全量 Need 的提效比分布与数据质量诊断。可切换日历 / 人力口径、手调分档粒度，即时重算（不重新查询）。
+          全量需求的提效比分布与数据质量诊断。可切换日历 / 人力口径、手调分档粒度，即时重算（不重新查询）。
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5">
@@ -558,9 +558,9 @@ export default function DistributionOverview() {
 
       {/* ① 健康横幅 */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <MetricCard label="计入 Need" value={formatNumber(dist.keptCount)} hint={`${caliberLabel}口径`} accent="#0071e3" />
+        <MetricCard label="计入需求" value={formatNumber(dist.keptCount)} hint={`${caliberLabel}口径`} accent="#0071e3" />
         <MetricCard
-          label="被隔离 Need"
+          label="被隔离需求"
           value={formatNumber(dist.excludedCount)}
           hint={`占 ${exclPct.toFixed(1)}%`}
           tone={exclPct > 20 ? 'neg' : 'neutral'}
@@ -568,7 +568,7 @@ export default function DistributionOverview() {
         />
         <MetricCard label="日历中位提效" value={formatV2Ratio(calQ.median)} tone={medTone(calQ.median)} />
         <MetricCard label="人力中位提效" value={formatV2Ratio(workQ.median)} tone={medTone(workQ.median)} />
-        <MetricCard label="数据更新至" value={latest ? latest.slice(0, 10) : '—'} hint="最新 Need 完成日" />
+        <MetricCard label="数据更新至" value={latest ? latest.slice(0, 10) : '—'} hint="最新需求完成日" />
       </div>
 
       {/* ② 双口径提效比分布直方图 */}
@@ -576,14 +576,14 @@ export default function DistributionOverview() {
         <div className="flex items-center justify-between mb-2">
           <h2 className={H2}>提效比分布 · {caliberLabel}口径</h2>
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            蓝=计入 / 黄=隔离 · 共 {formatNumber(total)} 个 Need
+            蓝=计入 / 黄=隔离 · 共 {formatNumber(total)} 个需求
           </span>
         </div>
         {loading ? (
           <div className="skeleton h-[320px] rounded-xl" />
         ) : total === 0 ? (
           <div className="h-[320px] flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
-            该时间段暂无可计入的 Need 数据
+            该时间段暂无可计入的需求数据
           </div>
         ) : (
           <EChart option={option} height={320} />

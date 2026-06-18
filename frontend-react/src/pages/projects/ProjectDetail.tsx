@@ -139,7 +139,7 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
         })
         await reload()
       } catch (e: unknown) {
-        setNeedErr(e instanceof Error ? e.message : '更新 Need 勾选失败')
+        setNeedErr(e instanceof Error ? e.message : '更新需求勾选失败')
       } finally {
         setNeedBusy(null)
       }
@@ -237,7 +237,7 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
             value={calR != null ? formatV2Ratio(calR) : '—'}
             tone={ratioTone(calR)}
             accent="#0071e3"
-            tip="（基线日历时间 − 实际日历时间）÷ 实际日历时间；分子分母守恒，仅计干净 Need。业务主口径。"
+            tip="（基线日历时间 − 实际日历时间）÷ 实际日历时间；分子分母守恒，仅计干净需求。业务主口径。"
           />
           <MetricCard
             label="工作量提效比"
@@ -248,21 +248,21 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
           <MetricCard
             label="AI 代码占比"
             value={data?.need_ai_code_ratio != null ? formatV2Ratio(data.need_ai_code_ratio) : '—'}
-            tip="Σ ai_covered_loc ÷ Σ total_loc_net（干净 Need）。"
+            tip="Σ ai_covered_loc ÷ Σ total_loc_net（干净需求）。"
           />
           <MetricCard
             label="实际工时"
             value={actualPersonDays != null ? `${actualPersonDays.toFixed(1)} 人天` : '—'}
             hint={calPersonDays != null ? `日历跨度 ${calPersonDays.toFixed(1)} 人天` : undefined}
-            tip="干净 Need 的实际活跃工时之和（÷480 折人天）。"
+            tip="干净需求的实际活跃工时之和（÷480 折人天）。"
           />
           <MetricCard
             label="生成代码"
             value={data?.need_total_loc_net != null ? `${data.need_total_loc_net.toLocaleString()} 行` : '—'}
-            tip="干净 Need 净 LOC 之和。"
+            tip="干净需求净 LOC 之和。"
           />
           <MetricCard
-            label="合格 / 候选 Need"
+            label="合格 / 候选需求"
             value={`${data?.need_eligible_count ?? 0} / ${data?.need_total_count ?? 0}`}
             hint={`自动剔除 ${data?.need_excluded_count ?? 0}`}
             tip="合格=已选且 coverage_eligible 且非 outlier；候选=看板口径全量；自动剔除=日历 outlier。"
@@ -271,21 +271,21 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
             label="费用"
             value={data?.need_cost != null && data.need_cost > 0 ? `¥${fmtCost(data.need_cost)}` : '¥0'}
             hint={`tokens 上 ${Math.round((data?.need_upstream_tokens ?? 0) / 1000)}k · 下 ${Math.round((data?.need_downstream_tokens ?? 0) / 1000)}k`}
-            tip="干净 Need 会话的 token 成本之和（只计 coverage_eligible 且非 outlier，与其他卡同口径；按 session 去重；源数据缺 cost 时为 ¥0，tokens 仍真实）。"
+            tip="干净需求会话的 token 成本之和（只计 coverage_eligible 且非 outlier，与其他卡同口径；按 session 去重；源数据缺 cost 时为 ¥0，tokens 仍真实）。"
           />
         </div>
       </section>
 
       {/* ③ 组成 · Needs（主角：来源规则 + 逐个勾选纳入/排除） */}
       <Panel
-        title="组成 · Needs"
+        title="组成 · 需求"
         hint={`候选 ${data?.need_total_count ?? projectNeeds.length} · 合格 ${data?.need_eligible_count ?? 0}`}
       >
         {/* 来源规则 chips */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-400 dark:text-gray-500">Need 来源：</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">需求来源：</span>
           {repos.length === 0 ? (
-            <span className="text-xs text-gray-400 dark:text-gray-500">未配置（点「添加来源」按仓库/分支纳入 Need）</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">未配置（点「添加来源」按仓库/分支纳入需求）</span>
           ) : (
             repos.map((r, i) => (
               <span
@@ -314,18 +314,18 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
         {needErr && <div className="mb-3 text-sm text-rose-600 dark:text-rose-400">{needErr}</div>}
         {(needsData?.stale_count ?? 0) > 0 && (
           <div className="mb-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            ⚠️ 配置中有 {needsData?.stale_count} 个已勾选/排除的 Need 因重算已失效（need_id 漂移），不再影响聚合；如需清理可移除对应来源后重加。
+            ⚠️ 配置中有 {needsData?.stale_count} 个已勾选/排除的需求因重算已失效（need_id 漂移），不再影响聚合；如需清理可移除对应来源后重加。
           </div>
         )}
 
         {projectNeeds.length === 0 ? (
-          <Empty>候选池内暂无 Need（先在上方「添加来源」配置特性分支仓库）</Empty>
+          <Empty>候选池内暂无需求（先在上方「添加来源」配置特性分支仓库）</Empty>
         ) : (
           <TableWrap>
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={TH_CENTER}>纳入</th>
-                <th className={TH}>Need</th>
+                <th className={TH}>需求</th>
                 <th className={TH}>分支</th>
                 <th className={TH}>边界源</th>
                 <th className={TH_CENTER}>日历提效比</th>
@@ -348,7 +348,7 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
                       disabled={needBusy === n.need_id}
                       onChange={() => toggleNeed(n)}
                       className="w-4 h-4 accent-apple-blue cursor-pointer disabled:opacity-50"
-                      aria-label={n.excluded ? `纳入 Need ${n.repo_branch}` : `排除 Need ${n.repo_branch}`}
+                      aria-label={n.excluded ? `纳入需求 ${n.repo_branch}` : `排除需求 ${n.repo_branch}`}
                     />
                   </td>
                   <td className={TD}>
@@ -375,13 +375,13 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
       {/* ④ 贡献者（从已选干净 Need 守恒派生） */}
       <Panel title="贡献者" hint={`${contributors.length} 人`}>
         {contributors.length === 0 ? (
-          <Empty>暂无已选 Need 的贡献者</Empty>
+          <Empty>暂无已选需求的贡献者</Empty>
         ) : (
           <TableWrap>
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
                 <th className={TH}>用户</th>
-                <th className={TH_NUM}>Needs</th>
+                <th className={TH_NUM}>需求数</th>
                 <th className={TH_CENTER}>日历提效比</th>
                 <th className={TH_CENTER}>工作量提效比</th>
                 <th className={TH_CENTER}>AI占比</th>
@@ -430,7 +430,7 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
       <ConfirmModal
         open={!!removeSource}
         title="移除来源"
-        message={`确定要移除 Need 来源「${removeSource?.repo.repo_addr || ''}${removeSource?.repo.repo_branch ? ` @ ${removeSource.repo.repo_branch}` : ''}」吗？该来源下的 Need 将不再计入本项目。`}
+        message={`确定要移除需求来源「${removeSource?.repo.repo_addr || ''}${removeSource?.repo.repo_branch ? ` @ ${removeSource.repo.repo_branch}` : ''}」吗？该来源下的需求将不再计入本项目。`}
         confirmLabel="移除"
         onClose={() => setRemoveSource(null)}
         onConfirm={doRemoveSource}
@@ -645,7 +645,7 @@ function SourceModal({
   return (
     <FormModal
       open={open}
-      title="添加 Need 来源"
+      title="添加需求来源"
       maxWidth={560}
       submitting={submitting}
       submitLabel={`加入${selectedCount ? ` (${selectedCount})` : ''}`}
@@ -687,7 +687,7 @@ function SourceModal({
                     {already && <span className="ml-1.5 text-xs text-emerald-600 dark:text-emerald-400">已添加</span>}
                   </span>
                   <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-                    {o.need_count} Need · {fmtDate(o.last_active)}
+                    {o.need_count} 需求 · {fmtDate(o.last_active)}
                   </span>
                 </label>
                 {sel && (
@@ -731,7 +731,7 @@ function SourceModal({
         )}
       </div>
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        勾选仓库即纳入其全部特性分支（已交付、非主干）的 Need；可改"指定分支"细选。加入后在下方列表逐个勾选/排除。
+        勾选仓库即纳入其全部特性分支（已交付、非主干）的需求；可改"指定分支"细选。加入后在下方列表逐个勾选/排除。
       </p>
     </FormModal>
   )

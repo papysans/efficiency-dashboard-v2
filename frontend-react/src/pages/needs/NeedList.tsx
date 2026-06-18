@@ -190,7 +190,7 @@ export default function NeedList() {
         setRows([])
         setTotal(0)
         setFoldedCount(0)
-        setErrMsg(err instanceof Error ? err.message : '获取 Need 列表失败')
+        setErrMsg(err instanceof Error ? err.message : '获取需求列表失败')
       })
       .finally(() => {
         if (!aborted) setLoading(false)
@@ -355,7 +355,7 @@ export default function NeedList() {
       {/* table card */}
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Need 列表</span>
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">需求列表</span>
           <span className="text-xs text-gray-400 dark:text-gray-500">按可计入需求汇总</span>
         </div>
 
@@ -367,7 +367,7 @@ export default function NeedList() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
-                <th className={TH}>Need ID</th>
+                <th className={TH}>需求 ID</th>
                 <th className={TH}>
                   <span className="inline-flex items-center gap-1">
                     <SortableTh field="efficiencyRatio" label="日历提效" active={isSortActive('efficiencyRatio')} desc={isSortDesc('efficiencyRatio')} onSort={onSortChange} />
@@ -421,7 +421,7 @@ export default function NeedList() {
               ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={12}>
-                    <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无 Need 数据</div>
+                    <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">暂无需求数据</div>
                   </td>
                 </tr>
               ) : (

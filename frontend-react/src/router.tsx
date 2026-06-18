@@ -57,10 +57,11 @@ function SimpleRedirect({ to }: { to: string }) {
   return <Navigate to={`${to}${search}`} replace />
 }
 
-/** index → efficiency 重定向，保留 query/search（深链 /user?object=X 不丢聚焦对象）。 */
-function IndexToEfficiency() {
+/** index → usage 重定向，保留 query/search（深链 /user?object=X 不丢聚焦对象）。
+ *  默认落「使用」Tab（第一个维度，最符合直觉；project/repo 的 usage 是看板派生有内容，org/user 的 usage 走平台）。 */
+function IndexToUsage() {
   const { search } = useLocation()
-  return <Navigate to={`efficiency${search}`} replace />
+  return <Navigate to={`usage${search}`} replace />
 }
 
 /** 旧 /distribution-v2 → 「效率」维度的「分布」次级 tab（org 主体；保留原 query 如 caliber/bins）。 */
@@ -78,7 +79,7 @@ function DistributionToEfficiency() {
 //   贡献 = ContributionDimension（全主体看板派生：合并需求/代码行/提交/贡献者，零平台请求）。
 //   质量 = AI服务健康度，只有平台错误率口径 → user/org 给 QualityDimension；project/repo 无该口径
 //     → QualityComingSoon 占位（且 DimensionTabs 把这俩的质量 Tab 灰显，不可点）。
-// 不带 dim → 默认重定向到 efficiency（保留 query）。
+// 不带 dim → 默认重定向到 usage（第一个维度「使用」，保留 query）。
 function entityRoute(entity: Entity) {
   // 质量维度：仅 user/org 有平台 AI 服务错误率口径；project/repo 无 → 建设中占位。
   const hasPlatformQuality = entity === 'user' || entity === 'org'
@@ -86,7 +87,7 @@ function entityRoute(entity: Entity) {
     path: entity,
     element: <EntityDimensionLayout entity={entity} />,
     children: [
-      { index: true, element: <IndexToEfficiency /> },
+      { index: true, element: <IndexToUsage /> },
       { path: 'usage', element: <UsageDimension /> },
       { path: 'quality', element: hasPlatformQuality ? <QualityDimension /> : <QualityComingSoon /> },
       { path: 'efficiency', element: <EfficiencyDimension /> },

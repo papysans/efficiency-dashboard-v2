@@ -12,7 +12,7 @@ interface AdoptionCardProps {
 }
 
 const ADOPTION_TIP =
-  '按可计入且非异常 Need 聚合：AI 覆盖代码行 / 净代码行。'
+  '按可计入且非异常需求聚合：AI 覆盖代码行 / 净代码行。'
 
 /**
  * AI 代码占比（design-pr1 §1④）：小数口径，中心大字百分比。

@@ -160,7 +160,7 @@ function CountsCard({ startDate, endDate }: { startDate: string; endDate: string
           <MetricCard label="总仓库数" value={formatNumber(data.total_repos)} hint={`分支 ${formatNumber(data.total_branchs)} 个`} />
           <MetricCard label="总用户数" value={formatNumber(data.total_users)} hint="参与提交的贡献者" />
           <MetricCard
-            label="需求 Need"
+            label="需求"
             value={formatNumber(data.total_needs)}
             hint={`已合并 ${formatNumber(data.merged_needs)} · 可计入 ${formatNumber(data.eligible_needs)}`}
           />
