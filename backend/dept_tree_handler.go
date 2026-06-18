@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"kanban/backend/internal/appconfig"
+	"kanban/core/models"
+	"kanban/core/utils"
 	"log"
 	"net/http"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // 组织树页（dept-sync 权威全量树 + API 懒加载）后端代理。
@@ -449,11 +452,14 @@ func getDeptRankingV2(c *gin.Context) {
 	} else {
 		parent = findDeptNode(tree, parentDeptID)
 	}
-	if parent == nil || len(parent.Children) == 0 {
-		// parent 不存在或无子部门：返回空排行（前端显示「该层级暂无可计入部门数据」）。
+	if parent == nil {
+		// parent 不存在（dept_id 在树里找不到）：返回空排行且无 self（前端显示「该层级暂无可计入部门数据」）。
 		c.JSON(http.StatusOK, DeptRankingResponse{ParentDeptId: parentDeptID, Items: []DeptRankingItem{}})
 		return
 	}
+	// 注意：parent 是叶子（无子部门）时不再提前返回——下方按 parent 整棵子树(即它自己+其直属成员)
+	// 累加 selfBucket、重算守恒比值，Items 自然为空（无一级子部门桶）。前端聚焦叶子部门时仍能拿到
+	// self.cost / self 提效比，成本卡不再回落「建设中」。仅当 parent==nil 才无 self。
 
 	// 2. 预计算：descendantDeptId -> 目标一级子部门 dept_id（含子部门自身），用于把成员按一级祖先归桶。
 	bucketByDeptID := make(map[string]string)
@@ -569,4 +575,111 @@ func getDeptRankingV2(c *gin.Context) {
 	self := selfBucket.summary
 
 	c.JSON(http.StatusOK, DeptRankingResponse{ParentDeptId: parentDeptID, Self: &self, Items: items})
+}
+
+// getDeptTreeTrendV2 GET /api/v2/dept-tree/trend?dept_id=&startDate=&endDate=
+// 返回该部门【整棵子树成员】按 ISO 周的趋势点数组，复用 repo_project_trend.go 的 EntityTrendPoint/EntityTrendResponse，
+// 同时给前端「效率」「贡献」两个占位用（efficiency_pct + need_count/commit_count/diff_lines）。
+//
+// 数据源：user_productivity_v2（user×week 周表，已是 ISO 周聚合，列含 user_id + week_start +
+// baseline_calendar_min/actual_calendar_min/merged_need_count/commit_count/commit_diff_lines），
+// 直接按 user_id IN (universal_ids) 过滤 + GROUP BY week_start，无需回退基表。
+//   - efficiency_pct = utils.CalcEfficiencyRatio(Σbaseline_calendar, Σactual_calendar)（gain% 百分比口径，
+//     与 repo-trend/project-trend 统一，前端直接画，绝不再 ×100）。
+//   - need_count = Σmerged_need_count；commit_count = Σcommit_count；diff_lines = Σcommit_diff_lines。
+//   - loc：周表无 LOC 列（total_loc_net 在 needs 行级），故 Loc 恒 0（部门趋势不消费 LOC）。
+//   - cost：本端点不计费用（费用走部门 ranking 的 self/items），Cost 恒 0。
+// startDate/endDate（camelCase，与全站一致）按 week_start 做窗口过滤（同 QueryEfficiencyV2Aggregate）。
+// dept-sync 不可达 → 502；花名册为空或无 universal_id → {data:[]}（不报错）。
+func getDeptTreeTrendV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	deptID := strings.TrimSpace(c.Query("dept_id"))
+	if deptID == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dept_id 不能为空"})
+		return
+	}
+	baseURL, err := deptSyncConfigured()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// 1. 取该部门【整棵子树】成员花名册（include_children=true），拿 universal_id 列表（同 members/ranking 写法）。
+	var membersResp deptSyncMembersResp
+	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/"+deptID+"/users?include_children=true", &membersResp); err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + err.Error()})
+		return
+	}
+	universalIDs := make([]string, 0, len(membersResp.Data))
+	seen := make(map[string]struct{}, len(membersResp.Data))
+	for _, src := range membersResp.Data {
+		uid := strings.TrimSpace(src.UniversalId)
+		if uid == "" {
+			continue
+		}
+		if _, ok := seen[uid]; ok {
+			continue
+		}
+		seen[uid] = struct{}{}
+		universalIDs = append(universalIDs, uid)
+	}
+	if len(universalIDs) == 0 {
+		c.JSON(http.StatusOK, EntityTrendResponse{Data: []EntityTrendPoint{}})
+		return
+	}
+
+	// 2. 按 ISO 周守恒聚合 user_productivity_v2（user_id IN 成员 + week_start 窗口 → GROUP BY week_start）。
+	points, err := listDeptTreeWeeklyTrend(statDB, universalIDs, c.Query("startDate"), c.Query("endDate"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询部门周趋势失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, EntityTrendResponse{Data: points})
+}
+
+// listDeptTreeWeeklyTrend 把 user_productivity_v2 周表按 week_start 聚合成趋势点：
+// user_id IN (universalIDs)（部门整棵子树成员）+ startDate/endDate 窗口过滤，每周守恒重算 efficiency_pct。
+// 周表已是 ISO 周一对齐的 week_start(date)，直接 GROUP BY，无需 date_trunc。
+func listDeptTreeWeeklyTrend(db *gorm.DB, universalIDs []string, startDate, endDate string) ([]EntityTrendPoint, error) {
+	type weekRow struct {
+		WeekStart   time.Time `gorm:"column:week_start"`
+		NeedCnt     int64     `gorm:"column:need_cnt"`
+		CommitCnt   int64     `gorm:"column:commit_cnt"`
+		DiffLines   int64     `gorm:"column:diff_lines"`
+		SumBaseline float64   `gorm:"column:sum_baseline"`
+		SumActual   float64   `gorm:"column:sum_actual"`
+	}
+	q := db.Model(&models.UserProductivityV2{}).
+		Select(`week_start,
+			COALESCE(SUM(merged_need_count), 0) AS need_cnt,
+			COALESCE(SUM(commit_count), 0) AS commit_cnt,
+			COALESCE(SUM(commit_diff_lines), 0) AS diff_lines,
+			COALESCE(SUM(baseline_calendar_min), 0) AS sum_baseline,
+			COALESCE(SUM(actual_calendar_min), 0) AS sum_actual`).
+		Where("user_id IN ?", universalIDs)
+	if start, err := parseStartDate(startDate); err == nil && start != nil {
+		q = q.Where("week_start >= ?", *start)
+	}
+	if end, err := parseEndDate(endDate); err == nil && end != nil {
+		q = q.Where("week_start <= ?", *end)
+	}
+	var rows []weekRow
+	if err := q.Group("week_start").Order("week_start").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	points := make([]EntityTrendPoint, 0, len(rows))
+	for _, r := range rows {
+		points = append(points, EntityTrendPoint{
+			WeekStart:     r.WeekStart.Format("2006-01-02"),
+			EfficiencyPct: utils.CalcEfficiencyRatio(r.SumBaseline, r.SumActual),
+			CommitCount:   int(r.CommitCnt),
+			DiffLines:     int(r.DiffLines),
+			NeedCount:     int(r.NeedCnt),
+			// Loc：周表无 LOC 列，恒 0；Cost：部门趋势不计费用，恒 0。
+		})
+	}
+	return points, nil
 }
