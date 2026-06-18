@@ -98,6 +98,57 @@ func queryRepoNeedAICodeAggs(db *gorm.DB, startTime, endTime string) (map[repoNe
 	return result, nil
 }
 
+// queryRepoNeedAICodeAggsByAddr 按 repo_addr 聚合（跨全部分支合并）——仓库级 AI 代码占比用。
+// ⚠️ 必须先对 covered/total LOC 求和再求比（calcNeedAICodeRatio），不能对各分支比值求平均，
+// 否则小分支会把整仓占比拉偏。与 listReposV2 的跨分支 rollup 同口径（一仓一行）。
+func queryRepoNeedAICodeAggsByAddr(db *gorm.DB, startTime, endTime string) (map[string]needAICodeAgg, error) {
+	type addrRow struct {
+		RepoAddr     string `gorm:"column:repo_addr"`
+		AICoveredLoc int64  `gorm:"column:ai_covered_loc"`
+		TotalLocNet  int64  `gorm:"column:total_loc_net"`
+	}
+	var rows []addrRow
+	q := applyNeedCaliberFilter(db.Model(&models.Need{})).
+		Select("repo_addr, " + needAICodeAggSelect()).
+		Where("repo_addr <> ''")
+	q = applyNeedAICodeDateFilter(q, startTime, endTime)
+	if err := q.Group("repo_addr").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("查询仓库 Need AI 代码占比聚合(按仓库)失败: %w", err)
+	}
+	result := make(map[string]needAICodeAgg, len(rows))
+	for _, row := range rows {
+		result[row.RepoAddr] = needAICodeAgg{AICoveredLoc: row.AICoveredLoc, TotalLocNet: row.TotalLocNet}
+	}
+	return result, nil
+}
+
+// queryRepoNeedCostAggs 按 repo_addr 聚合看板派生费用：干净 Need→session 去重→tasks.cost 求和。
+// 口径与项目侧 queryProjectNeedCost 一致（同一条 Need→session→task 链，按 session 去重避免跨 Need 重复计费）。
+// ⚠️ 费用来源是 tasks.cost；archive/无 tasks 数据的库返回 0，生产库才有真实 ¥（非 bug，是数据完整度）。
+func queryRepoNeedCostAggs(db *gorm.DB, startTime, endTime string) (map[string]float64, error) {
+	type costRow struct {
+		RepoAddr string  `gorm:"column:repo_addr"`
+		Cost     float64 `gorm:"column:cost"`
+	}
+	// 子查询：干净 Need 的 (repo_addr, session_id) 去重对（一 session 被同仓多 Need 引用只计一次）。
+	sub := applyNeedCaliberFilter(db.Model(&models.Need{})).
+		Select("DISTINCT repo_addr, jsonb_array_elements_text(session_ids) AS sid").
+		Where("repo_addr <> '' AND coverage_eligible AND NOT outlier_flag")
+	sub = applyNeedAICodeDateFilter(sub, startTime, endTime)
+	var rows []costRow
+	if err := db.Table("(?) AS rs", sub).
+		Select("rs.repo_addr, COALESCE(SUM(t.cost), 0) AS cost").
+		Joins("JOIN tasks t ON t.session_id = rs.sid").
+		Group("rs.repo_addr").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("查询仓库 Need 费用聚合失败: %w", err)
+	}
+	result := make(map[string]float64, len(rows))
+	for _, row := range rows {
+		result[row.RepoAddr] = row.Cost
+	}
+	return result, nil
+}
+
 func queryRepoNeedAICodeAgg(db *gorm.DB, startTime, endTime, repoAddr, repoBranch string) (*needAICodeAgg, error) {
 	var agg needAICodeAgg
 	q := applyNeedCaliberFilter(db.Model(&models.Need{})).

@@ -142,6 +142,7 @@ type RepoAggregate struct {
 	SumRealMinutes    float64
 	TaskCount         int
 	EfficiencyRatio   float64
+	BranchCount       int // 跨分支 rollup 后填充：该仓库合并了几条分支（rollupRepoAggregates 计算，非 SQL 列）
 }
 
 type CommitLightStats struct {

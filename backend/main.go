@@ -133,6 +133,9 @@ func main() {
 		v2.GET("/repos", listReposV2)
 		v2.GET("/repos/detail", getRepoDetailV2)
 		v2.GET("/repos/branches", listRepoBranchesV2)
+		// 仓库/项目按周时间线（从底层 commits/needs 现聚合；顶层路由避开 :projectId catch-all）
+		v2.GET("/repo-trend", getRepoTrendV2)
+		v2.GET("/project-trend", getProjectTrendV2)
 		// 项目「添加来源」仓库选择器数据源（needs 同源，与候选池一致）；顶层路由避开 /needs/*needId catch-all。
 		v2.GET("/need-repo-options", listNeedRepoOptionsV2)
 

@@ -15,7 +15,8 @@ import (
 
 type RepoListItem struct {
 	RepoAddr          string   `json:"repo_addr"`
-	RepoBranch        string   `json:"repo_branch"`
+	RepoBranch        string   `json:"repo_branch"` // 跨分支聚合后为空（整仓口径）；下钻进详情可切分支
+	BranchCount       int      `json:"branch_count"`
 	CommitCount       int      `json:"commit_count"`
 	StartTime         string   `json:"start_time"`
 	EndTime           string   `json:"end_time"`
@@ -24,6 +25,7 @@ type RepoListItem struct {
 	TaskCount         int      `json:"task_count"`
 	EfficiencyRatio   float64  `json:"efficiency_ratio"`
 	AICodeRatio       *float64 `json:"ai_code_ratio"`
+	Cost              float64  `json:"cost"` // 看板派生费用（Need→session→tasks.cost 跨分支聚合）；无 tasks 数据的库为 0
 }
 
 type ReposListResponse struct {
@@ -139,19 +141,27 @@ func listReposV2(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库聚合失败: " + err.Error()})
 		return
 	}
-	aiAggs, err := queryRepoNeedAICodeAggs(statDB, startTime, endTime)
+	// 跨分支聚合：一仓一行（提交/工时/Task 求和，提效比按合计重算）。AI 占比 / 费用同样按 repo_addr 聚合，
+	// 与 rollup 同口径——不再「每仓只取首选分支」（那会少计其余分支的提交/AI/费用，30% 仓库是多分支）。
+	aggregates = rollupRepoAggregates(aggregates)
+	aiAggs, err := queryRepoNeedAICodeAggsByAddr(statDB, startTime, endTime)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库 AI 代码占比失败: " + err.Error()})
 		return
 	}
-	aggregates = filterPreferredBranchAggregates(aggregates)
+	costAggs, err := queryRepoNeedCostAggs(statDB, startTime, endTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询仓库费用聚合失败: " + err.Error()})
+		return
+	}
 
 	// 转换 RepoAggregate 为 RepoListItem
 	items := make([]RepoListItem, 0, len(aggregates))
 	for _, agg := range aggregates {
 		var ri RepoListItem
 		ri.RepoAddr = agg.RepoAddr
-		ri.RepoBranch = agg.RepoBranch
+		ri.RepoBranch = agg.RepoBranch // rollup 后为空（整仓口径）
+		ri.BranchCount = agg.BranchCount
 		ri.CommitCount = agg.CommitCount
 		ri.StartTime = agg.StartTime.Format("2006-01-02")
 		ri.EndTime = agg.EndTime.Format("2006-01-02")
@@ -159,7 +169,10 @@ func listReposV2(c *gin.Context) {
 		ri.SumRealMinutes = agg.SumRealMinutes
 		ri.TaskCount = agg.TaskCount
 		ri.EfficiencyRatio = utils.CalcEfficiencyRatio(agg.SumAncientMinutes, agg.SumRealMinutes)
-		ri.AICodeRatio = calcRepoNeedAICodeRatio(aiAggs, agg.RepoAddr, agg.RepoBranch)
+		if aiAgg, ok := aiAggs[agg.RepoAddr]; ok {
+			ri.AICodeRatio = calcNeedAICodeRatio(aiAgg.AICoveredLoc, aiAgg.TotalLocNet)
+		}
+		ri.Cost = costAggs[agg.RepoAddr]
 		items = append(items, ri)
 	}
 	sortRepoData(items, orderField, orderDir)
@@ -450,55 +463,54 @@ func listRepoBranchesV2(c *gin.Context) {
 	c.JSON(http.StatusOK, RepoBranchesResponse{Branches: branches})
 }
 
-func branchPriorityScore(branch string) int {
-	switch strings.ToLower(branch) {
-	case "main":
-		return 4
-	case "master":
-		return 3
-	case "dev":
-		return 2
-	case "develop":
-		return 1
-	default:
-		return 0
-	}
-}
-
-// filterPreferredBranchAggregates 从同一仓库的多分支聚合数据中筛选出最优分支的记录。
+// rollupRepoAggregates 把同一仓库的多分支聚合行合并成「整仓一行」。
 //
-// 业务背景：一个仓库通常会在多个分支（如 main、master、dev）上产生代码统计聚合数据，
-// 但在仓库级看板中只需展示一条代表性记录，避免重复统计。
+// 业务背景：一个仓库会在多个分支（main/master/dev/…）各产生一条聚合行（ListRepoAggregates 按
+// repo_addr+repo_branch 分组）。旧逻辑「只取首选分支」会丢掉其余分支的提交/工时/Task——而约 30%
+// 仓库是多分支（如 opencode 18 分支），导致排行严重少计。这里改为跨分支求和，得到真正的仓库级口径。
 //
-// 筛选规则（按优先级降序）：
-//  1. 分支优先级：main > master > dev > develop > 其他分支
-//  2. 若分支优先级相同，则取 EndTime 最新（最近结束）的记录
+// 合并规则：
+//   - CommitCount / SumAncientMinutes / SumRealMinutes / TaskCount：跨分支求和
+//     （Task 经 commit 绑定到唯一分支，分支间不重叠，求和不会重复计数）
+//   - StartTime/EndTime：取 min/max
+//   - RepoBranch：置空（整仓口径，前端下钻进详情再切分支）
+//   - BranchCount：合并的去重分支数
+//   - EfficiencyRatio：不在此处算，由调用方按合计 ancient/real 用 CalcEfficiencyRatio 重算
 //
-// 最终返回结果按 RepoAddr 字典序排列，每个仓库仅保留一条记录。
-func filterPreferredBranchAggregates(aggregates []RepoAggregate) []RepoAggregate {
-	repoMap := make(map[string][]RepoAggregate)
+// 返回按 RepoAddr 字典序排列，每个仓库一行。
+func rollupRepoAggregates(aggregates []RepoAggregate) []RepoAggregate {
+	repoMap := make(map[string]*RepoAggregate)
+	branchSets := make(map[string]map[string]struct{})
 	for _, agg := range aggregates {
 		addr := agg.RepoAddr
-		repoMap[addr] = append(repoMap[addr], agg)
+		cur, ok := repoMap[addr]
+		if !ok {
+			cur = &RepoAggregate{RepoAddr: addr, StartTime: agg.StartTime, EndTime: agg.EndTime}
+			repoMap[addr] = cur
+			branchSets[addr] = make(map[string]struct{})
+		}
+		cur.CommitCount += agg.CommitCount
+		cur.SumAncientMinutes += agg.SumAncientMinutes
+		cur.SumRealMinutes += agg.SumRealMinutes
+		cur.TaskCount += agg.TaskCount
+		if agg.StartTime.Before(cur.StartTime) {
+			cur.StartTime = agg.StartTime
+		}
+		if agg.EndTime.After(cur.EndTime) {
+			cur.EndTime = agg.EndTime
+		}
+		if agg.RepoBranch != "" {
+			branchSets[addr][agg.RepoBranch] = struct{}{}
+		}
 	}
 
 	result := make([]RepoAggregate, 0, len(repoMap))
-	for _, aggs := range repoMap {
-		sort.Slice(aggs, func(i, j int) bool {
-			scoreI := branchPriorityScore(aggs[i].RepoBranch)
-			scoreJ := branchPriorityScore(aggs[j].RepoBranch)
-			if scoreI != scoreJ {
-				return scoreI > scoreJ
-			}
-			ti, tj := aggs[i].EndTime, aggs[j].EndTime
-			return ti.After(tj)
-		})
-		result = append(result, aggs[0])
+	for addr, cur := range repoMap {
+		cur.BranchCount = len(branchSets[addr])
+		result = append(result, *cur)
 	}
-
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].RepoAddr < result[j].RepoAddr
 	})
-
 	return result
 }
