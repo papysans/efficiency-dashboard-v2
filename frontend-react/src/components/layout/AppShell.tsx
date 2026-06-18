@@ -43,7 +43,6 @@ export default function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const dashboardTitle = `${globalConfig?.dashboard_title_prefix ?? ''}效能看板`
-  const chatStatsEnabled = globalConfig?.chat_stats_enabled === true
 
   // 前缀匹配高亮：/org/efficiency 落到 /org 段。需求页（/needs-v2、/needs/:id）按 /needs 前缀高亮。
   const isItemActive = (item: NavItem) => {
@@ -87,21 +86,13 @@ export default function AppShell() {
           </div>
         </div>
 
-        {/* 右侧工具区：全局时间范围 + 平台（条件） + 设置 + 主题 */}
+        {/* 右侧工具区：全局时间范围 + 设置 + 主题。
+            注：原「平台」一级入口已撤——平台客观数据已按主体×维度铺进业务页，
+            原始平台监控页下沉到「设置 › 平台运维」三级页（条件 chat_stats_enabled）。 */}
         <div className="flex items-center gap-2">
           <div className="hidden sm:block">
             <DateRangePicker value={timeRange} onChange={setTimeRange} />
           </div>
-
-          {chatStatsEnabled && (
-            <NavLink
-              to="/platform/overview"
-              className={() => navLinkClass(pathname.startsWith('/platform'))}
-              title="平台客观指标"
-            >
-              平台
-            </NavLink>
-          )}
 
           <NavLink
             to="/settings/pricing"
@@ -178,15 +169,7 @@ export default function AppShell() {
 
             <span className="mt-2 h-px bg-gray-200 dark:bg-white/10" aria-hidden="true" />
 
-            {chatStatsEnabled && (
-              <NavLink
-                to="/platform/overview"
-                onClick={() => setDrawerOpen(false)}
-                className={() => navLinkClass(pathname.startsWith('/platform'))}
-              >
-                平台
-              </NavLink>
-            )}
+            {/* 平台运维已下沉到「设置 › 平台运维」三级页，不再单列一级入口。 */}
             <NavLink
               to="/settings/pricing"
               onClick={() => setDrawerOpen(false)}

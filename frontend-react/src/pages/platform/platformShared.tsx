@@ -2,7 +2,7 @@
 // 饼图色板、universal_id → 看板用户互链单元格、ECharts option 工厂与图表卡片。
 // 仅平台页内部复用，不进 src/api/ 或全局组件（避免与并行任务冲突）。
 import type { ReactNode } from 'react'
-import { Link, NavLink } from 'react-router'
+import { Link } from 'react-router'
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import type { ChartPalette } from '@/components/charts/chartTheme'
@@ -182,32 +182,5 @@ export function EmptyHint({ compact = false }: { compact?: boolean }) {
   )
 }
 
-const TABS = [
-  { to: '/platform/overview', label: '平台总览', end: true },
-  { to: '/platform/realtime', label: '实时态势', end: true },
-  { to: '/platform/realtime/query', label: '明细查询', end: false },
-]
-
-/** 平台总览 / 实时态势 / 明细查询 三子页切换 tab（玻璃药丸样式）。 */
-export function PlatformTabs() {
-  return (
-    <nav className="glass rounded-xl p-1 inline-flex items-center gap-1" aria-label="平台子页切换">
-      {TABS.map((t) => (
-        <NavLink
-          key={t.to}
-          to={t.to}
-          end={t.end}
-          className={({ isActive }) =>
-            `px-4 py-1.5 rounded-lg text-sm font-medium no-underline transition-colors ${
-              isActive
-                ? 'bg-apple-blue text-white'
-                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-white/10'
-            }`
-          }
-        >
-          {t.label}
-        </NavLink>
-      ))}
-    </nav>
-  )
-}
+// 注：原 PlatformTabs（平台三子页切换 tab）已移除——平台页归到设置下后，
+// 子页切换由 SettingsLayout 的「平台运维」分组导航统一承担。

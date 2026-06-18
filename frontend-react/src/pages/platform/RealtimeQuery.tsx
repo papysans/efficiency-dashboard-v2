@@ -11,8 +11,8 @@ import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Modal } from '@/components/ui/Modal'
 import { Tag } from '@/components/ui/Tag'
 import { formatLocalTime, formatNumber } from '@/lib/formatters'
-import { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
-import { ChatUserCell, isErrorCode, PlatformTabs } from './platformShared'
+import SettingsLayout, { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
+import { ChatUserCell, isErrorCode } from './platformShared'
 
 // ---- 时间工具（datetime-local <-> ISO 8601 带偏移） ----
 
@@ -224,31 +224,31 @@ export default function RealtimeQuery() {
   const total = query.data?.total ?? 0
 
   const header = (
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">明细查询</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          按条件点查 LLM 请求明细（直查源库，最多返回 100 条），用于现场排查。
-        </p>
-      </div>
-      <PlatformTabs />
+    <header>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">明细查询</h2>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        按条件点查 LLM 请求明细（直查源库，最多返回 100 条），用于现场排查。
+      </p>
     </header>
   )
 
   if (chatDisabled) {
     return (
-      <div className="space-y-5">
-        {header}
-        <ChatDisabledNotice />
-      </div>
+      <SettingsLayout>
+        <div className="space-y-5">
+          {header}
+          <ChatDisabledNotice />
+        </div>
+      </SettingsLayout>
     )
   }
 
   return (
-    <div className="space-y-5">
-      {header}
+    <SettingsLayout>
+      <div className="space-y-5">
+        {header}
 
-      {/* 查询条件 */}
+        {/* 查询条件 */}
       <section className="glass rounded-2xl p-5 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm text-gray-600 dark:text-gray-300" htmlFor="rq-datasource">
@@ -554,7 +554,8 @@ export default function RealtimeQuery() {
           )
         ) : null}
       </Modal>
-    </div>
+      </div>
+    </SettingsLayout>
   )
 }
 

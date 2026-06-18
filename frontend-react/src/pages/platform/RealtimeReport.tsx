@@ -10,7 +10,7 @@ import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { EChart } from '@/components/charts/EChart'
 import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { formatNumber } from '@/lib/formatters'
-import { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
+import SettingsLayout, { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
 import {
   baseTooltip,
   ChartCard,
@@ -18,7 +18,6 @@ import {
   EmptyHint,
   multiAreaOption,
   PIE_COLORS,
-  PlatformTabs,
   shortToken,
 } from './platformShared'
 
@@ -188,31 +187,31 @@ export default function RealtimeReport() {
     }`
 
   const header = (
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">平台实时态势</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          直查源库的 LLM 请求实时聚合：token / 成本 / 错误 / 模型分布。服务端限频 10 秒一次。
-        </p>
-      </div>
-      <PlatformTabs />
+    <header>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">平台实时态势</h2>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        直查源库的 LLM 请求实时聚合：token / 成本 / 错误 / 模型分布。服务端限频 10 秒一次。
+      </p>
     </header>
   )
 
   if (chatDisabled) {
     return (
-      <div className="space-y-5">
-        {header}
-        <ChatDisabledNotice />
-      </div>
+      <SettingsLayout>
+        <div className="space-y-5">
+          {header}
+          <ChatDisabledNotice />
+        </div>
+      </SettingsLayout>
     )
   }
 
   return (
-    <div className="space-y-5">
-      {header}
+    <SettingsLayout>
+      <div className="space-y-5">
+        {header}
 
-      {/* 工具栏：range 切换 + 手动刷新（限频倒计时） */}
+        {/* 工具栏：range 切换 + 手动刷新（限频倒计时） */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="text-sm text-gray-600 dark:text-gray-300" htmlFor="realtime-datasource">
           数据源
@@ -450,7 +449,8 @@ export default function RealtimeReport() {
           暂无数据，点击「刷新」开始查询
         </div>
       ) : null}
-    </div>
+      </div>
+    </SettingsLayout>
   )
 }
 

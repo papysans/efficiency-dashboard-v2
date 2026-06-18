@@ -12,8 +12,8 @@ import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { EChart } from '@/components/charts/EChart'
 import { getPalette } from '@/components/charts/chartTheme'
 import { formatNumber } from '@/lib/formatters'
-import { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
-import { ChartCard, ChatUserCell, EmptyHint, multiAreaOption, PlatformTabs, shortToken } from './platformShared'
+import SettingsLayout, { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
+import { ChartCard, ChatUserCell, EmptyHint, multiAreaOption, shortToken } from './platformShared'
 
 // ---- 页面局部类型（GET /stats/* 响应，字段以 chat 侧 stats.go / models.go 为准） ----
 
@@ -323,31 +323,31 @@ export default function PlatformOverview() {
     }`
 
   const header = (
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">平台总览</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          基于日汇总表的历史指标：请求 / token / 成本 / 错误 / 模型与用户排行。
-        </p>
-      </div>
-      <PlatformTabs />
+    <header>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">平台总览</h2>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        基于日汇总表的历史指标：请求 / token / 成本 / 错误 / 模型与用户排行。
+      </p>
     </header>
   )
 
   if (chatDisabled) {
     return (
-      <div className="space-y-5">
-        {header}
-        <ChatDisabledNotice />
-      </div>
+      <SettingsLayout>
+        <div className="space-y-5">
+          {header}
+          <ChatDisabledNotice />
+        </div>
+      </SettingsLayout>
     )
   }
 
   return (
-    <div className="space-y-5">
-      {header}
+    <SettingsLayout>
+      <div className="space-y-5">
+        {header}
 
-      {/* 工具栏：快捷档 + 自定义起止日期 */}
+        {/* 工具栏：快捷档 + 自定义起止日期 */}
       <div className="flex flex-wrap items-center gap-2">
         {PRESETS.map((o) => (
           <button
@@ -610,7 +610,8 @@ export default function PlatformOverview() {
           </ChartCard>
         </>
       )}
-    </div>
+      </div>
+    </SettingsLayout>
   )
 }
 

@@ -12,6 +12,14 @@ const TABS = [
   { to: '/settings/config', label: '系统配置' },
 ]
 
+// 平台运维三级页（原顶部「平台」一级入口已撤；矩阵已把平台客观数据铺进业务页，
+// 这些原始监控页保留为运维用途，归到设置下）。仅 chat_stats_enabled 时显示。
+const PLATFORM_TABS = [
+  { to: '/settings/platform/overview', label: '平台总览' },
+  { to: '/settings/platform/realtime', label: '实时态势' },
+  { to: '/settings/platform/realtime/query', label: '明细查询' },
+]
+
 // ---- 共用样式常量（对齐 ProjectList 等现有页面的玻璃拟态惯例） ----
 export const INPUT_CLS =
   'glass rounded-lg px-3 py-1.5 text-sm w-full bg-transparent text-gray-900 dark:text-white ' +
@@ -66,9 +74,28 @@ export function ChatDisabledNotice() {
   )
 }
 
+function SettingsTab({ to, label, end }: { to: string; label: string; end?: boolean }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${
+          isActive
+            ? 'bg-apple-blue text-white'
+            : 'glass text-gray-600 dark:text-gray-300 hover:text-apple-blue'
+        }`
+      }
+    >
+      {label}
+    </NavLink>
+  )
+}
+
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   const { data: gc } = useGlobalConfig()
   const disabled = !!gc && gc.chat_stats_enabled !== true
+  const chatEnabled = gc?.chat_stats_enabled === true
 
   return (
     <div className="space-y-5">
@@ -81,20 +108,30 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         </div>
         <nav aria-label="设置子页" className="flex flex-wrap items-center gap-2">
           {TABS.map((t) => (
-            <NavLink
-              key={t.to}
-              to={t.to}
-              className={({ isActive }) =>
-                `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${
-                  isActive
-                    ? 'bg-apple-blue text-white'
-                    : 'glass text-gray-600 dark:text-gray-300 hover:text-apple-blue'
-                }`
-              }
-            >
-              {t.label}
-            </NavLink>
+            <SettingsTab key={t.to} to={t.to} label={t.label} />
           ))}
+
+          {/* 平台运维分组（顶部「平台」一级入口已撤，归到设置下）。仅 chat_stats_enabled 时显示。 */}
+          {chatEnabled && (
+            <>
+              <span
+                className="mx-1 self-stretch w-px bg-gray-200 dark:bg-white/10"
+                aria-hidden="true"
+              />
+              <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 px-1">
+                平台运维
+              </span>
+              {PLATFORM_TABS.map((t) => (
+                // 实时态势 /realtime 与明细查询 /realtime/query 路径前缀重叠 → /realtime 用 end 精确匹配。
+                <SettingsTab
+                  key={t.to}
+                  to={t.to}
+                  label={t.label}
+                  end={t.to === '/settings/platform/realtime'}
+                />
+              ))}
+            </>
+          )}
         </nav>
       </header>
 

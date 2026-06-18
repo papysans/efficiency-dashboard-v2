@@ -129,14 +129,20 @@ export const router = createBrowserRouter([
       // 分布：已并入「效率」维度子视图（org 效率页内「分布」次级 tab）。旧 /distribution-v2 → 重定向（保留 query）。
       { path: 'distribution-v2', element: <DistributionToEfficiency /> },
 
-      // 平台客观指标（chat-indicator-statistics 代理）+ 设置区
-      { path: 'platform/overview', element: <PlatformOverview /> },
-      { path: 'platform/realtime', element: <RealtimeReport /> },
-      { path: 'platform/realtime/query', element: <RealtimeQuery /> },
+      // 设置区（含平台运维三级页）。平台原始监控页已从顶部「平台」一级入口下沉到设置下，
+      // 渲染在 SettingsLayout 壳内（组件自身 wrap SettingsLayout），与价格/数据源同壳。
       { path: 'settings/pricing', element: <Pricing /> },
       { path: 'settings/datasources', element: <Datasources /> },
       { path: 'settings/sync', element: <SyncTasks /> },
       { path: 'settings/config', element: <SystemConfig /> },
+      { path: 'settings/platform/overview', element: <PlatformOverview /> },
+      { path: 'settings/platform/realtime', element: <RealtimeReport /> },
+      { path: 'settings/platform/realtime/query', element: <RealtimeQuery /> },
+
+      // 旧 /platform/* → /settings/platform/*（保留 query/search，旧链接/书签不 404）
+      { path: 'platform/overview', element: <SimpleRedirect to="/settings/platform/overview" /> },
+      { path: 'platform/realtime', element: <SimpleRedirect to="/settings/platform/realtime" /> },
+      { path: 'platform/realtime/query', element: <SimpleRedirect to="/settings/platform/realtime/query" /> },
 
       // ---- 旧 -v2 路由 → 新主体路由（保留 query/search，不 404） ----
       { path: 'user-v2', element: <SimpleRedirect to="/user" /> },
