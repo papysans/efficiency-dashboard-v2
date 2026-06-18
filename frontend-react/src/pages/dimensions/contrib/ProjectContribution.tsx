@@ -7,6 +7,7 @@
 // 时间线：项目无按周的时间序列数据（周表按 用户×周 聚合，无项目维度）→ DimensionTrend 走诚实空态，不编造。
 // 口径：need_* 为小数口径 → RatioPill（AI 占比同样小数口径，绝不用 PercentPill 百分比口径）。
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { useProjectList } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
@@ -66,10 +67,16 @@ export default function ProjectContribution() {
   )
 }
 
-/** 聚合态：项目贡献排行（Need 数 / 贡献者 / 生成代码）+ KPI 卡。点行进聚焦态由壳的对象选择器驱动。 */
+/** 聚合态：项目贡献排行（Need 数 / 贡献者 / 生成代码）+ KPI 卡。点行下钻 → /project/:projectId 独立详情。 */
 function ProjectContribAggregate() {
+  const navigate = useNavigate()
   const { data, isLoading, error } = useProjectList()
   const rows = useMemo<ProjectListItem[]>(() => data?.data ?? [], [data])
+
+  function goToProject(row: ProjectListItem) {
+    if (!row?.project_id) return
+    navigate(`/project/${encodeURIComponent(row.project_id)}`)
+  }
 
   // 按生成代码量降序（null 沉底）——贡献维度看产出代码量。
   const ranked = useMemo(() => sortRows(rows, (r) => r.need_total_loc_net, true), [rows])
@@ -109,7 +116,7 @@ function ProjectContribAggregate() {
           tip="各项目干净 Need 净 LOC 之和。"
         />
       </div>
-      <ChartCard title="项目贡献排行（看板派生）" sub="按生成代码量倒序">
+      <ChartCard title="项目贡献排行（看板派生）" sub="按生成代码量倒序 · 点行下钻">
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -139,12 +146,24 @@ function ProjectContribAggregate() {
                 </tr>
               ) : (
                 ranked.map((r, i) => (
-                  <tr key={r.project_id} className="border-b border-gray-100/50 dark:border-white/5">
+                  <tr
+                    key={r.project_id}
+                    onClick={() => goToProject(r)}
+                    className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
+                  >
                     <td className={TD_NUM}>{i + 1}</td>
                     <td className={TD}>
-                      <div className="max-w-[240px] truncate font-medium text-gray-900 dark:text-white" title={r.name}>
+                      <button
+                        type="button"
+                        className="max-w-[240px] truncate text-left font-medium text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
+                        title={r.name}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          goToProject(r)
+                        }}
+                      >
                         {r.name || '-'}
-                      </div>
+                      </button>
                     </td>
                     <td className={TD_NUM}>
                       {r.need_total_loc_net && r.need_total_loc_net > 0 ? `${formatNumber(r.need_total_loc_net)} 行` : '-'}

@@ -7,6 +7,7 @@
 // ⚠️ 这两个主体不发任何 chatStats 请求（与 user/org 平台分支严格区分）。口径：
 //   project need_* 字段=小数口径 → RatioPill；repo efficiency/ai=百分比/小数口径见各列。
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { useProjectList, useRepos } from '@/api/queries'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
@@ -63,6 +64,8 @@ export function KanbanUsage({
 }
 
 function ProjectUsageAggregate() {
+  const navigate = useNavigate()
+  const goToProject = useProjectNav(navigate)
   const { data, isLoading, error } = useProjectList()
   const rows = useMemo<ProjectListItem[]>(() => data?.data ?? [], [data])
 
@@ -89,7 +92,7 @@ function ProjectUsageAggregate() {
         <MetricCard label="Need 总数" value={formatNumber(kpi.needs)} />
         <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各项目 need_ai_code_ratio 均值" />
       </div>
-      <ChartCard title="项目 AI 渗透排行（看板派生）" sub="按 Need AI 代码占比倒序">
+      <ChartCard title="项目 AI 渗透排行（看板派生）" sub="按 Need AI 代码占比倒序 · 点行下钻">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10">
@@ -112,10 +115,14 @@ function ProjectUsageAggregate() {
               </tr>
             ) : (
               ranked.map((r, i) => (
-                <tr key={r.project_id} className="border-b border-gray-100/50 dark:border-white/5">
+                <tr
+                  key={r.project_id}
+                  onClick={() => goToProject(r.project_id)}
+                  className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
+                >
                   <td className={TD_NUM}>{i + 1}</td>
                   <td className={TD}>
-                    <div className="max-w-[240px] truncate font-medium text-gray-900 dark:text-white" title={r.name}>{r.name || '-'}</div>
+                    <ProjectNameButton name={r.name} onClick={() => goToProject(r.project_id)} />
                   </td>
                   <td className="px-3 py-2 align-middle text-center"><RatioPill value={r.need_ai_code_ratio ?? null} /></td>
                   <td className={TD_NUM}>{formatNumber(r.need_total_count)}</td>
@@ -132,6 +139,8 @@ function ProjectUsageAggregate() {
 }
 
 function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
+  const navigate = useNavigate()
+  const goToRepo = useRepoNav(navigate)
   const dateParams = useMemo(
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
     [timeRange],
@@ -160,7 +169,7 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
         <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各仓库 ai_code_ratio 均值" />
         <MetricCard label="有 AI 数据仓库" value={formatNumber(rows.filter((r) => r.ai_code_ratio != null).length)} />
       </div>
-      <ChartCard title="仓库 AI 占比排行（看板派生）" sub="按 AI 代码占比倒序（每仓库取首选分支）">
+      <ChartCard title="仓库 AI 占比排行（看板派生）" sub="按 AI 代码占比倒序（每仓库取首选分支）· 点行下钻">
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
@@ -183,10 +192,14 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
                 </tr>
               ) : (
                 ranked.map((r, i) => (
-                  <tr key={`${r.repo_addr}#${r.repo_branch}`} className="border-b border-gray-100/50 dark:border-white/5">
+                  <tr
+                    key={`${r.repo_addr}#${r.repo_branch}`}
+                    onClick={() => goToRepo(r.repo_addr, r.repo_branch)}
+                    className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
+                  >
                     <td className={TD_NUM}>{i + 1}</td>
                     <td className={TD}>
-                      <div className="max-w-[320px] truncate" title={r.repo_addr}>{r.repo_addr || '-'}</div>
+                      <RepoAddrButton addr={r.repo_addr} onClick={() => goToRepo(r.repo_addr, r.repo_branch)} />
                     </td>
                     <td className="px-3 py-2 align-middle text-center"><RatioPill value={r.ai_code_ratio ?? null} /></td>
                     <td className={TD_NUM}>{formatNumber(r.commit_count)}</td>
@@ -247,6 +260,8 @@ function SingleCostNotice() {
 }
 
 function ProjectCostAggregate() {
+  const navigate = useNavigate()
+  const goToProject = useProjectNav(navigate)
   const { data, isLoading, error } = useProjectList()
   const rows = useMemo<ProjectListItem[]>(() => data?.data ?? [], [data])
   const ranked = useMemo(() => sortRows(rows, (r) => r.need_cost, true), [rows])
@@ -264,7 +279,7 @@ function ProjectCostAggregate() {
         <MetricCard label="生成代码(合计)" value={totalLoc > 0 ? `${formatNumber(totalLoc)} 行` : '-'} />
         <MetricCard label="平均单价" value={totalLoc > 0 ? `¥${fmtCost((totalCost / totalLoc) * 1000)} /千行` : '-'} hint="费用 / 生成代码千行" />
       </div>
-      <ChartCard title="项目费用排行（看板派生·单卡）" sub="按 Need 费用倒序">
+      <ChartCard title="项目费用排行（看板派生·单卡）" sub="按 Need 费用倒序 · 点行下钻">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10">
@@ -286,10 +301,14 @@ function ProjectCostAggregate() {
               </tr>
             ) : (
               ranked.map((r, i) => (
-                <tr key={r.project_id} className="border-b border-gray-100/50 dark:border-white/5">
+                <tr
+                  key={r.project_id}
+                  onClick={() => goToProject(r.project_id)}
+                  className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
+                >
                   <td className={TD_NUM}>{i + 1}</td>
                   <td className={TD}>
-                    <div className="max-w-[240px] truncate font-medium text-gray-900 dark:text-white" title={r.name}>{r.name || '-'}</div>
+                    <ProjectNameButton name={r.name} onClick={() => goToProject(r.project_id)} />
                   </td>
                   <td className={TD_NUM}>{r.need_cost != null && r.need_cost > 0 ? fmtCost(r.need_cost) : '0.00'}</td>
                   <td className={TD_NUM}>{r.need_total_loc_net && r.need_total_loc_net > 0 ? `${formatNumber(r.need_total_loc_net)} 行` : '-'}</td>
@@ -305,6 +324,8 @@ function ProjectCostAggregate() {
 }
 
 function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
+  const navigate = useNavigate()
+  const goToRepo = useRepoNav(navigate)
   const dateParams = useMemo(
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
     [timeRange],
@@ -329,7 +350,7 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
         <MetricCard label="传统预估(合计)" value={formatDuration(rows.reduce((s, r) => s + (r.sum_ancient_minutes || 0), 0))} />
         <MetricCard label="Commit 总数" value={formatNumber(rows.reduce((s, r) => s + (r.commit_count || 0), 0))} />
       </div>
-      <ChartCard title="仓库成本排行（看板派生·实际耗时代理）" sub="按实际耗时倒序（每仓库取首选分支）">
+      <ChartCard title="仓库成本排行（看板派生·实际耗时代理）" sub="按实际耗时倒序（每仓库取首选分支）· 点行下钻">
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
@@ -352,10 +373,14 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
                 </tr>
               ) : (
                 ranked.map((r, i) => (
-                  <tr key={`${r.repo_addr}#${r.repo_branch}`} className="border-b border-gray-100/50 dark:border-white/5">
+                  <tr
+                    key={`${r.repo_addr}#${r.repo_branch}`}
+                    onClick={() => goToRepo(r.repo_addr, r.repo_branch)}
+                    className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
+                  >
                     <td className={TD_NUM}>{i + 1}</td>
                     <td className={TD}>
-                      <div className="max-w-[320px] truncate" title={r.repo_addr}>{r.repo_addr || '-'}</div>
+                      <RepoAddrButton addr={r.repo_addr} onClick={() => goToRepo(r.repo_addr, r.repo_branch)} />
                     </td>
                     <td className={TD_NUM}>{formatDuration(r.sum_real_minutes)}</td>
                     <td className={TD_NUM}>{formatDuration(r.sum_ancient_minutes)}</td>
@@ -372,6 +397,55 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
 }
 
 // ==================================== 共用小件 ====================================
+// 行下钻导航助手（project/repo 排行点行进独立详情，与 ProjectList/RepoList 同址）。
+type NavFn = ReturnType<typeof useNavigate>
+function useProjectNav(navigate: NavFn) {
+  return (projectId?: string) => {
+    if (!projectId) return
+    navigate(`/project/${encodeURIComponent(projectId)}`)
+  }
+}
+function useRepoNav(navigate: NavFn) {
+  return (repoAddr?: string, repoBranch?: string) => {
+    if (!repoAddr) return
+    navigate(`/repo/${encodeURIComponent(repoAddr)}/${encodeURIComponent(repoBranch || '')}`)
+  }
+}
+
+/** 项目名链接按钮（截断 + 互链样式，行内点击 stopPropagation 防双触发）。 */
+function ProjectNameButton({ name, onClick }: { name?: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="max-w-[240px] truncate text-left font-medium text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
+      title={name}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+    >
+      {name || '-'}
+    </button>
+  )
+}
+
+/** 仓库地址链接按钮（截断 + 互链样式）。 */
+function RepoAddrButton({ addr, onClick }: { addr?: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="max-w-[320px] truncate text-left text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
+      title={addr}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+    >
+      {addr || '-'}
+    </button>
+  )
+}
+
 function SkeletonRows({ cols }: { cols: number }) {
   return (
     <>

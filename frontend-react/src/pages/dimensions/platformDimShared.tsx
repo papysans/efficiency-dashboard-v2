@@ -3,12 +3,33 @@
 //   - PlatformWeekTrend：把周窗口序列（lib/weekWindows 切窗 + chatStats 各窗查询）渲染为按周折线，
 //     复用 platformShared 的 multiAreaOption / ChartCard / EmptyHint，对齐玻璃拟态。
 // 仅个人维度内部复用。
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router'
 import { useTheme } from '@/hooks/useTheme'
 import { EChart } from '@/components/charts/EChart'
 import { getPalette } from '@/components/charts/chartTheme'
 import { ChartCard, EmptyHint, multiAreaOption, type AreaSeries } from '@/pages/platform/platformShared'
 import { weekWindowLabel, type WeekWindow } from '@/lib/weekWindows'
+
+/**
+ * 部门排行行下钻 → 写 ?object=<dept_id> 进 org 主体聚焦态（与 OrgContribution.goDept 同源范式）。
+ * 部门没有独立详情路由，故下钻=切到壳的聚焦态（保留其它 query，清 dept_id/sub）。
+ * 供 Usage/Quality/Cost 三个平台 org 维度复用，避免三处复制。
+ */
+export function useDeptFocus(): (deptId: string) => void {
+  const [searchParams, setSearchParams] = useSearchParams()
+  return useCallback(
+    (deptId: string) => {
+      if (!deptId) return
+      const next = new URLSearchParams(searchParams)
+      next.set('object', deptId)
+      next.delete('dept_id')
+      next.delete('sub')
+      setSearchParams(next, { replace: false })
+    },
+    [searchParams, setSearchParams],
+  )
+}
 
 /**
  * 平台未接入 / 请求失败时的统一优雅占位（玻璃拟态卡）。

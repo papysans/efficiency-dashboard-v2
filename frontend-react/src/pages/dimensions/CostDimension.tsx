@@ -5,6 +5,7 @@
 // 时间线 = 平台 AI 花费周序列（切窗）。聚合态=对象 AI 花费排行；聚焦态=该对象花费明细。
 // 降级护栏：开关 false / 请求失败 → 平台卡显示「未接入平台」，看板人天卡照常（也是建设中）；不空页不抛错。
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useGlobalConfig } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
@@ -12,7 +13,7 @@ import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { formatNumber } from '@/lib/formatters'
 import { ChartCard, ChatUserCell, EmptyHint, shortToken } from '@/pages/platform/platformShared'
-import { DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote } from './platformDimShared'
+import { DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote, useDeptFocus } from './platformDimShared'
 import {
   useUserRanking,
   useUserRankingFocused,
@@ -118,6 +119,9 @@ function CostContent({
 }) {
   const [start, end] = timeRange
   const { resolveName } = useUserNameMap()
+  const navigate = useNavigate()
+  // 排行行下钻 → 看板用户详情（universal_id 与看板 user_id 同源）。
+  const goToUser = (universalId: string) => navigate(`/user/${encodeURIComponent(universalId)}`)
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -187,7 +191,7 @@ function CostContent({
       {!focused && !platformError && (
         <ChartCard
           title="用户 AI 花费排行（平台·客观）"
-          sub={`区间聚合 · Top 50${rankQ.data?.total != null ? ` · 共 ${formatNumber(rankQ.data.total)} 人` : ''}`}
+          sub={`区间聚合 · Top 50${rankQ.data?.total != null ? ` · 共 ${formatNumber(rankQ.data.total)} 人` : ''} · 点行下钻`}
           extra={
             <input
               type="search"
@@ -199,7 +203,7 @@ function CostContent({
             />
           }
         >
-          <CostRankingTable rows={rows} loading={rankQ.isFetching} resolveName={resolveName} />
+          <CostRankingTable rows={rows} loading={rankQ.isFetching} resolveName={resolveName} onRowClick={goToUser} />
         </ChartCard>
       )}
     </div>
@@ -257,10 +261,12 @@ function CostRankingTable({
   rows,
   loading,
   resolveName,
+  onRowClick,
 }: {
   rows: ChatUserRankingRow[]
   loading: boolean
   resolveName: (id?: string) => string
+  onRowClick: (universalId: string) => void
 }) {
   return (
     <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
@@ -289,24 +295,31 @@ function CostRankingTable({
               </td>
             </tr>
           ) : (
-            rows.map((u, i) => (
-              <tr key={u.universal_id || i} className="border-b border-gray-100/50 dark:border-white/5">
-                <td className={TD_NUM}>{i + 1}</td>
-                <td className={TD}>
-                  <div className="max-w-[200px] truncate">
-                    <ChatUserCell universalId={u.universal_id} chatUsername={u.username} resolveName={resolveName} />
-                  </div>
-                </td>
-                <td className={TD_NUM}>{u.estimated_total_cost.toFixed(2)}</td>
-                <td className={TD_NUM} title={formatNumber(u.sum_total_tokens)}>
-                  {shortToken(u.sum_total_tokens)}
-                </td>
-                <td className={TD_NUM} title={formatNumber(u.sum_cache_tokens)}>
-                  {shortToken(u.sum_cache_tokens)}
-                </td>
-                <td className={TD_NUM}>{formatNumber(u.total_requests)}</td>
-              </tr>
-            ))
+            rows.map((u, i) => {
+              const uid = u.universal_id || ''
+              return (
+                <tr
+                  key={uid || i}
+                  onClick={uid ? () => onRowClick(uid) : undefined}
+                  className={`border-b border-gray-100/50 dark:border-white/5 ${uid ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors' : ''}`}
+                >
+                  <td className={TD_NUM}>{i + 1}</td>
+                  <td className={TD}>
+                    <div className="max-w-[200px] truncate">
+                      <ChatUserCell universalId={u.universal_id} chatUsername={u.username} resolveName={resolveName} />
+                    </div>
+                  </td>
+                  <td className={TD_NUM}>{u.estimated_total_cost.toFixed(2)}</td>
+                  <td className={TD_NUM} title={formatNumber(u.sum_total_tokens)}>
+                    {shortToken(u.sum_total_tokens)}
+                  </td>
+                  <td className={TD_NUM} title={formatNumber(u.sum_cache_tokens)}>
+                    {shortToken(u.sum_cache_tokens)}
+                  </td>
+                  <td className={TD_NUM}>{formatNumber(u.total_requests)}</td>
+                </tr>
+              )
+            })
           )}
         </tbody>
       </table>
@@ -327,6 +340,8 @@ function OrgCostContent({
   timeRange: [string, string]
 }) {
   const [start, end] = timeRange
+  // 部门行下钻 → 写 ?object=<dept_id> 进聚焦态。
+  const goDept = useDeptFocus()
 
   const series = useDeptWeekSeries({ startDate: start, endDate: end, deptId: focused ? object : undefined }, true)
   const rankQ = useDeptPlatformRanking({ startDate: start, endDate: end }, !focused)
@@ -384,8 +399,8 @@ function OrgCostContent({
       {!focused && !platformError && rankQ.truncated && <TruncationNote total={rankQ.rankingTotal} />}
 
       {!focused && !platformError && (
-        <ChartCard title="部门 AI 花费排行（平台·直属成员聚合）" sub="区间聚合 · 一级部门 · 按花费倒序">
-          <DeptCostRankingTable items={items} loading={rankQ.loading} />
+        <ChartCard title="部门 AI 花费排行（平台·直属成员聚合）" sub="区间聚合 · 一级部门 · 按花费倒序 · 点行下钻">
+          <DeptCostRankingTable items={items} loading={rankQ.loading} onRowClick={goDept} />
         </ChartCard>
       )}
     </div>
@@ -436,7 +451,15 @@ function DeptPlatformCostCard({
   )
 }
 
-function DeptCostRankingTable({ items, loading }: { items: DeptPlatformAgg[]; loading: boolean }) {
+function DeptCostRankingTable({
+  items,
+  loading,
+  onRowClick,
+}: {
+  items: DeptPlatformAgg[]
+  loading: boolean
+  onRowClick: (deptId: string) => void
+}) {
   return (
     <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
       <table className="w-full text-sm border-collapse">
@@ -463,10 +486,28 @@ function DeptCostRankingTable({ items, loading }: { items: DeptPlatformAgg[]; lo
             </tr>
           ) : (
             items.map((it, i) => (
-              <tr key={it.deptId || i} className="border-b border-gray-100/50 dark:border-white/5">
+              <tr
+                key={it.deptId || i}
+                onClick={it.deptId ? () => onRowClick(it.deptId) : undefined}
+                className={`border-b border-gray-100/50 dark:border-white/5 ${it.deptId ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors' : ''}`}
+              >
                 <td className={TD_NUM}>{i + 1}</td>
                 <td className={TD}>
-                  <div className="max-w-[220px] truncate" title={it.deptName}>{it.deptName}</div>
+                  {it.deptId ? (
+                    <button
+                      type="button"
+                      className="max-w-[220px] truncate text-left font-medium text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
+                      title={it.deptName}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRowClick(it.deptId)
+                      }}
+                    >
+                      {it.deptName}
+                    </button>
+                  ) : (
+                    <div className="max-w-[220px] truncate" title={it.deptName}>{it.deptName}</div>
+                  )}
                 </td>
                 <td className={TD_NUM}>{(it.estimatedTotalCost || 0).toFixed(2)}</td>
                 <td className={TD_NUM} title={formatNumber(it.sumTotalTokens)}>

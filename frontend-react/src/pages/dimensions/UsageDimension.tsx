@@ -5,6 +5,7 @@
 // 降级护栏：chat_stats_enabled=false 或请求失败 → PlatformNotConnected（user/org），绝不发请求/不空页。
 //   project/repo 是看板派生，不受平台开关影响，照常渲染。
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useGlobalConfig } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
@@ -12,7 +13,7 @@ import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { formatNumber } from '@/lib/formatters'
 import { ChartCard, ChatUserCell, EmptyHint, shortToken } from '@/pages/platform/platformShared'
-import { DimSkeleton, DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote } from './platformDimShared'
+import { DimSkeleton, DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote, useDeptFocus } from './platformDimShared'
 import {
   useUserRanking,
   useUserRankingFocused,
@@ -80,6 +81,9 @@ function UserUsage({
 }) {
   const [start, end] = timeRange
   const { resolveName } = useUserNameMap()
+  const navigate = useNavigate()
+  // 排行行下钻 → 看板用户详情（universal_id 与看板 user_id 同源，与 ChatUserCell 互链同址）。
+  const goToUser = (universalId: string) => navigate(`/user/${encodeURIComponent(universalId)}`)
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -149,7 +153,7 @@ function UserUsage({
               />
             }
           >
-            <UsageRankingTable rows={rows} loading={rankQ.isFetching} resolveName={resolveName} />
+            <UsageRankingTable rows={rows} loading={rankQ.isFetching} resolveName={resolveName} onRowClick={goToUser} />
           </ChartCard>
         </>
       )}
@@ -202,10 +206,12 @@ function UsageRankingTable({
   rows,
   loading,
   resolveName,
+  onRowClick,
 }: {
   rows: ChatUserRankingRow[]
   loading: boolean
   resolveName: (id?: string) => string
+  onRowClick: (universalId: string) => void
 }) {
   return (
     <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
@@ -232,22 +238,29 @@ function UsageRankingTable({
               </td>
             </tr>
           ) : (
-            rows.map((u, i) => (
-              <tr key={u.universal_id || i} className="border-b border-gray-100/50 dark:border-white/5">
-                <td className={TD_NUM}>{i + 1}</td>
-                <td className={TD}>
-                  <div className="max-w-[200px] truncate">
-                    <ChatUserCell universalId={u.universal_id} chatUsername={u.username} resolveName={resolveName} />
-                  </div>
-                </td>
-                <td className={TD_NUM}>{formatNumber(u.total_requests)}</td>
-                <td className={TD_NUM}>{formatNumber(u.unique_task_count)}</td>
-                <td className={TD_NUM}>{formatNumber(u.active_days)}</td>
-                <td className={TD_NUM} title={formatNumber(u.sum_total_tokens)}>
-                  {shortToken(u.sum_total_tokens)}
-                </td>
-              </tr>
-            ))
+            rows.map((u, i) => {
+              const uid = u.universal_id || ''
+              return (
+                <tr
+                  key={uid || i}
+                  onClick={uid ? () => onRowClick(uid) : undefined}
+                  className={`border-b border-gray-100/50 dark:border-white/5 ${uid ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors' : ''}`}
+                >
+                  <td className={TD_NUM}>{i + 1}</td>
+                  <td className={TD}>
+                    <div className="max-w-[200px] truncate">
+                      <ChatUserCell universalId={u.universal_id} chatUsername={u.username} resolveName={resolveName} />
+                    </div>
+                  </td>
+                  <td className={TD_NUM}>{formatNumber(u.total_requests)}</td>
+                  <td className={TD_NUM}>{formatNumber(u.unique_task_count)}</td>
+                  <td className={TD_NUM}>{formatNumber(u.active_days)}</td>
+                  <td className={TD_NUM} title={formatNumber(u.sum_total_tokens)}>
+                    {shortToken(u.sum_total_tokens)}
+                  </td>
+                </tr>
+              )
+            })
           )}
         </tbody>
       </table>
@@ -268,6 +281,8 @@ function OrgUsage({
   timeRange: [string, string]
 }) {
   const [start, end] = timeRange
+  // 部门行下钻 → 写 ?object=<dept_id> 进聚焦态（org 主体下钻范式，与 OrgContribution.goDept 一致）。
+  const goDept = useDeptFocus()
 
   const series = useDeptWeekSeries({ startDate: start, endDate: end, deptId: focused ? object : undefined }, true)
   const rankQ = useDeptPlatformRanking({ startDate: start, endDate: end }, !focused)
@@ -314,8 +329,8 @@ function OrgUsage({
           <DeptAggregateKpis items={items} />
           {/* P1-2：部门聚合按 Top 500 全量排行命中求和，区间真实人数更大时漏算排行外成员 → 醒目标注。 */}
           {rankQ.truncated && <TruncationNote total={rankQ.rankingTotal} />}
-          <ChartCard title="部门使用排行（平台·直属成员聚合）" sub="区间聚合 · 一级部门 · 按请求量倒序">
-            <DeptUsageRankingTable items={items} loading={rankQ.loading} />
+          <ChartCard title="部门使用排行（平台·直属成员聚合）" sub="区间聚合 · 一级部门 · 按请求量倒序 · 点行下钻">
+            <DeptUsageRankingTable items={items} loading={rankQ.loading} onRowClick={goDept} />
           </ChartCard>
         </>
       )}
@@ -379,7 +394,15 @@ function FocusedDeptUsage({ agg, loading, objectLabel }: { agg: DeptPlatformAgg 
   )
 }
 
-function DeptUsageRankingTable({ items, loading }: { items: DeptPlatformAgg[]; loading: boolean }) {
+function DeptUsageRankingTable({
+  items,
+  loading,
+  onRowClick,
+}: {
+  items: DeptPlatformAgg[]
+  loading: boolean
+  onRowClick: (deptId: string) => void
+}) {
   return (
     <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
       <table className="w-full text-sm border-collapse">
@@ -406,10 +429,28 @@ function DeptUsageRankingTable({ items, loading }: { items: DeptPlatformAgg[]; l
             </tr>
           ) : (
             items.map((it, i) => (
-              <tr key={it.deptId || i} className="border-b border-gray-100/50 dark:border-white/5">
+              <tr
+                key={it.deptId || i}
+                onClick={it.deptId ? () => onRowClick(it.deptId) : undefined}
+                className={`border-b border-gray-100/50 dark:border-white/5 ${it.deptId ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors' : ''}`}
+              >
                 <td className={TD_NUM}>{i + 1}</td>
                 <td className={TD}>
-                  <div className="max-w-[220px] truncate" title={it.deptName}>{it.deptName}</div>
+                  {it.deptId ? (
+                    <button
+                      type="button"
+                      className="max-w-[220px] truncate text-left font-medium text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
+                      title={it.deptName}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRowClick(it.deptId)
+                      }}
+                    >
+                      {it.deptName}
+                    </button>
+                  ) : (
+                    <div className="max-w-[220px] truncate" title={it.deptName}>{it.deptName}</div>
+                  )}
                 </td>
                 <td className={TD_NUM}>
                   {formatNumber(it.activePlatformUsers)}

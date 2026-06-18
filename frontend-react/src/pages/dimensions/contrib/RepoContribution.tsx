@@ -11,6 +11,7 @@
 //     DimensionTrend 走 unavailable 诚实空态，不假装有趋势。
 // 口径：efficiency_ratio 百分比口径 → PercentPill；ai_code_ratio 小数口径 → RatioPill。绝不互换。
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { useRepos, useRepoBranches, useRepoDetail } from '@/api/queries'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { useViewState } from '@/store/viewState'
@@ -67,12 +68,19 @@ export default function RepoContribution() {
 
 // ==================================== 聚合态：仓库贡献排行 ====================================
 function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
+  const navigate = useNavigate()
   const dateParams = useMemo(
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
     [timeRange],
   )
   const { data, isLoading, error } = useRepos({ ...dateParams, page: 1, pageSize: 1000 })
   const rows = useMemo<RepoListItem[]>(() => data?.data ?? [], [data])
+
+  // 行下钻 → 仓库详情（repoBranch 可选段，与 RepoList.goToRepo 同址）。
+  function goToRepo(row: RepoListItem) {
+    if (!row?.repo_addr) return
+    navigate(`/repo/${encodeURIComponent(row.repo_addr)}/${encodeURIComponent(row.repo_branch || '')}`)
+  }
 
   // 贡献维度按提交数降序（null 沉底）——提交量是仓库贡献的主排序口径。
   const ranked = useMemo(() => sortRows(rows, (r) => r.commit_count, true), [rows])
@@ -97,7 +105,7 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
         <MetricCard label="Task 总数" value={formatNumber(kpi.tasks)} hint="各仓库任务数合计" />
         <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="各仓库 ai_code_ratio 均值" />
       </div>
-      <ChartCard title="仓库贡献排行（看板派生）" sub="按 Commit 数倒序（每仓库取首选分支）">
+      <ChartCard title="仓库贡献排行（看板派生）" sub="按 Commit 数倒序（每仓库取首选分支）· 点行下钻">
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
           仓库列表口径无代码行 / 分支数字段 → 进单仓库详情可见按贡献者拆分的代码行与分支明细。
         </p>
@@ -125,10 +133,24 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
                 </tr>
               ) : (
                 ranked.map((r, i) => (
-                  <tr key={`${r.repo_addr}#${r.repo_branch}`} className="border-b border-gray-100/50 dark:border-white/5">
+                  <tr
+                    key={`${r.repo_addr}#${r.repo_branch}`}
+                    onClick={() => goToRepo(r)}
+                    className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
+                  >
                     <td className={TD_NUM}>{i + 1}</td>
                     <td className={TD}>
-                      <div className="max-w-[320px] truncate" title={r.repo_addr}>{r.repo_addr || '-'}</div>
+                      <button
+                        type="button"
+                        className="max-w-[320px] truncate text-left text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
+                        title={r.repo_addr}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          goToRepo(r)
+                        }}
+                      >
+                        {r.repo_addr || '-'}
+                      </button>
                     </td>
                     <td className={TD}>
                       <div className="max-w-[160px] truncate" title={r.repo_branch}>{r.repo_branch || '-'}</div>

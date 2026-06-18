@@ -6,6 +6,7 @@
 // 降级护栏：chat_stats_enabled=false 或请求失败 → PlatformNotConnected。
 //   project/repo 的质量维度无平台错误率口径 → 路由层走 QualityComingSoon（本组件不处理，防御性回退）。
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { useGlobalConfig } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
@@ -13,7 +14,7 @@ import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { formatNumber } from '@/lib/formatters'
 import { ChartCard, ChatUserCell, EmptyHint } from '@/pages/platform/platformShared'
-import { DimSkeleton, DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote } from './platformDimShared'
+import { DimSkeleton, DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote, useDeptFocus } from './platformDimShared'
 import {
   useUserRanking,
   useUserRankingFocused,
@@ -108,6 +109,9 @@ function QualityContent({
 }) {
   const [start, end] = timeRange
   const { resolveName } = useUserNameMap()
+  const navigate = useNavigate()
+  // 排行行下钻 → 看板用户详情（universal_id 与看板 user_id 同源）。
+  const goToUser = (universalId: string) => navigate(`/user/${encodeURIComponent(universalId)}`)
 
   const series = useUserWeekSeries({ startDate: start, endDate: end, universalId: focused ? object : undefined }, true)
   // 健康度排行：按错误率倒序（最不健康在前，便于盯问题用户）。
@@ -158,8 +162,8 @@ function QualityContent({
           <AggregateHealthKpis rows={rows} />
           {/* P1-2：错误率周序列按 Top 500 拉窗求和，区间真实人数更大时趋势被截断 → 醒目标注。 */}
           {series.truncated && <TruncationNote total={series.maxWindowTotal} />}
-          <ChartCard title="用户健康度排行（AI 服务）" sub="区间聚合 · Top 50 · 按错误率倒序">
-            <HealthRankingTable rows={rows} loading={rankQ.isFetching} resolveName={resolveName} />
+          <ChartCard title="用户健康度排行（AI 服务）" sub="区间聚合 · Top 50 · 按错误率倒序 · 点行下钻">
+            <HealthRankingTable rows={rows} loading={rankQ.isFetching} resolveName={resolveName} onRowClick={goToUser} />
           </ChartCard>
         </>
       )}
@@ -230,10 +234,12 @@ function HealthRankingTable({
   rows,
   loading,
   resolveName,
+  onRowClick,
 }: {
   rows: ChatUserRankingRow[]
   loading: boolean
   resolveName: (id?: string) => string
+  onRowClick: (universalId: string) => void
 }) {
   return (
     <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
@@ -265,8 +271,13 @@ function HealthRankingTable({
             rows.map((u, i) => {
               // 统一口径：error/(success+error)（与聚合/聚焦/周序列同一公式），不用后端 u.error_rate。
               const errorRate = rowErrorRate(u)
+              const uid = u.universal_id || ''
               return (
-                <tr key={u.universal_id || i} className="border-b border-gray-100/50 dark:border-white/5">
+                <tr
+                  key={uid || i}
+                  onClick={uid ? () => onRowClick(uid) : undefined}
+                  className={`border-b border-gray-100/50 dark:border-white/5 ${uid ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors' : ''}`}
+                >
                   <td className={TD_NUM}>{i + 1}</td>
                   <td className={TD}>
                     <div className="max-w-[200px] truncate">
@@ -302,6 +313,8 @@ function OrgQualityContent({
   timeRange: [string, string]
 }) {
   const [start, end] = timeRange
+  // 部门行下钻 → 写 ?object=<dept_id> 进聚焦态。
+  const goDept = useDeptFocus()
 
   const series = useDeptWeekSeries({ startDate: start, endDate: end, deptId: focused ? object : undefined }, true)
   const rankQ = useDeptPlatformRanking({ startDate: start, endDate: end }, !focused)
@@ -351,8 +364,8 @@ function OrgQualityContent({
           <DeptHealthKpis items={items} />
           {/* P1-2：部门聚合按 Top 500 全量排行命中求和，区间真实人数更大时漏算排行外成员 → 醒目标注。 */}
           {rankQ.truncated && <TruncationNote total={rankQ.rankingTotal} />}
-          <ChartCard title="部门健康度排行（AI 服务·直属成员聚合）" sub="区间聚合 · 一级部门 · 按错误率倒序">
-            <DeptHealthRankingTable items={items} loading={rankQ.loading} />
+          <ChartCard title="部门健康度排行（AI 服务·直属成员聚合）" sub="区间聚合 · 一级部门 · 按错误率倒序 · 点行下钻">
+            <DeptHealthRankingTable items={items} loading={rankQ.loading} onRowClick={goDept} />
           </ChartCard>
         </>
       )}
@@ -407,7 +420,15 @@ function FocusedDeptHealth({ agg, loading, objectLabel }: { agg: DeptPlatformAgg
   )
 }
 
-function DeptHealthRankingTable({ items, loading }: { items: DeptPlatformAgg[]; loading: boolean }) {
+function DeptHealthRankingTable({
+  items,
+  loading,
+  onRowClick,
+}: {
+  items: DeptPlatformAgg[]
+  loading: boolean
+  onRowClick: (deptId: string) => void
+}) {
   return (
     <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
       <table className="w-full text-sm border-collapse">
@@ -434,10 +455,28 @@ function DeptHealthRankingTable({ items, loading }: { items: DeptPlatformAgg[]; 
             </tr>
           ) : (
             items.map((it, i) => (
-              <tr key={it.deptId || i} className="border-b border-gray-100/50 dark:border-white/5">
+              <tr
+                key={it.deptId || i}
+                onClick={it.deptId ? () => onRowClick(it.deptId) : undefined}
+                className={`border-b border-gray-100/50 dark:border-white/5 ${it.deptId ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors' : ''}`}
+              >
                 <td className={TD_NUM}>{i + 1}</td>
                 <td className={TD}>
-                  <div className="max-w-[220px] truncate" title={it.deptName}>{it.deptName}</div>
+                  {it.deptId ? (
+                    <button
+                      type="button"
+                      className="max-w-[220px] truncate text-left font-medium text-apple-blue hover:text-apple-blue-hover bg-transparent border-none p-0 cursor-pointer focus:outline-none focus-visible:underline"
+                      title={it.deptName}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRowClick(it.deptId)
+                      }}
+                    >
+                      {it.deptName}
+                    </button>
+                  ) : (
+                    <div className="max-w-[220px] truncate" title={it.deptName}>{it.deptName}</div>
+                  )}
                 </td>
                 <td className={TD_NUM}>{formatNumber(it.totalRequests)}</td>
                 <td className={`${TD_NUM} ${(it.errorRate ?? 0) > 0.05 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
