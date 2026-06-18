@@ -209,6 +209,26 @@ export function getReposV2(params: ListParams) {
   return apiGet<ApiList<RepoListItem>>('/v2/repos', params)
 }
 
+/**
+ * 翻页拉全 repos：/v2/repos 服务端按 pageSize 切片，单次 pageSize:1000 在 total>1000 时静默截断
+ * （实际仓库 >1000 被截到 1000，修 #6）。仓库聚合排行/分布全在客户端做，必须先拉全量。
+ * 先拉第 1 页读 total，不足则继续翻页合并。MAX_PAGES 兜底防死循环。
+ */
+export async function getAllReposV2(params: { startDate?: string; endDate?: string }): Promise<RepoListItem[]> {
+  const MAX_PAGES = 100
+  const PAGE_SIZE = 500
+  const all: RepoListItem[] = []
+  let total = Infinity
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const res = await getReposV2({ ...params, page, pageSize: PAGE_SIZE })
+    const rows = res.data ?? []
+    all.push(...rows)
+    if (typeof res.total === 'number') total = res.total
+    if (rows.length === 0 || all.length >= total) break
+  }
+  return all
+}
+
 /** 项目「添加来源」仓库选择器数据源：GET /v2/need-repo-options（needs 同源、规范化地址，与候选池一致）。 */
 export function getNeedRepoOptions() {
   return apiGet<ApiData<NeedRepoOption>>('/v2/need-repo-options')

@@ -37,6 +37,11 @@ function taskEffRatio(row: TaskListItem): number | null {
 function commitReal(row: RepoCommitItem): number | null | undefined {
   return row.commit_real_minutes_manual ?? row.commit_real_minutes
 }
+/** 取 commit 所属分支（后端逐条返回 repo_branch；经 RepoCommitItem 索引签名取出，归一为字符串）。 */
+function commitBranch(row: RepoCommitItem): string {
+  const b = (row as { repo_branch?: unknown }).repo_branch
+  return typeof b === 'string' ? b : ''
+}
 function commitAncient(row: RepoCommitItem): number | null | undefined {
   return row.commit_ancient_minutes_manual ?? row.commit_ancient_minutes
 }
@@ -113,8 +118,10 @@ export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = fal
   const branches = branchesData?.branches || []
 
   // 嵌入态分支用内部 state（不导航离开壳）；独立页分支走 URL param。
+  // 默认空串 = 整仓口径（后端 repoBranch 传空 → 不过滤 → 返回该仓库所有分支的 commits）。
+  // 不再 fallback branches[0]，否则会强制单分支过滤，看不到其他分支（bug #4 根因）。
   const [embeddedBranch, setEmbeddedBranch] = useState('')
-  const currentBranch = embedded ? embeddedBranch || branches[0] || '' : repoBranchRaw || branches[0] || ''
+  const currentBranch = embedded ? embeddedBranch : repoBranchRaw || ''
 
   const { data, isLoading, error } = useRepoDetail({
     repoAddr,
@@ -204,16 +211,44 @@ export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = fal
     return `${fmtDate(Math.min(...times))} ~ ${fmtDate(Math.max(...times))}`
   }, [commits])
 
+  // 分支一览（类树/总览）：整仓 commits 客户端按 repo_branch 分组聚合。
+  // 提效比口径=守恒（Σ古法 / Σ实际，百分比 (Σ古法−Σ实际)/Σ实际*100，对齐同页汇总卡 / 后端 CalcEfficiencyRatio）。
+  // 按 commit 数倒序。空时返回 []，渲染侧据此隐藏卡片。
+  const branchSummary = useMemo(() => {
+    const map = new Map<string, { branch: string; count: number; diffLines: number; realMin: number; ancientMin: number }>()
+    for (const c of commits) {
+      const b = commitBranch(c)
+      const key = b || '(未标注分支)'
+      let row = map.get(key)
+      if (!row) {
+        row = { branch: b, count: 0, diffLines: 0, realMin: 0, ancientMin: 0 }
+        map.set(key, row)
+      }
+      row.count += 1
+      row.diffLines += c.diff_lines || 0
+      row.realMin += commitReal(c) || 0
+      row.ancientMin += commitAncient(c) || 0
+    }
+    return Array.from(map.values())
+      .map((r) => ({
+        ...r,
+        // 守恒提效比：仅 Σ实际>0 才可算（与 commit 级口径一致，不可算返回 null）。
+        effRatio: r.realMin > 0 ? ((r.ancientMin - r.realMin) / r.realMin) * 100 : null,
+      }))
+      .sort((a, b) => b.count - a.count)
+  }, [commits])
+
   function handleBranchChange(branch: string) {
     if (embedded) {
       setEmbeddedBranch(branch)
       return
     }
     const q = new URLSearchParams({ startDate: params.startDate, endDate: params.endDate })
-    navigate({
-      pathname: `/repo/${encodeURIComponent(repoAddr)}/${encodeURIComponent(branch)}`,
-      search: `?${q.toString()}`,
-    })
+    // 空分支 = 整仓口径：导航到不带 branch 段的路由（repoBranch? 可选），避免空段匹配问题。
+    const pathname = branch
+      ? `/repo/${encodeURIComponent(repoAddr)}/${encodeURIComponent(branch)}`
+      : `/repo/${encodeURIComponent(repoAddr)}`
+    navigate({ pathname, search: `?${q.toString()}` })
   }
 
   function onDateChange(range: [string, string]) {
@@ -258,6 +293,8 @@ export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = fal
               className="glass rounded-lg px-3 py-1.5 text-sm bg-transparent cursor-pointer text-gray-700 dark:text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
               aria-label="切换分支"
             >
+              {/* 默认整仓口径（空值=不过滤=所有分支 commits）；其下为各具体分支。 */}
+              <option value="">全部分支（整仓）</option>
               {branches.map((b) => (
                 <option key={b} value={b}>
                   {b}
@@ -324,6 +361,50 @@ export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = fal
         </div>
       </section>
 
+      {/* 分支一览（仅整仓态显示）：整仓 commits 按 repo_branch 分组的树/总览，点行下钻到该分支。 */}
+      {currentBranch === '' && branchSummary.length > 0 && (
+        <section className="glass rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">分支一览</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">{branchSummary.length} 个分支</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200/50 dark:border-white/10">
+                  <th className={TH}>分支</th>
+                  <th className={TH_NUM}>提交数</th>
+                  <th className={TH_NUM}>代码行数</th>
+                  <th className={TH_NUM}>实际耗时</th>
+                  <th className={TH_CENTER}>提效比</th>
+                </tr>
+              </thead>
+              <tbody>
+                {branchSummary.map((b) => (
+                  <tr
+                    key={b.branch || '__unlabeled__'}
+                    onClick={() => b.branch && handleBranchChange(b.branch)}
+                    className={`border-b border-gray-100/50 dark:border-white/5 transition-colors ${
+                      b.branch ? 'cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5' : ''
+                    }`}
+                  >
+                    <td className={TD}>
+                      <span className="font-mono break-all text-apple-blue">{b.branch || '(未标注分支)'}</span>
+                    </td>
+                    <td className={TD_NUM}>{formatNumber(b.count)}</td>
+                    <td className={TD_NUM}>{b.diffLines.toLocaleString()}</td>
+                    <td className={TD_NUM}>{formatDuration(b.realMin)}</td>
+                    <td className="px-3 py-2 align-middle text-center">
+                      {b.effRatio != null ? <PercentPill value={b.effRatio} /> : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {/* Commits 表 */}
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
@@ -339,6 +420,8 @@ export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = fal
                   <SortableTh field="commitTime" label="时间" active={parsedCommitOrder?.field === 'commitTime'} desc={parsedCommitOrder?.field === 'commitTime' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
                 </th>
                 <th className={TH}>用户</th>
+                {/* 整仓态加「分支」列，标明每条 commit 属哪个分支。 */}
+                {currentBranch === '' && <th className={TH}>分支</th>}
                 <th className={TH}>说明</th>
                 <th className={TH_NUM}>
                   <SortableTh field="diffLines" label="代码行数" numeric active={parsedCommitOrder?.field === 'diffLines'} desc={parsedCommitOrder?.field === 'diffLines' && parsedCommitOrder.desc} onSort={(f) => setCommitOrder(cycle(parsedCommitOrder, f))} />
@@ -370,7 +453,7 @@ export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = fal
             <tbody>
               {!sortedCommits.length ? (
                 <tr>
-                  <td colSpan={11}>
+                  <td colSpan={currentBranch === '' ? 12 : 11}>
                     <div className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">暂无数据</div>
                   </td>
                 </tr>
@@ -399,6 +482,11 @@ export default function RepoDetail({ repoAddrProp, dateRangeProp, embedded = fal
                       </td>
                       <td className={TD}>{formatLocalTime(c.commit_time)}</td>
                       <td className={TD}><div className="max-w-[140px] truncate" title={c.git_user_name}>{c.git_user_name || '-'}</div></td>
+                      {currentBranch === '' && (
+                        <td className={TD}>
+                          <div className="max-w-[160px] truncate font-mono text-xs" title={commitBranch(c)}>{commitBranch(c) || '-'}</div>
+                        </td>
+                      )}
                       <td className={TD}><div className="max-w-[260px] truncate" title={c.comment}>{c.comment || '-'}</div></td>
                       <td className={TD_NUM}>{c.diff_lines ?? 0}</td>
                       <td className={TD_NUM}>{formatDuration(commitReal(c))}</td>

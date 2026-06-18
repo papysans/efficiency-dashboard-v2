@@ -12,7 +12,7 @@
 //   project/repo → 该端点无对应维度 → 时间线诚实标注不适用；KPI/明细走各自看板派生口径。
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router'
-import { useEfficiencyV2, useProjectList, useAllUsers, useRepos, useRepoTrend, useProjectTrend, useDeptTrend } from '@/api/queries'
+import { useEfficiencyV2, useProjectList, useAllUsers, useAllRepos, useRepoTrend, useProjectTrend, useDeptTrend } from '@/api/queries'
 import type { ProjectListItem } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { formatDateParam } from '@/lib/date'
@@ -359,8 +359,8 @@ function ProjectRatioDistribution({ timeRange }: { timeRange: [string, string] }
 function RepoRatioDistribution({ timeRange }: { timeRange: [string, string] }) {
   const startDate = formatDateParam(timeRange[0])
   const endDate = formatDateParam(timeRange[1])
-  const { data, isLoading, error } = useRepos({ startDate, endDate, page: 1, pageSize: 1000 })
-  const ratios = useMemo(() => (data?.data ?? []).map((r) => r.efficiency_ratio), [data])
+  const { data, isLoading, error } = useAllRepos({ startDate, endDate })
+  const ratios = useMemo(() => (data ?? []).map((r) => r.efficiency_ratio), [data])
   return (
     <EntityRatioHistogram
       ratios={ratios}
@@ -534,8 +534,8 @@ function ProjectFocus({ object }: { object: string }) {
 function RepoFocus({ object, timeRange }: { object: string; timeRange: [string, string] }) {
   const startDate = formatDateParam(timeRange[0])
   const endDate = formatDateParam(timeRange[1])
-  const { data } = useRepos({ startDate, endDate, page: 1, pageSize: 1000 })
-  const row = useMemo(() => (data?.data ?? []).find((r) => r.repo_addr === object), [data, object])
+  const { data } = useAllRepos({ startDate, endDate })
+  const row = useMemo(() => (data ?? []).find((r) => r.repo_addr === object), [data, object])
   // 仓库口径节省人天 = (sum_ancient_minutes - sum_real_minutes) / 480（工作日，分钟换人天）。
   const savedDays =
     row && row.sum_ancient_minutes != null && row.sum_real_minutes != null

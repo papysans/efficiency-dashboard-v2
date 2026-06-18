@@ -9,7 +9,7 @@
 // 取数：useRepos({page:1,pageSize:1000})，与仓库分布同源（整仓跨分支聚合）。按提效比降序。
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import { useRepos } from '@/api/queries'
+import { useAllRepos } from '@/api/queries'
 import type { RepoListItem } from '@/api/types'
 import { formatDateParam } from '@/lib/date'
 import { formatNumber } from '@/lib/formatters'
@@ -38,9 +38,9 @@ export default function EfficiencyRepoRanking({ timeRange }: { timeRange: [strin
 
   const startDate = formatDateParam(timeRange[0])
   const endDate = formatDateParam(timeRange[1])
-  const { data, isLoading, error } = useRepos({ startDate, endDate, page: 1, pageSize: 1000 })
+  const { data, isLoading, error } = useAllRepos({ startDate, endDate })
 
-  const rows = useMemo<RepoListItem[]>(() => data?.data ?? [], [data])
+  const rows = useMemo<RepoListItem[]>(() => data ?? [], [data])
 
   // 提效比降序（百分比口径，null 沉底）。
   const sorted = useMemo(() => sortRows(rows, (r: RepoListItem) => r.efficiency_ratio, true), [rows])

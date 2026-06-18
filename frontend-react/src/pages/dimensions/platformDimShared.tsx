@@ -15,6 +15,7 @@ import { EChart } from '@/components/charts/EChart'
 import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { formatNumber } from '@/lib/formatters'
+import { formatDateParam } from '@/lib/date'
 import { ChartCard, EmptyHint, multiAreaOption, shortToken, type AreaSeries } from '@/pages/platform/platformShared'
 import { weekWindowLabel, type WeekWindow } from '@/lib/weekWindows'
 
@@ -316,7 +317,9 @@ export function PlatformFullVolumeHeadline({ start, end }: { start: string; end:
     queryFn: () => chatGet<ChatDailyGlobalRow[]>('/stats/global/daily', { start_date: start, end_date: end }),
     enabled,
   })
-  const summaryQ = useDashboardSummary({ startDate: start, endDate: end })
+  // 分母（看板全量活跃用户）需 YYYYMMDD（与 Overview 一致）；start/end 是 raw timeRange("2026-01-01")
+  // → 必须 formatDateParam，否则后端按 YYYYMMDD 解析失败 → total_users_v2=0 → 人均全 '-'（修 #1/#2）。
+  const summaryQ = useDashboardSummary({ startDate: formatDateParam(start), endDate: formatDateParam(end) })
 
   const daily = useMemo(() => dailyQ.data ?? [], [dailyQ.data])
   const agg = useMemo(() => {

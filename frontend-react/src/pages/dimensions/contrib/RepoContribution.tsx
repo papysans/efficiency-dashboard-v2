@@ -12,7 +12,7 @@
 // 口径：ai_code_ratio 小数口径 → RatioPill。提效比（efficiency_ratio）为效率维专属，贡献维不展示。
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import { useRepos, useRepoBranches, useRepoDetail, useRepoTrend } from '@/api/queries'
+import { useAllRepos, useRepoBranches, useRepoDetail, useRepoTrend } from '@/api/queries'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { useViewState } from '@/store/viewState'
 import { MetricCard } from '@/components/ui/MetricCard'
@@ -78,8 +78,8 @@ function RepoContribAggregate({ timeRange }: { timeRange: [string, string] }) {
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
     [timeRange],
   )
-  const { data, isLoading, error } = useRepos({ ...dateParams, page: 1, pageSize: 1000 })
-  const rows = useMemo<RepoListItem[]>(() => data?.data ?? [], [data])
+  const { data, isLoading, error } = useAllRepos(dateParams)
+  const rows = useMemo<RepoListItem[]>(() => data ?? [], [data])
 
   // 行下钻 → 整仓详情（repo_branch 已空=整仓口径，进详情后再切分支）。
   function goToRepo(row: RepoListItem) {

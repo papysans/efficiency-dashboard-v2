@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   chatStats,
   getAllNeedsV2,
+  getAllReposV2,
   getAllUsersV2,
   getCommitDetailV2,
   getDashboardSummary,
@@ -100,6 +101,14 @@ export function useRepos(params: ListParams) {
   return useQuery({
     queryKey: ['repos', params],
     queryFn: () => getReposV2(params),
+  })
+}
+
+/** 翻页拉全 repos（绕过服务端切片截断，修 #6 仓库 >1000 被截）。仓库聚合排行/分布用，返回数组（非 {data}）。 */
+export function useAllRepos(params: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['repos-all', params],
+    queryFn: () => getAllReposV2(params),
   })
 }
 

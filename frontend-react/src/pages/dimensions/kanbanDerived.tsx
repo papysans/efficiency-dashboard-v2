@@ -8,7 +8,7 @@
 //   project need_* 字段=小数口径 → RatioPill；repo efficiency/ai=百分比/小数口径见各列。
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import { useProjectList, useRepos } from '@/api/queries'
+import { useProjectList, useAllRepos } from '@/api/queries'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { ChartCard, EmptyHint } from '@/pages/platform/platformShared'
@@ -79,14 +79,15 @@ function ProjectUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
   const kpi = useMemo(() => {
     const projects = rows.length
     const needs = rows.reduce((s, r) => s + (r.need_total_count || 0), 0)
-    const aiProjects = rows.filter((r) => r.need_ai_code_ratio != null).length
-    // LOC 加权守恒：Σ(ratio_i × loc_i) / Σ(loc_i)，仅累加 ratio 有限且 loc>0 的项目。
+    // ai_code_ratio=0 与 null 同义=「无 AI 数据」（列表统一显 '-'）→ 计数与加权均排除 0，否则大量 0 值项目把均值拖到 ~0%（修 #5）。
+    const aiProjects = rows.filter((r) => r.need_ai_code_ratio != null && r.need_ai_code_ratio > 0).length
+    // LOC 加权守恒：Σ(ratio_i × loc_i) / Σ(loc_i)，仅累加 ratio>0 且 loc>0 的项目（0 当无数据剔除）。
     let aiNum = 0
     let aiDen = 0
     for (const r of rows) {
       const ratio = Number(r.need_ai_code_ratio)
       const loc = Number(r.need_total_loc_net)
-      if (Number.isFinite(ratio) && Number.isFinite(loc) && loc > 0) {
+      if (Number.isFinite(ratio) && ratio > 0 && Number.isFinite(loc) && loc > 0) {
         aiNum += ratio * loc
         aiDen += loc
       }
@@ -155,21 +156,22 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
     [timeRange],
   )
-  const { data, isLoading, error } = useRepos({ ...dateParams, page: 1, pageSize: 1000 })
-  const rows = useMemo<RepoListItem[]>(() => data?.data ?? [], [data])
+  const { data, isLoading, error } = useAllRepos(dateParams)
+  const rows = useMemo<RepoListItem[]>(() => data ?? [], [data])
 
   const ranked = useMemo(() => sortRows(rows, (r) => r.ai_code_ratio, true), [rows])
 
   const kpi = useMemo(() => {
     const repos = rows.length
     const commits = rows.reduce((s, r) => s + (r.commit_count || 0), 0)
-    // commit 加权守恒：Σ(ratio_i × commit_i) / Σ(commit_i)，仅累加 ratio 有限且 commit>0 的仓库。
+    // commit 加权守恒：Σ(ratio_i × commit_i) / Σ(commit_i)，仅累加 ratio>0 且 commit>0 的仓库
+    // （ai_code_ratio=0 与 null 同义=无 AI 数据，列表统一显 '-'；不剔 0 会被大量 0 值仓库拖到 ~0%，修 #5）。
     let aiNum = 0
     let aiDen = 0
     for (const r of rows) {
       const ratio = Number(r.ai_code_ratio)
       const cc = Number(r.commit_count)
-      if (Number.isFinite(ratio) && Number.isFinite(cc) && cc > 0) {
+      if (Number.isFinite(ratio) && ratio > 0 && Number.isFinite(cc) && cc > 0) {
         aiNum += ratio * cc
         aiDen += cc
       }
@@ -187,7 +189,7 @@ function RepoUsageAggregate({ timeRange }: { timeRange: [string, string] }) {
         <MetricCard label="仓库数" value={formatNumber(kpi.repos)} />
         <MetricCard label="Commit 总数" value={formatNumber(kpi.commits)} />
         <MetricCard label="平均 AI 占比" value={<RatioPill value={kpi.avgAi} />} hint="按 Commit 数加权" />
-        <MetricCard label="有 AI 数据仓库" value={formatNumber(rows.filter((r) => r.ai_code_ratio != null).length)} />
+        <MetricCard label="有 AI 数据仓库" value={formatNumber(rows.filter((r) => r.ai_code_ratio != null && r.ai_code_ratio > 0).length)} />
       </div>
       <ChartCard title="仓库 AI 占比排行（看板派生）" sub="按 AI 代码占比倒序（整仓跨全部分支聚合）· 点行下钻进整仓详情">
         <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
@@ -357,8 +359,8 @@ function RepoCostAggregate({ timeRange }: { timeRange: [string, string] }) {
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]) }),
     [timeRange],
   )
-  const { data, isLoading, error } = useRepos({ ...dateParams, page: 1, pageSize: 1000 })
-  const rows = useMemo<RepoListItem[]>(() => data?.data ?? [], [data])
+  const { data, isLoading, error } = useAllRepos(dateParams)
+  const rows = useMemo<RepoListItem[]>(() => data ?? [], [data])
   // 费用从底层聚合：Need→session→tasks.cost（跨分支按 repo_addr 合并），与项目侧 need_cost 同口径。
   const ranked = useMemo(() => sortRows(rows, (r) => r.cost, true), [rows])
   const totalCost = useMemo(() => rows.reduce((s, r) => s + (r.cost || 0), 0), [rows])

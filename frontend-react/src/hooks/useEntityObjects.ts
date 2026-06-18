@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import { useDeptTree, useProjectList } from '@/api/queries'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { useViewState } from '@/store/viewState'
-import { getAllUsersV2, getReposV2 } from '@/api/endpoints'
+import { getAllUsersV2, getAllReposV2 } from '@/api/endpoints'
 import { useQuery } from '@tanstack/react-query'
 import { formatDateParam } from '@/lib/date'
 import type { DeptTreeNode } from '@/api/types'
@@ -68,16 +68,16 @@ export function useEntityObjects(entity: Entity): { options: EntityOption[]; loa
       .map((p) => ({ value: p.project_id, label: p.name || p.project_id }))
   }, [entity, projectQ.data])
 
-  // repo：服务端分页，对象选择器拉一大页（pageSize 大）取首选分支。
+  // repo：服务端分页会在仓库 >1000 时截断（修 #6），故翻页拉全后取仓库地址。
   const repoQ = useQuery({
     queryKey: ['entity-objects-repos', dateParams],
-    queryFn: () => getReposV2({ ...dateParams, page: 1, pageSize: 1000 }),
+    queryFn: () => getAllReposV2(dateParams),
     enabled: entity === 'repo',
     staleTime: 60_000,
   })
   const repoOptions = useMemo<EntityOption[]>(() => {
     if (entity !== 'repo') return []
-    return (repoQ.data?.data || [])
+    return (repoQ.data || [])
       .filter((r) => r.repo_addr)
       .map((r) => ({ value: r.repo_addr, label: r.repo_addr }))
   }, [entity, repoQ.data])

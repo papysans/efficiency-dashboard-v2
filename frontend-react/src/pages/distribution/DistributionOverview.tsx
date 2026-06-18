@@ -5,7 +5,7 @@
 import { useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import type { EChartsOption } from 'echarts'
-import { useAllNeeds, useAllUsers, useProjectList, useRepos } from '@/api/queries'
+import { useAllNeeds, useAllRepos, useAllUsers, useProjectList } from '@/api/queries'
 import type { NeedsV2Summary, ProjectListItem, RepoListItem, UserV2Row } from '@/api/types'
 import { useTheme } from '@/hooks/useTheme'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
@@ -369,10 +369,10 @@ function UserRanking({ startDate, endDate }: { startDate: string; endDate: strin
 /** ⑤ 仓库 Top 排行（百分比口径 → PercentPill；点击跳 /repo/{addr}/{branch}）。 */
 function RepoRanking({ startDate, endDate }: { startDate: string; endDate: string }) {
   const navigate = useNavigate()
-  // pageSize 拉大一次性取回，客户端排序取 Top10（对齐 RepoList 客户端排序口径）。
-  const q = useRepos({ startDate, endDate, page: 1, pageSize: 1000 })
+  // 翻页拉全后客户端排序取 Top10（对齐 RepoList 客户端排序口径；修 #6 仓库 >1000 被截）。
+  const q = useAllRepos({ startDate, endDate })
   const top = useMemo<RepoListItem[]>(() => {
-    const rows = (q.data?.data ?? []).filter(
+    const rows = (q.data ?? []).filter(
       (r) => r.efficiency_ratio != null && Number.isFinite(Number(r.efficiency_ratio)),
     )
     return sortRows(rows, (r) => r.efficiency_ratio, true).slice(0, RANK_TOP_N)
