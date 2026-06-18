@@ -590,21 +590,33 @@ func getDeptRankingV2(c *gin.Context) {
 //   - loc：周表无 LOC 列（total_loc_net 在 needs 行级），故 Loc 恒 0（部门趋势不消费 LOC）。
 //   - cost：本端点不计费用（费用走部门 ranking 的 self/items），Cost 恒 0。
 // startDate/endDate（camelCase，与全站一致）按 week_start 做窗口过滤（同 QueryEfficiencyV2Aggregate）。
+// dept_id 空 → 默认公司根（全公司整树周趋势，org 贡献聚合态用）。
 // dept-sync 不可达 → 502；花名册为空或无 universal_id → {data:[]}（不报错）。
 func getDeptTreeTrendV2(c *gin.Context) {
 	if statDB == nil {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
 		return
 	}
-	deptID := strings.TrimSpace(c.Query("dept_id"))
-	if deptID == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dept_id 不能为空"})
-		return
-	}
 	baseURL, err := deptSyncConfigured()
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
 		return
+	}
+
+	// dept_id 空 → 默认公司根（仿 getDeptRankingV2 空 parent 取单根），返回全公司整树周趋势（org 贡献聚合态用）。
+	deptID := strings.TrimSpace(c.Query("dept_id"))
+	if deptID == "" {
+		var treeResp deptSyncTreeResp
+		if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/tree", &treeResp); err != nil {
+			c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
+			return
+		}
+		tree := rebuildSingleRootTree(treeResp.Data)
+		if len(tree) == 0 {
+			c.JSON(http.StatusOK, EntityTrendResponse{Data: []EntityTrendPoint{}})
+			return
+		}
+		deptID = tree[0].DeptId
 	}
 
 	// 1. 取该部门【整棵子树】成员花名册（include_children=true），拿 universal_id 列表（同 members/ranking 写法）。
