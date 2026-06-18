@@ -13,7 +13,15 @@ import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { formatNumber } from '@/lib/formatters'
 import { ChartCard, ChatUserCell, EmptyHint, shortToken } from '@/pages/platform/platformShared'
-import { DimSkeleton, DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote, useDeptFocus } from './platformDimShared'
+import {
+  DimSkeleton,
+  DirectMembersNote,
+  PlatformNotConnected,
+  PlatformWeekTrend,
+  TruncationNote,
+  useDeptFocus,
+  type WeekSeriesSpec,
+} from './platformDimShared'
 import {
   useUserRanking,
   useUserRankingFocused,
@@ -97,7 +105,9 @@ function UserUsage({
   const focusQ = useUserRankingFocused({ startDate: start, endDate: end, universalId: object }, focused)
   const focusedRow = focused ? pickFocusedRow(focusQ.data, object) : null
 
-  const trendSeries = useMemo(() => {
+  // 聚合态：请求量(几十万) 与 活跃用户(几百) 量级悬殊 → 活跃用户走右轴独立刻度（防贴底直线）。
+  //   聚焦态两条都是该用户量级（请求/会话），同左轴即可。
+  const trendSeries = useMemo<WeekSeriesSpec[]>(() => {
     if (focused) {
       return [
         { name: '请求量', color: '#ff9500', values: series.points.map((pt) => pt.row?.total_requests ?? 0) },
@@ -106,7 +116,7 @@ function UserUsage({
     }
     return [
       { name: '请求量', color: '#ff9500', values: series.windows.map((w) => series.aggByKey.get(w.key)?.totalRequests ?? 0) },
-      { name: '活跃用户', color: '#34c759', values: series.windows.map((w) => series.aggByKey.get(w.key)?.activeUsers ?? 0) },
+      { name: '活跃用户', color: '#34c759', axis: 'right', values: series.windows.map((w) => series.aggByKey.get(w.key)?.activeUsers ?? 0) },
     ]
   }, [focused, series.points, series.windows, series.aggByKey])
 
@@ -130,6 +140,8 @@ function UserUsage({
         error={series.error}
         hasAny={series.hasAny}
         yFmt={(v) => shortToken(v)}
+        // 聚合态右轴 = 活跃用户（计数，独立刻度，整数缩写避免和左轴请求量混读）。
+        rightYFmt={(v) => formatNumber(v)}
       />
 
       {focused ? (
@@ -288,10 +300,11 @@ function OrgUsage({
   const rankQ = useDeptPlatformRanking({ startDate: start, endDate: end }, !focused)
   const focusQ = useDeptPlatformFocused({ startDate: start, endDate: end, deptId: object }, focused)
 
-  const trendSeries = useMemo(
+  // 请求量(部门聚合，量级大) vs 活跃成员(几十人) 量级悬殊 → 活跃成员走右轴独立刻度（防贴底直线）。
+  const trendSeries = useMemo<WeekSeriesSpec[]>(
     () => [
       { name: '请求量', color: '#ff9500', values: series.windows.map((w) => series.aggByKey.get(w.key)?.totalRequests ?? 0) },
-      { name: '活跃成员', color: '#34c759', values: series.windows.map((w) => series.aggByKey.get(w.key)?.activeUsers ?? 0) },
+      { name: '活跃成员', color: '#34c759', axis: 'right', values: series.windows.map((w) => series.aggByKey.get(w.key)?.activeUsers ?? 0) },
     ],
     [series.windows, series.aggByKey],
   )
@@ -317,6 +330,8 @@ function OrgUsage({
         error={series.error}
         hasAny={series.hasAny}
         yFmt={(v) => shortToken(v)}
+        // 右轴 = 活跃成员（计数，独立刻度）。
+        rightYFmt={(v) => formatNumber(v)}
       />
 
       {focused ? (

@@ -8,12 +8,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useDeptCostTree } from './platformDeptCostTree'
 import type { CostTreeNode } from './costTreeRollup'
-import { useGlobalConfig } from '@/api/queries'
+import { useAllUsers, useGlobalConfig } from '@/api/queries'
+import type { UserV2Row } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { formatNumber } from '@/lib/formatters'
+import { formatDateParam } from '@/lib/date'
 import { ChartCard, ChatUserCell, EmptyHint, shortToken } from '@/pages/platform/platformShared'
 import { DirectMembersNote, PlatformNotConnected, PlatformWeekTrend, TruncationNote, useDeptFocus } from './platformDimShared'
 import {
@@ -61,6 +63,71 @@ function PersonDayCostCard({ subject = '个人' }: { subject?: string }) {
   )
 }
 
+/**
+ * 「成本效率 · 单位产出成本」卡（个人维度，替代无数据的人天建设中卡）。
+ * 跨源口径：分子 = 平台 AI 花费(¥, estimated_total_cost)；分母 = 看板产出（合并需求 / 生成代码行）。
+ *   ¥/需求 = 平台AI花费 ÷ 看板合并需求数
+ *   ¥/千行 = 平台AI花费 ÷ 看板生成代码行 ×1000
+ * 两源按 universal_id == 看板 user_id 关联（同源，已实测）。聚合=总量÷总量；聚焦=该用户÷该用户。
+ * 分母 0 或缺数据 → 显 '-'（不编造）。明确标注跨源（平台¥=Token 调用花费，看板=代码侧产出）。
+ */
+function CostEfficiencyCard({
+  cost,
+  mergedNeeds,
+  diffLines,
+  loading,
+  caption,
+  emptyHint,
+}: {
+  cost: number | null
+  mergedNeeds: number | null
+  diffLines: number | null
+  loading: boolean
+  caption: string
+  emptyHint?: string
+}) {
+  const perNeed = cost != null && mergedNeeds != null && mergedNeeds > 0 ? cost / mergedNeeds : null
+  const perKLoc = cost != null && diffLines != null && diffLines > 0 ? (cost / diffLines) * 1000 : null
+  const noData = !loading && perNeed == null && perKLoc == null
+
+  return (
+    <section className="glass rounded-2xl p-5 flex flex-col" style={{ borderLeft: '3px solid #0071e3' }}>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">成本效率（单位产出成本）</h2>
+        <span className="text-xs text-gray-400 dark:text-gray-500">{caption} · 跨源</span>
+      </div>
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="skeleton h-20 rounded-xl" />
+          ))}
+        </div>
+      ) : noData ? (
+        <div className="flex-1 flex items-center justify-center py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          {emptyHint ?? '所选区间内无可计算的产出（合并需求 / 代码行为 0 或缺数据）。'}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard
+            label="¥ / 完成需求"
+            value={perNeed != null ? fmtYuan(perNeed) : '-'}
+            hint="平台AI花费 ÷ 看板合并需求数"
+          />
+          <MetricCard
+            label="¥ / 千行生成代码"
+            value={perKLoc != null ? fmtYuan(perKLoc) : '-'}
+            hint="平台AI花费 ÷ 看板生成代码行 ×1000"
+          />
+        </div>
+      )}
+      <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+        跨源口径：分子 = <b className="text-gray-600 dark:text-gray-300">平台 AI 花费</b>（Token 调用花费），
+        分母 = <b className="text-gray-600 dark:text-gray-300">看板产出</b>（合并需求 / 代码行），两源别混读。
+      </p>
+    </section>
+  )
+}
+
 export default function CostDimension() {
   const { entity, object, objectLabel } = useEntityFocus()
   const { timeRange } = useViewState()
@@ -75,17 +142,28 @@ export default function CostDimension() {
   }
 
   const subject = entity === 'org' ? '部门' : '个人'
+  // 个人：第二卡 = 成本效率（依赖平台¥分子）；部门：保留人天建设中卡（org 成本分支不动）。
+  const SecondCard =
+    entity === 'org' ? (
+      <PersonDayCostCard subject={subject} />
+    ) : (
+      // 成本效率卡的分子是平台¥，平台未就绪/未接入 → 优雅占位（与平台卡同语气）。
+      <section className="glass rounded-2xl p-5">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">成本效率（单位产出成本）</h2>
+        <PlatformNotConnected reason={configResolved ? 'disabled' : 'error'} />
+      </section>
+    )
 
   if (!configResolved) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="skeleton h-48 rounded-2xl" />
-        <PersonDayCostCard subject={subject} />
+        {entity === 'org' ? <PersonDayCostCard subject={subject} /> : <div className="skeleton h-48 rounded-2xl" />}
       </div>
     )
   }
 
-  // 降级：开关 false → 平台卡占位，但人天卡照常渲染（双卡口径分开，平台缺位不连累看板侧）。
+  // 降级：开关 false → 平台卡占位，但看板侧第二卡按主体照常（org 人天 / 个人成本效率占位，平台缺位不连累看板侧布局）。
   if (!chatEnabled) {
     return (
       <div className="flex flex-col gap-5">
@@ -94,7 +172,7 @@ export default function CostDimension() {
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">AI 调用花费（平台·客观）</h2>
             <PlatformNotConnected reason="disabled" />
           </section>
-          <PersonDayCostCard subject={subject} />
+          {SecondCard}
         </div>
       </div>
     )
@@ -136,6 +214,24 @@ function CostContent({
   const focusQ = useUserRankingFocused({ startDate: start, endDate: end, universalId: object }, focused)
   const focusedRow = focused ? pickFocusedRow(focusQ.data, object) : null
 
+  // 成本效率卡的看板侧产出（分母）：区间全量用户行（与 UserContribution 同口径同获取方式）。
+  //   聚合 = 全量求和；聚焦 = 取 user_id == object 的那行（universal_id 与看板 user_id 同源）。
+  const kanbanUsersQ = useAllUsers({ startDate: formatDateParam(start), endDate: formatDateParam(end) })
+  const kanbanOutput = useMemo(() => {
+    const rows: UserV2Row[] = kanbanUsersQ.data ?? []
+    if (focused) {
+      const row = rows.find((r) => r.user_id === object) ?? null
+      return {
+        mergedNeeds: row ? row.merged_need_count : null,
+        diffLines: row ? row.commit_diff_lines : null,
+      }
+    }
+    return {
+      mergedNeeds: rows.reduce((s, r) => s + (r.merged_need_count || 0), 0),
+      diffLines: rows.reduce((s, r) => s + (r.commit_diff_lines || 0), 0),
+    }
+  }, [kanbanUsersQ.data, focused, object])
+
   // 趋势：AI 花费(¥)周序列。聚焦=该用户 estimated_total_cost；聚合=整窗 cost。
   const trendSeries = useMemo(() => {
     const values = focused
@@ -144,15 +240,21 @@ function CostContent({
     return [{ name: 'AI 花费', color: '#af52de', values }]
   }, [focused, series.points, series.windows, series.aggByKey])
 
-  // 平台请求失败 → 平台卡区域占位，但人天卡照常。
+  // 平台请求失败 → 平台两张卡都区域占位（成本效率卡的分子=平台¥，平台缺位则该卡也优雅占位）。
   const platformError = (!focused && rankQ.error) || (focused && focusQ.error)
   const platformErrMsg = ((rankQ.error || focusQ.error) as Error | undefined)?.message
 
   const rows = rankQ.data?.data ?? []
 
+  // 成本效率卡分子（平台 AI 花费）：与相邻 PlatformCostCard 同口径 —— 聚焦=该用户；聚合=当前 Top50 合计。
+  const platformCost = focused
+    ? focusedRow?.estimated_total_cost ?? null
+    : rows.reduce((s, r) => s + (r.estimated_total_cost || 0), 0)
+  const costEffLoading = (focused ? focusQ.isLoading : rankQ.isFetching) || kanbanUsersQ.isLoading
+
   return (
     <div className="flex flex-col gap-5">
-      {/* 双卡口径标注（顶部 KPI 行：平台 AI 花费汇总 + 人天建设中） */}
+      {/* 双卡口径标注（顶部 KPI 行：平台 AI 花费汇总 ‖ 成本效率·单位产出成本） */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {platformError ? (
           <section className="glass rounded-2xl p-5">
@@ -168,7 +270,25 @@ function CostContent({
             objectLabel={objectLabel || object}
           />
         )}
-        <PersonDayCostCard />
+        {platformError ? (
+          <section className="glass rounded-2xl p-5">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">成本效率（单位产出成本）</h2>
+            <PlatformNotConnected reason="error" detail={platformErrMsg} />
+          </section>
+        ) : (
+          <CostEfficiencyCard
+            cost={platformCost}
+            mergedNeeds={kanbanOutput.mergedNeeds}
+            diffLines={kanbanOutput.diffLines}
+            loading={costEffLoading}
+            caption={focused ? objectLabel || object : 'Top50 合计 ÷ 区间产出'}
+            emptyHint={
+              focused
+                ? '该用户在所选区间内无看板产出（合并需求 / 代码行为 0 或未关联）。'
+                : undefined
+            }
+          />
+        )}
       </div>
 
       {/* 平台 AI 花费时间线 */}

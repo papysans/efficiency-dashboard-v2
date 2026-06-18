@@ -5,9 +5,11 @@
 // 仅个人维度内部复用。
 import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
+import * as echarts from 'echarts'
+import type { EChartsOption } from 'echarts'
 import { useTheme } from '@/hooks/useTheme'
 import { EChart } from '@/components/charts/EChart'
-import { getPalette } from '@/components/charts/chartTheme'
+import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { ChartCard, EmptyHint, multiAreaOption, type AreaSeries } from '@/pages/platform/platformShared'
 import { weekWindowLabel, type WeekWindow } from '@/lib/weekWindows'
 
@@ -137,6 +139,84 @@ export interface WeekSeriesSpec {
   color: string
   /** 与 windows 一一对应的数值（缺数据点用 0 或 null 由调用方决定）。 */
   values: number[]
+  /**
+   * 绑定到右侧 Y 轴（独立刻度）。默认 'left'。
+   * 用于「请求量(几十万) vs 活跃用户(几百)」这类量级悬殊、同轴会把小数压成贴底直线的场景。
+   * 任一系列指定 'right' 时，PlatformWeekTrend 走双 Y 轴（不再用 multiAreaOption 单轴）。
+   */
+  axis?: 'left' | 'right'
+}
+
+/**
+ * 双 Y 轴按周折线 option（防大数压扁，与 UserContribution.ContributionTrend 同范式）。
+ * 仅当 series 含 axis:'right' 时由 PlatformWeekTrend 调用；左右轴各自独立刻度，tooltip 两边都显。
+ * leftFmt/rightFmt 控制各轴刻度格式（量级缩写等）。
+ */
+function dualAxisWeekOption(
+  p: ChartPalette,
+  labels: string[],
+  series: WeekSeriesSpec[],
+  opts: { leftFmt?: (v: number) => string; rightFmt?: (v: number) => string } = {},
+): EChartsOption {
+  return {
+    animation: true,
+    grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
+    tooltip: { trigger: 'axis', backgroundColor: p.tooltipBg, borderColor: p.tooltipBorder, borderWidth: 1, textStyle: { color: p.tooltipText } },
+    legend: { top: 0, left: 'center', textStyle: { color: p.textColor }, itemWidth: 14, itemHeight: 8 },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: p.axisColor } },
+      axisLabel: { color: p.textColor, hideOverlap: true },
+      axisTick: { show: false },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        axisLabel: { color: p.textColor, formatter: opts.leftFmt },
+        splitLine: { lineStyle: { color: p.splitLineColor } },
+      },
+      {
+        type: 'value',
+        axisLabel: { color: p.textColor, formatter: opts.rightFmt },
+        splitLine: { show: false },
+      },
+    ],
+    series: series.map((s) => {
+      const onRight = s.axis === 'right'
+      return {
+        name: s.name,
+        type: 'line',
+        yAxisIndex: onRight ? 1 : 0,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        data: s.values,
+        // 右轴系列虚线区分，无渐变面积（避免两轴面积叠加视觉混淆）；左轴系列保留渐变面积。
+        lineStyle: { color: s.color, width: 2, ...(onRight ? { type: 'dashed' as const } : {}) },
+        itemStyle: { color: s.color },
+        ...(onRight
+          ? {}
+          : {
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: rgba2(s.color, 0.25) },
+                  { offset: 1, color: rgba2(s.color, 0) },
+                ]),
+              },
+            }),
+      }
+    }),
+  }
+}
+
+/** hex → rgba（PlatformWeekTrend 双轴左轴渐变面积用，platformShared 的 rgba 未导出，本地复制一份）。 */
+function rgba2(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${alpha})`
 }
 
 /**
@@ -153,6 +233,7 @@ export function PlatformWeekTrend({
   hasAny,
   yFmt,
   yMax,
+  rightYFmt,
 }: {
   title: string
   subtitle?: string
@@ -163,16 +244,23 @@ export function PlatformWeekTrend({
   hasAny: boolean
   yFmt?: (v: number) => string
   yMax?: number
+  /** 右轴刻度格式（仅当 series 含 axis:'right' 时生效）。 */
+  rightYFmt?: (v: number) => string
 }) {
   const { theme } = useTheme()
   const p = useMemo(() => getPalette(theme), [theme])
   const labels = windows.map((w) => weekWindowLabel(w.monday))
+  // 任一系列绑右轴 → 走双 Y 轴（防大数压扁）；否则维持原 multiAreaOption 单轴（向后兼容，其它调用方不受影响）。
+  const dual = series.some((s) => s.axis === 'right')
   const areaSeries: AreaSeries[] = series.map((s) => ({ name: s.name, color: s.color, data: s.values }))
   const option = useMemo(
-    () => multiAreaOption(p, labels, areaSeries, { yFmt, yMax }),
+    () =>
+      dual
+        ? dualAxisWeekOption(p, labels, series, { leftFmt: yFmt, rightFmt: rightYFmt })
+        : multiAreaOption(p, labels, areaSeries, { yFmt, yMax }),
     // labels/areaSeries 由 windows/series 派生，依赖原始入参即可
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [p, windows, series, yFmt, yMax],
+    [p, windows, series, yFmt, yMax, rightYFmt, dual],
   )
 
   return (
