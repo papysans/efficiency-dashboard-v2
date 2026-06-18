@@ -56,6 +56,13 @@ type ProjectListItem struct {
 	NeedCost                    float64  `json:"need_cost"`
 	NeedEligibleCount           int      `json:"need_eligible_count"`
 	NeedTotalCount              int      `json:"need_total_count"`
+	// 守恒合计（与项目详情页 need_*_calendar/work_min 同口径：COALESCE(SUM(...) FILTER
+	// (WHERE coverage_eligible AND NOT 对应 outlier_flag),0)）。前端用它跨项目做守恒均值
+	// （Σbaseline/Σactual），而非对各项目提效比取算术平均。
+	NeedBaselineCalendarMin float64 `json:"need_baseline_calendar_min"`
+	NeedActualCalendarMin   float64 `json:"need_actual_calendar_min"`
+	NeedBaselineWorkMin     float64 `json:"need_baseline_work_min"`
+	NeedDoneCount           int     `json:"need_done_count"` // 已完成(status='merged')的候选池 Need 数，供「¥/完成需求」
 }
 
 type ProjectListResponse struct {
@@ -250,6 +257,23 @@ func listProjectsV2(c *gin.Context) {
 		return
 	}
 
+	// 全局时间窗（裁决⑤）：项目列表的 Need 聚合按 dev_end_ts ∈ [startDate, endDate+24h) 过滤。
+	// 不传时为空串 → queryProjectNeedAgg 不叠加，行为与历史一致（仅用各 repo 条目自带的窗口）。
+	// 复用 needs 页同款 parseStartDate/parseEndDate（YYYYMMDD 或 YYYY-MM-DD；endDate 含当日末尾）。
+	var globalStart, globalEnd string
+	if start, perr := parseStartDate(c.Query("startDate")); perr != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "startDate 格式错误: " + perr.Error()})
+		return
+	} else if start != nil {
+		globalStart = start.Format(time.RFC3339)
+	}
+	if end, perr := parseEndDate(c.Query("endDate")); perr != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "endDate 格式错误: " + perr.Error()})
+		return
+	} else if end != nil {
+		globalEnd = end.Format(time.RFC3339)
+	}
+
 	list, err := ListProjects(statDB)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -270,16 +294,21 @@ func listProjectsV2(c *gin.Context) {
 		var needCalR, needWorkR, needAIR *float64
 		var needLoc int64
 		var needWorkMin, needCost float64
-		var needEligible, needTotal int
+		var needBaselineCal, needActualCal, needBaselineWork float64
+		var needEligible, needTotal, needDone int
 		if scopes, serr := collectProjectRepoBranches(&p); serr == nil {
-			if agg, aerr := queryProjectNeedAgg(statDB, scopes); aerr == nil {
+			if agg, aerr := queryProjectNeedAgg(statDB, scopes, globalStart, globalEnd); aerr == nil {
 				needCalR = efficiencyV2Ratio(agg.BaselineCalendarMin, agg.ActualCalendarMin)
 				needWorkR = efficiencyV2Ratio(agg.BaselineWorkMin, agg.ActualWorkMin)
 				needAIR = calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
 				needLoc = agg.TotalLocNet
 				needWorkMin = agg.ActualWorkMin
+				needBaselineCal = agg.BaselineCalendarMin
+				needActualCal = agg.ActualCalendarMin
+				needBaselineWork = agg.BaselineWorkMin
 				needEligible = agg.EligibleNeeds
 				needTotal = agg.TotalNeeds
+				needDone = agg.DoneNeeds
 			} else {
 				log.Printf("listProjectsV2: project %s Need 聚合失败: %v", p.ProjectId, aerr)
 			}
@@ -310,6 +339,10 @@ func listProjectsV2(c *gin.Context) {
 			NeedCost:                    needCost,
 			NeedEligibleCount:           needEligible,
 			NeedTotalCount:              needTotal,
+			NeedBaselineCalendarMin:     needBaselineCal,
+			NeedActualCalendarMin:       needActualCal,
+			NeedBaselineWorkMin:         needBaselineWork,
+			NeedDoneCount:               needDone,
 		}
 	}
 	sortProjectData(results, orderField, orderDir)
@@ -347,7 +380,7 @@ func getProjectDetailV2(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: scopeErr.Error()})
 		return
 	}
-	if agg, aggErr := queryProjectNeedAgg(statDB, scopes); aggErr != nil {
+	if agg, aggErr := queryProjectNeedAgg(statDB, scopes, "", ""); aggErr != nil {
 		log.Printf("查询 project %s Need 口径聚合失败: %v", projectID, aggErr)
 	} else {
 		// 复用全站共享 helper（actual<=0→nil；baseline=0,actual>0→-100%），口径与 dashboard/部门/组织详情一致。

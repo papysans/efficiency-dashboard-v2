@@ -111,9 +111,12 @@ type DeptRankingItem struct {
 }
 
 // DeptRankingResponse /api/v2/dept-tree/ranking 顶层响应：parent 的各直接子部门汇总排行。
+// self 为 parent 节点【自身整棵子树】的守恒汇总（同 items 口径，Σbaseline/Σactual），
+// 供前端给 parent 根节点本身挂提效比/费用（OrgTree 公司根节点用），不破坏 items 列表结构。
 type DeptRankingResponse struct {
-	ParentDeptId string            `json:"parent_dept_id"`
-	Items        []DeptRankingItem `json:"items"`
+	ParentDeptId string              `json:"parent_dept_id"`
+	Self         *DeptMembersSummary `json:"self"`
+	Items        []DeptRankingItem   `json:"items"`
 }
 
 // deptSyncGet 调 dept-sync 数据接口（带 X-Query-Key），解析统一包到 out。
@@ -461,6 +464,10 @@ func getDeptRankingV2(c *gin.Context) {
 			bucketByDeptID[did] = child.DeptId
 		}
 	}
+	// parent 自身整棵子树的全部 dept_id（含 parent 本级、含直属 parent 而不归任何一级子部门的成员），
+	// 用于第 6 步另外累加一个「parent 自身整树 rollup」(self)。
+	parentDescendants := make(map[string]struct{})
+	collectDescendantDeptIDs(*parent, parentDescendants)
 
 	// 3. 只调一次 dept-sync 花名册：parent 整棵子树全量成员（parent 为根即全公司全量，~11154 人，靠 120s 超时兜住）。
 	var membersResp deptSyncMembersResp
@@ -494,15 +501,25 @@ func getDeptRankingV2(c *gin.Context) {
 	for _, child := range parent.Children {
 		buckets[child.DeptId] = &deptBucket{summary: DeptMembersSummary{DeptId: child.DeptId}}
 	}
+	// parent 自身整树 rollup 桶（覆盖 parent 整棵子树全部成员，含直属 parent 本级、不归任何一级子部门者）。
+	selfBucket := &deptBucket{summary: DeptMembersSummary{DeptId: parentDeptID}}
 
 	// 6. 遍历花名册：按成员直属 dept_id 定位一级祖先目标子部门，左连看板指标累加（逻辑与 members 接口一致）。
+	//    同一名成员若在 parent 整棵子树内，再额外累加进 self 桶（口径与各子部门桶完全一致）。
 	for _, src := range membersResp.Data {
-		bucketID, ok := bucketByDeptID[src.DeptId]
-		if !ok {
-			continue // 不在任何目标子部门子树内（如直属 parent 本级）→ 跳过。
+		bucketID, hasBucket := bucketByDeptID[src.DeptId]
+		_, inParentSubtree := parentDescendants[src.DeptId]
+		if !hasBucket && !inParentSubtree {
+			continue // 既不在任何一级子部门子树内，也不在 parent 整棵子树内 → 跳过。
 		}
-		b := buckets[bucketID]
-		b.summary.MemberCount++
+		var b *deptBucket
+		if hasBucket {
+			b = buckets[bucketID]
+			b.summary.MemberCount++
+		}
+		if inParentSubtree {
+			selfBucket.summary.MemberCount++
+		}
 		if src.UniversalId == "" {
 			continue
 		}
@@ -510,17 +527,25 @@ func getDeptRankingV2(c *gin.Context) {
 		if !ok {
 			continue
 		}
-		b.summary.KanbanMemberCount++
-		b.summary.MergedNeedCount += row.MergedNeedCount
-		b.summary.ActualCalendarMin += row.ActualCalendarMin
-		b.summary.BaselineCalendarMin += row.BaselineCalendarMin
-		b.summary.CommitCount += row.CommitCount
-		b.summary.CommitDiffLines += row.CommitDiffLines
-		b.summary.Cost += row.Cost
-		b.totalActualWork += row.ActualWorkMin
-		b.totalBaselineWork += row.BaselineWorkMin
-		b.totalAICoveredLoc += row.aiCoveredLoc
-		b.totalLocNet += row.totalLocNet
+		accumulateDeptBucket := func(t *deptBucket) {
+			t.summary.KanbanMemberCount++
+			t.summary.MergedNeedCount += row.MergedNeedCount
+			t.summary.ActualCalendarMin += row.ActualCalendarMin
+			t.summary.BaselineCalendarMin += row.BaselineCalendarMin
+			t.summary.CommitCount += row.CommitCount
+			t.summary.CommitDiffLines += row.CommitDiffLines
+			t.summary.Cost += row.Cost
+			t.totalActualWork += row.ActualWorkMin
+			t.totalBaselineWork += row.BaselineWorkMin
+			t.totalAICoveredLoc += row.aiCoveredLoc
+			t.totalLocNet += row.totalLocNet
+		}
+		if hasBucket {
+			accumulateDeptBucket(b)
+		}
+		if inParentSubtree {
+			accumulateDeptBucket(selfBucket)
+		}
 	}
 
 	// 7. 重算各桶提效比/AI占比（小数口径，与 members 接口一致），按部门树 order 输出（稳定序，前端再排）。
@@ -537,5 +562,11 @@ func getDeptRankingV2(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, DeptRankingResponse{ParentDeptId: parentDeptID, Items: items})
+	// parent 自身整树 rollup（守恒口径，同 items）：给前端把 parent 根节点也挂上提效比/费用。
+	selfBucket.summary.CalendarRatio = efficiencyV2Ratio(selfBucket.summary.BaselineCalendarMin, selfBucket.summary.ActualCalendarMin)
+	selfBucket.summary.WorkRatio = efficiencyV2Ratio(selfBucket.totalBaselineWork, selfBucket.totalActualWork)
+	selfBucket.summary.AICodeRatio = calcNeedAICodeRatio(selfBucket.totalAICoveredLoc, selfBucket.totalLocNet)
+	self := selfBucket.summary
+
+	c.JSON(http.StatusOK, DeptRankingResponse{ParentDeptId: parentDeptID, Self: &self, Items: items})
 }

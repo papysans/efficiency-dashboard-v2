@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -28,6 +27,7 @@ type EntityTrendPoint struct {
 	DiffLines     int     `json:"diff_lines"`   // 仓库口径：本周代码行
 	NeedCount     int     `json:"need_count"`   // 项目口径：本周干净 Need 数
 	Loc           int64   `json:"loc"`          // 项目口径：本周生成代码净行
+	Cost          float64 `json:"cost"`         // 仓库口径：本周会话费用(Need→session→tasks.cost,按 dev_end_ts 分桶);archive 库恒 0
 }
 
 type EntityTrendResponse struct {
@@ -111,16 +111,61 @@ func listRepoWeeklyTrend(db *gorm.DB, repoAddr, startTime, endTime string) ([]En
 	if err := q.Group("week_start").Order("week_start").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
+	// 每周会话费用：Need→session→tasks.cost 按 dev_end_ts 的 ISO 周分桶（与仓库卡片 queryRepoNeedCostAggs 同链同口径，
+	// 按 session 去重避免跨 Need 重复计费）。⚠️ 费用按 Need 的 dev_end_ts 周分桶，提交数/代码行按 commit_time 周分桶——
+	// 两者周键都是 date_trunc('week') ISO 周，可按 week_start 字符串对齐；费用挂到对应周，无 tasks 数据的 archive 库恒 0。
+	costByWeek, err := repoWeeklyCostMap(db, repoAddr, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
 	points := make([]EntityTrendPoint, 0, len(rows))
 	for _, r := range rows {
+		ws := r.WeekStart.Format("2006-01-02")
 		points = append(points, EntityTrendPoint{
-			WeekStart:     r.WeekStart.Format("2006-01-02"),
+			WeekStart:     ws,
 			EfficiencyPct: utils.CalcEfficiencyRatio(r.SumAncient, r.SumReal),
 			CommitCount:   r.CommitCnt,
 			DiffLines:     r.DiffLines,
+			Cost:          costByWeek[ws],
 		})
 	}
 	return points, nil
+}
+
+// repoWeeklyCostMap 仓库会话费用按 ISO 周（dev_end_ts）分桶：干净 Need 的 (week, session) 去重 → tasks.cost 求和。
+// repoAddr 为空=全部仓库聚合（与聚合态 trend 一致）；非空=单仓库。返回 week_start(YYYY-MM-DD) → 本周费用。
+func repoWeeklyCostMap(db *gorm.DB, repoAddr, startTime, endTime string) (map[string]float64, error) {
+	// 子查询：干净 Need 的 (周, session_id) 去重对——一 session 被同周多 Need 引用只计一次，避免重复计费。
+	sub := applyNeedCaliberFilter(db.Model(&models.Need{})).
+		Select(`DISTINCT date_trunc('week', dev_end_ts) AS wk, jsonb_array_elements_text(session_ids) AS sid`).
+		Where("repo_addr IS NOT NULL AND repo_addr <> ''").
+		Where("coverage_eligible AND NOT outlier_flag").
+		Where("dev_end_ts IS NOT NULL")
+	if repoAddr != "" {
+		sub = sub.Where("repo_addr = ?", repoAddr)
+	}
+	if startTime != "" {
+		sub = sub.Where("dev_end_ts >= ?", startTime)
+	}
+	if endTime != "" {
+		sub = sub.Where("dev_end_ts <= ?", endTime)
+	}
+	type costRow struct {
+		WeekStart time.Time `gorm:"column:wk"`
+		Cost      float64   `gorm:"column:cost"`
+	}
+	var rows []costRow
+	if err := db.Table("(?) AS rs", sub).
+		Select("rs.wk, COALESCE(SUM(t.cost), 0) AS cost").
+		Joins("JOIN tasks t ON t.session_id = rs.sid").
+		Group("rs.wk").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	m := make(map[string]float64, len(rows))
+	for _, r := range rows {
+		m[r.WeekStart.Format("2006-01-02")] = r.Cost
+	}
+	return m, nil
 }
 
 // getProjectTrendV2 GET /api/v2/project-trend
@@ -170,22 +215,29 @@ func getProjectTrendV2(c *gin.Context) {
 }
 
 // listProjectWeeklyTrend 干净 Need（coverage_eligible 且非 outlier）按 dev_end_ts 的 ISO 周聚合：
-// Need 数 / 生成代码净行 / AVG(efficiency_ratio)。efficiency_ratio 是小数口径 → ×100 归一为百分比。
+// Need 数 / 生成代码净行 / 提效率。
+//   ⚠️ 提效率改为守恒口径：每周 Σbaseline_calendar / Σactual_calendar 现算（CalcEfficiencyRatio），
+//      与项目卡片/详情 efficiencyV2Ratio(BaselineCalendarMin, ActualCalendarMin) 完全同源同口径，
+//      不再用 AVG(efficiency_ratio) 算术均值（小对象会把整周提效率拉偏，且与卡片对不上账）。
+//   FILTER 口径同 queryProjectNeedAgg：日历 SUM 只统计 coverage_eligible AND NOT calendar_outlier_flag。
+//   量纲：CalcEfficiencyRatio 返回「提效率百分比」(gain%，200=2倍提升)，与 repo-trend efficiency_pct 统一，前端直接画。
 // scoped=true 时套项目候选池（已选 Need 名单）；clause 为空（项目无 repo）→ 空结果。scoped=false=全部干净 Need。
 func listProjectWeeklyTrend(db *gorm.DB, scopes []projectNeedScope, scoped bool, startTime, endTime string) ([]EntityTrendPoint, error) {
 	type weekRow struct {
-		WeekStart time.Time `gorm:"column:week_start"`
-		NeedCnt   int       `gorm:"column:need_cnt"`
-		Loc       int64     `gorm:"column:loc"`
-		AvgEff    *float64  `gorm:"column:avg_eff"`
+		WeekStart   time.Time `gorm:"column:week_start"`
+		NeedCnt     int       `gorm:"column:need_cnt"`
+		Loc         int64     `gorm:"column:loc"`
+		SumBaseline float64   `gorm:"column:sum_baseline"`
+		SumActual   float64   `gorm:"column:sum_actual"`
 	}
 	q := applyNeedCaliberFilter(db.Model(&models.Need{})).
 		Select(`date_trunc('week', dev_end_ts) AS week_start,
-			COUNT(*) AS need_cnt,
-			COALESCE(SUM(total_loc_net), 0) AS loc,
-			AVG(efficiency_ratio) AS avg_eff`).
-		Where("coverage_eligible AND NOT outlier_flag").
-		Where("dev_end_ts IS NOT NULL AND efficiency_ratio IS NOT NULL")
+			COUNT(*) FILTER (WHERE coverage_eligible AND NOT outlier_flag) AS need_cnt,
+			COALESCE(SUM(total_loc_net) FILTER (WHERE coverage_eligible AND NOT outlier_flag), 0) AS loc,
+			COALESCE(SUM(baseline_calendar_min) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag), 0) AS sum_baseline,
+			COALESCE(SUM(total_calendar_min) FILTER (WHERE coverage_eligible AND NOT calendar_outlier_flag), 0) AS sum_actual`).
+		Where("coverage_eligible"). // 行级仅限合格 Need(去空周)；outlier 由各 FILTER 各自按口径判(日历/通用)
+		Where("dev_end_ts IS NOT NULL")
 	if scoped {
 		clause, args := buildProjectNeedScopeClause(scopes, true)
 		if clause == "" {
@@ -205,13 +257,9 @@ func listProjectWeeklyTrend(db *gorm.DB, scopes []projectNeedScope, scoped bool,
 	}
 	points := make([]EntityTrendPoint, 0, len(rows))
 	for _, r := range rows {
-		eff := 0.0
-		if r.AvgEff != nil {
-			eff = math.Round(*r.AvgEff*100*10) / 10 // 小数→百分比，保留 1 位
-		}
 		points = append(points, EntityTrendPoint{
 			WeekStart:     r.WeekStart.Format("2006-01-02"),
-			EfficiencyPct: eff,
+			EfficiencyPct: utils.CalcEfficiencyRatio(r.SumBaseline, r.SumActual),
 			NeedCount:     r.NeedCnt,
 			Loc:           r.Loc,
 		})

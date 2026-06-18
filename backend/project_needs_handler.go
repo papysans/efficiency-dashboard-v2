@@ -111,6 +111,7 @@ type projectNeedAgg struct {
 	TotalNeeds          int
 	EligibleNeeds       int
 	ExcludedNeeds       int
+	DoneNeeds           int // status='merged'（已交付/已合并）的候选池 Need 数，口径同 dashboard merged_needs
 	ActualCalendarMin   float64
 	BaselineCalendarMin float64
 	ActualWorkMin       float64
@@ -122,7 +123,10 @@ type projectNeedAgg struct {
 // queryProjectNeedAgg 对候选池内"已选"的 Need 做分子分母守恒聚合。
 // FILTER 口径与 queryDashboardNeedAgg 完全一致：日历 SUM 用 NOT calendar_outlier_flag、
 // 工作量 SUM 用 NOT work_outlier_flag、AI 占比用 needAICodeAggSelect。
-func queryProjectNeedAgg(db *gorm.DB, scopes []projectNeedScope) (*projectNeedAgg, error) {
+// globalStart/globalEnd 为全局时间窗（dev_end_ts ∈ [start,end]，RFC3339 字符串）：
+// 非空时在 scope 子句之上再叠加，用于项目列表吃全局时间窗（裁决⑤）；
+// 项目详情等传空串 → 不叠加，行为与历史一致（仅用各 repo 条目自带的窗口）。
+func queryProjectNeedAgg(db *gorm.DB, scopes []projectNeedScope, globalStart, globalEnd string) (*projectNeedAgg, error) {
 	var agg projectNeedAgg
 
 	// ① 已选聚合（套 need 白/黑名单）：eligible/excluded 计数与各 SUM 只统计"已选"Need，分子分母守恒。
@@ -137,6 +141,7 @@ func queryProjectNeedAgg(db *gorm.DB, scopes []projectNeedScope) (*projectNeedAg
 		COALESCE(SUM(total_active_work_corrected_min) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag), 0) as actual_work_min,
 		COALESCE(SUM(baseline_fused_work_min) FILTER (WHERE coverage_eligible AND NOT work_outlier_flag), 0) as baseline_work_min,
 		`+needAICodeAggSelect()).Where(selClause, selArgs...)
+	q = applyNeedGlobalWindow(q, globalStart, globalEnd)
 	if err := q.Scan(&agg).Error; err != nil {
 		return nil, fmt.Errorf("查询项目 Need 聚合失败: %w", err)
 	}
@@ -145,12 +150,36 @@ func queryProjectNeedAgg(db *gorm.DB, scopes []projectNeedScope) (*projectNeedAg
 	// 与 getProjectNeedsV2 列表行数同源，避免"全部排除被误判为无 Need"的空态假阴性。
 	// 必须放在 ① 的 Scan 之后赋值——Scan 会把未映射的 struct 字段清零。
 	poolClause, poolArgs := buildProjectNeedScopeClause(scopes, false)
+	poolQ := applyNeedCaliberFilter(db.Model(&models.Need{})).Where(poolClause, poolArgs...)
+	poolQ = applyNeedGlobalWindow(poolQ, globalStart, globalEnd)
 	var poolCount int64
-	if err := applyNeedCaliberFilter(db.Model(&models.Need{})).Where(poolClause, poolArgs...).Count(&poolCount).Error; err != nil {
+	if err := poolQ.Count(&poolCount).Error; err != nil {
 		return nil, fmt.Errorf("查询项目 Need 候选池计数失败: %w", err)
 	}
 	agg.TotalNeeds = int(poolCount)
+
+	// ③ 完成（已交付/已合并）Need 数：口径与 queryDashboardNeedAgg 的 merged_needs 一致（status='merged'），
+	// 落在候选池全量上（不套 need 名单），供前端「¥/完成需求」分母用。放在 ① Scan 之后赋值同理防清零。
+	donePoolQ := applyNeedCaliberFilter(db.Model(&models.Need{})).Where(poolClause, poolArgs...).Where("status = ?", "merged")
+	donePoolQ = applyNeedGlobalWindow(donePoolQ, globalStart, globalEnd)
+	var doneCount int64
+	if err := donePoolQ.Count(&doneCount).Error; err != nil {
+		return nil, fmt.Errorf("查询项目 Need 完成数失败: %w", err)
+	}
+	agg.DoneNeeds = int(doneCount)
 	return &agg, nil
+}
+
+// applyNeedGlobalWindow 在 needs 查询上叠加全局时间窗（dev_end_ts ∈ [start,end]）。
+// start/end 为 RFC3339 字符串，空串跳过。与 queryDashboardNeedAgg 同口径（用 dev_end_ts 落窗）。
+func applyNeedGlobalWindow(q *gorm.DB, start, end string) *gorm.DB {
+	if start != "" {
+		q = q.Where("dev_end_ts >= ?", start)
+	}
+	if end != "" {
+		q = q.Where("dev_end_ts <= ?", end)
+	}
+	return q
 }
 
 // projectNeedCost 项目费用聚合：选中 Need 的会话所产生的 token / 成本。
