@@ -10,10 +10,13 @@ import { HeroSaving } from '@/components/executive/HeroSaving'
 import { TrendCard } from '@/components/executive/TrendCard'
 import { TopRankCard } from '@/components/executive/TopRankCard'
 import { DeptPKCard } from '@/components/executive/DeptPKCard'
+import { PlatformObjectiveCard } from '@/components/executive/PlatformObjectiveCard'
 
 // 高管提效总览大屏。Bento 12 列网格 + 玻璃拟态 + 卡片 staggered 渐入。
-// ① Hero 省人天/AI花费/净节省/提效 ② 使用/贡献/AI占比 速览(同款卡,等高) ③ 周提效趋势 ④ 部门PK + Top榜 ⑤ 规模概览。
-// ② 不含成本/质量/效率：成本与 Hero 全平台 AI 花费口径不同易混淆、质量本轮无数据、效率与 Hero 综合提效重复。
+// ① Hero 省人天/AI花费/净节省/提效 ② 平台客观指标(AI 真实花费/请求/Token,平台采集口径独立) ③ 使用/贡献/AI占比 速览(同款卡,等高)
+// ④ 周提效趋势 ⑤ 部门PK + Top榜 ⑥ 规模概览。
+// ③ 不含成本/质量/效率：成本与 Hero 全平台 AI 花费口径不同易混淆、质量本轮无数据、效率与 Hero 综合提效重复。
+// ② 平台块降级护栏：chat_stats_enabled=false / 请求失败 → 轻提示，不空页、不崩、不影响其余区块。
 export default function Overview() {
   // 全局时间范围（顶部统一 DateRangePicker），切日期联动总览各卡。
   const { timeRange } = useViewState()
@@ -29,31 +32,36 @@ export default function Overview() {
         <HeroSaving startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row2 使用/贡献/AI占比 速览（同款卡，三张等高） */}
+      {/* Row2 平台客观指标（AI 调用真实花费/请求/Token，口径独立于上方看板派生 Hero；未接入/失败时优雅降级） */}
       <Cell index={1} className="col-span-12">
+        <PlatformObjectiveCard />
+      </Cell>
+
+      {/* Row3 使用/贡献/AI占比 速览（同款卡，三张等高） */}
+      <Cell index={2} className="col-span-12">
         <ScorecardStrip startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row3 AI 渗透率（单独卡：渗透 / 覆盖 / 切散缺口） */}
-      <Cell index={2} className="col-span-12">
+      {/* Row4 AI 渗透率（单独卡：渗透 / 覆盖 / 切散缺口） */}
+      <Cell index={3} className="col-span-12">
         <AIPenetrationCard startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row4 周提效趋势（整宽） */}
-      <Cell index={3} className="col-span-12">
+      {/* Row5 周提效趋势（整宽） */}
+      <Cell index={4} className="col-span-12">
         <TrendCard startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row5 部门 PK + Top 榜（需求 / 人） */}
-      <Cell index={4} className="col-span-12 lg:col-span-6">
+      {/* Row6 部门 PK + Top 榜（需求 / 人） */}
+      <Cell index={5} className="col-span-12 lg:col-span-6">
         <DeptPKCard startDate={startDate} endDate={endDate} />
       </Cell>
-      <Cell index={5} className="col-span-12 lg:col-span-6">
+      <Cell index={6} className="col-span-12 lg:col-span-6">
         <TopRankCard startDate={startDate} endDate={endDate} />
       </Cell>
 
-      {/* Row6 规模概览 */}
-      <Cell index={6} className="col-span-12">
+      {/* Row7 规模概览 */}
+      <Cell index={7} className="col-span-12">
         <CountsCard startDate={startDate} endDate={endDate} />
       </Cell>
     </div>
