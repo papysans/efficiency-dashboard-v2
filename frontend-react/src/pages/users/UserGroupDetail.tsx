@@ -56,7 +56,7 @@ export default function UserGroupDetail() {
     try {
       await deleteUserGroup(groupId)
       setConfirmOpen(false)
-      navigate('/user-v2')
+      navigate('/usage/user')
     } catch (e) {
       setDeleteError((e as Error).message || '删除失败')
       setDeleting(false)

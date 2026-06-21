@@ -5,28 +5,29 @@ import { useTheme } from '@/hooks/useTheme'
 import { useViewState } from '@/store/viewState'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import ScrollToTop from '@/components/layout/ScrollToTop'
+import { DIMENSIONS, DEFAULT_ENTITY, entityFromPath } from '@/components/layout/matrix'
 
-// 主体×维度矩阵 IA（A 主体优先）：一级导航选「谁」，进下钻后页内一排维度 Tab 选「看什么」。
-// 一级 6 项：总览 / 组织 / 个人 / 项目 / 仓库 / 需求。平台/设置进右侧工具区（齿轮 + 条件平台）。
+// 主体×维度矩阵 IA（维度优先）：一级导航选「看什么」，进维度后页内一排主体 Tab 选「看谁」。
+// 一级 6 项：总览 / 使用 / 效率 / 成本 / 贡献 / 需求。平台/设置进右侧工具区（齿轮 + 条件平台）。
 // 时间范围提升为全局（绑定 viewState store），放右侧工具区，切维度/切主体保持不变。
-// 高亮：NavLink isActive + 前缀匹配（match，如 /org/* 整段高亮，进 /org/efficiency 仍高亮「组织」）。
+// 高亮：前缀匹配（match，如 /efficiency/* 整段高亮，进 /efficiency/user 仍高亮「效率」）。
 interface NavItem {
   to: string
   label: string
   /** 精确匹配（仅总览 /）。 */
   end?: boolean
-  /** 前缀匹配段（如 /org → /org/efficiency 仍高亮）。 */
+  /** 前缀匹配段（如 /efficiency → /efficiency/user 仍高亮）。 */
   match?: string
 }
 
-const navItems: NavItem[] = [
-  { to: '/', label: '总览', end: true },
-  { to: '/org', label: '组织', match: '/org' },
-  { to: '/user', label: '个人', match: '/user' },
-  { to: '/project', label: '项目', match: '/project' },
-  { to: '/repo', label: '仓库', match: '/repo' },
-  { to: '/needs-v2', label: '需求', match: '/needs' },
-]
+// 决策 2：顶部维度链接保留当前 entity + 聚焦(?object=)，延续「盯一个对象看各维度」动线。
+// 但丢弃效率维专属的 ?sub（分布子 tab）——避免它泄漏到别的维度的 URL。
+function dimensionSearch(search: string): string {
+  const sp = new URLSearchParams(search)
+  sp.delete('sub')
+  const s = sp.toString()
+  return s ? `?${s}` : ''
+}
 
 function navLinkClass(isActive: boolean) {
   return `px-3 py-1.5 rounded-lg text-sm font-medium no-underline transition-colors ${
@@ -38,14 +39,24 @@ function navLinkClass(isActive: boolean) {
 
 export default function AppShell() {
   const { theme, toggle } = useTheme()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { data: globalConfig } = useGlobalConfig()
   const { timeRange, setTimeRange } = useViewState()
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const dashboardTitle = `${globalConfig?.dashboard_title_prefix ?? ''}效能看板`
 
-  // 前缀匹配高亮：/org/efficiency 落到 /org 段。需求页（/needs-v2、/needs/:id）按 /needs 前缀高亮。
+  // 一级导航：总览 + 4 维度（动态链接，保留当前主体+聚焦）+ 需求。
+  // currentEntity/dimSearch 每渲染算一次，4 个维度链接共用（避免每维度重复跑正则）。
+  const currentEntity = entityFromPath(pathname) ?? DEFAULT_ENTITY
+  const dimSearch = dimensionSearch(search)
+  const navItems: NavItem[] = [
+    { to: '/', label: '总览', end: true },
+    ...DIMENSIONS.map((d) => ({ to: `/${d.key}/${currentEntity}${dimSearch}`, label: d.label, match: `/${d.key}` })),
+    { to: '/needs-v2', label: '需求', match: '/needs' },
+  ]
+
+  // 前缀匹配高亮：/efficiency/user 落到 /efficiency 段。需求页（/needs-v2、/needs/:id）按 /needs 前缀高亮。
   const isItemActive = (item: NavItem) => {
     if (item.end) return pathname === item.to
     if (pathname === item.to) return true

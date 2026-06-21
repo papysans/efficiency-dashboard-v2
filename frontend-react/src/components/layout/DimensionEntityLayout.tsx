@@ -1,46 +1,43 @@
-// 主体×维度下钻共用壳（org/user/project/repo 四下钻共用）。
-// 结构：主体标题 + 面包屑 + 可搜索对象选择器（聚合↔聚焦切换）+ <DimensionTabs entity/> + <Outlet/>。
-// entity 由 router.tsx 的 entityRoute() 以 prop 传入（静态段 path 不产生路由参数，故走 prop）。
+// 维度 × 主体 下钻共用壳（usage/efficiency/cost/contribution 四维共用）。
+// 结构：维度标题(H1) + 面包屑(维度 › 主体 › 聚焦对象) + 可搜索对象选择器(聚合↔聚焦) + <EntityTabs/> + <Outlet/>。
+// dim 由 router 的 dimensionRoute() 以 prop 传入；entity 来自 URL param（/:dim/:entity），脏值回退默认主体。
 //
-// 聚焦对象（focus object）单一数据源 = URL query ?object=<id>（深链/刷新保持，切维度 Tab 不丢，
-// 因为切 Tab 只换 path 段不动 query）。维度内容（EfficiencyDimension 等）通过 useEntityFocus() 读 entity+object。
+// 聚焦对象（focus object）单一数据源 = URL query ?object=<id>（深链/刷新保持）。切主体 Tab 会丢 object
+// （EntityTabs 不带 query，故意，换 id 空间），但切维度（顶部导航）保留 entity+object（AppShell 动态链接）。
+// 维度内容（EfficiencyDimension 等）通过 useEntityFocus() 读 entity+object —— 对轴翻转无感。
 import { useCallback, useMemo, useState } from 'react'
-import { Outlet, useOutletContext, useSearchParams } from 'react-router'
-import { DimensionTabs, type Entity } from '@/components/ui/DimensionTabs'
+import { Navigate, Outlet, useParams, useSearchParams } from 'react-router'
+import { EntityTabs } from '@/components/ui/EntityTabs'
 import { ObjectSelector } from '@/components/ui/ObjectSelector'
 import { CreateProjectModal } from '@/components/projects/CreateProjectModal'
 import { useEntityObjects, type EntityOption } from '@/hooks/useEntityObjects'
-
-const ENTITY_TITLE: Record<Entity, string> = {
-  org: '组织',
-  user: '个人',
-  project: '项目',
-  repo: '仓库',
-}
-
-/** 维度内容从 Outlet context 读 entity + 当前聚焦对象。 */
-export interface EntityFocusContext {
-  entity: Entity
-  /** 聚焦对象 id（空串=聚合态/全部）。 */
-  object: string
-  /** 聚焦对象显示名（聚合态为空）。 */
-  objectLabel: string
-}
-
-export function useEntityFocus(): EntityFocusContext {
-  return useOutletContext<EntityFocusContext>()
-}
+import {
+  DEFAULT_ENTITY,
+  DIMENSION_LABEL,
+  ENTITY_LABEL,
+  isEntity,
+  type Dimension,
+  type Entity,
+  type EntityFocusContext,
+} from '@/components/layout/matrix'
 
 const OBJECT_KEY = 'object'
 
-export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
-  const title = ENTITY_TITLE[entity]
+// 外层只做 entity 脏值守卫：仅 useParams 一个 Hook 无条件调用，非法即在任何数据 Hook 之前重定向，
+// 避免脏值路由（/usage/garbage）白跑一次 useEntityObjects 取数。校验通过后交给 Shell 渲染真内容。
+export default function DimensionEntityLayout({ dim }: { dim: Dimension }) {
+  const { entity } = useParams<{ entity: string }>()
+  if (!isEntity(entity)) return <Navigate to={`/${dim}/${DEFAULT_ENTITY}`} replace />
+  return <DimensionEntityShell dim={dim} entity={entity} />
+}
+
+function DimensionEntityShell({ dim, entity }: { dim: Dimension; entity: Entity }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const object = searchParams.get(OBJECT_KEY) || ''
 
   const { options, loading } = useEntityObjects(entity)
 
-  // 「创建项目」仅在项目维度显示，任意子维度（使用/质量/效率/成本/贡献）都能新建。
+  // 「创建项目」仅在主体 Tab=项目 时显示（任意维度页下）。
   const [createOpen, setCreateOpen] = useState(false)
 
   const objectLabel = useMemo<string>(() => {
@@ -49,32 +46,33 @@ export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
     return hit ? hit.label.trim() : object
   }, [object, options])
 
-  // 写聚焦对象到 URL（保留其它 query；选「全部」→ 删 object 回聚合态）。
-  // 进入聚焦同时清掉效率页的 ?sub（分布是聚合态的全局视图，聚焦后无意义）——退出聚焦回到「概览」而非意外停在分布。
+  // 写聚焦对象到 URL（保留其它 query）。切换聚焦（进或出）一律清掉效率页的 ?sub ——
+  // 分布是聚合态全局视图，聚焦后无意义；退出聚焦也应回「概览」而非停在分布。
   const onSelect = useCallback(
     (value: string) => {
       const next = new URLSearchParams(searchParams)
-      if (value) {
-        next.set(OBJECT_KEY, value)
-        next.delete('sub')
-      } else {
-        next.delete(OBJECT_KEY)
-      }
+      if (value) next.set(OBJECT_KEY, value)
+      else next.delete(OBJECT_KEY)
+      next.delete('sub')
       setSearchParams(next, { replace: false })
     },
     [searchParams, setSearchParams],
   )
 
+  const dimTitle = DIMENSION_LABEL[dim]
+  const entityTitle = ENTITY_LABEL[entity]
   const focus: EntityFocusContext = { entity, object, objectLabel }
 
   return (
     <div className="flex flex-col gap-5">
-      {/* 顶部：主体标题 + 面包屑 + 对象选择器 */}
+      {/* 顶部：维度标题 + 面包屑(维度 › 主体 › 对象) + 对象选择器 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h1>
-          {/* 面包屑：主体 ›（聚焦时）对象名 */}
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{dimTitle}</h1>
+          {/* 面包屑：维度 › 主体 ›（聚焦时）对象名。点主体名可清聚焦回聚合态。 */}
           <nav aria-label="面包屑" className="mt-1 text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1.5 select-none">
+            <span className="text-gray-400 dark:text-gray-500">{dimTitle}</span>
+            <span aria-hidden="true">›</span>
             <button
               type="button"
               onClick={() => onSelect('')}
@@ -83,7 +81,7 @@ export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
                 object ? 'cursor-pointer hover:text-apple-blue' : 'cursor-default text-gray-400 dark:text-gray-500'
               } focus:outline-none focus-visible:underline`}
             >
-              {title}
+              {entityTitle}
             </button>
             {object && (
               <>
@@ -96,7 +94,7 @@ export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
           </nav>
         </div>
 
-        {/* 对象选择器（聚合↔聚焦）+「创建项目」按钮（仅项目维度） */}
+        {/* 对象选择器（聚合↔聚焦）+「创建项目」按钮（仅主体 Tab=项目） */}
         <div className="shrink-0 flex items-center gap-2">
           {entity === 'project' && (
             <button
@@ -115,14 +113,14 @@ export default function EntityDimensionLayout({ entity }: { entity: Entity }) {
             value={object}
             onChange={onSelect}
             loading={loading}
-            allLabel={`全部${title}`}
-            placeholder={`搜索${title}…`}
+            allLabel={`全部${entityTitle}`}
+            placeholder={`搜索${entityTitle}…`}
           />
         </div>
       </div>
 
-      {/* 维度 Tab（切 Tab 只换 path 段，保留 ?object= query） */}
-      <DimensionTabs entity={entity} />
+      {/* 主体 Tab（切主体换 id 空间，清 ?object=） */}
+      <EntityTabs dim={dim} />
 
       {/* 维度内容（通过 useEntityFocus 读 entity + object） */}
       <div>

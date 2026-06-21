@@ -107,10 +107,10 @@ export function DeptPKCard({ startDate, endDate }: DeptPKCardProps) {
             return (
               <li
                 key={r.dept_id}
-                onClick={() => navigate('/org-tree-v2')}
+                onClick={() => navigate(`/efficiency/org?object=${encodeURIComponent(r.dept_id)}`)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), navigate('/org-tree-v2'))}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), navigate(`/efficiency/org?object=${encodeURIComponent(r.dept_id)}`))}
                 aria-label={`${r.dept_name}，点击查看部门`}
                 className="flex items-center gap-3 rounded-xl px-2 py-1.5 cursor-pointer hover:bg-white/40 dark:hover:bg-white/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               >

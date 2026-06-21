@@ -14,7 +14,7 @@ import { useAllUsers, useDashboardSummary, useDeptRanking, useGlobalConfig } fro
 import type { UserV2Row } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
-import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
+import { useEntityFocus } from '@/components/layout/matrix'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { formatNumber } from '@/lib/formatters'
 import { formatDateParam } from '@/lib/date'

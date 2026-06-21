@@ -152,7 +152,7 @@ export default function ProjectDetail({ projectIdProp, embedded = false }: Proje
     try {
       await deleteProject(projectId as string)
       await queryClient.invalidateQueries({ queryKey: ['project-list'] })
-      navigate('/project-v2')
+      navigate('/usage/project')
     } finally {
       setDeleting(false)
     }

@@ -9,7 +9,7 @@ import { getAllUsersV2, getAllReposV2 } from '@/api/endpoints'
 import { useQuery } from '@tanstack/react-query'
 import { formatDateParam } from '@/lib/date'
 import type { DeptTreeNode } from '@/api/types'
-import type { Entity } from '@/components/ui/DimensionTabs'
+import type { Entity } from '@/components/layout/matrix'
 
 export interface EntityOption {
   value: string

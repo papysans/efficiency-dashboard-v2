@@ -13,7 +13,7 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { useAllRepos, useRepoBranches, useRepoDetail, useRepoTrend } from '@/api/queries'
-import { useEntityFocus } from '@/components/layout/EntityDimensionLayout'
+import { useEntityFocus } from '@/components/layout/matrix'
 import { useViewState } from '@/store/viewState'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'

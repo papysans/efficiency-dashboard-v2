@@ -1,5 +1,5 @@
 // 可搜索对象选择器（玻璃拟态 combobox）。聚合态/聚焦态切换的入口。
-// 选「全部」=聚合态(value=空)，选某项=聚焦态。受控组件：value/onChange 由 EntityDimensionLayout 持有
+// 选「全部」=聚合态(value=空)，选某项=聚焦态。受控组件：value/onChange 由 DimensionEntityLayout 持有
 // 并同步到 URL ?object=。键盘可达（focus-visible ring + Esc 关 + 回车选中高亮项）。
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EntityOption } from '@/hooks/useEntityObjects'

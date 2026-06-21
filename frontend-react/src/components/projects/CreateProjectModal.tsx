@@ -1,5 +1,5 @@
 // 创建项目弹窗（可复用）。原为 ProjectList.tsx 的局部组件，抽取为共享组件，
-// 供项目列表页与「项目」维度壳（EntityDimensionLayout）共用，任意子维度都能新建项目。
+// 供项目列表页与「项目」维度壳（DimensionEntityLayout）共用，任意子维度都能新建项目。
 //
 // 自带提交逻辑（createProject）+ 成功后失效项目相关 query（列表/选择器即时刷新），
 // 通过 onCreated 回调把新建项目的返回交给调用方（如跳转/二次刷新），无 toast 基建时即关弹窗+刷新。

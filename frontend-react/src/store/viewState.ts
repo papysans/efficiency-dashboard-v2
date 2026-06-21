@@ -2,7 +2,7 @@
 // 第 1 段：全局时间范围，供顶部统一 DateRangePicker 绑定（替代旧的「每页各自 DateRangePicker」）。
 // 第 2 段：聚焦对象（org/user/project/repo 四下钻选定的具体对象）。聚焦对象**不放 store 持久化**，
 //   而是以 URL query（?object=<id>）为单一数据源，刷新/深链保持、切维度 Tab 不丢（详见
-//   EntityDimensionLayout 的 useFocusObject）。store 只持久化时间范围。
+//   DimensionEntityLayout 的 useFocusObject）。store 只持久化时间范围。
 // 时间范围 localStorage 持久化，刷新保留。默认复用 lib/date 的 30 天默认（getDefaultDateRangeWide(30)）。
 import { create } from 'zustand'
 import { getDefaultDateRangeWide } from '@/lib/date'
