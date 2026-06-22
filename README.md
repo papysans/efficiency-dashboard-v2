@@ -12,7 +12,7 @@
 | 前端界面 | **React 19** + Vite + Tailwind + ECharts（dev 端口 **8881**） |
 | 数据处理 CLI | Go 1.25 + Cobra（`kbcli`） |
 | 数据库 | PostgreSQL 15（库名 **`costrict_stat`**） |
-| 部署 | Docker Compose / Helm |
+| 部署 | Docker Compose（K8s/Helm 由运维基于 compose 转换，见 `compose/HANDOFF.md`） |
 
 ---
 
@@ -25,8 +25,7 @@
 ├── core/             # 共享 Go 库（models GORM 模型 / config / utils）
 ├── kbcli/            # 数据导入与计算 CLI（含 internal/ 子包：efficiencyv2 / appconfig / util / ...）
 ├── configs/          # 配置模板（kbcli-config.yaml / server-config.yaml）
-├── compose/          # Docker Compose 部署（postgres / server / portal / kbcli）
-└── helm/             # Kubernetes Helm 部署
+└── compose/          # Docker Compose 部署（唯一部署真源；K8s/Helm 交付见 compose/HANDOFF.md）
 ```
 
 > 历史的 `frontend/`（Vue）已下线，前端唯一实现是 `frontend-react/`。
@@ -189,13 +188,11 @@ cd compose && docker compose up -d         # postgres + server(:9990) + portal(n
 
 镜像打包：`make package-all VER=1.0.x`（后端+前端）/ `make package-portal VER=1.0.x`（仅前端）。
 
-### Helm（Kubernetes）
+### Kubernetes / Helm
 
-```bash
-helm install efficiency-dashboard ./helm/efficiency-dashboard -n efficiency --create-namespace
-```
+由运维基于 compose 包转换上 K8s。交付契约（服务路由 / 磁盘 / 启动命令 / 配置位置 / 转 Helm 的坑）见 **[compose/HANDOFF.md](compose/HANDOFF.md)**。
 
-详见 [helm/README.md](helm/README.md)、[compose/README.md](compose/README.md)。
+详见 [compose/README.md](compose/README.md)。
 
 ---
 
