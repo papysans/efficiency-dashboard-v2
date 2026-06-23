@@ -550,6 +550,8 @@ export interface DeptMember {
   universal_id: string
   real_name: string
   emp_no: string
+  /** 成员直属部门 id（成本树按此归桶算各部门直属成本）。 */
+  dept_id: string
   position: string
   is_main: number
   has_kanban_data: boolean

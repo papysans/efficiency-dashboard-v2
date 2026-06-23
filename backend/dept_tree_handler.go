@@ -71,6 +71,7 @@ type DeptMember struct {
 	UniversalId         string   `json:"universal_id"`
 	RealName            string   `json:"real_name"`
 	EmpNo               string   `json:"emp_no"`
+	DeptId              string   `json:"dept_id"` // 成员直属部门 id（成本树按此归桶算各部门直属，避免逐部门 N× members）
 	Position            string   `json:"position"`
 	IsMain              int      `json:"is_main"`
 	HasKanbanData       bool     `json:"has_kanban_data"`
@@ -362,6 +363,7 @@ func getDeptTreeMembersV2(c *gin.Context) {
 			UniversalId: src.UniversalId,
 			RealName:    src.Username,
 			EmpNo:       src.UserId,
+			DeptId:      src.DeptId,
 			Position:    src.Position,
 			IsMain:      src.IsMain,
 		}
