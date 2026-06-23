@@ -30,6 +30,7 @@ import type {
   DashboardSummary,
   DashboardTrends,
   DeptMembersResponse,
+  DeptOverviewResponse,
   DeptRankingResponse,
   DeptTreeNode,
   EfficiencyV2AggregateResponse,
@@ -165,6 +166,12 @@ export function getOrgDetailV2(params: { orgPath: string; startDate?: string; en
 // 组织树（dept-sync 权威全量嵌套部门树，后端代理 dept-sync /department/tree；与日期无关）。
 export function getDeptTreeV2() {
   return apiGet<DeptTreeNode[]>('/v2/dept-tree')
+}
+
+// 组织树总览（整棵森林 + 每节点整棵子树守恒提效汇总，一次性返回）。
+// 替代组织树前端逐展开节点 N× 调 /ranking（N+1 → 1）；含日期窗（提效随时间窗变）。
+export function getDeptOverviewV2(params: { startDate?: string; endDate?: string }) {
+  return apiGet<DeptOverviewResponse>('/v2/dept-tree/overview', { ...params })
 }
 
 // 部门成员（dept-sync 花名册 + 看板 V2 指标，按 universal_id 左连）。无看板数据的成员也返回。

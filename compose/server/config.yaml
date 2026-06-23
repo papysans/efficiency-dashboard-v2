@@ -36,8 +36,9 @@ task_real_minutes:
 dept_sync:
   base_url: ""
   query_key: ""
-  # 组织树单根公司：/department/tree 返回的是含脏数据孤儿部门的森林，后端据此重建为单根子树。
-  # 默认按名字匹配 "深信服科技股份有限公司"；若内网公司根 dept_id 已知，填 root_dept_id 更稳（优先级高于名字）。
+  # 组织树根筛选（需求1）：/department/tree 返回含脏数据孤儿部门的森林。
+  #   - 配 root_dept_id（优先）或 root_dept_name → 以该节点为唯一根，重建单根子树，过滤孤儿部门。
+  #   - 两者都留空/注释掉 → 展示全部数据（多根森林，含孤儿部门），不再硬编码兜底某公司名。
   root_dept_name: "深信服科技股份有限公司"
   # root_dept_id: ""
 

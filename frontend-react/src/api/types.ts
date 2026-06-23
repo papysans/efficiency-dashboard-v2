@@ -526,6 +526,25 @@ export interface DeptTreeNode {
   children: DeptTreeNode[]
 }
 
+/** /v2/dept-tree/overview 节点：树结构 + 本节点整棵子树守恒提效汇总（一次性返回，替代逐节点 ranking N+1）。 */
+export interface DeptTreeNodeWithSummary {
+  dept_id: string
+  dept_name: string
+  parent_dept_id: string
+  dept_path: string
+  dept_level: number
+  order_num: number
+  child_dept_count: number
+  status: number
+  summary: DeptMembersSummary
+  children: DeptTreeNodeWithSummary[]
+}
+
+/** /v2/dept-tree/overview 顶层响应：森林（多根）+ 每节点子树守恒汇总。 */
+export interface DeptOverviewResponse {
+  nodes: DeptTreeNodeWithSummary[]
+}
+
 /** /v2/dept-tree/members 一名成员：dept-sync 花名册 + 左连看板 V2 指标（按 universal_id）。 */
 export interface DeptMember {
   universal_id: string

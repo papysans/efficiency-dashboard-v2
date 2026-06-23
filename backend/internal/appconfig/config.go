@@ -42,12 +42,10 @@ type DeptSyncConfig struct {
 	QueryKey string `yaml:"query_key"` // 数据接口鉴权头 X-Query-Key 的值
 	// RootDeptId 单根公司的 dept_id（优先级最高）。配置后组织树以该节点为唯一根，过滤掉 parent 链断裂的脏数据孤儿部门。
 	RootDeptId string `yaml:"root_dept_id"`
-	// RootDeptName 单根公司名（RootDeptId 未配置时按名字匹配根节点）。默认 "深信服科技股份有限公司"。
+	// RootDeptName 单根公司名（RootDeptId 未配置时按名字匹配根节点）。
+	// 需求1：root_dept_id / root_dept_name 都留空 = 展示全部数据（多根森林），不再硬编码兜底某公司名。
 	RootDeptName string `yaml:"root_dept_name"`
 }
-
-// DefaultRootDeptName 组织树单根公司默认名（dept-sync /department/tree 返回森林时据此找真正的公司根）。
-const DefaultRootDeptName = "深信服科技股份有限公司"
 
 // ChatStatsConfig chat-indicator-statistics 平台客观指标服务对接配置（chat 代理 handler 使用）。
 // base_url 不含路由前缀（/chat-indicator-statistics/api/v1 由代理层拼接）；空 = 功能关闭，
@@ -80,7 +78,6 @@ func loadConfig(path string) (*Config, error) {
 	// 初值块就给默认，确保 ReadFile 失败的早返回路径也拿到非零速率（0 会让派生 ancient 全部静默消失）
 	cfg.CommitMinutesPerLine = 480.0 / float64(DefaultTraditionalDevLinesPerDay)
 	cfg.CostPerPersonDay = DefaultCostPerPersonDay
-	cfg.DeptSync.RootDeptName = DefaultRootDeptName
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -89,10 +86,7 @@ func loadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return &cfg, fmt.Errorf("解析 config.yaml 失败: %w", err)
 	}
-	// 配置未显式给 root_dept_name 时回落默认，避免 yaml 把空键覆成空串。
-	if strings.TrimSpace(cfg.DeptSync.RootDeptName) == "" {
-		cfg.DeptSync.RootDeptName = DefaultRootDeptName
-	}
+	// 需求1：不再回落硬编码默认根名；root_dept_id/root_dept_name 都留空即「展示全部数据」（多根森林）。
 	cfg.DashboardTitlePrefix = strings.TrimSpace(cfg.DashboardTitlePrefix)
 	if cfg.TraditionalDevLinesPerDay <= 0 {
 		cfg.TraditionalDevLinesPerDay = DefaultTraditionalDevLinesPerDay

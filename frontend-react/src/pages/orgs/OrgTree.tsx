@@ -1,11 +1,11 @@
-// 组织树页：左树来自 dept-sync 权威全量树（/v2/dept-tree），客户端懒渲染（只渲染展开分支，
-// 5334 节点不一次性全渲染 DOM）；点部门 → 右侧 DeptMembersPanel 调 /v2/dept-tree/members 拿该部门
-// 直属成员花名册（按 universal_id 左连看板 V2 指标，无看板数据的成员也列出）。
+// 组织树页：左树来自 /v2/dept-tree/overview —— 一次性返回整棵森林（多根，需求1 留空展示全部）+ 每节点整棵子树
+// 守恒提效汇总，替代旧版逐展开节点各调一次 /ranking 的 N+1（曾打爆浏览器并发 → ERR_INSUFFICIENT_RESOURCES）。
+// 客户端懒渲染（只渲染展开分支的 DOM）；点部门 → 右侧 DeptMembersPanel 拉该部门子树花名册（虚拟化）。
 // 选中 dept_id + 日期同步 URL query。
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { useDeptTree, useDeptRanking } from '@/api/queries'
-import type { DeptMembersSummary, DeptTreeNode } from '@/api/types'
+import { useDeptOverview } from '@/api/queries'
+import type { DeptTreeNodeWithSummary } from '@/api/types'
 import { useViewState } from '@/store/viewState'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { glossaryTip } from '@/lib/glossary'
@@ -19,7 +19,7 @@ function formatRatioText(value: number | null | undefined): string {
 
 // 初始态：第一层全部展开、第二层全部闭合。
 // 单根（公司根节点）时展开根 + 根的直接子部门；多根（森林）时展开所有顶层部门。
-function initialExpandedIds(nodes: DeptTreeNode[]): string[] {
+function initialExpandedIds(nodes: DeptTreeNodeWithSummary[]): string[] {
   const ids: string[] = []
   let firstLevel = nodes
   if (nodes.length === 1 && nodes[0].children?.length) {
@@ -31,7 +31,7 @@ function initialExpandedIds(nodes: DeptTreeNode[]): string[] {
 }
 
 // 在树中按 dept_id 找节点（用于选中态标题展示）。
-function findNodeById(nodes: DeptTreeNode[], deptId: string): DeptTreeNode | undefined {
+function findNodeById(nodes: DeptTreeNodeWithSummary[], deptId: string): DeptTreeNodeWithSummary | undefined {
   for (const n of nodes) {
     if (n.dept_id === deptId) return n
     if (n.children?.length) {
@@ -43,44 +43,27 @@ function findNodeById(nodes: DeptTreeNode[], deptId: string): DeptTreeNode | und
 }
 
 interface TreeNodeProps {
-  node: DeptTreeNode
+  node: DeptTreeNodeWithSummary
   depth: number
   selectedId: string
   expanded: Set<string>
   onToggle: (id: string) => void
   onSelect: (id: string) => void
-  // 本节点整棵子树的守恒提效汇总（来自父级 dept-ranking 一次聚合，按 dept_id 关联）。
-  effSummary?: DeptMembersSummary
-  // 全局时间范围，向下传给子节点的 ranking 取数。
-  timeRange: [string, string]
 }
 
-function TreeNode({ node, depth, selectedId, expanded, onToggle, onSelect, effSummary, timeRange }: TreeNodeProps) {
-  // dept-sync child_dept_count 标识有子部门；children 已嵌套在树里，懒渲染只看 isOpen。
+// React.memo：OrgTree 因背景重取/无关状态变化重渲染时，props 引用未变的可见节点跳过协调（治 C 重渲染）。
+const TreeNode = memo(function TreeNode({ node, depth, selectedId, expanded, onToggle, onSelect }: TreeNodeProps) {
+  // child_dept_count 标识有子部门；children 已嵌套在树里，懒渲染只看 isOpen。
   const hasChildren = (node.children && node.children.length > 0) || node.child_dept_count > 0
   const isOpen = expanded.has(node.dept_id)
   const isSelected = selectedId === node.dept_id
 
-  // 懒取数：仅当本节点展开且有子部门时，拉一次 dept-ranking 拿到「各直接子部门整棵子树」的守恒提效汇总，
-  // 按 dept_id 关联后透传给子节点（5min 缓存；逐展开父节点各拉一次，替代逐部门 N× 调用）。
-  const childRankingQ = useDeptRanking(
-    isOpen && hasChildren
-      ? { parentDeptId: node.dept_id, startDate: timeRange[0], endDate: timeRange[1] }
-      : { parentDeptId: undefined, startDate: undefined, endDate: undefined },
-  )
-  const childSummaryById = useMemo(() => {
-    const map = new Map<string, DeptMembersSummary>()
-    if (isOpen && hasChildren) {
-      for (const it of childRankingQ.data?.items ?? []) map.set(it.dept_id, it.summary)
-    }
-    return map
-  }, [isOpen, hasChildren, childRankingQ.data])
-
-  const ratio = effSummary?.calendar_ratio
-  // 守恒口径提示：日历提效比为子树 Σbaseline/Σactual 加权汇总（dept-ranking 后端聚合），含合并需求数。
+  // 本节点整棵子树守恒提效汇总，直接来自 overview 一次性返回（不再逐节点取数）。
+  const summary = node.summary
+  const ratio = summary?.calendar_ratio
   const effTitle =
-    effSummary != null
-      ? `日历提效比 ${formatRatioText(ratio)} · 合并需求 ${effSummary.merged_need_count} · 计入成员 ${effSummary.kanban_member_count}（整棵子树守恒汇总）`
+    summary != null
+      ? `日历提效比 ${formatRatioText(ratio)} · 合并需求 ${summary.merged_need_count} · 计入成员 ${summary.kanban_member_count}（整棵子树守恒汇总）`
       : '部门提效（守恒口径，整棵子树汇总）'
 
   return (
@@ -117,7 +100,7 @@ function TreeNode({ node, depth, selectedId, expanded, onToggle, onSelect, effSu
         >
           <span className="truncate" title={node.dept_name}>{node.dept_name}</span>
           <span className="shrink-0 flex items-center gap-1.5">
-            {/* 部门提效（守恒口径：整棵子树 Σbaseline/Σactual 加权，来自 dept-ranking）。无数据/服务不可达时不显示。 */}
+            {/* 部门提效（守恒口径：整棵子树 Σbaseline/Σactual 加权，来自 overview）。无数据时不显示。 */}
             {ratio != null && (
               <span title={effTitle}>
                 <RatioPill value={ratio} />
@@ -143,42 +126,22 @@ function TreeNode({ node, depth, selectedId, expanded, onToggle, onSelect, effSu
               expanded={expanded}
               onToggle={onToggle}
               onSelect={onSelect}
-              effSummary={childSummaryById.get(ch.dept_id)}
-              timeRange={timeRange}
             />
           ))}
         </ul>
       ) : null}
     </li>
   )
-}
+})
 
 export default function OrgTree() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { data: tree, isLoading, error } = useDeptTree()
   // 全局时间范围（顶部统一 DateRangePicker）——本页不再有自己的日期 picker/state。
   const { timeRange } = useViewState()
 
-  const nodes: DeptTreeNode[] = useMemo(() => tree || [], [tree])
-
-  // 顶层节点（树根/森林）的守恒提效汇总：dept-ranking parent_dept_id 传空 = 后端配置根的各直接子部门一次聚合。
-  // ⚠️ ranking 端点代理远程 dept-sync，本地 eval 环境不可达 → 优雅降级（无 pill，不报错，不阻塞树渲染）。
-  const rootRankingQ = useDeptRanking({ parentDeptId: undefined, startDate: timeRange[0], endDate: timeRange[1] })
-  const rootSummaryById = useMemo(() => {
-    const map = new Map<string, DeptMembersSummary>()
-    for (const it of rootRankingQ.data?.items ?? []) map.set(it.dept_id, it.summary)
-    return map
-  }, [rootRankingQ.data])
-
-  // 公司根节点（单根树）的守恒提效汇总：根的 dept_id 不在 rootRankingQ.items（那是根的子部门）里，
-  // 故单独按 parentDeptId=根 拉一次，取后端 self（整棵子树含直属根本级 Σbaseline/Σactual 守恒汇总）挂到根节点。
-  const singleRootId = nodes.length === 1 ? nodes[0].dept_id : undefined
-  const rootSelfRankingQ = useDeptRanking(
-    singleRootId
-      ? { parentDeptId: singleRootId, startDate: timeRange[0], endDate: timeRange[1] }
-      : { parentDeptId: undefined, startDate: undefined, endDate: undefined },
-  )
-  const rootSelfSummary = singleRootId ? rootSelfRankingQ.data?.self ?? undefined : undefined
+  // 一次取数：整棵森林 + 每节点子树守恒提效汇总（替代逐节点 ranking N+1）。后端 ParseAPIDate 兼容带横杠格式。
+  const { data, isLoading, error } = useDeptOverview({ startDate: timeRange[0], endDate: timeRange[1] })
+  const nodes: DeptTreeNodeWithSummary[] = useMemo(() => data?.nodes || [], [data])
 
   // 部门选中：壳的对象选择器写 ?object=（聚焦），树点选写 ?dept_id=（探索）；两者皆视为选中（object 优先）。
   const selectedId = searchParams.get('object') || searchParams.get('dept_id') || ''
@@ -222,7 +185,7 @@ export default function OrgTree() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           左树为 dept-sync 权威部门树，每个部门右侧
           <span className="cursor-help underline decoration-dotted underline-offset-2" title={glossaryTip('dept_efficiency')}>日历提效比</span>
-          为整棵子树守恒口径汇总（Σbaseline/Σactual 加权）；点部门查看其直属成员花名册（按 universal_id 对到看板指标，无活动成员也列出）。提效汇总需 dept-sync 服务连通，不可达时不影响树浏览。
+          为整棵子树守恒口径汇总（Σbaseline/Σactual 加权）；点部门查看其直属成员花名册（按 universal_id 对到看板指标，无活动成员也列出）。
         </p>
       </header>
 
@@ -256,9 +219,6 @@ export default function OrgTree() {
                     expanded={expanded}
                     onToggle={toggle}
                     onSelect={select}
-                    // 单根公司节点用 self 守恒 rollup（dept-ranking 该根 self）；森林/无 self 时回落原 items 映射。
-                    effSummary={(singleRootId === n.dept_id ? rootSelfSummary : undefined) ?? rootSummaryById.get(n.dept_id)}
-                    timeRange={timeRange}
                   />
                 ))}
               </ul>

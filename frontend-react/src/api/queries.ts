@@ -9,6 +9,7 @@ import {
   getDashboardSummary,
   getDashboardTrends,
   getGlobalConfig,
+  getDeptOverviewV2,
   getDeptRankingV2,
   getDeptTreeTrendV2,
   getDeptTreeV2,
@@ -204,10 +205,21 @@ export function useDeptTree() {
 }
 
 /** 部门排行（一次聚合）：parentDeptId 的各直接子部门整棵子树汇总，供首页部门 PK 一次性消费。 */
-export function useDeptRanking(params: { parentDeptId?: string; startDate?: string; endDate?: string }) {
+export function useDeptRanking(params: { parentDeptId?: string; startDate?: string; endDate?: string }, enabled = true) {
   return useQuery({
     queryKey: ['dept-ranking', params],
     queryFn: () => getDeptRankingV2(params),
+    staleTime: 5 * 60_000,
+    enabled,
+  })
+}
+
+/** 组织树总览（整棵森林 + 每节点子树守恒提效汇总，一次性返回）：组织树页一次取数，替代逐节点 ranking N+1。
+ *  含日期窗（提效随窗变）；5min 缓存。 */
+export function useDeptOverview(params: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ['dept-overview', params],
+    queryFn: () => getDeptOverviewV2(params),
     staleTime: 5 * 60_000,
   })
 }

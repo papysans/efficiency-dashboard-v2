@@ -146,6 +146,7 @@ func main() {
 
 		// 组织树（dept-sync 权威全量树 + API 懒加载，代理 dept-sync /department/*）
 		v2.GET("/dept-tree", getDeptTreeV2)
+		v2.GET("/dept-tree/overview", getDeptOverviewV2)
 		v2.GET("/dept-tree/members", getDeptTreeMembersV2)
 		v2.GET("/dept-tree/ranking", getDeptRankingV2)
 		v2.GET("/dept-tree/trend", getDeptTreeTrendV2)

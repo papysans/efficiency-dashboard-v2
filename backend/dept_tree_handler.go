@@ -122,6 +122,26 @@ type DeptRankingResponse struct {
 	Items        []DeptRankingItem   `json:"items"`
 }
 
+// DeptTreeNodeWithSummary /api/v2/dept-tree/overview 节点：树结构 + 本节点整棵子树守恒提效汇总
+// （一次性返回，替代前端组织树逐展开节点 N× 调 /ranking 的 N+1）。
+type DeptTreeNodeWithSummary struct {
+	DeptId         string                    `json:"dept_id"`
+	DeptName       string                    `json:"dept_name"`
+	ParentDeptId   string                    `json:"parent_dept_id"`
+	DeptPath       string                    `json:"dept_path"`
+	DeptLevel      int                       `json:"dept_level"`
+	OrderNum       int                       `json:"order_num"`
+	ChildDeptCount int                       `json:"child_dept_count"`
+	Status         int                       `json:"status"`
+	Summary        DeptMembersSummary        `json:"summary"`
+	Children       []DeptTreeNodeWithSummary `json:"children"`
+}
+
+// DeptOverviewResponse /api/v2/dept-tree/overview 顶层响应：森林（多根）+ 每节点子树守恒汇总。
+type DeptOverviewResponse struct {
+	Nodes []DeptTreeNodeWithSummary `json:"nodes"`
+}
+
 // deptSyncGet 调 dept-sync 数据接口（带 X-Query-Key），解析统一包到 out。
 // 照搬 kbcli/cmd_import_dept.go 的同名实现（backend 不依赖 kbcli 包，故各自一份）。
 func deptSyncGet(baseURL, queryKey, path string, out interface{}) error {
@@ -170,23 +190,22 @@ func getDeptTreeV2(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
 		return
 	}
-	var resp deptSyncTreeResp
-	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/tree", &resp); err != nil {
+	tree, err := cachedRebuiltDeptTree(baseURL, appconfig.Cfg.DeptSync.QueryKey)
+	if err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
 		return
 	}
-	if resp.Data == nil {
-		resp.Data = []DeptTreeNode{}
-	}
-	c.JSON(http.StatusOK, rebuildSingleRootTree(resp.Data))
+	c.JSON(http.StatusOK, tree)
 }
 
-// rebuildSingleRootTree 把 dept-sync /department/tree 的森林重建成单根公司子树。
+// rebuildSingleRootTree 把 dept-sync /department/tree 的森林重建成嵌套树。
 // 步骤：①递归拍平拿全部节点（去重，children 嵌得对不对都先扁平化）；
 // ②按 parent_dept_id 建邻接（parent → []child），child 按 order_num 再 dept_id 排序；
-// ③找根：优先 cfg.DeptSync.RootDeptId，否则按 RootDeptName 匹配 dept_name；
-// ④从根 dept_id 递归重建嵌套树，返回 [根节点]。
-// 兜底：找不到根（id/name 都没命中）→ logWarn 并退回原始 data（全部透传），不让页面空白。
+// ③按配置找根：RootDeptId 命中 → 该 ID；否则 RootDeptName 命中 → 该名；都留空/未命中 → 不指定根；
+// ④嵌套树构建器；⑤配置命中 → 单根子树 [root]（过滤 parent 链断裂的孤儿脏数据）；
+//   留空 → 全森林（所有「parent 空/悬挂」的顶层根各建一棵，按 order_num 排）。
+// 语义（需求1）：root_dept_id/root_dept_name 都留空 = 展示全部数据（多根森林，含 dept-sync 孤儿部门）。
+// 兜底：连一个顶层根都判不出 → logWarn 退回原始 data 透传，不让页面空白。
 func rebuildSingleRootTree(forest []DeptTreeNode) []DeptTreeNode {
 	if len(forest) == 0 {
 		return []DeptTreeNode{}
@@ -228,7 +247,7 @@ func rebuildSingleRootTree(forest []DeptTreeNode) []DeptTreeNode {
 		})
 	}
 
-	// ③ 找根 dept_id。
+	// ③ 找配置指定的根 dept_id（仅看 RootDeptId / RootDeptName；都留空/未命中 → rootID 保持空，走全森林）。
 	rootID := ""
 	if cfgID := strings.TrimSpace(appconfig.Cfg.DeptSync.RootDeptId); cfgID != "" {
 		if _, ok := flat[cfgID]; ok {
@@ -236,26 +255,17 @@ func rebuildSingleRootTree(forest []DeptTreeNode) []DeptTreeNode {
 		}
 	}
 	if rootID == "" {
-		rootName := strings.TrimSpace(appconfig.Cfg.DeptSync.RootDeptName)
-		if rootName == "" {
-			rootName = appconfig.DefaultRootDeptName
-		}
-		for _, id := range order {
-			if flat[id].DeptName == rootName {
-				rootID = id
-				break
+		if rootName := strings.TrimSpace(appconfig.Cfg.DeptSync.RootDeptName); rootName != "" {
+			for _, id := range order {
+				if flat[id].DeptName == rootName {
+					rootID = id
+					break
+				}
 			}
 		}
 	}
 
-	// ⑤ 兜底：找不到根 → 退回原始 data（全部透传）。
-	if rootID == "" {
-		log.Printf("[WARN] dept-tree 单根重建失败：未按 root_dept_id(%q)/root_dept_name(%q) 找到根节点，退回原始森林透传",
-			appconfig.Cfg.DeptSync.RootDeptId, appconfig.Cfg.DeptSync.RootDeptName)
-		return forest
-	}
-
-	// ④ 从根递归重建嵌套树（用邻接表把 parent 链够得到根的节点挂回；child_dept_count 用实际子节点数）。
+	// ④ 嵌套树构建器（用邻接表把 parent 链够得到根的节点挂回；child_dept_count 用实际子节点数）。
 	var build func(id string) DeptTreeNode
 	build = func(id string) DeptTreeNode {
 		n := flat[id]
@@ -267,7 +277,39 @@ func rebuildSingleRootTree(forest []DeptTreeNode) []DeptTreeNode {
 		n.ChildDeptCount = len(kids)
 		return n
 	}
-	return []DeptTreeNode{build(rootID)}
+
+	// ⑤ 配置命中 → 单根子树 [root]（过滤孤儿脏数据）。
+	if rootID != "" {
+		return []DeptTreeNode{build(rootID)}
+	}
+
+	// ⑤' 留空 → 全森林：收集所有「parent 空/悬挂（父不在表内）」的顶层根，各建一棵，按 order_num→dept_id 排序。
+	// 取舍：dept-sync /tree 含 parent 链断裂的孤儿脏数据，留空态会把它们也作为根列出（即「展示全部数据」）；
+	// 要过滤孤儿请配置 root_dept_id / root_dept_name 锁单根。
+	roots := make([]string, 0)
+	for _, id := range order {
+		p := strings.TrimSpace(flat[id].ParentDeptId)
+		if _, parentExists := flat[p]; p == "" || !parentExists {
+			roots = append(roots, id)
+		}
+	}
+	if len(roots) == 0 {
+		log.Printf("[WARN] dept-tree 重建未找到任何顶层根（root_dept_id=%q/root_dept_name=%q 均未命中且无悬挂根），退回原始森林透传",
+			appconfig.Cfg.DeptSync.RootDeptId, appconfig.Cfg.DeptSync.RootDeptName)
+		return forest
+	}
+	sort.SliceStable(roots, func(i, j int) bool {
+		a, b := flat[roots[i]], flat[roots[j]]
+		if a.OrderNum != b.OrderNum {
+			return a.OrderNum < b.OrderNum
+		}
+		return a.DeptId < b.DeptId
+	})
+	out := make([]DeptTreeNode, 0, len(roots))
+	for _, id := range roots {
+		out = append(out, build(id))
+	}
+	return out
 }
 
 // getDeptTreeMembersV2 GET /api/v2/dept-tree/members?dept_id=&startDate=&endDate=
@@ -299,10 +341,8 @@ func getDeptTreeMembersV2(c *gin.Context) {
 		return
 	}
 
-	// 2. 拉看板全量 V2 指标，按 user_id 建 map（user_id == universal_id）。
-	startDate := c.Query("startDate")
-	endDate := c.Query("endDate")
-	v2rows, err := aggregateUsersV2(startDate, endDate, "")
+	// 2. 拉看板全量 V2 指标，按 user_id 建 map（user_id == universal_id）。走窗口缓存（同页多次复用一次聚合）。
+	v2rows, err := cachedAggregateUsersV2(c.Query("startDate"), c.Query("endDate"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "聚合看板 V2 指标失败: " + err.Error()})
 		return
@@ -430,19 +470,26 @@ func getDeptRankingV2(c *gin.Context) {
 		return
 	}
 
-	// 1. 取单根嵌套部门树（复用 getDeptTreeV2 的 /department/tree + rebuildSingleRootTree）。
-	var treeResp deptSyncTreeResp
-	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/tree", &treeResp); err != nil {
+	// 1. 取单根嵌套部门树（缓存）。
+	tree, err := cachedRebuiltDeptTree(baseURL, appconfig.Cfg.DeptSync.QueryKey)
+	if err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
 		return
 	}
-	if treeResp.Data == nil {
-		treeResp.Data = []DeptTreeNode{}
+
+	// 全森林顶层排行（需求1 留空多根态）：parent 空且非单根 → 森林各根作为 items，self = 全森林守恒汇总。
+	parentDeptID := strings.TrimSpace(c.Query("parent_dept_id"))
+	if parentDeptID == "" && len(tree) != 1 {
+		resp, ferr := deptRankingForForest(baseURL, c.Query("startDate"), c.Query("endDate"), tree)
+		if ferr != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "获取部门排行失败: " + ferr.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, resp)
+		return
 	}
-	tree := rebuildSingleRootTree(treeResp.Data)
 
 	// 定位 parent 节点：空 → 取单根；否则按 dept_id DFS 查。
-	parentDeptID := strings.TrimSpace(c.Query("parent_dept_id"))
 	var parent *DeptTreeNode
 	if parentDeptID == "" {
 		if len(tree) > 0 {
@@ -482,10 +529,8 @@ func getDeptRankingV2(c *gin.Context) {
 		return
 	}
 
-	// 4. 只调一次 aggregateUsersV2，建 rowByUser map（user_id == universal_id）。
-	startDate := c.Query("startDate")
-	endDate := c.Query("endDate")
-	v2rows, err := aggregateUsersV2(startDate, endDate, "")
+	// 4. 只调一次 aggregateUsersV2（窗口缓存），建 rowByUser map（user_id == universal_id）。
+	v2rows, err := cachedAggregateUsersV2(c.Query("startDate"), c.Query("endDate"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "聚合看板 V2 指标失败: " + err.Error()})
 		return
@@ -577,6 +622,200 @@ func getDeptRankingV2(c *gin.Context) {
 	c.JSON(http.StatusOK, DeptRankingResponse{ParentDeptId: parentDeptID, Self: &self, Items: items})
 }
 
+// ───────────────────────────── Overview（整棵森林 + 每节点子树守恒汇总，一次性返回） ─────────────────────────────
+
+// deptBucketAccum 部门桶累加器：summary + 提效比/AI占比守恒重算所需的工作量/LOC 中间量（口径同 getDeptRankingV2 内联桶）。
+type deptBucketAccum struct {
+	summary           DeptMembersSummary
+	totalActualWork   float64
+	totalBaselineWork float64
+	totalAICoveredLoc int64
+	totalLocNet       int64
+}
+
+// accumulate 把一名命中看板数据的成员指标累加进桶（口径与 members/ranking 累加完全一致）。
+func (a *deptBucketAccum) accumulate(row UserV2Row) {
+	a.summary.KanbanMemberCount++
+	a.summary.MergedNeedCount += row.MergedNeedCount
+	a.summary.ActualCalendarMin += row.ActualCalendarMin
+	a.summary.BaselineCalendarMin += row.BaselineCalendarMin
+	a.summary.CommitCount += row.CommitCount
+	a.summary.CommitDiffLines += row.CommitDiffLines
+	a.summary.Cost += row.Cost
+	a.totalActualWork += row.ActualWorkMin
+	a.totalBaselineWork += row.BaselineWorkMin
+	a.totalAICoveredLoc += row.aiCoveredLoc
+	a.totalLocNet += row.totalLocNet
+}
+
+// merge 把另一桶 b 的全部原始量并入 a（子树/森林汇总用）；不并 ratio 指针（finalize 由并完原始量守恒重算）。
+func (a *deptBucketAccum) merge(b *deptBucketAccum) {
+	a.summary.MemberCount += b.summary.MemberCount
+	a.summary.KanbanMemberCount += b.summary.KanbanMemberCount
+	a.summary.MergedNeedCount += b.summary.MergedNeedCount
+	a.summary.ActualCalendarMin += b.summary.ActualCalendarMin
+	a.summary.BaselineCalendarMin += b.summary.BaselineCalendarMin
+	a.summary.CommitCount += b.summary.CommitCount
+	a.summary.CommitDiffLines += b.summary.CommitDiffLines
+	a.summary.Cost += b.summary.Cost
+	a.totalActualWork += b.totalActualWork
+	a.totalBaselineWork += b.totalBaselineWork
+	a.totalAICoveredLoc += b.totalAICoveredLoc
+	a.totalLocNet += b.totalLocNet
+}
+
+// finalize 守恒重算各比值（小数口径，与 members/ranking 一致）。
+func (a *deptBucketAccum) finalize() {
+	a.summary.CalendarRatio = efficiencyV2Ratio(a.summary.BaselineCalendarMin, a.summary.ActualCalendarMin)
+	a.summary.WorkRatio = efficiencyV2Ratio(a.totalBaselineWork, a.totalActualWork)
+	a.summary.AICodeRatio = calcNeedAICodeRatio(a.totalAICoveredLoc, a.totalLocNet)
+}
+
+// computeDeptSubtreeAccums 一次遍历算出森林中【每个 dept 节点整棵子树】的守恒累加器（ratio 已 finalize）。
+// ① 按成员直属 dept_id 归「直接桶」（universal_id 命中看板指标即累加，未命中仍计 MemberCount）；
+// ② 后序 DFS：节点子树累加器 = 自身直接桶 + Σ 子节点子树；③ 末了 finalize。口径与 members/ranking 完全一致。
+func computeDeptSubtreeAccums(tree []DeptTreeNode, members []deptSyncMemberNode, rowByUser map[string]UserV2Row) map[string]*deptBucketAccum {
+	direct := make(map[string]*deptBucketAccum)
+	getDirect := func(id string) *deptBucketAccum {
+		a := direct[id]
+		if a == nil {
+			a = &deptBucketAccum{summary: DeptMembersSummary{DeptId: id}}
+			direct[id] = a
+		}
+		return a
+	}
+	for _, src := range members {
+		a := getDirect(src.DeptId)
+		a.summary.MemberCount++
+		if src.UniversalId != "" {
+			if row, ok := rowByUser[src.UniversalId]; ok {
+				a.accumulate(row)
+			}
+		}
+	}
+	subtree := make(map[string]*deptBucketAccum)
+	var walk func(n DeptTreeNode) *deptBucketAccum
+	walk = func(n DeptTreeNode) *deptBucketAccum {
+		acc := &deptBucketAccum{summary: DeptMembersSummary{DeptId: n.DeptId}}
+		if d, ok := direct[n.DeptId]; ok {
+			acc.merge(d)
+		}
+		for _, ch := range n.Children {
+			acc.merge(walk(ch))
+		}
+		acc.finalize()
+		subtree[n.DeptId] = acc
+		return acc
+	}
+	for i := range tree {
+		walk(tree[i])
+	}
+	return subtree
+}
+
+// getDeptOverviewV2 GET /api/v2/dept-tree/overview?startDate=&endDate=
+// 一次性返回整棵森林 + 每节点整棵子树守恒提效汇总，替代前端组织树逐展开节点 N× 调 /ranking（N+1 → 1）。
+// 输入全走进程内短缓存（树/全员花名册/aggregateUsersV2），重计算只在 TTL 过期后首次发生。
+func getDeptOverviewV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	baseURL, err := deptSyncConfigured()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
+		return
+	}
+	tree, err := cachedRebuiltDeptTree(baseURL, appconfig.Cfg.DeptSync.QueryKey)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
+		return
+	}
+	if len(tree) == 0 {
+		c.JSON(http.StatusOK, DeptOverviewResponse{Nodes: []DeptTreeNodeWithSummary{}})
+		return
+	}
+	members, err := cachedAllDeptMembers(baseURL, appconfig.Cfg.DeptSync.QueryKey, tree)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + err.Error()})
+		return
+	}
+	v2rows, err := cachedAggregateUsersV2(c.Query("startDate"), c.Query("endDate"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "聚合看板 V2 指标失败: " + err.Error()})
+		return
+	}
+	rowByUser := make(map[string]UserV2Row, len(v2rows))
+	for _, r := range v2rows {
+		rowByUser[r.UserId] = r
+	}
+
+	accs := computeDeptSubtreeAccums(tree, members, rowByUser)
+
+	var attach func(n DeptTreeNode) DeptTreeNodeWithSummary
+	attach = func(n DeptTreeNode) DeptTreeNodeWithSummary {
+		out := DeptTreeNodeWithSummary{
+			DeptId:         n.DeptId,
+			DeptName:       n.DeptName,
+			ParentDeptId:   n.ParentDeptId,
+			DeptPath:       n.DeptPath,
+			DeptLevel:      n.DeptLevel,
+			OrderNum:       n.OrderNum,
+			ChildDeptCount: n.ChildDeptCount,
+			Status:         n.Status,
+			Summary:        DeptMembersSummary{DeptId: n.DeptId},
+			Children:       make([]DeptTreeNodeWithSummary, 0, len(n.Children)),
+		}
+		if a, ok := accs[n.DeptId]; ok {
+			out.Summary = a.summary
+		}
+		for _, ch := range n.Children {
+			out.Children = append(out.Children, attach(ch))
+		}
+		return out
+	}
+	nodes := make([]DeptTreeNodeWithSummary, 0, len(tree))
+	for i := range tree {
+		nodes = append(nodes, attach(tree[i]))
+	}
+	c.JSON(http.StatusOK, DeptOverviewResponse{Nodes: nodes})
+}
+
+// deptRankingForForest 全森林顶层排行（需求1 留空多根态）：森林各根作为 items（各根整棵子树守恒汇总），
+// self = 全森林守恒汇总。复用 computeDeptSubtreeAccums 一次算全树。
+func deptRankingForForest(baseURL, startDate, endDate string, tree []DeptTreeNode) (DeptRankingResponse, error) {
+	res := DeptRankingResponse{ParentDeptId: "", Items: []DeptRankingItem{}}
+	members, err := cachedAllDeptMembers(baseURL, appconfig.Cfg.DeptSync.QueryKey, tree)
+	if err != nil {
+		return res, err
+	}
+	v2rows, err := cachedAggregateUsersV2(startDate, endDate)
+	if err != nil {
+		return res, err
+	}
+	rowByUser := make(map[string]UserV2Row, len(v2rows))
+	for _, r := range v2rows {
+		rowByUser[r.UserId] = r
+	}
+	accs := computeDeptSubtreeAccums(tree, members, rowByUser)
+	items := make([]DeptRankingItem, 0, len(tree))
+	self := &deptBucketAccum{summary: DeptMembersSummary{DeptId: ""}}
+	for i := range tree {
+		root := tree[i]
+		a, ok := accs[root.DeptId]
+		if !ok {
+			continue
+		}
+		items = append(items, DeptRankingItem{DeptId: root.DeptId, DeptName: root.DeptName, Summary: a.summary})
+		self.merge(a)
+	}
+	self.finalize()
+	s := self.summary
+	res.Self = &s
+	res.Items = items
+	return res, nil
+}
+
 // getDeptTreeTrendV2 GET /api/v2/dept-tree/trend?dept_id=&startDate=&endDate=
 // 返回该部门【整棵子树成员】按 ISO 周的趋势点数组，复用 repo_project_trend.go 的 EntityTrendPoint/EntityTrendResponse，
 // 同时给前端「效率」「贡献」两个占位用（efficiency_pct + need_count/commit_count/diff_lines）。
@@ -603,31 +842,36 @@ func getDeptTreeTrendV2(c *gin.Context) {
 		return
 	}
 
-	// dept_id 空 → 默认公司根（仿 getDeptRankingV2 空 parent 取单根），返回全公司整树周趋势（org 贡献聚合态用）。
+	// 收集目标成员花名册：dept_id 空 → 全公司（所有森林根并集，缓存；需求1 留空多根态也覆盖全部根）；
+	// 否则该部门整棵子树（HTTP include_children）。
 	deptID := strings.TrimSpace(c.Query("dept_id"))
+	var membersData []deptSyncMemberNode
 	if deptID == "" {
-		var treeResp deptSyncTreeResp
-		if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/tree", &treeResp); err != nil {
-			c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
+		tree, terr := cachedRebuiltDeptTree(baseURL, appconfig.Cfg.DeptSync.QueryKey)
+		if terr != nil {
+			c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + terr.Error()})
 			return
 		}
-		tree := rebuildSingleRootTree(treeResp.Data)
 		if len(tree) == 0 {
 			c.JSON(http.StatusOK, EntityTrendResponse{Data: []EntityTrendPoint{}})
 			return
 		}
-		deptID = tree[0].DeptId
+		membersData, terr = cachedAllDeptMembers(baseURL, appconfig.Cfg.DeptSync.QueryKey, tree)
+		if terr != nil {
+			c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + terr.Error()})
+			return
+		}
+	} else {
+		var membersResp deptSyncMembersResp
+		if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/"+deptID+"/users?include_children=true", &membersResp); err != nil {
+			c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + err.Error()})
+			return
+		}
+		membersData = membersResp.Data
 	}
-
-	// 1. 取该部门【整棵子树】成员花名册（include_children=true），拿 universal_id 列表（同 members/ranking 写法）。
-	var membersResp deptSyncMembersResp
-	if err := deptSyncGet(baseURL, appconfig.Cfg.DeptSync.QueryKey, "/department/"+deptID+"/users?include_children=true", &membersResp); err != nil {
-		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + err.Error()})
-		return
-	}
-	universalIDs := make([]string, 0, len(membersResp.Data))
-	seen := make(map[string]struct{}, len(membersResp.Data))
-	for _, src := range membersResp.Data {
+	universalIDs := make([]string, 0, len(membersData))
+	seen := make(map[string]struct{}, len(membersData))
+	for _, src := range membersData {
 		uid := strings.TrimSpace(src.UniversalId)
 		if uid == "" {
 			continue
