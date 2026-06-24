@@ -2,19 +2,29 @@
 # 也可用环境变量 COMPOSE_PROJECT_NAME 覆盖。
 name: efficiency-dashboard-v2
 
+# 容器 stdout/stderr 日志轮转：单容器封顶 max-size×max-file（10m×3=30MB），自动滚动覆盖，
+# 避免 import 等长跑命令的日志在宿主无限堆积撑爆磁盘。所有服务共用此策略。
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   server:
     extends:
       file: ./server/server.yml
       service: server
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
-  
+
   kbcli:
     extends:
       file: ./kbcli/kbcli.yml
       service: kbcli
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -23,6 +33,7 @@ services:
     extends:
       file: ./portal/portal.yml
       service: portal
+    logging: *default-logging
     depends_on:
       server:
         condition: service_started
@@ -31,6 +42,7 @@ services:
     extends:
       file: ./postgres/postgres.yml
       service: postgres
+    logging: *default-logging
 
   # 可选：平台客观指标服务（LLM 请求 token/成本/时延），server 的 /api/v2/chat/* 反代它。
   # 默认不启动（profile 开关）；启用：docker compose --profile chat-stats up -d
@@ -40,6 +52,7 @@ services:
       file: ./chat-stats/chat-stats.yml
       service: chat-stats
     profiles: ["chat-stats"]
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy

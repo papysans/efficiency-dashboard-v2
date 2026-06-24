@@ -193,7 +193,7 @@ func buildSessionRecord(ss *taskSession, sessionDate, conversationDate string) m
 	var err error
 	if ss.StartTime != "" {
 		if startTime, err = time.Parse(time.RFC3339, ss.StartTime); err != nil {
-			logx.Warnf("session [%s] 缺少start_time字段", ss.SessionId)
+			logx.Debugf("session [%s] start_time解析失败: %v", ss.SessionId, err)
 		}
 	}
 	return models.Session{
@@ -245,22 +245,23 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 	// 遍历所有对话，解析时间并累加指标；时间解析失败则跳过该对话并记录警告
 	for i, conv := range conversations {
 		conversations[i].RepoAddr = governance.SanitizeRepoAddr(conv.RepoAddr)
+		// per-conversation 数据质量(缺/坏时间字段)降为 Debug：逐条入盘是噪声,影响已体现在 session 级跳过/汇总。
 		if conv.StartTime == "" {
-			logx.Warnf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
+			logx.Debugf("conversation [%s-%s] 缺少start_time字段", ss.SessionId, conv.RequestId)
 			continue
 		}
 		if conv.EndTime == "" {
-			logx.Warnf("conversation [%s-%s] 缺少end_time字段", ss.SessionId, conv.RequestId)
+			logx.Debugf("conversation [%s-%s] 缺少end_time字段", ss.SessionId, conv.RequestId)
 			continue
 		}
 		_, err := time.Parse(time.RFC3339, conv.StartTime)
 		if err != nil {
-			logx.Warnf("conversation [%s-%s] start_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
+			logx.Debugf("conversation [%s-%s] start_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
 			continue
 		}
 		_, err = time.Parse(time.RFC3339, conv.EndTime)
 		if err != nil {
-			logx.Warnf("conversation [%s-%s] end_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
+			logx.Debugf("conversation [%s-%s] end_time字段解析错误: %v", ss.SessionId, conv.RequestId, err)
 			continue
 		}
 		if conv.Caller == "" {
@@ -688,7 +689,8 @@ func parseConversationReader(r io.Reader, name string) ([]taskConversation, erro
 					}
 				}
 			} else {
-				return nil, fmt.Errorf("第%d行JSON解析失败: %w, 内容: %s", lineNum, parseErr, line)
+				// 内容截断（与 parseConversation 同口径），避免整条对话 JSON(含完整 request/response_content,可达数KB)铺满日志。
+				return nil, fmt.Errorf("第%d行JSON解析失败: %w, 内容: %s", lineNum, parseErr, skeletonize(line, 40, 64))
 			}
 		}
 		if readErr != nil {

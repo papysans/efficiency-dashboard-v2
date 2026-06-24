@@ -40,7 +40,7 @@ func init() {
 	rootCmd.PersistentFlags().String("config", "", "配置文件路径")
 	rootCmd.PersistentFlags().String("console", "info", "控制台日志级别 (debug/info/warn/error)")
 	rootCmd.PersistentFlags().String("logfile", "", "日志文件路径")
-	rootCmd.PersistentFlags().String("loglevel", "debug", "日志文件级别 (debug/info/warn/error)")
+	rootCmd.PersistentFlags().String("loglevel", "info", "日志文件级别 (debug/info/warn/error)")
 }
 
 // Execute 执行根命令，供 main.go 调用

@@ -30,7 +30,7 @@ func parseLogLevel(s string) LogLevel {
 	case "error":
 		return LogError
 	default:
-		return LogDebug
+		return LogInfo // 未识别/空串兜底 Info（不默认最啰嗦的 Debug，避免误配灌爆日志）
 	}
 }
 
@@ -57,6 +57,14 @@ type Logger struct {
 }
 
 var logger *Logger
+
+// stdoutIsTTY 标记 stdout 是否为真实终端。非终端(Docker/管道/重定向到文件)时进度条不输出——
+// 进度用 \r\033[K 原地刷新，非 TTY 下会被当普通行逐条写入日志/容器 stdout，造成大量噪声 + 转义码污染。
+// 只在 TTY 给人看进度；入盘日志不含进度行。
+var stdoutIsTTY = func() bool {
+	fi, err := os.Stdout.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}()
 
 // Init 初始化全局 logger（原 InitLogger）。
 func Init(consoleLevelStr, logFile, fileLevelStr string) error {
@@ -141,9 +149,9 @@ func Promptf(format string, args ...interface{}) {
 	logger.prompt(fmt.Sprintf(format, args...))
 }
 
-// PromptProgress 进度点（进度条长度 linecnt，到末尾复位）。
+// PromptProgress 进度点（进度条长度 linecnt，到末尾复位）。仅 TTY 输出（非终端不写进度，避免入盘噪声）。
 func PromptProgress(cnt, linecnt int) {
-	if logger.consoleLevel < LogInfo {
+	if !stdoutIsTTY || logger.consoleLevel < LogInfo {
 		return
 	}
 	if linecnt < 2 {
@@ -155,9 +163,9 @@ func PromptProgress(cnt, linecnt int) {
 	}
 }
 
-// Progress 在同一行刷新 "label done/total (pct%)"，done>=total 时换行收尾。
+// Progress 在同一行刷新 "label done/total (pct%)"，done>=total 时换行收尾。仅 TTY 输出（非终端不写进度，避免入盘噪声）。
 func Progress(label string, done, total, step int) {
-	if logger.consoleLevel < LogInfo {
+	if !stdoutIsTTY || logger.consoleLevel < LogInfo {
 		return
 	}
 	if step < 1 {
