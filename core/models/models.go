@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type UserOrg struct {
@@ -315,7 +316,12 @@ type DeptUser struct {
 func (DeptUser) TableName() string { return "dept_user" }
 
 func OpenGormDB(dsn string) (*gorm.DB, error) {
-	db, err := gorm.Open(postgresOpener(dsn), &gorm.Config{})
+	// gorm logger 设 Silent：默认 logger(Warn 级)会把「慢 SQL >=200ms」连同完整绑定值打出来——
+	// 导入对话时 request/response_content 含粘贴图片的 base64,INSERT 又大又慢,会刷屏整条 SQL(含 base64)。
+	// DB 错误仍由各调用方检查返回的 err 并打简短「导入失败: <err>」日志,信息不丢、噪声不进盘。
+	db, err := gorm.Open(postgresOpener(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		return nil, err
 	}
