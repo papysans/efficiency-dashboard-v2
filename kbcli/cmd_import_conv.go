@@ -86,9 +86,6 @@ const (
 	importConvSessionSQLBatchSize   = 200
 	importConvConversationBatchSize = 100
 	importConvDBRetryMax            = 5
-	// maxStoredContentBytes 单个 content 字段(request/response_content/user_input)入库封顶字节数。
-	// 超大文本/代码 dump 截断到此,避免 conversations 表被撑爆;8KB 够前端 TaskDetail 展示一轮对话。
-	maxStoredContentBytes = 8192
 )
 
 // flexString 是一个灵活的字符串类型，用于兼容 JSON 中字段可能为字符串或数字的场景。
@@ -503,11 +500,13 @@ func makeConversationRecords(conversations []taskConversation) []models.Conversa
 			UpstreamTokens:   conv.UpstreamTokens,
 			DownstreamTokens: conv.DownstreamTokens,
 			Cost:             conv.Cost,
-			// 入库前瘦身：①剥离长 base64(粘贴图片/二进制) ②封顶 8KB(超大文本/代码 dump) ③清无效 UTF-8。
-			// 字符数 factor 用内存原值,口径不变;前端 TaskDetail 展开最多看到 8KB。
-			RequestContent:   utils.SanitizeText(utils.CapText(utils.StripLargeBase64(conv.RequestContent), maxStoredContentBytes)),
-			ResponseContent:  utils.SanitizeText(utils.CapText(utils.StripLargeBase64(conv.ResponseContent), maxStoredContentBytes)),
-			UserInput:        utils.SanitizeText(utils.CapText(utils.StripLargeBase64(conv.UserInput), maxStoredContentBytes)),
+			// 仅剥离长 base64(粘贴图片/二进制→占位符,保持 JSON 合法) + 清无效 UTF-8。
+			// ⚠️ 不硬截断:efficiency-v2 会从 DB 回读 request/response_content、解析其 JSON 提取工具事件
+			//   (event_kind/tool_name/command/touched_files);截断会让 ~26% 工具事件 JSON 解析失败退化 → stage/silica 降级。
+			//   体积治理走摄取层改造(事件抽取前移到导入+正文卸载,另立项),不在此截断正文。
+			RequestContent:   utils.SanitizeText(utils.StripLargeBase64(conv.RequestContent)),
+			ResponseContent:  utils.SanitizeText(utils.StripLargeBase64(conv.ResponseContent)),
+			UserInput:        utils.SanitizeText(utils.StripLargeBase64(conv.UserInput)),
 			DiffLines:        conv.DiffLines,
 			ErrorCode:        string(conv.ErrorCode),
 			ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),

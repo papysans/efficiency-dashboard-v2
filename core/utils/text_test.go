@@ -5,33 +5,6 @@ import (
 	"testing"
 )
 
-func TestCapText(t *testing.T) {
-	if got := CapText("short", 8192); got != "short" {
-		t.Errorf("短文本应原样, got %q", got)
-	}
-	long := strings.Repeat("a", 10000)
-	got := CapText(long, 8192)
-	if len(got) >= 10000 || !strings.Contains(got, "truncated") {
-		t.Errorf("超长应截断+标注, len=%d", len(got))
-	}
-	// rune 边界安全:全中文(每字 3 字节),封顶不应切碎产生非法 UTF-8
-	cn := strings.Repeat("中", 4000) // 12000 字节
-	capped := CapText(cn, 8192)
-	body := strings.SplitN(capped, "…[truncated", 2)[0]
-	if !utf8ValidString(body) {
-		t.Errorf("截断后正文应是合法 UTF-8(未切碎中文)")
-	}
-}
-
-func utf8ValidString(s string) bool {
-	for _, r := range s {
-		if r == '�' {
-			return false
-		}
-	}
-	return true
-}
-
 func TestStripLargeBase64(t *testing.T) {
 	b64 := strings.Repeat("A", 300) // 300 个连续 base64 字符(模拟图片 blob)
 

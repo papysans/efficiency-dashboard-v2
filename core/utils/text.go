@@ -54,21 +54,6 @@ func SanitizeText(s string) string {
 	return result
 }
 
-// CapText 把字符串按字节封顶到 maxBytes（超出则截断 + 标注原长）。在 rune 边界回退，避免切碎多字节字符。
-// 用途：conversation 的 request/response_content/user_input 偶有超大文本(完整 LLM 请求/响应/代码 dump,
-// 单条数百 KB~MB),存库会把表撑爆;封顶到 8KB 既够前端 TaskDetail 展示一轮对话,又把存储钉死。
-// 注意：仅影响入库;字符数 factor(ancient_minutes)用内存原值,口径不变。
-func CapText(s string, maxBytes int) string {
-	if maxBytes <= 0 || len(s) <= maxBytes {
-		return s
-	}
-	cut := maxBytes
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
-		cut-- // 回退到合法 rune 起始字节
-	}
-	return s[:cut] + fmt.Sprintf("…[truncated, 原 %d 字节]", len(s))
-}
-
 // RemoveWhitespace 移除字符串中的所有空白字符（空格、制表符、换行符、回车符）
 func RemoveWhitespace(s string) string {
 	return strings.Map(func(r rune) rune {
