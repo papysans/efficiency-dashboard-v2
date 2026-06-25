@@ -13,6 +13,31 @@ docker compose up -d server kbcli
 
 ---
 
+## 从 0 部署（全新环境 / 可清库重导，**推荐·已生产实证 2026-06-25**）
+新环境从零导入是最干净的卸载路径——正文从源头不进 DB（≈V3）。内网真环境实测：74 万对话 → `conversations.toast≈8KB`、整库 1.28GB、需求页正常。
+
+```bash
+# 注意：镜像无 ENTRYPOINT（zbc d8a7f2a 改 serve 时去掉），所有命令必须带 /app/bin/kbcli
+
+# 1. server 挂 analysed 卷（backend 读回 blob）：
+#    docker inspect $(docker compose ps -q kbcli) --format '{{range .Mounts}}{{if eq .Destination "/app/analysed"}}{{.Source}}{{end}}{{end}}'
+#    把输出的【绝对路径】加进 compose/server/server.yml 的 volumes：- <绝对路径>:/app/analysed:ro
+# 2. kbcli config.yaml 末尾加：content_offload:\n  enabled: true
+# 3. 清库（破坏性，靠 raw-dump 兜底）：
+docker compose stop kbcli server
+docker compose exec -e PGPASSWORD=1 postgres psql -U postgres -c "DROP DATABASE costrict_stat WITH (FORCE)"
+docker compose exec -e PGPASSWORD=1 postgres psql -U postgres -c "CREATE DATABASE costrict_stat"
+docker compose up -d --force-recreate server kbcli
+# 4. 🔴 从 0 导入【必须 --force】：清库不清 analysed/，旧 .silica.json 还在 →
+#    needUpdateConversations 判"已导过"全跳过，只导新 session（血泪坑：曾 369万→3266、需求页只剩3）
+docker compose run --rm kbcli /app/bin/kbcli import --config /app/config.yaml --force   # import=完整 pipeline（含 efficiency-v2）
+```
+> ⚠️ **分步跑的话**：`import-conv --force`（填对话表）之后**必须单独再跑 `efficiency-v2`**重建 events/stage/needs——只跑 import-conv 需求页不会变。
+> ✅ 验证：`conversations.toast≈0` + analysed 有 blob（≈对话数）+ events/needs 涨上来 + 前端「对话历史」正常。
+> ⏱ perf：内网 ext4 本地盘 ~157 对话/秒。盯 DB 行数会因「每批~6000条一次性事务提交」忽快忽慢，**看 blob 文件增速才准**（`find analysed/.../content -type f|wc -l`）。
+
+---
+
 ## 阶段 0 — 三个外部确认（裁旧/常态化前必备）
 1. **raw-dump 留存窗**（运维）：裁旧/卸列可逆性的唯一支点。
 2. **回看历史跨度**（口径负责人）：裁旧窗口下界，不能短于 episode 回看跨度。
