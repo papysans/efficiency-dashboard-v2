@@ -299,8 +299,8 @@ func assertEfficiencyV2Indexes(t *testing.T, db *sql.DB) {
 	expected := []expectedIndex{
 		{"conversation_events", "ux_conversation_events_logical", true, []string{"session_id", "request_id", "event_start_ts", "event_kind", "source", "COALESCE(tool_name"}},
 		{"conversation_events", "idx_conversation_events_session_start", false, []string{"session_id", "event_start_ts"}},
-		{"conversation_events", "idx_conversation_events_task_start", false, []string{"task_id", "event_start_ts"}},
-		{"conversation_events", "idx_conversation_events_source_quality", false, []string{"source", "parse_quality"}},
+		// WS-B 索引瘦身：task_start/source_quality 及 8 个单列二级索引已删，仅保留 event_start_ts（供保留删除）。
+		{"conversation_events", "idx_conversation_events_event_start_ts", false, []string{"event_start_ts"}},
 		{"session_stage_metrics", "idx_session_stage_metrics_user_start", false, []string{"user_id", "session_start_ts"}},
 		{"session_stage_metrics", "idx_session_stage_metrics_confidence", false, []string{"stage_confidence"}},
 		{"needs", "ux_needs_boundary_key", true, []string{"boundary_source", "boundary_key"}},

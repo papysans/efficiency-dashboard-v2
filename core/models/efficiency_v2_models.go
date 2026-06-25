@@ -62,25 +62,31 @@ func (j *ObjectJSON) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// 索引瘦身（WS-B）：conv_events 是 efficiency-v2 派生缓存，370万行级。实测查询只有
+// ① upsert(event_id PK + ux_logical 唯一约束去重) ② need_boundary 全表读(user_id NOT IN，不吃索引；
+// ORDER BY session_id,event_start_ts 走 idx_session_start) ③ 保留删除(cmd_clean 按 event_start_ts<?)。
+// 故只保留 4 个索引：pkey / ux_logical / idx_session_start / idx_event_start_ts。
+// 下面这些单列字段去掉 `;index`（10 个二级索引在 migrateEfficiencyV2DDL 里 DROP），370万行省 ~GB；
+// 删的都是零查询命中、最坏变慢可秒级重建的索引（非正确性风险）。生产删全量前建议 idx_scan=0 复核。
 type ConversationEvent struct {
 	EventId      string     `gorm:"primaryKey;type:varchar(255)" json:"event_id"`
-	SessionId    string     `gorm:"type:varchar(255);not null;index" json:"session_id"`
-	RequestId    string     `gorm:"type:varchar(255);not null;index" json:"request_id"`
-	TaskId       string     `gorm:"type:varchar(500);index" json:"task_id"`
-	UserId       string     `gorm:"type:varchar(255);index" json:"user_id"`
+	SessionId    string     `gorm:"type:varchar(255);not null" json:"session_id"`
+	RequestId    string     `gorm:"type:varchar(255);not null" json:"request_id"`
+	TaskId       string     `gorm:"type:varchar(500)" json:"task_id"`
+	UserId       string     `gorm:"type:varchar(255)" json:"user_id"`
 	RepoAddr     string     `gorm:"type:text" json:"repo_addr"`
 	RepoBranch   string     `gorm:"type:varchar(500)" json:"repo_branch"`
-	WorkDirId    string     `gorm:"type:varchar(500);index" json:"work_dir_id"`
+	WorkDirId    string     `gorm:"type:varchar(500)" json:"work_dir_id"`
 	EventStartTs time.Time  `gorm:"column:event_start_ts;type:timestamptz;not null;index" json:"event_start_ts"`
 	EventEndTs   *time.Time `gorm:"column:event_end_ts;type:timestamptz" json:"event_end_ts"`
 	DurationSec  int64      `gorm:"type:bigint;default:0" json:"duration_sec"`
-	EventKind    string     `gorm:"type:varchar(50);not null;index" json:"event_kind"`
+	EventKind    string     `gorm:"type:varchar(50);not null" json:"event_kind"`
 	ToolName     string     `gorm:"type:varchar(100)" json:"tool_name"`
 	CommandText  string     `gorm:"type:text" json:"command_text"`
 	TouchedFiles StringJSON `gorm:"type:jsonb;default:'[]'" json:"touched_files"`
 	Payload      ObjectJSON `gorm:"type:jsonb;default:'{}'" json:"payload"`
-	Source       string     `gorm:"type:varchar(50);not null;index" json:"source"`
-	ParseQuality string     `gorm:"type:varchar(50);not null;index" json:"parse_quality"`
+	Source       string     `gorm:"type:varchar(50);not null" json:"source"`
+	ParseQuality string     `gorm:"type:varchar(50);not null" json:"parse_quality"`
 	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
@@ -343,8 +349,20 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 		{"conversation_events.payload default", `ALTER TABLE conversation_events ALTER COLUMN payload SET DEFAULT '{}'::jsonb`},
 		{"conversation_events logical unique index", `CREATE UNIQUE INDEX IF NOT EXISTS ux_conversation_events_logical ON conversation_events (session_id, request_id, event_start_ts, event_kind, source, COALESCE(tool_name, ''))`},
 		{"conversation_events session start index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_session_start ON conversation_events (session_id, event_start_ts)`},
-		{"conversation_events task start index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_task_start ON conversation_events (task_id, event_start_ts)`},
-		{"conversation_events source quality index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_source_quality ON conversation_events (source, parse_quality)`},
+		{"conversation_events event start index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_event_start_ts ON conversation_events (event_start_ts)`},
+		// WS-B 索引瘦身：删 10 个零查询命中的二级索引（370万行省 ~GB），保留 pkey/ux_logical/session_start/event_start_ts。
+		// 删的都是无查询使用、最坏变慢可秒级重建（非正确性风险）。普通 DROP 首次迁移短锁(DROP INDEX 本身快)；
+		// 生产可在迁移前手工 DROP INDEX CONCURRENTLY 避锁。生产删全量前建议 pg_stat idx_scan=0 复核。
+		{"drop conv_events idx session_id", `DROP INDEX IF EXISTS idx_conversation_events_session_id`},
+		{"drop conv_events idx request_id", `DROP INDEX IF EXISTS idx_conversation_events_request_id`},
+		{"drop conv_events idx task_id", `DROP INDEX IF EXISTS idx_conversation_events_task_id`},
+		{"drop conv_events idx user_id", `DROP INDEX IF EXISTS idx_conversation_events_user_id`},
+		{"drop conv_events idx work_dir_id", `DROP INDEX IF EXISTS idx_conversation_events_work_dir_id`},
+		{"drop conv_events idx event_kind", `DROP INDEX IF EXISTS idx_conversation_events_event_kind`},
+		{"drop conv_events idx source", `DROP INDEX IF EXISTS idx_conversation_events_source`},
+		{"drop conv_events idx parse_quality", `DROP INDEX IF EXISTS idx_conversation_events_parse_quality`},
+		{"drop conv_events idx task_start", `DROP INDEX IF EXISTS idx_conversation_events_task_start`},
+		{"drop conv_events idx source_quality", `DROP INDEX IF EXISTS idx_conversation_events_source_quality`},
 		{"session_stage_metrics event kind counts default", `ALTER TABLE session_stage_metrics ALTER COLUMN event_kind_counts SET DEFAULT '{}'::jsonb`},
 		{"session_stage_metrics user start index", `CREATE INDEX IF NOT EXISTS idx_session_stage_metrics_user_start ON session_stage_metrics (user_id, session_start_ts)`},
 		{"session_stage_metrics confidence index", `CREATE INDEX IF NOT EXISTS idx_session_stage_metrics_confidence ON session_stage_metrics (stage_confidence)`},
