@@ -91,6 +91,20 @@ func (c *Conversation) Offload(analysedDir string) error {
 	return nil
 }
 
+// OffloadConversationsInline 对一批「待入库」的对话做内联卸载（导入即落盘+写指针+置空三列），
+// 让大正文从源头不进热库（≈V3 raw_conversation 不存 content）。best-effort：单行落对象失败则该行
+// 保留正文照常入库（Offload 落对象失败时不改任何字段），返回成功/失败计数供调用方汇总日志。
+func OffloadConversationsInline(records []Conversation, analysedDir string) (offloaded, failed int) {
+	for i := range records {
+		if err := records[i].Offload(analysedDir); err != nil {
+			failed++
+			continue
+		}
+		offloaded++
+	}
+	return offloaded, failed
+}
+
 // EffectiveUserInputChars 返回用户输入长度（字节，与历史口径 len(UserInput) 一致）。
 // 优先用导入期持久化的 UserInputChars；为 0 时回退 len(UserInput)，兼容旧行未回填 / 本就空输入。
 // 不变式：必须在「卸载 user_input（置空 DB 列）」之前回填 UserInputChars，

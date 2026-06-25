@@ -99,6 +99,36 @@ func TestConversationContentLocation_PathSafe(t *testing.T) {
 	}
 }
 
+func TestOffloadConversationsInline_BatchEmptiesAndPoints(t *testing.T) {
+	dir := t.TempDir()
+	recs := []Conversation{
+		{SessionId: "s1", RequestId: "r1", RequestContent: "REQ1", ResponseContent: "RESP1", UserInput: "U1"},
+		{SessionId: "s2", RequestId: "r2", ResponseContent: `{"tool_name":"Edit"}`},
+	}
+	off, fail := OffloadConversationsInline(recs, dir)
+	if off != 2 || fail != 0 {
+		t.Fatalf("应 2 成功 0 失败, got off=%d fail=%d", off, fail)
+	}
+	for i := range recs {
+		if recs[i].RequestContent != "" || recs[i].ResponseContent != "" || recs[i].UserInput != "" {
+			t.Errorf("行 %d 正文未置空", i)
+		}
+		if recs[i].ContentLocation == "" {
+			t.Errorf("行 %d content_location 未写", i)
+		}
+		// 回读应还原
+		if err := recs[i].HydrateContent(); err != nil {
+			t.Errorf("行 %d 回读失败: %v", i, err)
+		}
+	}
+	if recs[0].RequestContent != "REQ1" || recs[0].UserInput != "U1" {
+		t.Errorf("回读未逐字节还原: %q / %q", recs[0].RequestContent, recs[0].UserInput)
+	}
+	if recs[0].UserInputChars != len("U1") {
+		t.Errorf("UserInputChars 未保: %d", recs[0].UserInputChars)
+	}
+}
+
 func TestHydrateContent_NoLocationNoop(t *testing.T) {
 	c := Conversation{RequestContent: "x"}
 	if err := c.HydrateContent(); err != nil {

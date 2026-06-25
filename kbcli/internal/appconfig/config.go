@@ -74,6 +74,15 @@ type Config struct {
 	// Storage 存储后端配置。task_dir/repo_dir/analysed_dir 等路径以 s3:// 开头时
 	// 走 S3 兼容对象存储（需配置 storage.s3），否则走本地磁盘，允许混搭。
 	Storage storage.Config `yaml:"storage"`
+	// ContentOffload 导入时正文卸载开关。enabled=true 时 import 把 conversations 三列正文直接落盘/对象存储
+	// (用 AnalysedDir/Storage)、DB 列留空+写 content_location 指针，从源头不让大正文进热库（防 import 再涨回）。
+	// 默认 false=正文照常入库(旧行为)。落盘走配置的 analysed_dir（不随 import 的 --analysed-dir 覆盖；二者
+	// 一般一致，如用覆盖请同步 config）。开关前须确保：① A6 回读已就位（已实现）② server 也能读回同一
+	// analysed 卷 / S3 bucket（compose server 默认未挂 analysed，见 cutover-runbook 阶段1）。
+	// 仅作用于「新导入」的对话；存量旧行（DB 已有正文、无指针）须跑一次 offload-content 补卸载。
+	// 边界：blob 写盘在 import 事务内，整批回滚会留孤儿 blob——但批失败回退逐条单事务(坏行隔离)、key 确定性
+	// (重导覆盖)，孤儿仅限永久失败的坏行(数据本就废)、自愈、不会无界增长。
+	ContentOffload ContentOffloadConfig `yaml:"content_offload"`
 	// AnalysisStartDate 全局分析起始日下界（YYYYMMDD，默认空=不设下界）。
 	// 未显式传 --start-date / start_date（且未传 date）时，按日期取数/计算的命令自动用它作为
 	// 起始下界，从而永不处理该日期之前的数据。显式传 start-date 时以显式为准，不被覆盖。
@@ -81,6 +90,11 @@ type Config struct {
 	// GovernanceFile commit 治理配置文件路径（独立 YAML，schema 见 config/governance.example.yaml）。
 	// 空或文件不存在 = 使用内置默认治理规则，不报错。
 	GovernanceFile string `yaml:"governance_file"`
+}
+
+// ContentOffloadConfig 导入时正文卸载开关（见 Config.ContentOffload）。
+type ContentOffloadConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // DeptSyncConfig dept-sync 部门同步服务对接配置（import-dept 使用）

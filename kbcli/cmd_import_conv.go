@@ -527,6 +527,18 @@ func saveConversationRecords(db *gorm.DB, records []models.Conversation) error {
 	if len(records) == 0 {
 		return nil
 	}
+	// 内联卸载（content_offload.enabled=true）：导入即把三列正文落盘/对象存储 + 写 content_location 指针、
+	// DB 列置空，从源头不让大正文进热库（≈V3 raw_conversation：DB 不存 content，只留指针）。
+	// best-effort：单行落对象失败则该行保留正文照常入库。默认关=正文照常入库（旧行为）。
+	// 前提：A6 回读已就位（efficiency-v2 + backend 均 HydrateContent），卸载后读到的仍是完整正文。
+	if appconfig.Cfg.ContentOffload.Enabled && appconfig.Cfg.AnalysedDir != "" {
+		off, fail := models.OffloadConversationsInline(records, appconfig.Cfg.AnalysedDir)
+		if fail > 0 {
+			logx.Errorf("[import] 内联卸载：%d 成功 / %d 失败（失败行保留正文入库，可后续 offload-content 重试）", off, fail)
+		} else if off > 0 {
+			logx.Debugf("[import] 内联卸载 %d 行正文到 %s", off, appconfig.Cfg.AnalysedDir)
+		}
+	}
 	// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败
 	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "session_id"}, {Name: "request_id"}},
@@ -1027,6 +1039,9 @@ func needUpdateConversations(ref rawdump.ConversationRef, silicaPath string, for
 //  4. 通过 util.RecordCommandRun 记录命令执行结果，便于运维监控和审计。
 func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDateStr, dateStr string, createPseudo bool) error {
 	startTime := time.Now()
+	if appconfig.Cfg.ContentOffload.Enabled && analysedDir == "" {
+		logx.Warnf("[import] content_offload.enabled=true 但 analysed_dir 为空——内联卸载将跳过、正文照常入库；设置 analysed_dir 才生效")
+	}
 	summaryDir := storage.Join(taskDir, "summary")
 	conversationDir := storage.Join(taskDir, "conversation")
 
