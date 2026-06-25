@@ -350,19 +350,10 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 		{"conversation_events logical unique index", `CREATE UNIQUE INDEX IF NOT EXISTS ux_conversation_events_logical ON conversation_events (session_id, request_id, event_start_ts, event_kind, source, COALESCE(tool_name, ''))`},
 		{"conversation_events session start index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_session_start ON conversation_events (session_id, event_start_ts)`},
 		{"conversation_events event start index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_event_start_ts ON conversation_events (event_start_ts)`},
-		// WS-B 索引瘦身：删 10 个零查询命中的二级索引（370万行省 ~GB），保留 pkey/ux_logical/session_start/event_start_ts。
-		// 删的都是无查询使用、最坏变慢可秒级重建（非正确性风险）。普通 DROP 首次迁移短锁(DROP INDEX 本身快)；
-		// 生产可在迁移前手工 DROP INDEX CONCURRENTLY 避锁。生产删全量前建议 pg_stat idx_scan=0 复核。
-		{"drop conv_events idx session_id", `DROP INDEX IF EXISTS idx_conversation_events_session_id`},
-		{"drop conv_events idx request_id", `DROP INDEX IF EXISTS idx_conversation_events_request_id`},
-		{"drop conv_events idx task_id", `DROP INDEX IF EXISTS idx_conversation_events_task_id`},
-		{"drop conv_events idx user_id", `DROP INDEX IF EXISTS idx_conversation_events_user_id`},
-		{"drop conv_events idx work_dir_id", `DROP INDEX IF EXISTS idx_conversation_events_work_dir_id`},
-		{"drop conv_events idx event_kind", `DROP INDEX IF EXISTS idx_conversation_events_event_kind`},
-		{"drop conv_events idx source", `DROP INDEX IF EXISTS idx_conversation_events_source`},
-		{"drop conv_events idx parse_quality", `DROP INDEX IF EXISTS idx_conversation_events_parse_quality`},
-		{"drop conv_events idx task_start", `DROP INDEX IF EXISTS idx_conversation_events_task_start`},
-		{"drop conv_events idx source_quality", `DROP INDEX IF EXISTS idx_conversation_events_source_quality`},
+		// WS-B 索引瘦身：删除 10 个零查询命中的二级索引（task_start/source_quality 复合 + 8 个单列）
+		// **不在 AutoMigrate 自动删**——破坏性变更拆到手动命令 `kbcli slim-indexes`（可 dry-run、可先用
+		// db-diag 看 idx_scan 复核、可 CONCURRENTLY 避锁）。这样部署(pull 镜像)只做加列等安全变更，
+		// 索引删除由运维确认后显式触发。单列字段的 `;index` GORM tag 已移除(新库不再建它们)。
 		{"session_stage_metrics event kind counts default", `ALTER TABLE session_stage_metrics ALTER COLUMN event_kind_counts SET DEFAULT '{}'::jsonb`},
 		{"session_stage_metrics user start index", `CREATE INDEX IF NOT EXISTS idx_session_stage_metrics_user_start ON session_stage_metrics (user_id, session_start_ts)`},
 		{"session_stage_metrics confidence index", `CREATE INDEX IF NOT EXISTS idx_session_stage_metrics_confidence ON session_stage_metrics (stage_confidence)`},
