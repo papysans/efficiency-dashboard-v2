@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kanban/core/models"
+	"kanban/core/storage"
 
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
@@ -43,17 +44,19 @@ var cleanCmd = &cobra.Command{
 			name      string
 			field     string
 			condition string
+			blobCol   string // 非空=该表行有卸载对象指针列，删行时用 DELETE...RETURNING 同步删 blob（防孤儿）
 			model     interface{}
 		}{
-			{"commits", "CommitTime", "commit_time < ?", &models.Commit{}},
-			{"tasks", "EndTime", "end_time < ?", &models.Task{}},
+			{"commits", "CommitTime", "commit_time < ?", "", &models.Commit{}},
+			{"tasks", "EndTime", "end_time < ?", "", &models.Task{}},
 			// 修 bug：表名应为 conversations（原字面量 task_conversations 不存在→DELETE 报错→对话表从未被清理，14GB 膨胀根因之一）。
 			// 口径对齐：删除列用 start_time——efficiency-v2 取数/夹窗(efficiency_v2_events.go:217/225)、floor、诊断「删候选」
 			// 均锚 start_time；用 end_time 会让跨界长会话(start<before 但 end>=before)与回看窗错配。
-			{"conversations", "StartTime", "start_time < ?", &models.Conversation{}},
+			// blobCol=content_location：删行时同步删卸载正文 blob，否则留孤儿（治膨胀目标相悖，Codex/独立审查 P2）。
+			{"conversations", "StartTime", "start_time < ?", "content_location", &models.Conversation{}},
 			// 同步清派生缓存 conversation_events（按 event_start_ts），否则删源留 6GB 派生孤儿（与 conversations 仅逻辑关联、无 FK 级联）。
 			// 是可重算缓存，按窗删除安全。保持手动调用、不自动接 cron（接 cron 待回看窗口/raw-dump 留存窗确认）。
-			{"conversation_events", "EventStartTs", "event_start_ts < ?", &models.ConversationEvent{}},
+			{"conversation_events", "EventStartTs", "event_start_ts < ?", "", &models.ConversationEvent{}},
 		}
 
 		for _, t := range tables {
@@ -67,7 +70,7 @@ var cleanCmd = &cobra.Command{
 				logx.Infof("[clean] %s 表将有 %d 条记录被删除（dry-run）", t.name, cnt)
 				continue
 			}
-			deleted, err := batchDelete(db, t.name, t.condition, before, batchSize)
+			deleted, err := batchDelete(db, t.name, t.condition, t.blobCol, before, batchSize)
 			if err != nil {
 				logx.Errorf("[clean] 清洗 %s 失败: %v", t.name, err)
 				continue
@@ -80,9 +83,35 @@ var cleanCmd = &cobra.Command{
 	},
 }
 
-func batchDelete(db *gorm.DB, table, condition string, before time.Time, batchSize int) (int64, error) {
+// batchDelete 分批删除（ctid LIMIT 控批，避免一次锁太多）。blobCol 非空时用 DELETE...RETURNING
+// 拿到被删行的卸载对象位置，删完行同步删 blob（best-effort，删 blob 失败只记日志，行已删）。
+// blobCol/table/condition 均来自上方硬编码 tables 表，非用户输入，fmt.Sprintf 拼接无注入面。
+func batchDelete(db *gorm.DB, table, condition, blobCol string, before time.Time, batchSize int) (int64, error) {
 	var total int64
 	for {
+		if blobCol != "" {
+			sql := fmt.Sprintf(
+				"DELETE FROM %s WHERE ctid IN (SELECT ctid FROM %s WHERE %s LIMIT ?) RETURNING %s",
+				table, table, condition, blobCol,
+			)
+			var locs []string
+			if err := db.Raw(sql, before, batchSize).Scan(&locs).Error; err != nil {
+				return total, err
+			}
+			total += int64(len(locs))
+			for _, loc := range locs {
+				if loc == "" {
+					continue
+				}
+				if err := storage.Remove(loc); err != nil {
+					logx.Errorf("[clean] 删卸载对象失败 %s: %v", loc, err)
+				}
+			}
+			if len(locs) == 0 {
+				break
+			}
+			continue
+		}
 		sql := fmt.Sprintf(
 			"DELETE FROM %s WHERE ctid IN (SELECT ctid FROM %s WHERE %s LIMIT ?)",
 			table, table, condition,

@@ -70,6 +70,13 @@ func (diskBackend) Stat(loc string) (FileInfo, error) {
 	return FileInfo{Name: info.Name(), Size: info.Size(), ModTime: info.ModTime()}, nil
 }
 
+func (diskBackend) Remove(loc string) error {
+	if err := os.Remove(loc); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func (diskBackend) Exists(loc string) (bool, error) {
 	_, err := os.Stat(loc)
 	if err == nil {

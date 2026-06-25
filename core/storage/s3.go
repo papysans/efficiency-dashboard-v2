@@ -136,6 +136,18 @@ func (b *s3Backend) WriteFile(loc string, data []byte) error {
 	return nil
 }
 
+func (b *s3Backend) Remove(loc string) error {
+	bucket, key, err := parseS3(loc)
+	if err != nil {
+		return err
+	}
+	// minio RemoveObject 对不存在的 key 不报错（幂等），符合接口语义。
+	if err := b.client.RemoveObject(context.Background(), bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("删除 %s 失败: %w", loc, err)
+	}
+	return nil
+}
+
 func (b *s3Backend) Stat(loc string) (FileInfo, error) {
 	bucket, key, err := parseS3(loc)
 	if err != nil {

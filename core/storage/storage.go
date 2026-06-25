@@ -62,6 +62,7 @@ type backend interface {
 	WriteFile(loc string, data []byte) error
 	Stat(loc string) (FileInfo, error)
 	Exists(loc string) (bool, error) // 文件存在，或目录/前缀下存在任意对象
+	Remove(loc string) error         // 删除单个文件/对象；不存在视为成功（幂等）
 }
 
 const s3Scheme = "s3://"
@@ -261,6 +262,15 @@ func Exists(loc string) (bool, error) {
 		return false, err
 	}
 	return b.Exists(loc)
+}
+
+// Remove 删除单个文件/对象。不存在视为成功（幂等），供卸载对象的孤儿清理/裁旧用。
+func Remove(loc string) error {
+	b, err := backendFor(loc)
+	if err != nil {
+		return err
+	}
+	return b.Remove(loc)
 }
 
 // IsNotExist 判断错误是否表示文件/对象不存在
