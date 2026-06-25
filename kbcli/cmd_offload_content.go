@@ -18,7 +18,7 @@ import (
 //   - 手动子命令即开关，不接 cron；生产 cutover 须先确认 raw-dump 留存窗/回看窗口。
 //   - A6 回读已就位（QueryEfficiencyV2Conversations + backend ListConversations 均 HydrateContent），
 //     故卸载后 efficiency-v2/前端读到的仍是完整正文，不会复现解析退化。
-//   - 幂等：以 content_location='' 为待卸载判据，已卸载行天然跳过；可随时重跑。
+//   - 幂等：以 content_location=” 为待卸载判据，已卸载行天然跳过；可随时重跑。
 //   - 固定顺序：先 Offload 落对象成功，再单条 UPDATE 写指针+置空列；对象失败则跳过该行不动 DB。
 var offloadContentCmd = &cobra.Command{
 	Use:   "offload-content",
@@ -48,7 +48,7 @@ var offloadContentCmd = &cobra.Command{
 }
 
 // offloadPendingWhere 待卸载判据：未卸载(指针空)且三列里还有正文。
-// COALESCE：content_location 是 AutoMigrate 新增列，存量行是 NULL 而非 ''——
+// COALESCE：content_location 是 AutoMigrate 新增列，存量行是 NULL 而非 ”——
 // 必须把 NULL 也视为待卸载，否则 backfill 静默跳过所有存量行（Codex review P1）。
 const offloadPendingWhere = "COALESCE(content_location, '') = '' AND (COALESCE(request_content,'') <> '' OR COALESCE(response_content,'') <> '' OR COALESCE(user_input,'') <> '')"
 
