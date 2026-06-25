@@ -13,8 +13,9 @@ import { DeptTreePanel, UNASSIGNED_DEPT_ID } from './DeptTreePanel'
 import { DeptAggregateView } from './DeptAggregateView'
 import { MembersView } from './MembersView'
 import { MemberDetail } from './MemberDetail'
+import { DeptCompareView } from './DeptCompareView'
 
-type View = 'aggregate' | 'members' | 'member'
+type View = 'aggregate' | 'members' | 'member' | 'compare'
 
 function findDeptName(nodes: DeptTreeNode[], id: string): string {
   for (const n of nodes) {
@@ -35,7 +36,7 @@ export default function UsageKanban() {
 
   const deptId = sp.get('object') || ''
   const viewRaw = sp.get('view')
-  const view: View = viewRaw === 'members' ? 'members' : viewRaw === 'member' ? 'member' : 'aggregate'
+  const view: View = viewRaw === 'members' ? 'members' : viewRaw === 'member' ? 'member' : viewRaw === 'compare' ? 'compare' : 'aggregate'
   const memberUid = sp.get('member') || ''
   const includeChildren = sp.get('include_children') === 'true'
   const isMemberView = view === 'member'
@@ -116,6 +117,9 @@ export default function UsageKanban() {
                 <ViewTab active={view === 'members'} onClick={() => patch({ view: 'members' })}>
                   本部门人员
                 </ViewTab>
+                <ViewTab active={view === 'compare'} onClick={() => patch({ view: 'compare' })}>
+                  子部门对比
+                </ViewTab>
               </div>
             )}
             <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
@@ -139,6 +143,15 @@ export default function UsageKanban() {
               end={timeRange[1]}
               includeChildren={includeChildren}
               onRowClick={(uid) => patch({ member: uid, view: 'member' })}
+            />
+          ) : view === 'compare' ? (
+            <DeptCompareView
+              deptId={deptId}
+              start={timeRange[0]}
+              end={timeRange[1]}
+              includeChildren={includeChildren}
+              deptNodes={deptNodes}
+              onSelectDept={(id) => patch({ object: id, view: 'aggregate' })}
             />
           ) : (
             <DeptAggregateView deptId={deptId} start={timeRange[0]} end={timeRange[1]} includeChildren={includeChildren} />
