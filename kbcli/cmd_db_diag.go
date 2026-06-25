@@ -20,7 +20,9 @@ var dbDiagCmd = &cobra.Command{
 	Long:  "只读输出 DB 减负决策所需数据：每表大小、conversations 三列体量、conv_events 各索引大小+idx_scan、死元组、floor 裁旧切分。把结果贴回即可。",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		full, _ := cmd.Flags().GetBool("full")
-		gdb, err := models.OpenGormDB(appconfig.Cfg.StatDatabase.DSN())
+		// 只读连接：不跑 AutoMigrate（db-diag 号称只读，绝不在诊断时改 schema/加锁）。
+		// 依赖 schema 已由常驻 server/kbcli 迁过；引用新列的小节若列不存在会单节报 ERR、不影响其余。
+		gdb, err := models.OpenGormDBReadOnly(appconfig.Cfg.StatDatabase.DSN())
 		if err != nil {
 			return fmt.Errorf("连接数据库失败: %w", err)
 		}

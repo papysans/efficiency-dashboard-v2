@@ -523,6 +523,36 @@ func makeConversationRecords(conversations []taskConversation) []models.Conversa
 	return records
 }
 
+// existingConversationKeySet 查出本批 records 里已存在于 DB 的 (session_id\x00request_id) 集合，
+// 供内联卸载跳过（这些行会被 OnConflict DoNothing 跳过插入，不应覆盖其既有 blob）。
+// 按 session_id 批量查（走 idx_session_request 前缀），可能 over-fetch 同 session 其余请求但正确。
+func existingConversationKeySet(db *gorm.DB, records []models.Conversation) (map[string]bool, error) {
+	if len(records) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	sessionIDs := make([]string, 0, len(records))
+	for i := range records {
+		if sid := records[i].SessionId; sid != "" && !seen[sid] {
+			seen[sid] = true
+			sessionIDs = append(sessionIDs, sid)
+		}
+	}
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	var rows []models.Conversation
+	if err := db.Model(&models.Conversation{}).Select("session_id", "request_id").
+		Where("session_id IN ?", sessionIDs).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(rows))
+	for i := range rows {
+		out[rows[i].SessionId+"\x00"+rows[i].RequestId] = true
+	}
+	return out, nil
+}
+
 func saveConversationRecords(db *gorm.DB, records []models.Conversation) error {
 	if len(records) == 0 {
 		return nil
@@ -532,11 +562,17 @@ func saveConversationRecords(db *gorm.DB, records []models.Conversation) error {
 	// best-effort：单行落对象失败则该行保留正文照常入库。默认关=正文照常入库（旧行为）。
 	// 前提：A6 回读已就位（efficiency-v2 + backend 均 HydrateContent），卸载后读到的仍是完整正文。
 	if appconfig.Cfg.ContentOffload.Enabled && appconfig.Cfg.AnalysedDir != "" {
-		off, fail := models.OffloadConversationsInline(records, appconfig.Cfg.AnalysedDir)
+		// 只对「会真正插入的新行」卸载：已存在的 (session,request) 会被下面 DoNothing 跳过，若也卸载
+		// 会用确定性 key 覆盖其既有 blob→行=旧元数据/blob=新内容 不一致（Codex P1）。先查存量键跳过。
+		existing, err := existingConversationKeySet(db, records)
+		if err != nil {
+			return fmt.Errorf("查询存量对话键失败: %w", err)
+		}
+		off, fail, skip := models.OffloadConversationsInline(records, appconfig.Cfg.AnalysedDir, existing)
 		if fail > 0 {
 			logx.Errorf("[import] 内联卸载：%d 成功 / %d 失败（失败行保留正文入库，可后续 offload-content 重试）", off, fail)
 		} else if off > 0 {
-			logx.Debugf("[import] 内联卸载 %d 行正文到 %s", off, appconfig.Cfg.AnalysedDir)
+			logx.Debugf("[import] 内联卸载 %d 行（跳过 %d 已存在行）到 %s", off, skip, appconfig.Cfg.AnalysedDir)
 		}
 	}
 	// 复合主键冲突时忽略，避免同一对话重复导入导致事务失败

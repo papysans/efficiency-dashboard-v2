@@ -101,31 +101,41 @@ func TestConversationContentLocation_PathSafe(t *testing.T) {
 
 func TestOffloadConversationsInline_BatchEmptiesAndPoints(t *testing.T) {
 	dir := t.TempDir()
-	recs := []Conversation{
-		{SessionId: "s1", RequestId: "r1", RequestContent: "REQ1", ResponseContent: "RESP1", UserInput: "U1"},
-		{SessionId: "s2", RequestId: "r2", ResponseContent: `{"tool_name":"Edit"}`},
-	}
-	off, fail := OffloadConversationsInline(recs, dir)
-	if off != 2 || fail != 0 {
-		t.Fatalf("应 2 成功 0 失败, got off=%d fail=%d", off, fail)
-	}
-	for i := range recs {
-		if recs[i].RequestContent != "" || recs[i].ResponseContent != "" || recs[i].UserInput != "" {
-			t.Errorf("行 %d 正文未置空", i)
-		}
-		if recs[i].ContentLocation == "" {
-			t.Errorf("行 %d content_location 未写", i)
-		}
-		// 回读应还原
-		if err := recs[i].HydrateContent(); err != nil {
-			t.Errorf("行 %d 回读失败: %v", i, err)
+	mk := func() []Conversation {
+		return []Conversation{
+			{SessionId: "s1", RequestId: "r1", RequestContent: "REQ1", ResponseContent: "RESP1", UserInput: "U1"},
+			{SessionId: "s2", RequestId: "r2", ResponseContent: `{"tool_name":"Edit"}`},
 		}
 	}
-	if recs[0].RequestContent != "REQ1" || recs[0].UserInput != "U1" {
-		t.Errorf("回读未逐字节还原: %q / %q", recs[0].RequestContent, recs[0].UserInput)
+	// skip s2/r2（模拟已存在 DB、会被 DoNothing 跳过）→ 只卸 s1，s2 不动
+	recs := mk()
+	off, fail, skipped := OffloadConversationsInline(recs, dir, map[string]bool{"s2\x00r2": true})
+	if off != 1 || fail != 0 || skipped != 1 {
+		t.Fatalf("skip 应 1卸/0失败/1跳, got %d/%d/%d", off, fail, skipped)
 	}
-	if recs[0].UserInputChars != len("U1") {
-		t.Errorf("UserInputChars 未保: %d", recs[0].UserInputChars)
+	if recs[1].ContentLocation != "" || recs[1].ResponseContent == "" {
+		t.Fatal("被 skip 行不应卸载（正文应保留、无指针）")
+	}
+	if recs[0].ContentLocation == "" || recs[0].RequestContent != "" {
+		t.Fatal("未 skip 行应卸载（正文置空+指针）")
+	}
+	if err := recs[0].HydrateContent(); err != nil {
+		t.Fatal(err)
+	}
+	if recs[0].RequestContent != "REQ1" || recs[0].UserInput != "U1" || recs[0].UserInputChars != len("U1") {
+		t.Errorf("s1 回读未还原: %q/%q/%d", recs[0].RequestContent, recs[0].UserInput, recs[0].UserInputChars)
+	}
+
+	// 全新批、无 skip → 全卸
+	recs2 := mk()
+	off2, _, sk2 := OffloadConversationsInline(recs2, dir, nil)
+	if off2 != 2 || sk2 != 0 {
+		t.Fatalf("无 skip 应全卸, got off=%d skip=%d", off2, sk2)
+	}
+	for i := range recs2 {
+		if recs2[i].ContentLocation == "" {
+			t.Errorf("行 %d 未卸", i)
+		}
 	}
 }
 

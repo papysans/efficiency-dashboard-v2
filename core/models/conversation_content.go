@@ -93,16 +93,23 @@ func (c *Conversation) Offload(analysedDir string) error {
 
 // OffloadConversationsInline 对一批「待入库」的对话做内联卸载（导入即落盘+写指针+置空三列），
 // 让大正文从源头不进热库（≈V3 raw_conversation 不存 content）。best-effort：单行落对象失败则该行
-// 保留正文照常入库（Offload 落对象失败时不改任何字段），返回成功/失败计数供调用方汇总日志。
-func OffloadConversationsInline(records []Conversation, analysedDir string) (offloaded, failed int) {
+// 保留正文照常入库（Offload 落对象失败时不改任何字段）。
+// skip：已存在于 DB 的 (session_id\x00request_id) 集合——这些行会被 import 的 OnConflict DoNothing
+// 跳过插入，故**不卸载**；否则确定性 key 会覆盖其既有 blob，造成「行=旧元数据 / blob=新内容」不一致
+// (Codex review P1)。nil=不跳过（全卸）。返回 成功/失败/跳过 计数供调用方汇总日志。
+func OffloadConversationsInline(records []Conversation, analysedDir string, skip map[string]bool) (offloaded, failed, skipped int) {
 	for i := range records {
+		if skip != nil && skip[records[i].SessionId+"\x00"+records[i].RequestId] {
+			skipped++
+			continue
+		}
 		if err := records[i].Offload(analysedDir); err != nil {
 			failed++
 			continue
 		}
 		offloaded++
 	}
-	return offloaded, failed
+	return offloaded, failed, skipped
 }
 
 // EffectiveUserInputChars 返回用户输入长度（字节，与历史口径 len(UserInput) 一致）。

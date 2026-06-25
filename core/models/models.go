@@ -321,6 +321,23 @@ type DeptUser struct {
 func (DeptUser) TableName() string { return "dept_user" }
 
 func OpenGormDB(dsn string) (*gorm.DB, error) {
+	db, err := openGormDBConn(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := AutoMigrate(db); err != nil {
+		return nil, fmt.Errorf("自动迁移数据库表结构失败: %w", err)
+	}
+	return db, nil
+}
+
+// OpenGormDBReadOnly 连库但**不跑 AutoMigrate**，供只读诊断命令（db-diag）用——不加列/不建索引/
+// 不取 schema 锁，真正只读不改库。前提：schema 已由常驻 server/kbcli 启动期或迁移命令迁过。
+func OpenGormDBReadOnly(dsn string) (*gorm.DB, error) {
+	return openGormDBConn(dsn)
+}
+
+func openGormDBConn(dsn string) (*gorm.DB, error) {
 	// gorm logger 设 Silent：默认 logger(Warn 级)会把「慢 SQL >=200ms」连同完整绑定值打出来——
 	// 导入对话时 request/response_content 含粘贴图片的 base64,INSERT 又大又慢,会刷屏整条 SQL(含 base64)。
 	// DB 错误仍由各调用方检查返回的 err 并打简短「导入失败: <err>」日志,信息不丢、噪声不进盘。
@@ -338,9 +355,6 @@ func OpenGormDB(dsn string) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(5)
 	if err := sqlDB.Ping(); err != nil {
 		return nil, err
-	}
-	if err := AutoMigrate(db); err != nil {
-		return nil, fmt.Errorf("自动迁移数据库表结构失败: %w", err)
 	}
 	return db, nil
 }
