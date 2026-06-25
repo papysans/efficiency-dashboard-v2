@@ -3,7 +3,8 @@ import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-rou
 import AppShell from '@/components/layout/AppShell'
 import DimensionEntityLayout from '@/components/layout/DimensionEntityLayout'
 import EfficiencyDimension from '@/pages/dimensions/EfficiencyDimension'
-import UsageDimension from '@/pages/dimensions/UsageDimension'
+import UsageLayout from '@/pages/dimensions/usage/UsageLayout'
+import UsageKanban from '@/pages/dimensions/usage/UsageKanban'
 import CostDimension from '@/pages/dimensions/CostDimension'
 import ContributionDimension from '@/pages/dimensions/ContributionDimension'
 import {
@@ -46,7 +47,7 @@ import SystemConfig from '@/pages/settings/SystemConfig'
 // 旧「主体优先」链接（/org、/user/efficiency …）+ 旧 -v2 链接全量重定向（保留 query/search），不能 404。
 
 const DIM_COMPONENT: Record<Dimension, ComponentType> = {
-  usage: UsageDimension,
+  usage: UsageKanban,
   efficiency: EfficiencyDimension,
   cost: CostDimension,
   contribution: ContributionDimension,
@@ -84,7 +85,7 @@ function DistributionToEfficiency() {
 }
 
 // 一个维度下的主体子路由（4 维度共用 DimensionEntityLayout 壳；entity 走 param，壳内按 entity 分发口径/数据源）。
-//   使用 = UsageDimension（user→平台金源 / org→平台部门聚合 / project,repo→看板派生）。
+//   使用 = UsageKanban（部门树·视角切换统一页：部门聚合 / 本部门人员 / 个人详情；project/repo 已下线，由 UsageLayout 重定向到 org）。
 //   效率 = EfficiencyDimension（时间线→KPI→排行/明细，聚合↔聚焦两态，分布并入）。
 //   成本 = CostDimension（user,org→平台AI花费‖看板会话费用双卡 / project,repo→看板费用单卡）。
 //   贡献 = ContributionDimension（全主体看板派生：合并需求/代码行/提交/贡献者，零平台请求）。
@@ -118,7 +119,17 @@ export const router = createBrowserRouter([
       { index: true, element: <Overview /> },
 
       // ---- 维度×主体矩阵（4 维度共用壳） ----
-      dimensionRoute('usage'),
+      // usage 维度：IA 改为「部门树·视角切换」统一页，独立 UsageLayout（不走 4 维度共用壳 DimensionEntityLayout）。
+      // 保留 /usage/:entity 路径形状以兼容旧链（/usage/org、/usage/user、org-tree-v2 等）与 AppShell.entityFromPath。
+      // project/repo 主体在 usage 已下线，由 UsageLayout 守卫重定向到 /usage/org。
+      {
+        path: 'usage',
+        element: <UsageLayout />,
+        children: [
+          { path: ':entity', element: <UsageKanban /> },
+          { index: true, element: <UsageKanban /> },
+        ],
+      },
       dimensionRoute('efficiency'),
       dimensionRoute('cost'),
       dimensionRoute('contribution'),

@@ -306,7 +306,7 @@ interface ChatDailyGlobalRow {
  *   - 分母（看板全量活跃用户）：useDashboardSummary().total_users_v2（看板侧全量活跃口径，非平台日去重）。
  *   - 人均 = 全量分子 ÷ 看板全量活跃用户。两源口径独立，仅做「全量人均」对照，不与排行混算。
  *
- * 降级：由调用方（UsageDimension）的 chat_stats_enabled 护栏在外层兜住（关闭时整支不渲染本组件）；
+ * 降级：由调用方（UsageKanban）的 chat_stats_enabled 护栏在外层兜住（关闭时整支不渲染本组件）；
  *   本组件内再兜请求失败/无数据 → 隐藏，不空页不抛错。
  */
 export function PlatformFullVolumeHeadline({ start, end }: { start: string; end: string }) {

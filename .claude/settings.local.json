@@ -8,7 +8,11 @@
       "Bash(head:*)",
       "Bash(netstat:*)",
       "Bash(tasklist:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(rg -i \"zhaoshang|show.?data\" /home/dengbin/project/efficiency-dashboard/compose /home/dengbin/project/efficiency-dashboard/config /home/dengbin/project/efficiency-dashboard/configs /home/dengbin/project/efficiency-dashboard/backend/*.yaml)",
+      "Bash(git -C /home/dengbin/project/zhaoshang-show-data log -4 --stat)",
+      "Bash(./node_modules/.bin/tsc -b --noEmit)",
+      "Bash(echo \"exit:$?\")"
     ]
   }
 }
