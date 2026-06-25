@@ -485,6 +485,9 @@ func saveConversationBatch(db *gorm.DB, batch []*preparedImportTask) error {
 func makeConversationRecords(conversations []taskConversation) []models.Conversation {
 	records := make([]models.Conversation, 0, len(conversations))
 	for _, conv := range conversations {
+		// 清洗一次复用：UserInput 入库值与其字符数(UserInputChars)同源，
+		// 保证 len(UserInput)==UserInputChars 在导入期成立，卸载 user_input 后估时口径不漂移。
+		cleanedUserInput := utils.SanitizeText(utils.StripLargeBase64(conv.UserInput))
 		records = append(records, models.Conversation{
 			TaskId:           "",
 			SessionId:        conv.sessionId,
@@ -504,16 +507,17 @@ func makeConversationRecords(conversations []taskConversation) []models.Conversa
 			// ⚠️ 不硬截断:efficiency-v2 会从 DB 回读 request/response_content、解析其 JSON 提取工具事件
 			//   (event_kind/tool_name/command/touched_files);截断会让 ~26% 工具事件 JSON 解析失败退化 → stage/silica 降级。
 			//   体积治理走摄取层改造(事件抽取前移到导入+正文卸载,另立项),不在此截断正文。
-			RequestContent:   utils.SanitizeText(utils.StripLargeBase64(conv.RequestContent)),
-			ResponseContent:  utils.SanitizeText(utils.StripLargeBase64(conv.ResponseContent)),
-			UserInput:        utils.SanitizeText(utils.StripLargeBase64(conv.UserInput)),
-			DiffLines:        conv.DiffLines,
-			ErrorCode:        string(conv.ErrorCode),
-			ErrorReason:      utils.SanitizeText(string(conv.ErrorReason)),
-			RepoAddr:         conv.RepoAddr,
-			RepoBranch:       conv.RepoBranch,
-			WorkDir:          conv.WorkDir,
-			WorkDirId:        conv.workDirId,
+			RequestContent:  utils.SanitizeText(utils.StripLargeBase64(conv.RequestContent)),
+			ResponseContent: utils.SanitizeText(utils.StripLargeBase64(conv.ResponseContent)),
+			UserInput:       cleanedUserInput,
+			UserInputChars:  len(cleanedUserInput),
+			DiffLines:       conv.DiffLines,
+			ErrorCode:       string(conv.ErrorCode),
+			ErrorReason:     utils.SanitizeText(string(conv.ErrorReason)),
+			RepoAddr:        conv.RepoAddr,
+			RepoBranch:      conv.RepoBranch,
+			WorkDir:         conv.WorkDir,
+			WorkDirId:       conv.workDirId,
 		})
 	}
 	return records

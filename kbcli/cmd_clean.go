@@ -15,7 +15,7 @@ import (
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "清洗过期或有问题的数据",
-	Long:  "根据指定条件清洗 commits、tasks、task_conversations 表中的过期数据。",
+	Long:  "根据指定条件清洗 commits、tasks、conversations 表中的过期数据。",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beforeStr, _ := cmd.Flags().GetString("before")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -47,7 +47,13 @@ var cleanCmd = &cobra.Command{
 		}{
 			{"commits", "CommitTime", "commit_time < ?", &models.Commit{}},
 			{"tasks", "EndTime", "end_time < ?", &models.Task{}},
-			{"task_conversations", "EndTime", "end_time < ?", &models.Conversation{}},
+			// 修 bug：表名应为 conversations（原字面量 task_conversations 不存在→DELETE 报错→对话表从未被清理，14GB 膨胀根因之一）。
+			// 口径对齐：删除列用 start_time——efficiency-v2 取数/夹窗(efficiency_v2_events.go:217/225)、floor、诊断「删候选」
+			// 均锚 start_time；用 end_time 会让跨界长会话(start<before 但 end>=before)与回看窗错配。
+			{"conversations", "StartTime", "start_time < ?", &models.Conversation{}},
+			// 同步清派生缓存 conversation_events（按 event_start_ts），否则删源留 6GB 派生孤儿（与 conversations 仅逻辑关联、无 FK 级联）。
+			// 是可重算缓存，按窗删除安全。保持手动调用、不自动接 cron（接 cron 待回看窗口/raw-dump 留存窗确认）。
+			{"conversation_events", "EventStartTs", "event_start_ts < ?", &models.ConversationEvent{}},
 		}
 
 		for _, t := range tables {

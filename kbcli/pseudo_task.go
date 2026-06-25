@@ -81,7 +81,7 @@ func buildPseudoTask(session models.Session, conversations []models.Conversation
 		downstreamTokens += c.DownstreamTokens
 		cost += c.Cost
 		diffLines += c.DiffLines
-		totalInchars += len(c.UserInput)
+		totalInchars += c.EffectiveUserInputChars() // 卸载 user_input 后回退预存的 UserInputChars，估时分母不塌
 		if !c.StartTime.IsZero() {
 			validTimes = append(validTimes, c.StartTime)
 		}
