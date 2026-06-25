@@ -76,7 +76,7 @@ docker compose run --rm kbcli clean --before 2026-05-25
 
 ## 阶段 8 — 常态化
 - 内联卸载（阶段3）已让新数据不进 DB；裁旧（clean）按窗定期跑（确认留存窗后接 cron）。
-- design.md「激活硬门槛」#5：clean 删 conversations 行须同步清 content_location 指向的 blob（接 cron 前补）。
+- ✅ clean 已会同步删 content_location 指向的卸载 blob（DELETE...RETURNING + storage.Remove，无孤儿）。
 
 ## 回滚
 - **镜像**：回滚旧 tag。加列/event_start_ts 索引无害；slim-indexes 删的索引可 CREATE 重建。
