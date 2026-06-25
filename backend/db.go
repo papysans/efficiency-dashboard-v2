@@ -497,6 +497,15 @@ func ListConversations(db *gorm.DB, taskId string) ([]models.Conversation, error
 	if err := db.Where("task_id = ?", taskId).Order("start_time ASC").Find(&convs).Error; err != nil {
 		return nil, fmt.Errorf("查询 conversations 列表失败: %w", err)
 	}
+	// 正文卸载回读（A6 / 展示路径）：卸载后正文列在 DB 为空、ContentLocation 非空，前端"对话历史"需从磁盘回灌。
+	// 展示路径 best-effort：单条 blob 回读失败仅记日志、该行正文留空，不因此把整个任务详情打成 500——
+	// 展示可用性不应被单条冷存储抖动绑架（与 efficiency-v2 主指标路径的 hard-fail 不同，那里读到空会污染指标必须中断）。
+	// 卸载未激活时 ContentLocation 全空，为 no-op。
+	for i := range convs {
+		if err := convs[i].HydrateContent(); err != nil {
+			log.Printf("[conv] 回读卸载正文失败(session=%s request=%s)，该行正文留空: %v", convs[i].SessionId, convs[i].RequestId, err)
+		}
+	}
 	return convs, nil
 }
 

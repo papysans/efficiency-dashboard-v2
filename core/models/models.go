@@ -76,8 +76,8 @@ type Conversation struct {
 	// 正文卸载(WS-A)：ContentLocation 非空表示 request/response_content/user_input 已卸载到磁盘/对象存储，
 	// 三列在 DB 置空，按需经 storage.ReadFile 回灌。UserInputChars 预存 len(UserInput)，
 	// 卸载后供 pseudo_task 古代估时(原读 len(c.UserInput))与 efficiency-v2 活跃判定用，避免回灌全文。
-	ContentLocation string    `gorm:"type:text" json:"content_location"`
-	UserInputChars  int       `gorm:"type:int;default:0" json:"user_input_chars"`
+	ContentLocation string    `gorm:"type:text" json:"-"`          // 内部存储指针，json:"-" 不外发(防泄露 bucket/磁盘布局)
+	UserInputChars  int       `gorm:"type:int;default:0" json:"-"` // 内部估时用，不外发
 	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 

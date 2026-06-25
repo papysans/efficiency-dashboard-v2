@@ -237,6 +237,16 @@ func QueryEfficiencyV2Conversations(db *gorm.DB, query EfficiencyV2ConversationE
 	if err := tx.Find(&conversations).Error; err != nil {
 		return nil, err
 	}
+	// 正文卸载回读（A6 / 禁区②，承重）：正文卸载后 request/response/user_input 列在 DB 为空、ContentLocation 非空，
+	// 本路径下游 extractEfficiencyV2RawToolEvent 直读这三列 json.Unmarshal 提工具事件；不回灌则读到空串→
+	// 工具事件丢失、exact 静默退化成 degraded，复现 ~26% 解析退化（c5ac101），污染 needs/silica/user_productivity_v2 主指标。
+	// 故此处逐行回灌，回读失败必须中断本次重算（hard-fail），绝不静默当空串。卸载未激活时 ContentLocation 全空，为 no-op。
+	for i := range conversations {
+		if err := conversations[i].HydrateContent(); err != nil {
+			return nil, fmt.Errorf("efficiency-v2 回读卸载正文失败(session=%s request=%s): %w",
+				conversations[i].SessionId, conversations[i].RequestId, err)
+		}
+	}
 	return conversations, nil
 }
 

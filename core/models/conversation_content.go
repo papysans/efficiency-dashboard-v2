@@ -72,6 +72,25 @@ func OffloadConversationContent(analysedDir, sessionID, requestID, req, resp, us
 	return loc, nil
 }
 
+// Offload 把本行三列正文卸载到磁盘/对象存储：固定顺序「先落对象成功 → 再写 ContentLocation → 最后置空三列」，
+// 任一步失败回退（落对象失败则不动任何 DB 列、ContentLocation 不变，本行保持未卸载），避免指针与对象不一致产生孤儿。
+// 置空 user_input 前自动持久化 UserInputChars（保 EffectiveUserInputChars 不变式：估时分母不塌）。
+// 全列原子卸载（三列同时落 blob、同时置空）；分段卸载未支持（见 HydrateContent 注释）。
+func (c *Conversation) Offload(analysedDir string) error {
+	loc, err := OffloadConversationContent(analysedDir, c.SessionId, c.RequestId, c.RequestContent, c.ResponseContent, c.UserInput)
+	if err != nil {
+		return err
+	}
+	if c.UserInputChars == 0 && c.UserInput != "" {
+		c.UserInputChars = len(c.UserInput)
+	}
+	c.ContentLocation = loc
+	c.RequestContent = ""
+	c.ResponseContent = ""
+	c.UserInput = ""
+	return nil
+}
+
 // EffectiveUserInputChars 返回用户输入长度（字节，与历史口径 len(UserInput) 一致）。
 // 优先用导入期持久化的 UserInputChars；为 0 时回退 len(UserInput)，兼容旧行未回填 / 本就空输入。
 // 不变式：必须在「卸载 user_input（置空 DB 列）」之前回填 UserInputChars，
@@ -97,8 +116,10 @@ func LoadConversationContent(location string) (req, resp, userInput string, err 
 }
 
 // HydrateContent 在 ContentLocation 非空时回灌被卸载（DB 列为空）的正文，逐列只在「DB 空且 blob 非空」时填充。
-// 这样 staged cutover（先只卸 response_content）期间，未卸载的列仍用 DB 值、已卸载的列从 blob 回灌，互不干扰。
-// 回读失败返回 error，调用方决定是否降级（绝不能静默当空串→会复现解析退化）。
+// 当前 Offload 是全列原子卸载（三列同时落 blob、同时置空），与本逐列回灌自洽。
+// 逐列守卫也为未来「分段卸载」预留兼容，但分段需 Offload 配套列掩码（blob 与置空都按掩码），当前未支持——
+// 切勿直接复用全列 Offload 做分段，否则会把未打算卸载的列正文一并丢/错配（复现解析退化）。
+// 回读失败返回 error，调用方决定 hard-fail（efficiency-v2 主指标路径）还是 best-effort 降级（backend 展示路径），绝不能静默当空串。
 func (c *Conversation) HydrateContent() error {
 	if c.ContentLocation == "" {
 		return nil
