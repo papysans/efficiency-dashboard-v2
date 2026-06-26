@@ -114,11 +114,11 @@ export default function UsageKanban() {
                 <ViewTab active={view === 'aggregate'} onClick={() => patch({ view: 'aggregate' })}>
                   部门聚合
                 </ViewTab>
-                <ViewTab active={view === 'members'} onClick={() => patch({ view: 'members' })}>
-                  本部门人员
-                </ViewTab>
                 <ViewTab active={view === 'compare'} onClick={() => patch({ view: 'compare' })}>
                   子部门对比
+                </ViewTab>
+                <ViewTab active={view === 'members'} onClick={() => patch({ view: 'members' })}>
+                  本部门人员
                 </ViewTab>
               </div>
             )}
