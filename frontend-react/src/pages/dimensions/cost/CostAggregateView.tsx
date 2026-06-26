@@ -10,7 +10,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { EChart } from '@/components/charts/EChart'
 import { MetricCard } from '@/components/ui/MetricCard'
-import { ChartCard, EmptyHint, PIE_COLORS, baseTooltip, shortToken } from '@/pages/platform/platformShared'
+import { ChartCard, EmptyHint, PIE_COLORS, baseTooltip, shortToken, useZeroRequestFilter, ZeroRequestToggle } from '@/pages/platform/platformShared'
 import { fmtCost, formatNumber } from '@/lib/formatters'
 import {
   useCostOverview,
@@ -266,9 +266,15 @@ function ModelsCostBlock({
   composition?: { model: string; total_cost: number; cost_pct: number }[]
   palette: ChartPalette
 }) {
+  const { showZero, setShowZero, visible: visibleModels, hiddenCount } = useZeroRequestFilter(models)
   const pieOpt = useMemo<EChartsOption | null>(() => {
-    const items = composition && composition.length ? composition : models
-    if (!items || !items.length) return null
+    if (!visibleModels.length) return null
+    // 饼图与表格同口径：只保留未被隐藏（request_count>0 或已展开）的模型。
+    const visibleNames = new Set(visibleModels.map((m) => m.model))
+    const items = (composition && composition.length ? composition : visibleModels).filter((m) =>
+      visibleNames.has((m as { model: string }).model),
+    )
+    if (!items.length) return null
     return {
       tooltip: { trigger: 'item', ...baseTooltip(p), formatter: '{b}: ¥{c} ({d}%)' },
       legend: { type: 'scroll', bottom: 0, textStyle: { color: p.textColor } },
@@ -287,7 +293,7 @@ function ModelsCostBlock({
         },
       ],
     }
-  }, [composition, models, p])
+  }, [composition, visibleModels, p])
 
   if (loading) return <SkeletonCard title="各模型成本" />
   if (!models || !models.length) {
@@ -298,24 +304,31 @@ function ModelsCostBlock({
     )
   }
   return (
-    <ChartCard title="各模型成本" sub="按实际命中模型拆分（后端按 total_cost 降序）">
-      <div className="grid grid-cols-1 lg:grid-cols-[20rem_1fr] gap-4 items-start">
-        {pieOpt && <EChart option={pieOpt} height={300} />}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200/50 dark:border-white/10 text-gray-500 dark:text-gray-400">
-                <th className="px-3 py-2 text-left whitespace-nowrap">模型</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">费用</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">费用占比</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">输入单价/千</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">输出单价/千</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">实际平均成本/千</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">请求数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {models.map((m, i) => (
+    <ChartCard
+      title="各模型成本"
+      sub="按实际命中模型拆分（后端按 total_cost 降序）"
+      extra={<ZeroRequestToggle showZero={showZero} onToggle={setShowZero} hiddenCount={hiddenCount} />}
+    >
+      {visibleModels.length === 0 ? (
+        <EmptyHint />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[20rem_1fr] gap-4 items-start">
+          {pieOpt && <EChart option={pieOpt} height={300} />}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200/50 dark:border-white/10 text-gray-500 dark:text-gray-400">
+                  <th className="px-3 py-2 text-left whitespace-nowrap">模型</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">费用</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">费用占比</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">输入单价/千</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">输出单价/千</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">实际平均成本/千</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">请求数</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleModels.map((m, i) => (
                 <tr key={m.model || i} className="border-b border-gray-100/50 dark:border-white/5">
                   <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                     <span className="inline-flex items-center gap-2">
@@ -333,8 +346,9 @@ function ModelsCostBlock({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
-      </div>
+      )}
     </ChartCard>
   )
 }

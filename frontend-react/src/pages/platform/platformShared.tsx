@@ -1,7 +1,7 @@
 // 平台（chat-indicator-statistics 代理）三个子页的共享小件：子页 tab、token 缩写、错误码判断、
 // 饼图色板、universal_id → 看板用户互链单元格、ECharts option 工厂与图表卡片。
 // 仅平台页内部复用，不进 src/api/ 或全局组件（避免与并行任务冲突）。
-import type { ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
@@ -179,6 +179,47 @@ export function EmptyHint({ compact = false }: { compact?: boolean }) {
     >
       暂无数据
     </div>
+  )
+}
+
+/**
+ * 模型用量/成本表统一过滤：默认隐藏 request_count=0 的模型，开关可展开。
+ * items 来自 react-query（稳定引用），visible 随 showZero/items 记忆化。
+ */
+export function useZeroRequestFilter<T extends { request_count: number }>(items: T[] | undefined) {
+  const [showZero, setShowZero] = useState(false)
+  const visible = useMemo(
+    () => (items ? (showZero ? items : items.filter((m) => m.request_count > 0)) : []),
+    [items, showZero],
+  )
+  const hiddenCount = useMemo(
+    () => (items ? items.reduce((n, m) => n + (m.request_count > 0 ? 0 : 1), 0) : 0),
+    [items],
+  )
+  return { showZero, setShowZero, visible, hiddenCount }
+}
+
+/** 配合 useZeroRequestFilter，渲染在 ChartCard 的 extra 槽；无 0 请求模型时不渲染。 */
+export function ZeroRequestToggle({
+  showZero,
+  onToggle,
+  hiddenCount,
+}: {
+  showZero: boolean
+  onToggle: (v: boolean) => void
+  hiddenCount: number
+}) {
+  if (hiddenCount === 0 && !showZero) return null
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none whitespace-nowrap">
+      <input
+        type="checkbox"
+        checked={showZero}
+        onChange={(e) => onToggle(e.target.checked)}
+        className="accent-apple-blue"
+      />
+      {showZero ? '含 0 请求模型' : `显示 0 请求模型${hiddenCount ? ` (${hiddenCount})` : ''}`}
+    </label>
   )
 }
 

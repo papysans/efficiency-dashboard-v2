@@ -1,7 +1,7 @@
 // 个人详情视角：对接 /stats/users/:uid/detail + /:uid/trend。
 // 覆盖个人口径：总输入/输出 Token、总请求次数、成功率/失败率、各模型用量与占比（需求 2/3 个人视角）。
 import { useMemo } from 'react'
-import { ChartCard, EmptyHint, PIE_COLORS, multiAreaOption, shortToken } from '@/pages/platform/platformShared'
+import { ChartCard, EmptyHint, PIE_COLORS, multiAreaOption, shortToken, useZeroRequestFilter, ZeroRequestToggle } from '@/pages/platform/platformShared'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { EChart } from '@/components/charts/EChart'
 import { useTheme } from '@/hooks/useTheme'
@@ -19,6 +19,8 @@ export function MemberDetail({ uid, start, end }: { uid: string; start: string; 
   const { resolveName } = useUserNameMap()
   const detailQ = useUsageUserDetail(uid, start, end)
   const trendQ = useUsageUserTrend(uid, start, end)
+  // 各模型用量：默认隐藏 0 请求模型，开关可展开（hook 必须在所有早返回之前调用）。
+  const { showZero, setShowZero, visible: visibleModels, hiddenCount } = useZeroRequestFilter(detailQ.data?.models)
 
   const labels = useMemo(() => (trendQ.data || []).map((t) => t.date), [trendQ.data])
   const reqOpt = useMemo(
@@ -59,7 +61,6 @@ export function MemberDetail({ uid, start, end }: { uid: string; start: string; 
 
   const d = detailQ.data
   const u = d?.user_detail
-  const models = d?.models || []
   const depts = d?.departments || []
   const displayName = resolveName(uid) || u?.username || uid
 
@@ -111,8 +112,12 @@ export function MemberDetail({ uid, start, end }: { uid: string; start: string; 
       </ChartCard>
 
       {/* 各模型用量（个人） */}
-      <ChartCard title="各模型使用" sub="按实际命中模型拆分">
-        {models.length ? (
+      <ChartCard
+        title="各模型使用"
+        sub="按实际命中模型拆分"
+        extra={<ZeroRequestToggle showZero={showZero} onToggle={setShowZero} hiddenCount={hiddenCount} />}
+      >
+        {visibleModels.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
@@ -127,7 +132,7 @@ export function MemberDetail({ uid, start, end }: { uid: string; start: string; 
                 </tr>
               </thead>
               <tbody>
-                {models.map((m, i) => (
+                {visibleModels.map((m, i) => (
                   <tr key={m.model || i} className="border-b border-gray-100/50 dark:border-white/5">
                     <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                       <span className="inline-flex items-center gap-2">

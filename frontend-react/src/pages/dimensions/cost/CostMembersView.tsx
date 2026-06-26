@@ -92,7 +92,8 @@ export function CostMembersView({
           <thead>
             <tr className="border-b border-gray-200/50 dark:border-white/10">
               <th className={TH_NUM}>#</th>
-              <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">用户</th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">用户名</th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">工号</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">用户 ID</th>
               {SORT_COLS.map((c) => (
                 <th key={c.field} className={TH_NUM}>
@@ -113,11 +114,11 @@ export function CostMembersView({
           <tbody>
             {membersQ.isLoading && rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">加载中…</td>
+                <td colSpan={11} className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">加载中…</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={10}>
+                <td colSpan={11}>
                   <EmptyHint compact />
                 </td>
               </tr>
@@ -136,6 +137,7 @@ export function CostMembersView({
                         <ChatUserCell universalId={m.universal_id} chatUsername={m.username} resolveName={resolveName} />
                       </div>
                     </td>
+                    <td className={TD} title={m.user_id || ''}>{m.user_id || '-'}</td>
                     <td className={TD}>
                       <span className="text-xs text-gray-400 font-mono" title={m.universal_id || ''}>{m.universal_id ? `${m.universal_id.slice(0, 12)}…` : '-'}</span>
                     </td>

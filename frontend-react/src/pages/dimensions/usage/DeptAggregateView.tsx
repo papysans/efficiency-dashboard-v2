@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { EChart } from '@/components/charts/EChart'
 import { MetricCard } from '@/components/ui/MetricCard'
-import { ChartCard, EmptyHint, PIE_COLORS, baseTooltip, multiAreaOption, shortToken } from '@/pages/platform/platformShared'
+import { ChartCard, EmptyHint, PIE_COLORS, baseTooltip, multiAreaOption, shortToken, useZeroRequestFilter, ZeroRequestToggle } from '@/pages/platform/platformShared'
 import { buildDualAxisTrendOption, type TrendSeriesItem } from '../trendOptions'
 import { formatNumber } from '@/lib/formatters'
 import {
@@ -217,8 +217,9 @@ function ModelsBlock({
   models?: { model: string; request_count: number; request_pct: number; prompt_tokens: number; completion_tokens: number; total_tokens: number; token_pct: number; input_output_ratio: number; success_rate: number; estimated_total_cost: number }[]
   palette: ChartPalette
 }) {
+  const { showZero, setShowZero, visible: visibleModels, hiddenCount } = useZeroRequestFilter(models)
   const pieOpt = useMemo<EChartsOption | null>(() => {
-    if (!models || !models.length) return null
+    if (!visibleModels.length) return null
     return {
       tooltip: { trigger: 'item', ...baseTooltip(p), formatter: '{b}: {c} ({d}%)' },
       legend: { type: 'scroll', bottom: 0, textStyle: { color: p.textColor } },
@@ -229,11 +230,11 @@ function ModelsBlock({
           center: ['50%', '46%'],
           itemStyle: { borderColor: p.tooltipBg, borderWidth: 2 },
           label: { color: p.textColor },
-          data: models.map((m, i) => ({ name: m.model, value: m.request_count, itemStyle: { color: PIE_COLORS[i % PIE_COLORS.length] } })),
+          data: visibleModels.map((m, i) => ({ name: m.model, value: m.request_count, itemStyle: { color: PIE_COLORS[i % PIE_COLORS.length] } })),
         },
       ],
     }
-  }, [models, p])
+  }, [visibleModels, p])
 
   if (loading) return <SkeletonCard title="各模型使用" />
   if (!models || !models.length) {
@@ -244,25 +245,32 @@ function ModelsBlock({
     )
   }
   return (
-    <ChartCard title="各模型使用" sub="按实际命中模型（routed_model）拆分">
-      <div className="grid grid-cols-1 lg:grid-cols-[20rem_1fr] gap-4 items-start">
-        {pieOpt && <EChart option={pieOpt} height={260} />}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200/50 dark:border-white/10 text-gray-500 dark:text-gray-400">
-                <th className="px-3 py-2 text-left whitespace-nowrap">模型</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">请求次数</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">请求占比</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">输入 Token</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">输出 Token</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">消耗占比</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">输入/输出</th>
-                <th className="px-3 py-2 text-right whitespace-nowrap">成功率</th>
-              </tr>
-            </thead>
-            <tbody>
-              {models.map((m, i) => (
+    <ChartCard
+      title="各模型使用"
+      sub="按实际命中模型（routed_model）拆分"
+      extra={<ZeroRequestToggle showZero={showZero} onToggle={setShowZero} hiddenCount={hiddenCount} />}
+    >
+      {visibleModels.length === 0 ? (
+        <EmptyHint />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[20rem_1fr] gap-4 items-start">
+          {pieOpt && <EChart option={pieOpt} height={260} />}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200/50 dark:border-white/10 text-gray-500 dark:text-gray-400">
+                  <th className="px-3 py-2 text-left whitespace-nowrap">模型</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">请求次数</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">请求占比</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">输入 Token</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">输出 Token</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">消耗占比</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">输入/输出</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">成功率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleModels.map((m, i) => (
                 <tr key={m.model || i} className="border-b border-gray-100/50 dark:border-white/5">
                   <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                     <span className="inline-flex items-center gap-2">
@@ -281,8 +289,9 @@ function ModelsBlock({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
-      </div>
+      )}
     </ChartCard>
   )
 }

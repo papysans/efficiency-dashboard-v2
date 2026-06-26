@@ -153,6 +153,7 @@ export interface CostTeamCompositionResp {
 export interface CostUserItem {
   universal_id: string
   username: string | null
+  user_id?: string // 工号（可读标识，区别于 universal_id 用户唯一 id）
   total_cost: number // 各用户费用
   input_cost: number
   output_cost: number

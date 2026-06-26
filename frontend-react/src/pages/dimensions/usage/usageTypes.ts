@@ -131,6 +131,7 @@ export interface DeptPeriodCompareResp {
 export interface DeptMemberItem {
   universal_id: string
   username?: string
+  user_id?: string // 工号（可读标识，区别于 universal_id 用户唯一 id）
   total_requests: number
   sum_prompt_tokens?: number
   sum_completion_tokens?: number
