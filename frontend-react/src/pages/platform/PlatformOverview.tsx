@@ -15,7 +15,6 @@ import { formatNumber } from '@/lib/formatters'
 import { Modal } from '@/components/ui/Modal'
 import SettingsLayout, { BTN_GLASS, ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
 import { ChartCard, ChatUserCell, EmptyHint, PIE_COLORS, multiAreaOption, shortToken } from './platformShared'
-import type { ChatUserTrendRow, ChatModelTrendSeries } from '@/api/types'
 
 // ---- 页面局部类型 ----
 
@@ -686,7 +685,6 @@ function UserDetailModal({ uid, username, startDate, endDate, onClose }: {
 }) {
   const { theme } = useTheme()
   const p = useMemo(() => getPalette(theme), [theme])
-  const { resolveName } = useUserNameMap()
 
   const { data: rows, isLoading } = useQuery({
     queryKey: ['chat-user-trend', uid, startDate, endDate],
@@ -777,10 +775,7 @@ function UserDetailModal({ uid, username, startDate, endDate, onClose }: {
   return (
     <Modal
       open={true}
-      title={<div className="flex items-center gap-2">
-        <span className="font-semibold">{username}</span>
-        <span className="text-xs text-gray-400 font-mono">{uid}</span>
-      </div>}
+      title={`${username} · ${uid}`}
       maxWidth={1100}
       onClose={onClose}
       footer={<button type="button" className={BTN_GLASS} onClick={onClose}>关闭</button>}

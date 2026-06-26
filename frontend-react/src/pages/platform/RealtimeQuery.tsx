@@ -687,10 +687,7 @@ export default function RealtimeQuery() {
     {trace.open && (
       <Modal
         open={true}
-        title={<div className="flex items-center gap-2">
-          <span>链路日志</span>
-          <span className="text-xs text-gray-400 font-mono font-normal">{trace.requestId}</span>
-        </div>}
+        title={`链路日志 · ${trace.requestId}`}
         maxWidth={900}
         onClose={() => setTrace((s) => ({ ...s, open: false }))}
         footer={<button type="button" className={BTN_SECONDARY} onClick={() => setTrace((s) => ({ ...s, open: false }))}>关闭</button>}
