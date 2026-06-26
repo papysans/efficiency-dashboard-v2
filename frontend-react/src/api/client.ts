@@ -1,9 +1,9 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
 
-// 对齐 Vue frontend/src/api/index.js：baseURL=/api，timeout 30s，错误体约定 { error: string }。
-// dev 时 vite proxy /api → localhost:9990；生产时 nginx 反代。见 research/api-contract.md §1。
+// baseURL=/kanban/api：整站经外层 ingress 以 /kanban 前缀进入，接口必须带 /kanban 网关才路由到本服务。
+// dev 时 vite proxy /kanban/api → localhost:9990（剥 /kanban）；生产时 portal nginx location /kanban/api/ 反代。
 export const http: AxiosInstance = axios.create({
-  baseURL: '/api',
+  baseURL: '/kanban/api',
   timeout: 30000,
 })
 
@@ -46,7 +46,7 @@ export async function apiDelete<T>(url: string, config?: AxiosRequestConfig): Pr
 // ============================================================
 
 const chatHttp: AxiosInstance = axios.create({
-  baseURL: '/api/v2/chat',
+  baseURL: '/kanban/api/v2/chat',
   // 实时查询直查源库可能慢（设计 §1.2 后端 Transport 60s），前端留 65s 余量。
   timeout: 65000,
 })
