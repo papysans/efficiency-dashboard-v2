@@ -25,6 +25,7 @@ export default function SystemConfig() {
   const [etlSource, setEtlSource] = useState('')
   const [currency, setCurrency] = useState('CNY')
   const [rate, setRate] = useState('7.2420')
+  const [logPreviewSource, setLogPreviewSource] = useState('')
   const [rawLogRootDir, setRawLogRootDir] = useState('')
   const [rawLogPreviewMaxMb, setRawLogPreviewMaxMb] = useState('5')
 
@@ -39,6 +40,7 @@ export default function SystemConfig() {
     setEtlSource(cfg.daily_etl_source || '')
     setCurrency(cfg.system_currency || 'CNY')
     setRate(cfg.default_exchange_rate || '7.2420')
+    setLogPreviewSource(cfg.log_preview_source || '')
     setRawLogRootDir(cfg.raw_log_root_dir || '')
     setRawLogPreviewMaxMb(cfg.raw_log_preview_max_mb || '5')
   }, [cfg])
@@ -67,6 +69,7 @@ export default function SystemConfig() {
         daily_etl_source: etlSource,
         system_currency: currency,
         default_exchange_rate: String(rateNum),
+        log_preview_source: logPreviewSource,
         raw_log_root_dir: rawLogRootDir.trim(),
         raw_log_preview_max_mb: String(previewMaxMb),
       })
@@ -112,12 +115,23 @@ export default function SystemConfig() {
               <input type="text" value={cron} onChange={(e) => setCron(e.target.value)} placeholder="0 2 * * *" className={`${INPUT_CLS} font-mono`} />
             </Field>
 
-            <Field label="定时任务数据源" hint="定时 ETL 绑定的数据源。留空则即使启用定时，也不会执行同步。">
+            <Field label="定时任务数据源" hint="定时 ETL 绑定的数据源。留空则即使启用定时，也不会执行同步。仅支持 PostgreSQL 和 Elasticsearch。">
               <select value={etlSource} onChange={(e) => setEtlSource(e.target.value)} className={INPUT_CLS}>
                 <option value="">未绑定</option>
-                {(datasources || []).map((d) => (
+                {(datasources || []).filter(d => d.source_type === 'postgres' || d.source_type === 'elasticsearch').map((d) => (
                   <option key={d.id} value={String(d.id)} disabled={!d.is_enabled}>
                     {d.name}（{d.source_type === 'postgres' ? 'PG' : 'ES'}）{d.is_enabled ? '' : ' - 未启用'}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="日志预览存储数据源" hint="选择原始日志预览使用的存储数据源（source_type=log_storage）。留空则回退到下方目录/MB 配置。">
+              <select value={logPreviewSource} onChange={(e) => setLogPreviewSource(e.target.value)} className={INPUT_CLS}>
+                <option value="">未绑定（使用下方目录/MB）</option>
+                {(datasources || []).filter(d => d.source_type === 'log_storage').map((d) => (
+                  <option key={d.id} value={String(d.id)} disabled={!d.is_enabled}>
+                    {d.name}（日志存储）{d.is_enabled ? '' : ' - 未启用'}
                   </option>
                 ))}
               </select>

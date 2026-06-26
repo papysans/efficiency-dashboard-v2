@@ -1191,6 +1191,9 @@ export interface ChatDatasource {
   name: string
   source_type: string
   is_enabled: boolean
+  /** 新类型（loki/dept_api/log_storage）的 JSON 配置；PG/ES 也可能迁移到此字段。 */
+  config_json: string | null
+  // -- PG 扁平字段（向后兼容旧数据） --
   pg_host: string | null
   pg_port: number | null
   pg_database: string | null
@@ -1199,12 +1202,21 @@ export interface ChatDatasource {
   pg_username: string | null
   pg_password: string | null
   pg_ssl_mode: string | null
+  // -- ES 扁平字段 --
   es_hosts: string | null
   es_username: string | null
   es_password: string | null
   es_index: string | null
   es_verify_certs: boolean | null
   es_scroll_duration: string | null
+  // -- Loki 扁平字段（向后兼容） --
+  loki_url: string | null
+  loki_username: string | null
+  loki_password: string | null
+  loki_tenant_id: string | null
+  loki_verify_certs: boolean | null
+  loki_queries: string | null // JSON 数组 [{name, label_selector}]
+  // -- 其他 --
   max_open_conns: number | null
   max_idle_conns: number | null
   notes: string | null
@@ -1283,3 +1295,52 @@ export interface ChatSyncTaskStatus {
 
 /** GET/PUT /v2/chat/config —— KV 扁平 map（如 system_currency / exchange_rate_usd_cny）。 */
 export type ChatSystemConfig = Record<string, string>
+
+// ---- trace-logs ----
+
+export interface ChatTraceLogEntry {
+  timestamp: string
+  line: string
+}
+
+export interface ChatTraceLogResponse {
+  entries: ChatTraceLogEntry[]
+  next_cursor: string
+  has_more: boolean
+}
+
+// ---- user trend ----
+
+export interface ChatUserTrendRow {
+  date: string
+  total_requests: number
+  sum_total_tokens: number
+  sum_prompt_tokens: number
+  sum_completion_tokens: number
+  sum_cache_tokens: number
+  estimated_total_cost: number
+  estimated_input_cost: number
+  estimated_output_cost: number
+  estimated_cache_cost: number
+  estimated_request_cost: number
+  unique_task_count: number
+  avg_duration_ms: number | null
+  avg_first_token_duration_ms: number | null
+  error_requests: number
+  model_preference: string | null // JSON {model: count}
+  auto_router_breakdown: string | null // JSON {model: count}
+}
+
+// ---- model trend ----
+
+export interface ChatModelTrendSeries {
+  model: string
+  data: ChatModelTrendRow[]
+}
+
+export interface ChatModelTrendRow {
+  date: string
+  total_requests: number
+  input_tokens: number
+  output_tokens: number
+}

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react
 import { useMutation } from '@tanstack/react-query'
 import { chatStats } from '@/api/endpoints'
 import { useChatDatasources, useGlobalConfig } from '@/api/queries'
-import type { ChatDetailQueryReq, ChatDetailRow, ChatLogPreviewResponse } from '@/api/types'
+import type { ChatDatasource, ChatDetailQueryReq, ChatDetailRow, ChatLogPreviewResponse, ChatTraceLogEntry } from '@/api/types'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Modal } from '@/components/ui/Modal'
 import { Tag } from '@/components/ui/Tag'
@@ -96,6 +96,20 @@ const BTN_SECONDARY =
 const fmtMs = (v: number | null | undefined) => (v != null ? `${Number(v).toFixed(0)} ms` : '-')
 const fmtFloat = (v: number | null | undefined, digits = 2) => (v != null ? Number(v).toFixed(digits) : '-')
 
+/** 在文本行中高亮 keyword */
+function highlightRequestId(line: string, keyword: string): ReactNode {
+  if (!keyword || !line) return line
+  const parts = String(line).split(keyword)
+  return parts.map((part, i) => (
+    <span key={i}>
+      {part}
+      {i < parts.length - 1 && (
+        <mark style={{ background: '#fff7d6', color: '#d46b08', fontWeight: 600, padding: '0 1px', borderRadius: 2 }}>{keyword}</mark>
+      )}
+    </span>
+  ))
+}
+
 interface LogPreviewState {
   open: boolean
   loading: boolean
@@ -110,7 +124,7 @@ export default function RealtimeQuery() {
   const chatEnabled = gc?.chat_stats_enabled === true
   const chatDisabled = !!gc && !chatEnabled
   const { data: datasources, isLoading: dsLoading, error: dsError } = useChatDatasources(chatEnabled)
-  const enabledDatasources = useMemo(() => (datasources || []).filter((d) => d.is_enabled), [datasources])
+  const enabledDatasources = useMemo(() => (datasources || []).filter((d) => d.is_enabled && (d.source_type === 'postgres' || d.source_type === 'elasticsearch')), [datasources])
 
   const [form, setForm] = useState<QueryForm>(defaultForm)
   const [validateMsg, setValidateMsg] = useState('')
@@ -122,6 +136,105 @@ export default function RealtimeQuery() {
     error: '',
     path: '',
   })
+
+  // ---- 链路日志（Loki）Drawer 状态 ----
+  const [trace, setTrace] = useState<{
+    open: boolean; loading: boolean; requestId: string; datasourceId: string;
+    queries: Array<{ name: string; label_selector: string }>; queryName: string; labelSelector: string;
+    startTime: string; endTime: string; entries: ChatTraceLogEntry[]; nextCursor: string; hasMore: boolean; error: string;
+  }>({
+    open: false, loading: false, requestId: '', datasourceId: '',
+    queries: [], queryName: '', labelSelector: '',
+    startTime: '', endTime: '', entries: [], nextCursor: '', hasMore: false, error: '',
+  })
+  const [traceDetail, setTraceDetail] = useState<{ open: boolean; entry: ChatTraceLogEntry | null; mode: 'raw' | 'formatted' }>({ open: false, entry: null, mode: 'raw' })
+
+  // ---- Loki 数据源工具 ----
+  /** 解析数据源 config_json 中的查询预设 */
+  function parseDatasourceQueries(ds: ChatDatasource): Array<{ name: string; label_selector: string }> {
+    if (ds.config_json) {
+      try {
+        const cfg = JSON.parse(ds.config_json)
+        if (Array.isArray(cfg.queries)) return cfg.queries.filter((q: { label_selector?: string }) => q && q.label_selector)
+      } catch { /* ignore */ }
+    }
+    if (ds.loki_queries) {
+      try {
+        const arr = JSON.parse(ds.loki_queries)
+        return Array.isArray(arr) ? arr.filter((q: { label_selector?: string }) => q && q.label_selector) : []
+      } catch { /* ignore */ }
+    }
+    return []
+  }
+
+  /** 取 Loki 数据源的首个预设 */
+  const pickDefaultPreset = (ds: ChatDatasource) => {
+    const queries = parseDatasourceQueries(ds)
+    return { queries, preset: queries[0] || null }
+  }
+
+  // ---- 链路日志查询 ----
+  const fetchTrace = useCallback((requestId: string, dsId: string, labelSelector: string, startTime: string, endTime: string, cursor: string, replace: boolean) => {
+    if (!dsId) {
+      setTrace((s) => ({ ...s, loading: false, error: '未配置 Loki 数据源，请先在「数据源管理」中添加 loki 类型数据源' }))
+      return
+    }
+    setTrace((s) => ({ ...s, loading: true, error: '' }))
+    chatStats.traceLogs({
+      datasource_id: dsId,
+      request_id: requestId,
+      label_selector: labelSelector,
+      start_time: startTime,
+      end_time: endTime,
+      limit: 100,
+      cursor,
+    })
+      .then((res) => {
+        setTrace((s) => ({
+          ...s, loading: false, error: '',
+          entries: replace ? (res.entries || []) : [...s.entries, ...(res.entries || [])],
+          nextCursor: res.next_cursor || '',
+          hasMore: !!res.has_more,
+        }))
+      })
+      .catch((e: Error) => {
+        setTrace((s) => ({ ...s, loading: false, error: e.message }))
+      })
+  }, [])
+
+  const openTraceDrawer = useCallback((requestId: string) => {
+    const startTime = toIsoWithOffset(form.start)
+    const endTime = toIsoWithOffset(form.end)
+    const lokiDS = (datasources || []).filter((ds) => ds.source_type === 'loki' && ds.is_enabled)
+    const defaultLoki = lokiDS.length > 0 ? lokiDS[0] : null
+    const dsId = defaultLoki ? String(defaultLoki.id) : ''
+    const { queries, preset } = defaultLoki ? pickDefaultPreset(defaultLoki) : { queries: [], preset: null }
+    setTrace({
+      open: true, loading: true, requestId, datasourceId: dsId,
+      queries, queryName: preset ? preset.name : '', labelSelector: preset ? preset.label_selector : '',
+      startTime, endTime, entries: [], nextCursor: '', hasMore: false, error: '',
+    })
+    fetchTrace(requestId, dsId, preset ? preset.label_selector : '', startTime, endTime, '', true)
+  }, [datasources, fetchTrace, form.start, form.end])
+
+  const loadMoreTrace = useCallback(() => {
+    fetchTrace(trace.requestId, trace.datasourceId, trace.labelSelector, trace.startTime, trace.endTime, trace.nextCursor, false)
+  }, [trace, fetchTrace])
+
+  const onTraceDatasourceChange = useCallback((dsId: string) => {
+    const ds = (datasources || []).find((d) => String(d.id) === dsId)
+    const { queries, preset } = ds ? pickDefaultPreset(ds) : { queries: [], preset: null }
+    setTrace((s) => ({ ...s, datasourceId: dsId, queries, queryName: preset ? preset.name : '', labelSelector: preset ? preset.label_selector : '' }))
+    fetchTrace(trace.requestId, dsId, preset ? preset.label_selector : '', trace.startTime, trace.endTime, '', true)
+  }, [datasources, trace.requestId, trace.startTime, trace.endTime, fetchTrace])
+
+  const onTracePresetChange = useCallback((name: string) => {
+    const preset = trace.queries.find((q) => q.name === name)
+    const selector = preset ? preset.label_selector : ''
+    setTrace((s) => ({ ...s, queryName: name, labelSelector: selector }))
+    fetchTrace(trace.requestId, trace.datasourceId, selector, trace.startTime, trace.endTime, '', true)
+  }, [trace, fetchTrace])
+
   // universal_id 与看板 user_id 同源 → 结果表/详情弹层解析看板用户名并互链（失败自动回退）。
   const { resolveName } = useUserNameMap()
 
@@ -244,6 +357,7 @@ export default function RealtimeQuery() {
   }
 
   return (
+    <>
     <SettingsLayout>
       <div className="space-y-5">
         {header}
@@ -269,7 +383,7 @@ export default function RealtimeQuery() {
             ) : (
               <>
                 <option value="">请选择数据源</option>
-                {(datasources || []).map((d) => (
+                {(datasources || []).filter(d => d.source_type === 'postgres' || d.source_type === 'elasticsearch').map((d) => (
                   <option key={d.id} value={String(d.id)} disabled={!d.is_enabled}>
                     {d.name}（{d.source_type === 'postgres' ? 'PG' : 'ES'}）{d.is_enabled ? '' : ' - 未启用'}
                   </option>
@@ -469,8 +583,20 @@ export default function RealtimeQuery() {
                   >
                     <td className={TD}>{formatLocalTime(row.ts)}</td>
                     <td className={`${TD} font-mono text-xs`}>
-                      <div className="max-w-[260px] truncate" title={row.request_id}>
-                        {row.request_id || '-'}
+                      <div className="flex items-center gap-1">
+                        <span className="max-w-[220px] truncate text-apple-blue bg-apple-blue/5 px-1.5 py-0.5 rounded font-semibold" title={row.request_id}>
+                          {row.request_id || '-'}
+                        </span>
+                        {row.request_id && (datasources || []).some(d => d.source_type === 'loki' && d.is_enabled) && (
+                          <button
+                            type="button"
+                            className="text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 leading-none text-sm"
+                            title="查询链路日志"
+                            onClick={(e) => { e.stopPropagation(); openTraceDrawer(row.request_id!) }}
+                          >
+                            &#128269;
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className={`${TD} font-mono text-xs`}>
@@ -556,6 +682,110 @@ export default function RealtimeQuery() {
       </Modal>
       </div>
     </SettingsLayout>
+
+    {/* ===== 链路日志 Drawer ===== */}
+    {trace.open && (
+      <Modal
+        open={true}
+        title={<div className="flex items-center gap-2">
+          <span>链路日志</span>
+          <span className="text-xs text-gray-400 font-mono font-normal">{trace.requestId}</span>
+        </div>}
+        maxWidth={900}
+        onClose={() => setTrace((s) => ({ ...s, open: false }))}
+        footer={<button type="button" className={BTN_SECONDARY} onClick={() => setTrace((s) => ({ ...s, open: false }))}>关闭</button>}
+      >
+        <div className="space-y-3">
+          {/* 工具栏: 数据源 + 预设选择 */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <select
+              value={trace.datasourceId}
+              onChange={(e) => onTraceDatasourceChange(e.target.value)}
+              className={INPUT_CLS}
+              aria-label="Loki 数据源"
+            >
+              <option value="" disabled>选择数据源</option>
+              {(datasources || []).filter(d => d.source_type === 'loki').map(d => (
+                <option key={d.id} value={String(d.id)}>{d.name}{!d.is_enabled ? ' (未启用)' : ''}</option>
+              ))}
+            </select>
+            {trace.queries.length > 0 && (
+              <select value={trace.queryName} onChange={(e) => onTracePresetChange(e.target.value)} className={INPUT_CLS} aria-label="查询预设">
+                <option value="">默认查询</option>
+                {trace.queries.map((q) => (
+                  <option key={q.name} value={q.name}>{q.name}</option>
+                ))}
+              </select>
+            )}
+            <span className="text-xs text-gray-400">
+              {trace.startTime.replace('T', ' ').slice(0, 19)} ~ {trace.endTime.replace('T', ' ').slice(0, 19)}
+            </span>
+          </div>
+
+          {/* 错误 */}
+          {trace.error && (
+            <div className="glass rounded-lg px-3 py-2 text-sm text-rose-600 dark:text-rose-400">{trace.error}</div>
+          )}
+
+          {/* 日志列表 */}
+          {trace.loading && trace.entries.length === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400">查询中...</div>
+          ) : trace.entries.length === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400">未找到相关日志</div>
+          ) : (
+            <div className="max-h-[500px] overflow-y-auto space-y-1">
+              {trace.entries.map((entry, i) => (
+                <div
+                  key={i}
+                  className="flex gap-2 items-start py-1 px-2 rounded hover:bg-gray-100 dark:hover:bg-white/5 cursor-pointer group"
+                  onClick={() => setTraceDetail({ open: true, entry, mode: 'raw' })}
+                >
+                  <span className="text-xs text-gray-400 font-mono whitespace-nowrap mt-0.5">
+                    {entry.timestamp ? entry.timestamp.replace('T', ' ').replace('+08:00', '') : '-'}
+                  </span>
+                  <span className="text-xs font-mono leading-relaxed break-all text-gray-700 dark:text-gray-200 flex-1">
+                    {highlightRequestId(entry.line, trace.requestId)}
+                  </span>
+                  <span className="text-xs text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">查看</span>
+                </div>
+              ))}
+              {trace.hasMore && (
+                <div className="text-center py-2">
+                  <button type="button" onClick={loadMoreTrace} disabled={trace.loading} className={BTN_SECONDARY}>
+                    {trace.loading ? '加载中...' : '加载更多'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
+    )}
+
+    {/* ===== 单条日志放大查看 ===== */}
+    {traceDetail.open && traceDetail.entry && (
+      <Modal
+        open={true}
+        title="日志详情"
+        maxWidth={800}
+        onClose={() => setTraceDetail({ open: false, entry: null, mode: 'raw' })}
+        footer={
+          <div className="flex gap-2">
+            <button type="button" className={BTN_SECONDARY} onClick={() => {
+              navigator.clipboard.writeText(traceDetail.entry!.line || '').catch(() => {})
+            }}>复制</button>
+            <button type="button" className={BTN_SECONDARY} onClick={() => setTraceDetail({ open: false, entry: null, mode: 'raw' })}>关闭</button>
+          </div>
+        }
+      >
+        <pre className="max-h-[500px] overflow-auto p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs font-mono leading-relaxed whitespace-pre-wrap break-all">
+          {traceDetail.mode === 'formatted'
+            ? (() => { try { return JSON.stringify(JSON.parse(traceDetail.entry.line), null, 2) } catch { return traceDetail.entry.line } })()
+            : traceDetail.entry.line}
+        </pre>
+      </Modal>
+    )}
+    </>
   )
 }
 

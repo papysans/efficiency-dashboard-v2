@@ -148,7 +148,7 @@ export function ChartCard({
   extra,
   children,
 }: {
-  title: string
+  title: ReactNode
   sub?: string
   extra?: ReactNode
   children: ReactNode

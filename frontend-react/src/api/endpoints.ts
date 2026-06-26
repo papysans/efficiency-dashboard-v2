@@ -10,12 +10,15 @@ import type {
   ChatDetailQueryReq,
   ChatDetailQueryResponse,
   ChatLogPreviewResponse,
+  ChatModelTrendSeries,
   ChatRealtimeResponse,
   ChatSyncSubmitReq,
   ChatSyncSubmitResponse,
   ChatSyncTaskListResponse,
   ChatSyncTaskStatus,
   ChatSystemConfig,
+  ChatTraceLogResponse,
+  ChatUserTrendRow,
   ModelPricing,
   ModelPricingUpsert,
   AddRepoRequest,
@@ -424,5 +427,20 @@ export const chatStats = {
   },
   updateConfig(body: ChatSystemConfig) {
     return chatPut<void>('/config', body)
+  },
+
+  // -- 链路日志查询（Loki 等后端） --
+  traceLogs(body: { datasource_id: string; request_id: string; label_selector?: string; start_time: string; end_time: string; limit?: number; cursor?: string }) {
+    return chatPost<ChatTraceLogResponse>('/stats/trace-logs', body)
+  },
+
+  // -- 单用户趋势 --
+  userTrend(uid: string, params: { start_date: string; end_date: string }) {
+    return chatGet<ChatUserTrendRow[]>(`/stats/users/${encodeURIComponent(uid)}/trend`, params)
+  },
+
+  // -- 模型请求/Token 趋势 --
+  modelTrend(params: { start_date: string; end_date: string; models?: string }) {
+    return chatGet<ChatModelTrendSeries[]>('/stats/model-trend', params)
   },
 }
