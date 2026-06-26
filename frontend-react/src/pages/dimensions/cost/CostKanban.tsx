@@ -41,7 +41,7 @@ export default function CostKanban() {
   const deptId = sp.get('object') || ''
   const viewRaw = sp.get('view')
   const view: View = viewRaw === 'members' ? 'members' : viewRaw === 'compare' ? 'compare' : 'aggregate'
-  const includeChildren = sp.get('include_children') === 'true'
+  const includeChildren = sp.get('include_children') !== 'false' // 默认勾选子部门
 
   const deptQ = useDeptTree()
   const deptNodes = useMemo(() => deptQ.data || [], [deptQ.data])
@@ -107,12 +107,22 @@ export default function CostKanban() {
               </ViewTab>
             </div>
             <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={includeChildren}
-                onChange={(e) => patch({ include_children: e.target.checked ? 'true' : null })}
-                className="w-4 h-4 rounded accent-apple-blue"
-              />
+              <button
+                type="button"
+                role="switch"
+                aria-checked={includeChildren}
+                aria-label="包含子部门"
+                onClick={() => patch({ include_children: includeChildren ? 'false' : null })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${
+                  includeChildren ? 'bg-apple-blue' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    includeChildren ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
               包含子部门
             </label>
           </div>
