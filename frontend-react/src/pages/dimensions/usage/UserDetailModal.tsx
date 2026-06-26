@@ -4,7 +4,6 @@
 import { useMemo } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { EChart } from '@/components/charts/EChart'
-import { MetricCard } from '@/components/ui/MetricCard'
 import { getPalette } from '@/components/charts/chartTheme'
 import { useTheme } from '@/hooks/useTheme'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
