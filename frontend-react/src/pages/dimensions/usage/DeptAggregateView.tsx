@@ -2,7 +2,7 @@
 //   活跃用户(active-users) · 使用概览+环比(overview+period-compare) · 按天趋势(trend)
 //   各模型用量(models/usage) · 按星期(distribution/weekly) · 请求结果(results)。
 // 趋势用 trendOptions.buildDualAxisTrendOption（按天，左轴请求量+右轴活跃用户）；token 趋势用 multiAreaOption。
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { EChartsOption } from 'echarts'
 import { useTheme } from '@/hooks/useTheme'
 import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
@@ -301,12 +301,34 @@ function ModelsBlock({
 const WEEKLY_TIP = '对所选时间范围内所有日期按星期几分组，汇总各天请求总量，反映一周使用节奏分布'
 
 function InfoIcon({ tip }: { tip: string }) {
+  const [showTip, setShowTip] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!showTip) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setShowTip(false)
+    }
+    // 延迟绑定，避免本次 click 立刻触发 document 的 click 关闭自己
+    const t = setTimeout(() => document.addEventListener('click', handler), 0)
+    return () => { clearTimeout(t); document.removeEventListener('click', handler) }
+  }, [showTip])
+
   return (
-    <span className="inline-flex items-center justify-center cursor-help text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-1.5 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+    <span
+      ref={ref}
+      className="relative inline-flex items-center justify-center cursor-help text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-1.5 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      onClick={(e) => { e.stopPropagation(); setShowTip((v) => !v) }}
+    >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <title>{tip}</title>
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
       </svg>
+      {showTip && (
+        <span className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 text-xs rounded-lg shadow-lg z-50 whitespace-nowrap">
+          {tip}
+        </span>
+      )}
     </span>
   )
 }

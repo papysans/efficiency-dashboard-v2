@@ -194,9 +194,20 @@ export interface UserDetailResp {
 export interface UserTrendPoint {
   date: string
   total_requests?: number
+  success_requests?: number
+  error_requests?: number
   sum_prompt_tokens?: number
   sum_completion_tokens?: number
   sum_total_tokens?: number
-  success_requests?: number
-  error_requests?: number
+  sum_cache_tokens?: number
+  unique_task_count?: number
+  avg_duration_ms?: number | null
+  avg_first_token_duration_ms?: number | null
+  estimated_total_cost?: number | null
+  estimated_input_cost?: number | null
+  estimated_output_cost?: number | null
+  estimated_cache_cost?: number | null
+  estimated_request_cost?: number | null
+  model_preference?: string | null
+  auto_router_breakdown?: string | null
 }

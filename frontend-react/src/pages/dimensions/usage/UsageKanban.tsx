@@ -3,7 +3,7 @@
 // URL query 单一数据源：object=当前部门 dept_id（始终，member 视角也保持，部门树高亮不变）；
 //   member=个人 universal_id（仅 member 视角）；include_children=包含子部门开关。
 // 时间范围用全局 useViewState()（AppShell 顶部 DateRangePicker）。状态全走 URL query（深链可还原）。
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useDeptTree, useGlobalConfig } from '@/api/queries'
 import { useViewState } from '@/store/viewState'
@@ -12,10 +12,10 @@ import { DimSkeleton, PlatformNotConnected } from '../platformDimShared'
 import { DeptTreePanel, UNASSIGNED_DEPT_ID } from './DeptTreePanel'
 import { DeptAggregateView } from './DeptAggregateView'
 import { MembersView } from './MembersView'
-import { MemberDetail } from './MemberDetail'
 import { DeptCompareView } from './DeptCompareView'
+import { UserDetailModal } from './UserDetailModal'
 
-type View = 'aggregate' | 'members' | 'member' | 'compare'
+type View = 'aggregate' | 'members' | 'compare'
 
 function findDeptName(nodes: DeptTreeNode[], id: string): string {
   for (const n of nodes) {
@@ -36,10 +36,10 @@ export default function UsageKanban() {
 
   const deptId = sp.get('object') || ''
   const viewRaw = sp.get('view')
-  const view: View = viewRaw === 'members' ? 'members' : viewRaw === 'member' ? 'member' : viewRaw === 'compare' ? 'compare' : 'aggregate'
-  const memberUid = sp.get('member') || ''
+  const view: View = viewRaw === 'members' ? 'members' : viewRaw === 'compare' ? 'compare' : 'aggregate'
   const includeChildren = sp.get('include_children') !== 'false' // 默认勾选子部门
-  const isMemberView = view === 'member'
+
+  const [selectedUser, setSelectedUser] = useState<{ uid: string; username: string } | null>(null)
 
   const deptQ = useDeptTree()
   const deptNodes = useMemo(() => deptQ.data || [], [deptQ.data])
@@ -76,52 +76,33 @@ export default function UsageKanban() {
               <span aria-hidden="true">›</span>
               <button
                 type="button"
-                onClick={() => patch({ view: 'aggregate', member: null })}
+                onClick={() => patch({ view: 'aggregate' })}
                 className="bg-transparent border-none p-0 cursor-pointer hover:text-apple-blue focus:outline-none focus-visible:underline"
               >
                 {deptName}
               </button>
             </>
           )}
-          {isMemberView && (
-            <>
-              <span aria-hidden="true">›</span>
-              <span className="text-gray-600 dark:text-gray-300">成员详情</span>
-            </>
-          )}
         </nav>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[18rem_1fr] gap-5 items-start">
-        <DeptTreePanel selectedId={deptId} onSelect={(id) => patch({ object: id, view: 'aggregate', member: null })} />
+        <DeptTreePanel selectedId={deptId} onSelect={(id) => patch({ object: id, view: 'aggregate' })} />
 
         <div className="min-w-0 flex flex-col gap-4">
-          {/* 视角切换 + include_children 开关（member 视角改为「返回部门」） */}
+          {/* 视角切换 + include_children 开关 */}
           <div className="glass rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-            {isMemberView ? (
-              <button
-                type="button"
-                onClick={() => patch({ view: 'aggregate', member: null })}
-                className="inline-flex items-center gap-1 text-sm text-apple-blue hover:text-apple-blue-hover bg-transparent border-none cursor-pointer focus:outline-none focus-visible:underline"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                返回部门
-              </button>
-            ) : (
-              <div className="flex items-center gap-1" role="tablist" aria-label="视角">
-                <ViewTab active={view === 'aggregate'} onClick={() => patch({ view: 'aggregate' })}>
-                  部门聚合
-                </ViewTab>
-                <ViewTab active={view === 'compare'} onClick={() => patch({ view: 'compare' })}>
-                  子部门对比
-                </ViewTab>
-                <ViewTab active={view === 'members'} onClick={() => patch({ view: 'members' })}>
-                  本部门人员
-                </ViewTab>
-              </div>
-            )}
+            <div className="flex items-center gap-1" role="tablist" aria-label="视角">
+              <ViewTab active={view === 'aggregate'} onClick={() => patch({ view: 'aggregate' })}>
+                部门聚合
+              </ViewTab>
+              <ViewTab active={view === 'compare'} onClick={() => patch({ view: 'compare' })}>
+                子部门对比
+              </ViewTab>
+              <ViewTab active={view === 'members'} onClick={() => patch({ view: 'members' })}>
+                本部门人员
+              </ViewTab>
+            </div>
             <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
               <button
                 type="button"
@@ -143,16 +124,14 @@ export default function UsageKanban() {
             </label>
           </div>
 
-          {/* 内容区：按视角分发（member/ members 占位由 S7/S6 替换） */}
-          {isMemberView ? (
-            <MemberDetail uid={memberUid} start={timeRange[0]} end={timeRange[1]} />
-          ) : view === 'members' ? (
+          {/* 内容区：按视角分发 */}
+          {view === 'members' ? (
             <MembersView
               deptId={deptId}
               start={timeRange[0]}
               end={timeRange[1]}
               includeChildren={includeChildren}
-              onRowClick={(uid) => patch({ member: uid, view: 'member' })}
+              onRowClick={(uid) => setSelectedUser({ uid, username: '' })}
             />
           ) : view === 'compare' ? (
             <DeptCompareView
@@ -167,9 +146,20 @@ export default function UsageKanban() {
             <DeptAggregateView deptId={deptId} start={timeRange[0]} end={timeRange[1]} includeChildren={includeChildren} />
           )}
         </div>
+        </div>
+
+        {/* 用户详情弹窗 */}
+        {selectedUser && (
+          <UserDetailModal
+            uid={selectedUser.uid}
+            username={selectedUser.username}
+            start={timeRange[0]}
+            end={timeRange[1]}
+            onClose={() => setSelectedUser(null)}
+          />
+        )}
       </div>
-    </div>
-  )
+    )
 }
 
 function ViewTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
