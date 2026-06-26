@@ -5,7 +5,7 @@ import DimensionEntityLayout from '@/components/layout/DimensionEntityLayout'
 import EfficiencyDimension from '@/pages/dimensions/EfficiencyDimension'
 import UsageLayout from '@/pages/dimensions/usage/UsageLayout'
 import UsageKanban from '@/pages/dimensions/usage/UsageKanban'
-import CostDimension from '@/pages/dimensions/CostDimension'
+import CostKanban from '@/pages/dimensions/cost/CostKanban'
 import ContributionDimension from '@/pages/dimensions/ContributionDimension'
 import {
   DEFAULT_DIMENSION,
@@ -49,7 +49,7 @@ import SystemConfig from '@/pages/settings/SystemConfig'
 const DIM_COMPONENT: Record<Dimension, ComponentType> = {
   usage: UsageKanban,
   efficiency: EfficiencyDimension,
-  cost: CostDimension,
+  cost: CostKanban,
   contribution: ContributionDimension,
 }
 
@@ -87,7 +87,7 @@ function DistributionToEfficiency() {
 // 一个维度下的主体子路由（4 维度共用 DimensionEntityLayout 壳；entity 走 param，壳内按 entity 分发口径/数据源）。
 //   使用 = UsageKanban（部门树·视角切换统一页：部门聚合 / 本部门人员 / 个人详情；project/repo 已下线，由 UsageLayout 重定向到 org）。
 //   效率 = EfficiencyDimension（时间线→KPI→排行/明细，聚合↔聚焦两态，分布并入）。
-//   成本 = CostDimension（user,org→平台AI花费‖看板会话费用双卡 / project,repo→看板费用单卡）。
+//   成本 = CostKanban（部门树·视角切换：部门聚合 / 子部门对比 / 用户成本，对接后端 /cost/* 接口）。
 //   贡献 = ContributionDimension（全主体看板派生：合并需求/代码行/提交/贡献者，零平台请求）。
 // 不带 entity（裸 /usage）或脏值（/usage/garbage）→ 由 DimensionEntityLayout 的守卫统一重定向到默认主体（组织），保留 query。
 function dimensionRoute(dim: Dimension) {
@@ -131,7 +131,15 @@ export const router = createBrowserRouter([
         ],
       },
       dimensionRoute('efficiency'),
-      dimensionRoute('cost'),
+      // cost 维度：独立「部门树·视角切换」页（与 usage 同构），对接后端 10 个 /cost/* 接口。
+      // 保留 /cost/:entity 路径形状以兼容 AppShell 顶部导航生成的 /cost/org（CostKanban 不读 entity）。
+      {
+        path: 'cost',
+        children: [
+          { index: true, element: <CostKanban /> },
+          { path: ':entity', element: <CostKanban /> },
+        ],
+      },
       dimensionRoute('contribution'),
 
       // ---- 需求（保留顶级，几乎不动） ----
