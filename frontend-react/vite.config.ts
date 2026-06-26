@@ -27,8 +27,9 @@ function kanbanSlashRedirect(): Plugin {
   }
 }
 
-// 与现有 Vue 前端一致：dev 时 /api 代理到后端 Go 服务(9990)。
-// 产物 dist/ 由 compose/portal/Dockerfile 塞进 nginx，nginx 已有 /api 代理 + SPA fallback。
+// dev 时 /kanban/api 代理到后端 Go 服务(9990)，并剥掉 /kanban 前缀（后端注册的是 /api/v2/*）。
+// 对齐生产：外层 ingress 透传 /kanban → portal nginx location /kanban/api/ 反代并 strip。
+// 产物 dist/ 由 compose/portal/Dockerfile 塞进 nginx，nginx 已有 /kanban/api 代理 + SPA fallback。
 export default defineConfig({
   // 整站挂在 /kanban 子路径下：assets 引用前缀 /kanban/，与 router basename=/kanban 配套。
   base: '/kanban/',
@@ -39,7 +40,11 @@ export default defineConfig({
   server: {
     port: 8881,
     proxy: {
-      '/api': { target: 'http://localhost:9990', changeOrigin: true },
+      '/kanban/api': {
+        target: 'http://localhost:9990',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/kanban/, ''),
+      },
     },
   },
   build: {

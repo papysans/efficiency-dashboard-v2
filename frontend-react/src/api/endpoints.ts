@@ -270,11 +270,11 @@ export function updateTaskManualV2(taskId: string, body: UpdateTaskManualRequest
 }
 
 /**
- * 任务文件查看 URL（§7.8）：不走 axios，直接拼 /api 路径供 <a href target=_blank> 打开。
+ * 任务文件查看 URL（§7.8）：不走 axios，直接拼 /kanban/api 路径供 <a href target=_blank> 打开。
  * type ∈ {'summary','conversation'}；后端按 task 自身定位文件，不需要 date。
  */
 export function getTaskFileUrl(type: 'summary' | 'conversation', taskId: string): string {
-  return `/api/v2/tasks/file?type=${type}&taskId=${encodeURIComponent(taskId)}`
+  return `/kanban/api/v2/tasks/file?type=${type}&taskId=${encodeURIComponent(taskId)}`
 }
 
 // ---- Projects（⚠️ 百分比口径 efficiency_ratio；列表无分页 {data:[]}） ----

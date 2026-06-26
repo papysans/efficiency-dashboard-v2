@@ -24,7 +24,7 @@
 ```
                     ┌─────────── 外部唯一入口 ───────────┐
    用户浏览器 ──────▶ portal (nginx :80)   应用挂在 /kanban/ 子路径
-                          │  /api/        →  server :9990
+                          │  /kanban/api/ →  server :9990 (strip /kanban → /api/)
                           ▼
                     server (Go :9990) ──┬── postgres :5432  (库 costrict_stat)
                           │             └── chat-stats :8080 (可选, /api/v2/chat/* 反代)
@@ -46,7 +46,7 @@
 | 流向 | 端口 | 性质 | 说明 |
 |---|---|---|---|
 | **外部 → portal** | **80** | **Ingress（唯一对外）** | 整站挂 `/kanban/` 子路径；访问 `/` 会 302 → `/kanban/`。Ingress 指到 `portal:80` 即可 |
-| portal `/api/` → server | 9990 | ClusterIP | nginx 反代，集群内 |
+| portal `/kanban/api/` → server | 9990 | ClusterIP | nginx 反代并 strip `/kanban` → `/api/`，集群内 |
 | server `/api/v2/chat/*` → chat-stats | 8080 | ClusterIP | 集群内，**可选**服务，默认关 |
 | server / kbcli → postgres | 5432 | ClusterIP | 集群内 |
 | postgres / kbcli | 5432 / 8080 | ClusterIP（不对外） | kbcli:8080 不在看板请求链路上，仅 serve/手动触发用；都无需 Ingress |
@@ -153,7 +153,7 @@ postgres 数据卷为空的首次启动会跑 `initdb.d`：
 ## 6. 转 Helm 的关键坑
 
 1. **服务名硬编码 —— 最重要**。下列引用写死，K8s Service 名必须**严格对齐**，否则改挂配置：
-   - `portal/nginx.conf`：`proxy_pass http://server:9990;` → Service 必须叫 **`server`**
+   - `portal/nginx.conf`：`proxy_pass http://server:9990/api/;`（location `/kanban/api/`）→ Service 必须叫 **`server`**
    - `server/config.yaml` 与 `kbcli/config.yaml`：`stat_database.host: postgres` → Service 必须叫 **`postgres`**
    - `server/config.yaml`：`chat_stats.base_url: http://chat-stats:8080` → Service 必须叫 **`chat-stats`**
    - 若 Helm 习惯用 `<release>-server` 之类前缀名，则要把上述 host **参数化覆盖**：config.yaml 用 ConfigMap 模板注入，nginx.conf 覆盖挂载（compose 里默认打进镜像，挂载会覆盖）。
