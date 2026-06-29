@@ -217,7 +217,7 @@ export default function PlatformOverview() {
   const costQ = useQuery({
     queryKey: ['chat-overview-cost-trend', start, end, costModel],
     queryFn: () => chatGet<ChatCostTrendRow[]>('/stats/cost-trend', { start_date: start, end_date: end, model: costModel }),
-    enabled: enabled && tab === 'models',
+    enabled: enabled && (tab === 'global' || tab === 'models'),
     refetchInterval,
   })
   const cacheQ = useQuery({
@@ -229,12 +229,12 @@ export default function PlatformOverview() {
   const rankQ = useQuery({
     queryKey: ['chat-overview-model-ranking', start, end],
     queryFn: () => chatGet<ChatModelCostRow[]>('/stats/models/cost-ranking', { start_date: start, end_date: end }),
-    enabled: enabled && tab === 'models',
+    enabled: enabled && (tab === 'global' || tab === 'models'),
     refetchInterval,
   })
   const dimQ = useQuery({
     queryKey: ['chat-overview-dimension', start, end],
-    queryFn: () => chatGet<ChatDimensionRow[]>('/stats/dimension', { start_date: start, end_date: end, dimension: 'model' }),
+    queryFn: () => chatGet<ChatDimensionRow[]>('/stats/dimension', { start_date: start, end_date: end, dimension_type: 'routed_model' }),
     enabled: enabled && tab === 'models',
     refetchInterval,
   })
