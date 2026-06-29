@@ -40,11 +40,24 @@ export default defineConfig({
   server: {
     port: 8881,
     proxy: {
-      '/kanban/api': {
-        target: 'http://localhost:9990',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/kanban/, ''),
-      },
+      // 默认代理到本地后端(9990，剥 /kanban 前缀，后端注册 /api/v2/*)。
+      // 设 KANBAN_API_TARGET 时改指远端看板(如内网生产)：保留 /kanban 走其网关，
+      // 并可经 KANBAN_API_AUTH / KANBAN_API_COOKIE 注入登录凭据（仅本机调试，凭据走 env、勿提交）。
+      '/kanban/api': (() => {
+        const remote = process.env.KANBAN_API_TARGET
+        const auth = process.env.KANBAN_API_AUTH
+        const cookie = process.env.KANBAN_API_COOKIE
+        return {
+          target: remote || 'http://localhost:9990',
+          changeOrigin: true,
+          secure: false,
+          rewrite: remote ? undefined : (p: string) => p.replace(/^\/kanban/, ''),
+          headers: {
+            ...(auth ? { Authorization: auth } : {}),
+            ...(cookie ? { Cookie: cookie } : {}),
+          },
+        }
+      })(),
     },
   },
   build: {

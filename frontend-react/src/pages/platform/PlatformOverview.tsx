@@ -15,6 +15,8 @@ import { formatNumber } from '@/lib/formatters'
 import { Modal } from '@/components/ui/Modal'
 import SettingsLayout, { BTN_GLASS, ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
 import { ChartCard, ChatUserCell, EmptyHint, PIE_COLORS, multiAreaOption, shortToken } from './platformShared'
+import PerformanceTab from './PerformanceTab'
+import TimeDistributionTab from './TimeDistributionTab'
 
 // ---- 页面局部类型 ----
 
@@ -102,6 +104,25 @@ interface ChatUsersRankingResp {
   data: ChatUserRankingRow[]
 }
 
+interface ChatModelUsageItem {
+  model: string
+  request_count: number
+  request_pct: number
+  total_tokens: number
+  token_pct: number
+}
+interface ChatModelsUsageResp {
+  models: ChatModelUsageItem[]
+}
+
+// /stats/dimension?dimension_type=error_code —— 错误码维度（平台扩 ETL 后产出；error_code 行 total_requests 恒 0，按 error_requests 计分布）
+interface ChatErrorCodeRow {
+  dimension_value: string
+  error_requests: number
+  total_requests_including_errors: number
+  error_rate: number | null
+}
+
 // ---- 日期工具 ----
 
 function pad2(n: number): string { return String(n).padStart(2, '0') }
@@ -130,6 +151,8 @@ const USER_SORTS = [
 
 const TABS = [
   { key: 'global', label: '全局趋势' },
+  { key: 'perf', label: '请求性能' },
+  { key: 'timedist', label: '时段分布' },
   { key: 'models', label: '模型与成本' },
   { key: 'users', label: '用户分析' },
 ] as const
@@ -161,6 +184,10 @@ export default function PlatformOverview() {
   // Tab 状态
   const [tab, setTab] = useState<TabKey>('global')
 
+  // 自动刷新（Q4 实时·轻方案：开启后各查询按间隔 refetch；30s ≥ realtime 全局 10s 限频）
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const refetchInterval: number | false = autoRefresh ? 30000 : false
+
   // 成本趋势模型筛选
   const [costModel, setCostModel] = useState('all')
 
@@ -185,31 +212,55 @@ export default function PlatformOverview() {
     queryKey: ['chat-overview-daily', start, end],
     queryFn: () => chatGet<ChatDailyGlobal[]>('/stats/global/daily', { start_date: start, end_date: end }),
     enabled,
+    refetchInterval,
   })
   const costQ = useQuery({
     queryKey: ['chat-overview-cost-trend', start, end, costModel],
     queryFn: () => chatGet<ChatCostTrendRow[]>('/stats/cost-trend', { start_date: start, end_date: end, model: costModel }),
     enabled: enabled && tab === 'models',
+    refetchInterval,
   })
   const cacheQ = useQuery({
     queryKey: ['chat-overview-cache-rate', start, end],
     queryFn: () => chatGet<ChatCacheHitRateRow[]>('/stats/cache-hit-rate', { start_date: start, end_date: end }),
     enabled: enabled && tab === 'global',
+    refetchInterval,
   })
   const rankQ = useQuery({
     queryKey: ['chat-overview-model-ranking', start, end],
     queryFn: () => chatGet<ChatModelCostRow[]>('/stats/models/cost-ranking', { start_date: start, end_date: end }),
     enabled: enabled && tab === 'models',
+    refetchInterval,
   })
   const dimQ = useQuery({
     queryKey: ['chat-overview-dimension', start, end],
     queryFn: () => chatGet<ChatDimensionRow[]>('/stats/dimension', { start_date: start, end_date: end, dimension: 'model' }),
     enabled: enabled && tab === 'models',
+    refetchInterval,
   })
   const modelTrendQ = useQuery({
     queryKey: ['chat-overview-model-trend', start, end, trendModels],
     queryFn: () => chatStats.modelTrend({ start_date: start, end_date: end, models: trendModels.join(',') }),
     enabled: enabled && tab === 'models' && trendModels.length > 0,
+    refetchInterval,
+  })
+  const modelsUsageQ = useQuery({
+    queryKey: ['chat-overview-models-usage', start, end],
+    queryFn: () => chatGet<ChatModelsUsageResp>('/stats/models/usage', { start_date: start, end_date: end }),
+    enabled: enabled && tab === 'models',
+    refetchInterval,
+  })
+  const errorCodeQ = useQuery({
+    queryKey: ['chat-overview-error-codes', start, end],
+    queryFn: () =>
+      chatGet<ChatErrorCodeRow[]>('/stats/dimension', {
+        start_date: start,
+        end_date: end,
+        dimension_type: 'error_code',
+        sort_order: 'desc',
+      }),
+    enabled: enabled && tab === 'models',
+    refetchInterval,
   })
   const usersQ = useQuery({
     queryKey: ['chat-overview-users-ranking', start, end, userSort, search],
@@ -218,6 +269,7 @@ export default function PlatformOverview() {
       ...(search ? { search } : {}),
     }),
     enabled: enabled && tab === 'users',
+    refetchInterval,
   })
 
   const { resolveName } = useUserNameMap()
@@ -327,6 +379,49 @@ export default function PlatformOverview() {
     }
   }, [mergedAutoRouter])
 
+  // 模型请求占比 vs Token 占比 并列双饼（/stats/models/usage）
+  const modelsUsagePies = useMemo(() => {
+    const ms = modelsUsageQ.data?.models ?? []
+    const pie = (valueKey: 'request_count' | 'total_tokens') => ({
+      tooltip: { trigger: 'item' as const, formatter: '{b}<br/>{c} ({d}%)' },
+      legend: { bottom: 0, type: 'scroll' as const, textStyle: { fontSize: 10 } },
+      series: [{
+        type: 'pie' as const, radius: ['45%', '72%'], center: ['50%', '45%'],
+        label: { formatter: '{b}\n{d}%', fontSize: 10 },
+        data: ms.map((m, i) => ({ name: m.model, value: m[valueKey], itemStyle: { color: PIE_COLORS[i % PIE_COLORS.length] } })),
+      }],
+    })
+    return ms.length === 0 ? { req: null, tok: null } : { req: pie('request_count'), tok: pie('total_tokens') }
+  }, [modelsUsageQ.data])
+
+  // 错误码分布（#12）：error_code 维度 total_requests 恒 0，按 error_requests 降序取 Top 15。
+  const errorCodeOpt = useMemo(() => {
+    const rows = [...(errorCodeQ.data ?? [])].sort((a, b) => b.error_requests - a.error_requests).slice(0, 15)
+    if (rows.length === 0) return null
+    return {
+      tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
+      grid: { left: 8, right: 16, top: 8, bottom: 24, containLabel: true },
+      xAxis: {
+        type: 'category' as const,
+        data: rows.map((r) => r.dimension_value || '未知'),
+        axisLabel: { color: p.textColor, fontSize: 11 },
+      },
+      yAxis: {
+        type: 'value' as const,
+        axisLabel: { color: p.textColor },
+        splitLine: { lineStyle: { color: p.splitLineColor } },
+      },
+      series: [
+        {
+          name: '错误次数',
+          type: 'bar' as const,
+          data: rows.map((r) => r.error_requests),
+          itemStyle: { color: '#ff3b30', borderRadius: [3, 3, 0, 0] },
+        },
+      ],
+    }
+  }, [errorCodeQ.data, p])
+
   // 模型趋势 option
   const modelTrendOpt = useMemo(() => {
     const series = modelTrendQ.data ?? []
@@ -367,7 +462,7 @@ export default function PlatformOverview() {
   const userRows = usersQ.data?.data ?? []
 
   const loading = enabled && dailyQ.isLoading
-  const queries = [dailyQ, costQ, cacheQ, rankQ, dimQ, modelTrendQ, usersQ]
+  const queries = [dailyQ, costQ, cacheQ, rankQ, dimQ, modelTrendQ, modelsUsageQ, errorCodeQ, usersQ]
   const errors = queries.filter((q) => q.isError).map((q) => (q.error as Error).message)
 
   const presetBtn = (active: boolean) =>
@@ -419,6 +514,10 @@ export default function PlatformOverview() {
             <input type="date" value={end} min={start || undefined}
               onChange={(e) => { setPresetDays(null); setRange((r) => ({ ...r, end: e.target.value })) }}
               className={INPUT_CLS} aria-label="结束日期" />
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 ml-auto cursor-pointer select-none whitespace-nowrap">
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-apple-blue" />
+            自动刷新{autoRefresh ? '（30s）' : ''}
           </label>
           {!rangeValid && <span className="text-sm text-rose-600 dark:text-rose-400">请选择有效的起止日期（开始 ≤ 结束）</span>}
         </div>
@@ -476,9 +575,29 @@ export default function PlatformOverview() {
               </div>
             )}
 
+            {/* ---- 请求性能 Tab ---- */}
+            {tab === 'perf' && (
+              <PerformanceTab start={start} end={end} enabled={!!enabled} refetchInterval={refetchInterval} />
+            )}
+
+            {/* ---- 时段分布 Tab ---- */}
+            {tab === 'timedist' && (
+              <TimeDistributionTab start={start} end={end} enabled={!!enabled} refetchInterval={refetchInterval} />
+            )}
+
             {/* ---- 模型与成本 Tab ---- */}
             {tab === 'models' && (
               <div className="space-y-4">
+                {/* 模型请求占比 vs Token 占比 并列 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <ChartCard title="模型请求占比" sub="按请求次数">
+                    {modelsUsagePies.req ? <EChart option={modelsUsagePies.req} height={300} /> : <EmptyHint />}
+                  </ChartCard>
+                  <ChartCard title="模型 Token 占比" sub="按总 Token">
+                    {modelsUsagePies.tok ? <EChart option={modelsUsagePies.tok} height={300} /> : <EmptyHint />}
+                  </ChartCard>
+                </div>
+
                 {/* 成本变化曲线 */}
                 <ChartCard title="成本变化曲线" sub="每日总成本 + 构成分析" extra={
                   <select value={costModel} onChange={(e) => setCostModel(e.target.value)} className={INPUT_CLS}>
@@ -550,6 +669,11 @@ export default function PlatformOverview() {
                     </div>
                   </ChartCard>
                 </div>
+
+                {/* 错误码分布（#12，需平台扩 error_code ETL 维度 + 重跑 sync 回填后有数据） */}
+                <ChartCard title="错误码分布" sub="按错误次数 · Top 15 · 需平台 ETL 含 error_code 维度">
+                  {errorCodeOpt ? <EChart option={errorCodeOpt} height={280} /> : <EmptyHint />}
+                </ChartCard>
 
                 {/* 模型成本明细表 */}
                 <ChartCard title="模型成本明细" sub="按累计成本降序">
