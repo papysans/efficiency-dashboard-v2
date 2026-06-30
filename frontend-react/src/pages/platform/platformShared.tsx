@@ -94,17 +94,36 @@ export interface AreaSeries {
   data: number[]
 }
 
-/** 折线+渐变面积图（分钟/按日趋势通用）。yFmt 控制 y 轴刻度格式（token 缩写 / 百分比 / 金额）。 */
+/**
+ * 折线+渐变面积图（分钟/趋势通用）。yFmt 控制 y 轴刻度格式（token 缩写 / 百分比 / 金额）。
+ * headers 提供时（按周/月聚合），tooltip 头部用 headers[dataIndex]（日期范围）替代 x 轴标签，
+ * 各系列值按 yFmt 格式化。
+ */
 export function multiAreaOption(
   p: ChartPalette,
   times: string[],
   series: AreaSeries[],
-  opts: { yFmt?: (v: number) => string; yMax?: number } = {},
+  opts: { yFmt?: (v: number) => string; yMax?: number; headers?: string[] } = {},
 ): EChartsOption {
+  const headers = opts.headers
+  const valFmt = opts.yFmt ?? ((v: number) => String(v))
   return {
     animation: true,
     grid: { left: 8, right: 16, top: series.length > 1 ? 36 : 24, bottom: 8, containLabel: true },
-    tooltip: { trigger: 'axis', ...baseTooltip(p) },
+    tooltip: {
+      trigger: 'axis',
+      ...baseTooltip(p),
+      ...(headers
+        ? {
+            formatter: (params: unknown) => {
+              const arr = params as { dataIndex: number; seriesName: string; value: number; marker: string; axisValue: string }[]
+              const head = headers[arr[0]?.dataIndex] ?? arr[0]?.axisValue ?? ''
+              const body = arr.map((it) => `${it.marker}${it.seriesName}: ${valFmt(it.value)}`).join('<br/>')
+              return `${head}<br/>${body}`
+            },
+          }
+        : {}),
+    },
     legend:
       series.length > 1
         ? { top: 0, left: 'center', textStyle: { color: p.textColor }, itemWidth: 14, itemHeight: 8 }

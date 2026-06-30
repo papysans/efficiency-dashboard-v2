@@ -5,34 +5,81 @@
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import type { ChartPalette } from '@/components/charts/chartTheme'
+import { formatNumber } from '@/lib/formatters'
 
 export interface TrendSeriesItem {
   name: string
   color: string
   data: number[]
-  axis?: 'left' | 'right'
+  /** 落在哪个 Y 轴：left=主轴(面积) / right=次轴(虚线) / third=第三轴(独立刻度，如使用率%)。 */
+  axis?: 'left' | 'right' | 'third'
+  /** tooltip 里该序列值的格式化（缺省千分位）；如使用率传 v=>`${v.toFixed(1)}%`。 */
+  tipFmt?: (v: number) => string
 }
 
 /**
- * 构建双Y轴按天折线图 option。
- * 左右轴各自独立刻度，tooltip 两边都显。
- * leftFmt/rightFmt 控制各轴刻度格式（量级缩写等）。
+ * 构建多Y轴折线图 option（粒度无关：x 轴标签由调用方按天/周/月给定）。
+ * 左(area)/右(虚线)各自独立刻度；series 标 axis:'third' 时启用第三轴（独立刻度，右侧外移，如使用率%）。
+ * headers 提供时（按周/月聚合），tooltip 头部用 headers[dataIndex]（日期范围）替代 x 轴标签。
  */
 export function buildDualAxisTrendOption(
   p: ChartPalette,
   labels: string[],
   series: TrendSeriesItem[],
-  opts: { leftFmt?: (v: number) => string; rightFmt?: (v: number) => string } = {},
+  opts: {
+    leftFmt?: (v: number) => string
+    rightFmt?: (v: number) => string
+    thirdFmt?: (v: number) => string
+    thirdMax?: number
+    headers?: string[]
+  } = {},
 ): EChartsOption {
+  const headers = opts.headers
+  const hasThird = series.some((s) => s.axis === 'third')
+  const fmtByName = new Map(series.map((s) => [s.name, s.tipFmt ?? formatNumber]))
+  const axisIndex = (s: TrendSeriesItem) => (s.axis === 'third' ? 2 : s.axis === 'right' ? 1 : 0)
+
+  const yAxis: EChartsOption['yAxis'] = [
+    {
+      type: 'value',
+      axisLabel: { color: p.textColor, formatter: opts.leftFmt },
+      splitLine: { lineStyle: { color: p.splitLineColor } },
+    },
+    {
+      type: 'value',
+      axisLabel: { color: p.textColor, formatter: opts.rightFmt },
+      splitLine: { show: false },
+    },
+  ]
+  if (hasThird) {
+    yAxis.push({
+      type: 'value',
+      position: 'right',
+      offset: 52,
+      min: 0,
+      max: opts.thirdMax,
+      axisLabel: { color: p.textColor, formatter: opts.thirdFmt },
+      splitLine: { show: false },
+    })
+  }
+
   return {
     animation: true,
-    grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
+    grid: { left: 8, right: hasThird ? 76 : 16, top: 36, bottom: 8, containLabel: true },
     tooltip: {
       trigger: 'axis',
       backgroundColor: p.tooltipBg,
       borderColor: p.tooltipBorder,
       borderWidth: 1,
       textStyle: { color: p.tooltipText },
+      formatter: (params: unknown) => {
+        const arr = params as { dataIndex: number; seriesName: string; value: number; marker: string; axisValue: string }[]
+        const head = headers ? (headers[arr[0]?.dataIndex] ?? arr[0]?.axisValue ?? '') : (arr[0]?.axisValue ?? '')
+        const body = arr
+          .map((it) => `${it.marker}${it.seriesName}: ${(fmtByName.get(it.seriesName) ?? formatNumber)(it.value)}`)
+          .join('<br/>')
+        return `${head}<br/>${body}`
+      },
     },
     legend: {
       top: 0,
@@ -49,24 +96,14 @@ export function buildDualAxisTrendOption(
       axisLabel: { color: p.textColor, hideOverlap: true },
       axisTick: { show: false },
     },
-    yAxis: [
-      {
-        type: 'value',
-        axisLabel: { color: p.textColor, formatter: opts.leftFmt },
-        splitLine: { lineStyle: { color: p.splitLineColor } },
-      },
-      {
-        type: 'value',
-        axisLabel: { color: p.textColor, formatter: opts.rightFmt },
-        splitLine: { show: false },
-      },
-    ],
+    yAxis,
     series: series.map((s) => {
-      const onRight = s.axis === 'right'
+      const yi = axisIndex(s)
+      const onLeft = yi === 0
       return {
         name: s.name,
         type: 'line',
-        yAxisIndex: onRight ? 1 : 0,
+        yAxisIndex: yi,
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
@@ -74,19 +111,19 @@ export function buildDualAxisTrendOption(
         lineStyle: {
           color: s.color,
           width: 2,
-          ...(onRight ? { type: 'dashed' as const } : {}),
+          ...(yi === 1 ? { type: 'dashed' as const } : {}),
         },
         itemStyle: { color: s.color },
-        ...(onRight
-          ? {}
-          : {
+        ...(onLeft
+          ? {
               areaStyle: {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                   { offset: 0, color: rgba(s.color, 0.25) },
                   { offset: 1, color: rgba(s.color, 0) },
                 ]),
               },
-            }),
+            }
+          : {}),
       }
     }),
   }

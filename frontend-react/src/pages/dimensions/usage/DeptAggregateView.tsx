@@ -10,7 +10,11 @@ import { EChart } from '@/components/charts/EChart'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { ChartCard, EmptyHint, PIE_COLORS, baseTooltip, multiAreaOption, shortToken, useZeroRequestFilter, ZeroRequestToggle } from '@/pages/platform/platformShared'
 import { buildDualAxisTrendOption, type TrendSeriesItem } from '../trendOptions'
+import { useGranularity, GranularityToggle } from '../granularity'
+import { buildBuckets, GRANULARITY_CN, type Granularity } from '@/lib/timeBucket'
 import { formatNumber } from '@/lib/formatters'
+import { useDeptOverview } from '@/api/queries'
+import type { DeptTreeNodeWithSummary } from '@/api/types'
 import {
   useUsageDeptActiveUsers,
   useUsageDeptModels,
@@ -20,6 +24,16 @@ import {
   useUsageDeptWeekly,
   useUsagePeriodCompare,
 } from './usageData'
+
+/** 在 /v2/dept-tree/overview 返回树里按 dept_id 定位节点（取整棵子树花名册人数 member_count）。 */
+function findDeptSummaryNode(nodes: DeptTreeNodeWithSummary[], id: string): DeptTreeNodeWithSummary | undefined {
+  for (const n of nodes) {
+    if (n.dept_id === id) return n
+    const hit = n.children?.length ? findDeptSummaryNode(n.children, id) : undefined
+    if (hit) return hit
+  }
+  return undefined
+}
 
 const PCT = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '-' : `${v.toFixed(1)}%`)
 
@@ -60,6 +74,10 @@ export function DeptAggregateView({
   const resultsQ = useUsageDeptResults(q)
   const compareQ = useUsagePeriodCompare(q)
 
+  // 趋势粒度（每页统一控制，随区间重置默认）+ 覆盖率分母（整棵子树花名册人数）。
+  const { gran, setGran, options: granOptions } = useGranularity(start, end)
+  const deptTreeQ = useDeptOverview({ startDate: start, endDate: end })
+
   if (!deptId) {
     return <div className="glass rounded-2xl p-10 text-center text-sm text-gray-400 dark:text-gray-500">请在左侧选择部门</div>
   }
@@ -77,6 +95,11 @@ export function DeptAggregateView({
   const au = activeQ.data
   const cmp = compareQ.data
   const anyLoading = overviewQ.isLoading && !ov
+
+  // 覆盖率 = 活跃使用人数 / 部门树花名册人数（整棵子树 member_count；定位不到或为 0 显 '-'）。
+  const deptNode = deptTreeQ.data?.nodes ? findDeptSummaryNode(deptTreeQ.data.nodes, deptId) : undefined
+  const deptHeadcount = deptNode?.summary.member_count ?? 0
+  const coveragePct = ov && deptHeadcount > 0 ? Math.min(100, (ov.active_users / deptHeadcount) * 100) : null
 
   // 部门无数据：后端对无活动部门返回精简对象（active_users=0 / total_requests=0，其余字段缺）。
   // 整体空态，避免 success_rate / total_sessions 等 undefined 字段在 formatNumber/PCT 里崩溃。
@@ -112,6 +135,13 @@ export function DeptAggregateView({
             <MetricCard label="人均请求" value={ov.active_users ? formatNumber(Math.round(ov.total_requests / ov.active_users)) : '-'} hint={`活跃 ${formatNumber(ov.active_users)} 人`} />
             <MetricCard label="总会话数" value={formatNumber(ov.total_sessions)} hint="unique_task 去重" />
             <MetricCard label="活跃用户" value={formatNumber(ov.active_users)} />
+            <MetricCard
+              label="部门覆盖率"
+              value={coveragePct == null ? '-' : PCT(coveragePct)}
+              hint={deptHeadcount > 0 ? `${formatNumber(ov.active_users)} / ${formatNumber(deptHeadcount)} 人` : '花名册人数不可得'}
+              tip="活跃使用人数 ÷ 部门花名册总人数(整棵子树)。分母恒为子树花名册；关闭「包含子部门」时分子仅直属、分母仍子树，覆盖率会偏低"
+              accent={p.brand}
+            />
             <MetricCard label="总输入 Token" value={shortToken(ov.sum_prompt_tokens)} hint={formatNumber(ov.sum_prompt_tokens)} />
             <MetricCard label="总输出 Token" value={shortToken(ov.sum_completion_tokens)} hint={formatNumber(ov.sum_completion_tokens)} />
             <MetricCard
@@ -140,8 +170,17 @@ export function DeptAggregateView({
         )}
       </ChartCard>
 
-      {/* 需求3/4 按天趋势：请求量 + 活跃用户（双轴） */}
-      <TrendBlock loading={anyLoading} trend={trendQ.data?.trend} palette={p} />
+      {/* 需求3/4 趋势：请求量 + 活跃用户（双轴）· 粒度可切（每页统一控制） */}
+      <TrendBlock
+        loading={anyLoading}
+        trend={trendQ.data?.trend}
+        palette={p}
+        gran={gran}
+        start={start}
+        end={end}
+        headcount={deptHeadcount}
+        granControl={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}
+      />
 
       {/* 需求3 各模型用量 */}
       <ModelsBlock loading={modelsQ.isLoading} models={modelsQ.data?.models} palette={p} />
@@ -155,52 +194,106 @@ export function DeptAggregateView({
   )
 }
 
-// ============================ 按天趋势（请求量 + 活跃用户 双轴；Token 两线） ============================
+// ============================ 趋势（请求量 + 活跃用户 + 使用率 三线）·粒度可切 ============================
+// 请求量/Token 按桶求和（可加）；活跃用户走「桶内日均」(sum/桶内日历天数，四舍五入)——去重人数不可相加。
+// 使用率 = 桶内日均活跃 / 部门花名册人数（与活跃用户成正比，独立右轴 0-100%）。
 function TrendBlock({
   loading,
   trend,
   palette: p,
+  gran,
+  start,
+  end,
+  headcount,
+  granControl,
 }: {
   loading: boolean
   trend?: { date: string; request_count: number; prompt_tokens: number; completion_tokens: number; active_users: number }[]
   palette: ChartPalette
+  gran: Granularity
+  start: string
+  end: string
+  headcount: number
+  granControl: ReactNode
 }) {
-  const labels = useMemo(() => (trend || []).map((t) => t.date), [trend])
-  const reqSeries: TrendSeriesItem[] = useMemo(
-    () => [
-      { name: '请求量', color: '#ff9500', data: (trend || []).map((t) => t.request_count) },
-      { name: '活跃用户', color: '#34c759', axis: 'right', data: (trend || []).map((t) => t.active_users) },
-    ],
-    [trend],
-  )
+  const agg = useMemo(() => {
+    const pts = trend || []
+    const byDate = new Map(pts.map((t) => [t.date, t]))
+    const buckets = buildBuckets(pts.map((t) => t.date), gran, { start, end })
+    const sum = (b: (typeof buckets)[number], pick: (t: (typeof pts)[number]) => number) =>
+      b.dates.reduce((acc, d) => acc + (byDate.get(d) ? pick(byDate.get(d)!) : 0), 0)
+    return {
+      labels: buckets.map((b) => b.label),
+      headers: buckets.map((b) => b.rangeText),
+      request: buckets.map((b) => sum(b, (t) => t.request_count)),
+      // 活跃用户：桶内日均（按桶内日历天数摊，去重不可加）。
+      active: buckets.map((b) => Math.round(sum(b, (t) => t.active_users) / b.spanDays)),
+      prompt: buckets.map((b) => sum(b, (t) => t.prompt_tokens)),
+      completion: buckets.map((b) => sum(b, (t) => t.completion_tokens)),
+    }
+  }, [trend, gran, start, end])
+
+  const dayMode = gran === 'day'
+  const reqSeries: TrendSeriesItem[] = useMemo(() => {
+    const arr: TrendSeriesItem[] = [
+      { name: '请求量', color: '#ff9500', data: agg.request },
+      { name: dayMode ? '活跃用户' : '日均活跃用户', color: '#34c759', axis: 'right', data: agg.active },
+    ]
+    // 使用率 = 桶内日均活跃 / 部门花名册人数（独立第三轴 0-100%）；花名册人数不可得则不加这条线。
+    // 命名与活跃用户对齐（周/月为「日均」口径），与「部门覆盖率」卡(区间去重活跃/花名册)区分。
+    if (headcount > 0) {
+      arr.push({
+        name: dayMode ? '使用率' : '日均使用率',
+        color: '#5856d6',
+        axis: 'third',
+        data: agg.active.map((a) => Math.min(100, Math.round((a / headcount) * 1000) / 10)),
+        tipFmt: (v) => `${v.toFixed(1)}%`,
+      })
+    }
+    return arr
+  }, [agg, dayMode, headcount])
   const tokenOpt = useMemo(
     () =>
       multiAreaOption(
         p,
-        labels,
+        agg.labels,
         [
-          { name: '输入 Token', color: '#0071e3', data: (trend || []).map((t) => t.prompt_tokens) },
-          { name: '输出 Token', color: '#af52de', data: (trend || []).map((t) => t.completion_tokens) },
+          { name: '输入 Token', color: '#0071e3', data: agg.prompt },
+          { name: '输出 Token', color: '#af52de', data: agg.completion },
         ],
-        { yFmt: (v) => shortToken(v) },
+        { yFmt: (v) => shortToken(v), headers: agg.headers },
       ),
-    [p, labels, trend],
+    [p, agg],
   )
 
-  if (loading) return <SkeletonCard title="使用趋势（按天）" />
+  const gcn = GRANULARITY_CN[gran]
+  if (loading) return <SkeletonCard title={`使用趋势（${gcn}）`} />
   if (!trend || !trend.length) {
     return (
-      <ChartCard title="使用趋势（按天）" sub="每日请求量 / 活跃用户 / Token 消耗">
+      <ChartCard title={`使用趋势（${gcn}）`} sub="请求量 / 活跃用户 / Token 消耗" extra={granControl}>
         <EmptyHint />
       </ChartCard>
     )
   }
   return (
     <>
-      <ChartCard title="使用趋势（按天）" sub="请求量（左轴）· 活跃用户（右轴）">
-        <EChart option={buildDualAxisTrendOption(p, labels, reqSeries, { leftFmt: (v) => shortToken(v), rightFmt: (v) => formatNumber(v) })} height={280} />
+      <ChartCard
+        title={`使用趋势（${gcn}）`}
+        sub={`请求量（左）· ${dayMode ? '活跃用户' : '日均活跃用户'}（右）${headcount > 0 ? `· ${dayMode ? '使用率' : '日均使用率'}%（右）` : ''}`}
+        extra={granControl}
+      >
+        <EChart
+          option={buildDualAxisTrendOption(p, agg.labels, reqSeries, {
+            leftFmt: (v) => shortToken(v),
+            rightFmt: (v) => formatNumber(v),
+            thirdFmt: (v) => `${v}%`,
+            thirdMax: 100,
+            headers: agg.headers,
+          })}
+          height={280}
+        />
       </ChartCard>
-      <ChartCard title="Token 消耗趋势（按天）" sub="输入 / 输出 Token">
+      <ChartCard title={`Token 消耗趋势（${gcn}）`} sub="输入 / 输出 Token">
         <EChart option={tokenOpt} height={260} />
       </ChartCard>
     </>

@@ -11,6 +11,8 @@ import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { EChart } from '@/components/charts/EChart'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { ChartCard, EmptyHint, PIE_COLORS, baseTooltip, shortToken, useZeroRequestFilter, ZeroRequestToggle } from '@/pages/platform/platformShared'
+import { useGranularity, GranularityToggle } from '../granularity'
+import { buildBuckets, GRANULARITY_CN, type Granularity } from '@/lib/timeBucket'
 import { fmtCost, formatNumber } from '@/lib/formatters'
 import {
   useCostOverview,
@@ -65,6 +67,9 @@ export function CostAggregateView({
   const trendQ = useCostModelTrend(q)
   const compositionQ = useCostModelComposition(q)
   const anomalyQ = useCostAnomaly(q)
+
+  // 趋势粒度（每页统一控制，随区间重置默认）。
+  const { gran, setGran, options: granOptions } = useGranularity(start, end)
 
   if (!deptId) {
     return <div className="glass rounded-2xl p-10 text-center text-sm text-gray-400 dark:text-gray-500">请在左侧选择部门</div>
@@ -148,8 +153,16 @@ export function CostAggregateView({
         )}
       </ChartCard>
 
-      {/* 区块4 每日总费用趋势（由 model-trend 各模型按 date 聚合） */}
-      <DailyCostTrendBlock loading={anyLoading} series={trendQ.data?.series} palette={p} />
+      {/* 区块4 总费用趋势（由 model-trend 各模型按 date 聚合）· 粒度可切（每页统一控制） */}
+      <DailyCostTrendBlock
+        loading={anyLoading}
+        series={trendQ.data?.series}
+        palette={p}
+        gran={gran}
+        start={start}
+        end={end}
+        granControl={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}
+      />
 
       {/* 区块5 各模型成本（表 + 饼） */}
       <ModelsCostBlock
@@ -159,8 +172,8 @@ export function CostAggregateView({
         palette={p}
       />
 
-      {/* 区块6 各模型每日费用趋势堆叠面积 */}
-      <ModelTrendStackBlock loading={trendQ.isLoading} series={trendQ.data?.series} palette={p} />
+      {/* 区块6 各模型费用趋势堆叠面积（同粒度） */}
+      <ModelTrendStackBlock loading={trendQ.isLoading} series={trendQ.data?.series} palette={p} gran={gran} start={start} end={end} />
 
       {/* 区块7 异常检测 */}
       <AnomalyBlock data={anomalyQ.data} />
@@ -168,29 +181,38 @@ export function CostAggregateView({
   )
 }
 
-// ============================ 每日总费用趋势（聚合各模型 data） ============================
+// ============================ 总费用趋势（聚合各模型 data）·粒度可切 ============================
+// 费用可加：按桶求和。
 function DailyCostTrendBlock({
   loading,
   series,
   palette: p,
+  gran,
+  start,
+  end,
+  granControl,
 }: {
   loading: boolean
   series?: CostModelTrendSeries[]
   palette: ChartPalette
+  gran: Granularity
+  start: string
+  end: string
+  granControl: ReactNode
 }) {
-  // 各模型 series.data 按 date 汇总成单条每日 total_cost。
-  const { labels, dailyTotals } = useMemo(() => {
-    if (!series || !series.length) return { labels: [] as string[], dailyTotals: [] as number[] }
+  // 各模型 series.data 先按 date 汇总成每日 total_cost，再按粒度分桶求和。
+  const { labels, headers, totals } = useMemo(() => {
     const dateMap = new Map<string, number>()
-    for (const s of series) {
-      for (const pt of s.data) {
-        dateMap.set(pt.date, (dateMap.get(pt.date) || 0) + (pt.total_cost || 0))
-      }
+    for (const s of series || []) {
+      for (const pt of s.data) dateMap.set(pt.date, (dateMap.get(pt.date) || 0) + (pt.total_cost || 0))
     }
-    const labels = Array.from(dateMap.keys()).sort()
-    const dailyTotals = labels.map((d) => dateMap.get(d) || 0)
-    return { labels, dailyTotals }
-  }, [series])
+    const buckets = buildBuckets(Array.from(dateMap.keys()), gran, { start, end })
+    return {
+      labels: buckets.map((b) => b.label),
+      headers: buckets.map((b) => b.rangeText),
+      totals: buckets.map((b) => b.dates.reduce((acc, d) => acc + (dateMap.get(d) || 0), 0)),
+    }
+  }, [series, gran, start, end])
 
   const opt = useMemo<EChartsOption | null>(() => {
     if (!labels.length) return null
@@ -201,8 +223,9 @@ function DailyCostTrendBlock({
         trigger: 'axis',
         ...baseTooltip(p),
         formatter: (params: unknown) => {
-          const arr = params as { name: string; value: number }[]
-          return arr.map((it) => `${it.name}<br/>¥${fmtCost(it.value)}`).join('<br/>')
+          const arr = params as { dataIndex: number; value: number; marker: string }[]
+          const head = headers[arr[0]?.dataIndex] ?? ''
+          return `${head}<br/>${arr.map((it) => `${it.marker}总费用: ¥${fmtCost(it.value)}`).join('<br/>')}`
         },
       },
       xAxis: {
@@ -220,12 +243,12 @@ function DailyCostTrendBlock({
       },
       series: [
         {
-          name: '每日总费用',
+          name: '总费用',
           type: 'line',
           smooth: true,
           symbol: 'circle',
           symbolSize: 6,
-          data: dailyTotals,
+          data: totals,
           lineStyle: { color: PURPLE, width: 2 },
           itemStyle: { color: PURPLE },
           areaStyle: {
@@ -237,18 +260,19 @@ function DailyCostTrendBlock({
         },
       ],
     }
-  }, [labels, dailyTotals, p])
+  }, [labels, headers, totals, p])
 
-  if (loading) return <SkeletonCard title="每日总费用趋势" />
+  const title = `总费用趋势（${GRANULARITY_CN[gran]}）`
+  if (loading) return <SkeletonCard title={title} />
   if (!opt) {
     return (
-      <ChartCard title="每日总费用趋势" sub="由各模型每日费用聚合（后端无 cost/daily-trend）">
+      <ChartCard title={title} sub="由各模型费用聚合（后端无 cost/daily-trend）" extra={granControl}>
         <EmptyHint />
       </ChartCard>
     )
   }
   return (
-    <ChartCard title="每日总费用趋势" sub="由各模型每日费用聚合（后端无 cost/daily-trend）">
+    <ChartCard title={title} sub="由各模型费用聚合（后端无 cost/daily-trend）" extra={granControl}>
       <EChart option={opt} height={280} />
     </ChartCard>
   )
@@ -353,22 +377,31 @@ function ModelsCostBlock({
   )
 }
 
-// ============================ 各模型每日费用堆叠面积 ============================
+// ============================ 各模型费用堆叠面积·粒度可切 ============================
 function ModelTrendStackBlock({
   loading,
   series,
   palette: p,
+  gran,
+  start,
+  end,
 }: {
   loading: boolean
   series?: CostModelTrendSeries[]
   palette: ChartPalette
+  gran: Granularity
+  start: string
+  end: string
 }) {
   const opt = useMemo<EChartsOption | null>(() => {
     if (!series || !series.length) return null
-    // 取所有日期并集（各模型日期可能不完全对齐）
+    // 取所有日期并集（各模型日期可能不完全对齐），按粒度分桶；各模型在桶内费用求和。
     const dateSet = new Set<string>()
     for (const s of series) for (const pt of s.data) dateSet.add(pt.date)
-    const labels = Array.from(dateSet).sort()
+    const buckets = buildBuckets(Array.from(dateSet), gran, { start, end })
+    if (!buckets.length) return null
+    const labels = buckets.map((b) => b.label)
+    const headers = buckets.map((b) => b.rangeText)
     const byModel = new Map<string, Map<string, number>>()
     for (const s of series) {
       const m = new Map<string, number>()
@@ -382,10 +415,11 @@ function ModelTrendStackBlock({
         trigger: 'axis',
         ...baseTooltip(p),
         formatter: (params: unknown) => {
-          const arr = params as { seriesName: string; value: number }[]
+          const arr = params as { dataIndex: number; seriesName: string; value: number; marker: string }[]
+          const head = headers[arr[0]?.dataIndex] ?? ''
           const total = arr.reduce((acc, it) => acc + (Number(it.value) || 0), 0)
-          const lines = arr.map((it) => `${it.seriesName}: ¥${fmtCost(it.value)}`)
-          return `${lines.join('<br/>')}<br/><b>合计: ¥${fmtCost(total)}</b>`
+          const lines = arr.map((it) => `${it.marker}${it.seriesName}: ¥${fmtCost(it.value)}`)
+          return `${head}<br/>${lines.join('<br/>')}<br/><b>合计: ¥${fmtCost(total)}</b>`
         },
       },
       legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: p.textColor }, itemWidth: 14, itemHeight: 8 },
@@ -411,7 +445,7 @@ function ModelTrendStackBlock({
           stack: 'cost',
           smooth: true,
           symbol: 'none',
-          data: labels.map((d) => m.get(d) || 0),
+          data: buckets.map((b) => b.dates.reduce((acc, d) => acc + (m.get(d) || 0), 0)),
           lineStyle: { color, width: 1.5 },
           itemStyle: { color },
           areaStyle: {
@@ -423,18 +457,19 @@ function ModelTrendStackBlock({
         }
       }),
     }
-  }, [series, p])
+  }, [series, p, gran, start, end])
 
-  if (loading) return <SkeletonCard title="各模型每日费用趋势" />
+  const title = `各模型费用趋势（${GRANULARITY_CN[gran]}）`
+  if (loading) return <SkeletonCard title={title} />
   if (!opt) {
     return (
-      <ChartCard title="各模型每日费用趋势" sub="堆叠面积图">
+      <ChartCard title={title} sub="堆叠面积图">
         <EmptyHint />
       </ChartCard>
     )
   }
   return (
-    <ChartCard title="各模型每日费用趋势" sub="堆叠面积图">
+    <ChartCard title={title} sub="堆叠面积图">
       <EChart option={opt} height={300} />
     </ChartCard>
   )
