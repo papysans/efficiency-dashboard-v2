@@ -173,7 +173,15 @@ export function CostAggregateView({
       />
 
       {/* 区块6 各模型费用趋势堆叠面积（同粒度） */}
-      <ModelTrendStackBlock loading={trendQ.isLoading} series={trendQ.data?.series} palette={p} gran={gran} start={start} end={end} />
+      <ModelTrendStackBlock
+        loading={trendQ.isLoading}
+        series={trendQ.data?.series}
+        palette={p}
+        gran={gran}
+        start={start}
+        end={end}
+        granControl={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}
+      />
 
       {/* 区块7 异常检测 */}
       <AnomalyBlock data={anomalyQ.data} />
@@ -385,6 +393,7 @@ function ModelTrendStackBlock({
   gran,
   start,
   end,
+  granControl,
 }: {
   loading: boolean
   series?: CostModelTrendSeries[]
@@ -392,6 +401,7 @@ function ModelTrendStackBlock({
   gran: Granularity
   start: string
   end: string
+  granControl?: ReactNode
 }) {
   const opt = useMemo<EChartsOption | null>(() => {
     if (!series || !series.length) return null
@@ -463,13 +473,13 @@ function ModelTrendStackBlock({
   if (loading) return <SkeletonCard title={title} />
   if (!opt) {
     return (
-      <ChartCard title={title} sub="堆叠面积图">
+      <ChartCard title={title} sub="堆叠面积图" extra={granControl}>
         <EmptyHint />
       </ChartCard>
     )
   }
   return (
-    <ChartCard title={title} sub="堆叠面积图">
+    <ChartCard title={title} sub="堆叠面积图" extra={granControl}>
       <EChart option={opt} height={300} />
     </ChartCard>
   )
