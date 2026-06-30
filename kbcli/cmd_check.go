@@ -495,10 +495,10 @@ func (ctx *checkContext) checkConversations() error {
 				}
 			}
 
-			totalDiffLines += conv.DiffLines
+			totalDiffLines += int64(conv.DiffLines)
 			totalActualDiffLines += int64(countDiffLines(conv.Diff))
-			totalUpstream += conv.UpstreamTokens
-			totalDownstream += conv.DownstreamTokens
+			totalUpstream += int64(conv.UpstreamTokens)
+			totalDownstream += int64(conv.DownstreamTokens)
 		}
 
 		if totalUpstream == 0 && len(convs) > 0 {
@@ -644,7 +644,7 @@ func parseConversationLines(data []byte, path string, ctx *checkContext) ([]task
 			return nil, fmt.Errorf("第%d行JSON解析失败: %w", lineNum, err)
 		}
 		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conv.Cost = util.CalculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, ctx.modelPrices)
+			conv.Cost = flexFloat64(util.CalculateCost(conv.Model, int64(conv.UpstreamTokens), int64(conv.DownstreamTokens), ctx.modelPrices))
 		}
 		convs = append(convs, conv)
 	}

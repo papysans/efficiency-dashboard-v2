@@ -345,9 +345,24 @@ func migrateEfficiencyV2DDL(db *gorm.DB) error {
 	}{
 		{"commits touched files column", `ALTER TABLE commits ADD COLUMN IF NOT EXISTS touched_files jsonb DEFAULT '[]'::jsonb`},
 		{"commits touched files default", `ALTER TABLE commits ALTER COLUMN touched_files SET DEFAULT '[]'::jsonb`},
+		{"conversations tool events column", `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS tool_events jsonb DEFAULT '[]'::jsonb`},
+		{"conversations tool events default", `ALTER TABLE conversations ALTER COLUMN tool_events SET DEFAULT '[]'::jsonb`},
 		{"conversation_events.touched_files default", `ALTER TABLE conversation_events ALTER COLUMN touched_files SET DEFAULT '[]'::jsonb`},
 		{"conversation_events.payload default", `ALTER TABLE conversation_events ALTER COLUMN payload SET DEFAULT '{}'::jsonb`},
-		{"conversation_events logical unique index", `CREATE UNIQUE INDEX IF NOT EXISTS ux_conversation_events_logical ON conversation_events (session_id, request_id, event_start_ts, event_kind, source, COALESCE(tool_name, ''))`},
+		{"conversation_events replace old logical unique index", `DO $$
+BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM pg_indexes
+		WHERE schemaname = current_schema()
+			AND tablename = 'conversation_events'
+			AND indexname = 'ux_conversation_events_logical'
+			AND indexdef NOT LIKE '%tool_use_id%'
+	) THEN
+		DROP INDEX ux_conversation_events_logical;
+	END IF;
+END $$`},
+		{"conversation_events logical unique index", `CREATE UNIQUE INDEX IF NOT EXISTS ux_conversation_events_logical ON conversation_events (session_id, request_id, event_start_ts, event_kind, source, COALESCE(tool_name, ''), COALESCE(payload->>'tool_use_id', payload->>'event_index', event_id))`},
 		{"conversation_events session start index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_session_start ON conversation_events (session_id, event_start_ts)`},
 		{"conversation_events event start index", `CREATE INDEX IF NOT EXISTS idx_conversation_events_event_start_ts ON conversation_events (event_start_ts)`},
 		// WS-B 索引瘦身：删除 10 个零查询命中的二级索引（task_start/source_quality 复合 + 8 个单列）

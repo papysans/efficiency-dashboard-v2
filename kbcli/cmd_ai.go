@@ -61,7 +61,7 @@ func runAITask(path, op string) error {
 		if c.Diff != "" {
 			codeOutputs = append(codeOutputs, c.Diff)
 		}
-		totalLines += c.DiffLines
+		totalLines += int64(c.DiffLines)
 	}
 
 	if op == "summarize" {

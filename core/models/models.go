@@ -48,31 +48,32 @@ type Session struct {
 func (Session) TableName() string { return "sessions" }
 
 type Conversation struct {
-	ID               int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	SessionId        string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"session_id"`
-	RequestId        string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"request_id"`
-	TaskId           string    `gorm:"type:varchar(255);index" json:"task_id"`
-	Sender           string    `gorm:"type:varchar(50)" json:"sender"`
-	PromptMode       string    `gorm:"type:varchar(50)" json:"prompt_mode"`
-	Mode             string    `gorm:"type:varchar(100)" json:"mode"`
-	Model            string    `gorm:"type:varchar(200)" json:"model"`
-	StartTime        time.Time `gorm:"type:timestamptz;index" json:"start_time"`
-	EndTime          time.Time `gorm:"type:timestamptz" json:"end_time"`
-	ProcessTime      int64     `gorm:"type:bigint" json:"process_time"`
-	ProcessTtft      int64     `gorm:"type:bigint" json:"process_ttft"`
-	UpstreamTokens   int64     `gorm:"type:bigint" json:"upstream_tokens"`
-	DownstreamTokens int64     `gorm:"type:bigint" json:"downstream_tokens"`
-	Cost             float64   `gorm:"type:float8" json:"cost"`
-	DiffLines        int64     `gorm:"type:bigint" json:"diff_lines"`
-	RepoAddr         string    `gorm:"type:text" json:"repo_addr"`
-	RepoBranch       string    `gorm:"type:varchar(500)" json:"repo_branch"`
-	WorkDir          string    `gorm:"type:text" json:"work_dir"`
-	WorkDirId        string    `gorm:"type:varchar(500);index" json:"work_dir_id"`
-	UserInput        string    `gorm:"type:text" json:"user_input"`
-	RequestContent   string    `gorm:"type:text" json:"request_content"`
-	ResponseContent  string    `gorm:"type:text" json:"response_content"`
-	ErrorCode        string    `gorm:"type:varchar(100)" json:"error_code"`
-	ErrorReason      string    `gorm:"type:text" json:"error_reason"`
+	ID               int        `gorm:"primaryKey;autoIncrement" json:"id"`
+	SessionId        string     `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"session_id"`
+	RequestId        string     `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"request_id"`
+	TaskId           string     `gorm:"type:varchar(255);index" json:"task_id"`
+	Sender           string     `gorm:"type:varchar(50)" json:"sender"`
+	PromptMode       string     `gorm:"type:varchar(50)" json:"prompt_mode"`
+	Mode             string     `gorm:"type:varchar(100)" json:"mode"`
+	Model            string     `gorm:"type:varchar(200)" json:"model"`
+	StartTime        time.Time  `gorm:"type:timestamptz;index" json:"start_time"`
+	EndTime          time.Time  `gorm:"type:timestamptz" json:"end_time"`
+	ProcessTime      int64      `gorm:"type:bigint" json:"process_time"`
+	ProcessTtft      int64      `gorm:"type:bigint" json:"process_ttft"`
+	UpstreamTokens   int64      `gorm:"type:bigint" json:"upstream_tokens"`
+	DownstreamTokens int64      `gorm:"type:bigint" json:"downstream_tokens"`
+	Cost             float64    `gorm:"type:float8" json:"cost"`
+	DiffLines        int64      `gorm:"type:bigint" json:"diff_lines"`
+	RepoAddr         string     `gorm:"type:text" json:"repo_addr"`
+	RepoBranch       string     `gorm:"type:varchar(500)" json:"repo_branch"`
+	WorkDir          string     `gorm:"type:text" json:"work_dir"`
+	WorkDirId        string     `gorm:"type:varchar(500);index" json:"work_dir_id"`
+	UserInput        string     `gorm:"type:text" json:"user_input"`
+	RequestContent   string     `gorm:"type:text" json:"request_content"`
+	ResponseContent  string     `gorm:"type:text" json:"response_content"`
+	ToolEvents       StringJSON `gorm:"type:jsonb;default:'[]'" json:"tool_events"`
+	ErrorCode        string     `gorm:"type:varchar(100)" json:"error_code"`
+	ErrorReason      string     `gorm:"type:text" json:"error_reason"`
 	// 正文卸载(WS-A)：ContentLocation 非空表示 request/response_content/user_input 已卸载到磁盘/对象存储，
 	// 三列在 DB 置空，按需经 storage.ReadFile 回灌。UserInputChars 预存 len(UserInput)，
 	// 卸载后供 pseudo_task 古代估时(原读 len(c.UserInput))与 efficiency-v2 活跃判定用，避免回灌全文。

@@ -39,58 +39,126 @@ type EfficiencyV2ConversationEventQuery struct {
 func NormalizeEfficiencyV2ConversationEvents(conversations []models.Conversation) ([]models.ConversationEvent, error) {
 	events := make([]models.ConversationEvent, 0, len(conversations))
 	for _, conv := range conversations {
-		event, ok, err := buildEfficiencyV2ConversationEvent(conv)
+		convEvents, err := buildEfficiencyV2ConversationEvents(conv)
 		if err != nil {
 			return nil, err
+		}
+		events = append(events, convEvents...)
+	}
+	return events, nil
+}
+
+func buildEfficiencyV2ConversationEvents(conv models.Conversation) ([]models.ConversationEvent, error) {
+	if toolEvents, ok, err := extractEfficiencyV2RawToolEvents(conv); ok || err != nil {
+		return toolEvents, err
+	}
+	if conv.DiffLines > 0 {
+		event, ok, err := buildEfficiencyV2FallbackEvent(conv, "edit", efficiencyV2EventSourceConversationDiff, map[string]interface{}{
+			"diff_lines": conv.DiffLines,
+		})
+		if err != nil || !ok {
+			return nil, err
+		}
+		return []models.ConversationEvent{event}, nil
+	}
+	if conversationHasActivity(conv) {
+		event, ok, err := buildEfficiencyV2FallbackEvent(conv, "message", efficiencyV2EventSourceSynthetic, map[string]interface{}{
+			"fallback_reason": "conversation_activity",
+		})
+		if err != nil || !ok {
+			return nil, err
+		}
+		return []models.ConversationEvent{event}, nil
+	}
+	return nil, nil
+}
+
+func extractEfficiencyV2RawToolEvents(conv models.Conversation) ([]models.ConversationEvent, bool, error) {
+	if events, ok, err := buildEfficiencyV2ToolEventsFromRawArray(conv, string(conv.ToolEvents)); ok || err != nil {
+		return events, ok, err
+	}
+	for _, raw := range []string{conv.RequestContent, conv.ResponseContent} {
+		payload, ok, err := parseEfficiencyV2JSONObject(raw)
+		if err != nil {
+			return nil, false, err
+		}
+		if !ok {
+			continue
+		}
+		if events, ok, err := buildEfficiencyV2ToolEventsFromArray(conv, payload); ok || err != nil {
+			return events, ok, err
+		}
+		if !hasEfficiencyV2ToolMarker(payload) {
+			continue
+		}
+
+		event, _, err := buildEfficiencyV2RawToolEvent(conv, payload)
+		return []models.ConversationEvent{event}, true, err
+	}
+	return nil, false, nil
+}
+
+func buildEfficiencyV2ToolEventsFromRawArray(conv models.Conversation, raw string) ([]models.ConversationEvent, bool, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" || raw == "[]" {
+		return nil, false, nil
+	}
+	var items []interface{}
+	if err := json.Unmarshal([]byte(raw), &items); err != nil || len(items) == 0 {
+		return nil, false, nil
+	}
+	return buildEfficiencyV2ToolEventsFromItems(conv, items)
+}
+
+func buildEfficiencyV2ToolEventsFromArray(conv models.Conversation, payload map[string]interface{}) ([]models.ConversationEvent, bool, error) {
+	rawEvents, ok := payload["tool_events"]
+	if !ok {
+		return nil, false, nil
+	}
+	items, ok := rawEvents.([]interface{})
+	if !ok || len(items) == 0 {
+		return nil, false, nil
+	}
+	return buildEfficiencyV2ToolEventsFromItems(conv, items)
+}
+
+func buildEfficiencyV2ToolEventsFromItems(conv models.Conversation, items []interface{}) ([]models.ConversationEvent, bool, error) {
+	events := make([]models.ConversationEvent, 0, len(items))
+	for _, item := range items {
+		toolPayload, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if _, ok := toolPayload["event_index"]; !ok {
+			toolPayload["event_index"] = len(events)
+		}
+		event, ok, err := buildEfficiencyV2RawToolEvent(conv, toolPayload)
+		if err != nil {
+			return nil, false, err
 		}
 		if ok {
 			events = append(events, event)
 		}
 	}
-	return events, nil
+	return events, len(events) > 0, nil
 }
 
-func buildEfficiencyV2ConversationEvent(conv models.Conversation) (models.ConversationEvent, bool, error) {
-	if toolEvent, ok, err := extractEfficiencyV2RawToolEvent(conv); ok || err != nil {
-		return toolEvent, ok, err
+func buildEfficiencyV2RawToolEvent(conv models.Conversation, payload map[string]interface{}) (models.ConversationEvent, bool, error) {
+	eventKind := firstString(payload, "event_kind", "fixture_event_kind", "kind")
+	if eventKind == "" {
+		eventKind = "other"
 	}
-	if conv.DiffLines > 0 {
-		return buildEfficiencyV2FallbackEvent(conv, "edit", efficiencyV2EventSourceConversationDiff, map[string]interface{}{
-			"diff_lines": conv.DiffLines,
-		})
+	toolName := firstString(payload, "tool_name", "tool", "name")
+	if toolName == "" {
+		toolName = firstString(payload, "name")
 	}
-	if conversationHasActivity(conv) {
-		return buildEfficiencyV2FallbackEvent(conv, "message", efficiencyV2EventSourceSynthetic, map[string]interface{}{
-			"fallback_reason": "conversation_activity",
-		})
+	command := firstString(payload, "command", "command_text")
+	touchedFiles := stringSliceValue(payload["touched_files"])
+	if len(touchedFiles) == 0 {
+		touchedFiles = stringSliceValue(payload["mock_files"])
 	}
-	return models.ConversationEvent{}, false, nil
-}
-
-func extractEfficiencyV2RawToolEvent(conv models.Conversation) (models.ConversationEvent, bool, error) {
-	for _, raw := range []string{conv.RequestContent, conv.ResponseContent} {
-		payload, ok, err := parseEfficiencyV2JSONObject(raw)
-		if err != nil {
-			return models.ConversationEvent{}, false, err
-		}
-		if !ok || !hasEfficiencyV2ToolMarker(payload) {
-			continue
-		}
-
-		eventKind := firstString(payload, "event_kind", "fixture_event_kind", "kind")
-		if eventKind == "" {
-			eventKind = "other"
-		}
-		toolName := firstString(payload, "tool_name", "tool", "name")
-		command := firstString(payload, "command", "command_text")
-		touchedFiles := stringSliceValue(payload["touched_files"])
-		if len(touchedFiles) == 0 {
-			touchedFiles = stringSliceValue(payload["mock_files"])
-		}
-
-		return buildEfficiencyV2Event(conv, eventKind, efficiencyV2EventSourceRawTool, efficiencyV2ParseQualityExact, toolName, command, touchedFiles, payload)
-	}
-	return models.ConversationEvent{}, false, nil
+	event, ok, err := buildEfficiencyV2Event(conv, eventKind, efficiencyV2EventSourceRawTool, efficiencyV2ParseQualityExact, toolName, command, touchedFiles, payload)
+	return event, ok, err
 }
 
 func buildEfficiencyV2FallbackEvent(conv models.Conversation, eventKind, source string, extraPayload map[string]interface{}) (models.ConversationEvent, bool, error) {
@@ -131,8 +199,17 @@ func buildEfficiencyV2Event(conv models.Conversation, eventKind, source, parseQu
 		return models.ConversationEvent{}, false, err
 	}
 
+	idToolName := toolName
+	if source == efficiencyV2EventSourceRawTool {
+		if identity := firstString(payload, "tool_use_id"); identity != "" {
+			idToolName = toolName + "\x00" + identity
+		} else if index, ok := payload["event_index"]; ok {
+			idToolName = fmt.Sprintf("%s\x00%v", toolName, index)
+		}
+	}
+
 	event := models.ConversationEvent{
-		EventId:      BuildEfficiencyV2ConversationEventID(conv, eventKind, source, toolName, start),
+		EventId:      BuildEfficiencyV2ConversationEventID(conv, eventKind, source, idToolName, start),
 		SessionId:    conv.SessionId,
 		RequestId:    conv.RequestId,
 		TaskId:       conv.TaskId,
@@ -207,10 +284,68 @@ func NormalizeAndUpsertEfficiencyV2ConversationEvents(db *gorm.DB, query Efficie
 	if err := hydrateEfficiencyV2EventUsers(db, events); err != nil {
 		return nil, err
 	}
+	if err := pruneStaleEfficiencyV2ConversationEvents(db, events); err != nil {
+		return nil, err
+	}
 	if err := UpsertEfficiencyV2ConversationEvents(db, events); err != nil {
 		return nil, err
 	}
 	return events, nil
+}
+
+func pruneStaleEfficiencyV2ConversationEvents(db *gorm.DB, events []models.ConversationEvent) error {
+	scopes := conversationEventPruneScopes(events)
+	for _, scope := range scopes {
+		if err := db.Where("session_id = ? AND request_id = ? AND event_id NOT IN ?", scope.SessionId, scope.RequestId, scope.KeepEventIds).
+			Delete(&models.ConversationEvent{}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type conversationEventPruneScope struct {
+	SessionId    string
+	RequestId    string
+	KeepEventIds []string
+}
+
+func conversationEventPruneScopes(events []models.ConversationEvent) []conversationEventPruneScope {
+	type key struct {
+		sessionId string
+		requestId string
+	}
+	byRequest := make(map[key]map[string]bool)
+	for _, event := range events {
+		if event.SessionId == "" || event.RequestId == "" || event.EventId == "" {
+			continue
+		}
+		k := key{sessionId: event.SessionId, requestId: event.RequestId}
+		if byRequest[k] == nil {
+			byRequest[k] = map[string]bool{}
+		}
+		byRequest[k][event.EventId] = true
+	}
+	scopes := make([]conversationEventPruneScope, 0, len(byRequest))
+	for k, ids := range byRequest {
+		keep := make([]string, 0, len(ids))
+		for id := range ids {
+			keep = append(keep, id)
+		}
+		sort.Strings(keep)
+		scopes = append(scopes, conversationEventPruneScope{
+			SessionId:    k.sessionId,
+			RequestId:    k.requestId,
+			KeepEventIds: keep,
+		})
+	}
+	sort.Slice(scopes, func(i, j int) bool {
+		if scopes[i].SessionId != scopes[j].SessionId {
+			return scopes[i].SessionId < scopes[j].SessionId
+		}
+		return scopes[i].RequestId < scopes[j].RequestId
+	})
+	return scopes
 }
 
 func QueryEfficiencyV2Conversations(db *gorm.DB, query EfficiencyV2ConversationEventQuery) ([]models.Conversation, error) {

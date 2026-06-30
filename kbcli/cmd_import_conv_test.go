@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"kanban/core/models"
 	"kanban/core/rawdump"
+	"kanban/kbcli/internal/efficiencyv2"
 )
 
 // convRefOf 把单个 conversation 文件路径包成 ConversationRef（测试旧单文件布局用）。
@@ -486,6 +489,112 @@ func TestTaskConversation_FloatProcessTime_NotDropped(t *testing.T) {
 	}
 	if int64(conv.ProcessTtft) != 535 {
 		t.Errorf("process_ttft got %d, want 535", int64(conv.ProcessTtft))
+	}
+}
+
+func TestTaskConversation_NewCscPayload_NotDropped(t *testing.T) {
+	line := `{"request_id":"r1","start_time":"2026-05-18T10:00:00Z","end_time":"2026-05-18T10:01:00Z","process_time":"18.848","process_ttft":null,"upstream_tokens":"120.4","downstream_tokens":30.2,"cache_read_tokens":"10","cache_creation_tokens":5,"cost":"0.0123","diff_lines":"2","tool_events":[{"name":"Edit","event_kind":"edit","tool_use_id":"tu1","touched_files":["main.go"],"after":"package main"}],"git_root":"/repo","repo_relative_path":"app"}`
+	conv, err := parseConversation("test.jsonl", 1, []byte(line), false)
+	if err != nil {
+		t.Fatalf("新版 csc payload 不应解析失败: %v", err)
+	}
+	if conv == nil {
+		t.Fatal("新版 csc payload 不应被丢弃")
+	}
+	if int64(conv.UpstreamTokens) != 120 || int64(conv.DownstreamTokens) != 30 {
+		t.Fatalf("tokens got upstream=%d downstream=%d, want 120/30", int64(conv.UpstreamTokens), int64(conv.DownstreamTokens))
+	}
+	if int64(conv.CacheReadTokens) != 10 || int64(conv.CacheCreateTokens) != 5 {
+		t.Fatalf("cache tokens got read=%d creation=%d, want 10/5", int64(conv.CacheReadTokens), int64(conv.CacheCreateTokens))
+	}
+	if float64(conv.Cost) != 0.0123 {
+		t.Fatalf("cost got %.4f, want 0.0123", float64(conv.Cost))
+	}
+	if len(conv.ToolEvents) == 0 {
+		t.Fatal("tool_events should be retained as raw JSON")
+	}
+}
+
+func TestMakeConversationRecords_NewCscPayloadKeepsLegacyContent(t *testing.T) {
+	line := `{"request_id":"r1","start_time":"2026-05-18T10:00:00Z","end_time":"2026-05-18T10:01:00Z","response_content":"plain assistant text","tool_events":[{"name":"Edit","event_kind":"edit","tool_use_id":"tu1","touched_files":["main.go"],"after":"package main"}]}`
+	conv, err := parseConversation("test.jsonl", 1, []byte(line), false)
+	if err != nil {
+		t.Fatalf("parse new csc payload: %v", err)
+	}
+	conv.sessionId = "s1"
+	records := makeConversationRecords([]taskConversation{*conv})
+	if len(records) != 1 {
+		t.Fatalf("records len = %d, want 1", len(records))
+	}
+	if records[0].ResponseContent != "plain assistant text" {
+		t.Fatalf("response_content should remain unchanged, got %q", records[0].ResponseContent)
+	}
+	var events []interface{}
+	if err := json.Unmarshal([]byte(records[0].ToolEvents), &events); err != nil {
+		t.Fatalf("tool_events should be valid JSON array: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("tool_events not stored: %#v", records[0].ToolEvents)
+	}
+}
+
+func TestNewCscPayload_IncrementalImportAndV2Normalize(t *testing.T) {
+	line := `{"request_id":"r1","start_time":"2026-05-18T10:00:00Z","end_time":"2026-05-18T10:01:00Z","response_content":"plain assistant text","request_content":"user prompt","user_input":"preview","tool_events":[{"name":"Edit","event_kind":"edit","tool_use_id":"tu-edit","touched_files":["main.go"],"after":"package main"},{"name":"Bash","event_kind":"command","tool_use_id":"tu-bash","command":"go test ./...","exit_code":0}]}`
+	convs, err := parseConversationReader(strings.NewReader(line+"\n"), "mock-csc.jsonl")
+	if err != nil {
+		t.Fatalf("parse mock csc jsonl: %v", err)
+	}
+	if len(convs) != 1 {
+		t.Fatalf("conversation count = %d, want 1", len(convs))
+	}
+	convs[0].sessionId = "s1"
+	records := makeConversationRecords(convs)
+	if len(records) != 1 {
+		t.Fatalf("records len = %d, want 1", len(records))
+	}
+
+	record := records[0]
+	if record.RequestContent != "user prompt" || record.ResponseContent != "plain assistant text" || record.UserInput != "preview" {
+		t.Fatalf("legacy content fields changed: request=%q response=%q user=%q", record.RequestContent, record.ResponseContent, record.UserInput)
+	}
+
+	events, err := efficiencyv2.NormalizeEfficiencyV2ConversationEvents([]models.Conversation{record})
+	if err != nil {
+		t.Fatalf("normalize mock csc record: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(events))
+	}
+	if events[0].ToolName != "Edit" || events[1].ToolName != "Bash" {
+		t.Fatalf("tool events not normalized: %#v", events)
+	}
+}
+
+func TestConversationToolEventBackfills_OnlyNewToolEvents(t *testing.T) {
+	records := []models.Conversation{
+		{
+			SessionId:       "s1",
+			RequestId:       "r-old",
+			ResponseContent: "old response must not be part of backfill decision",
+			ToolEvents:      models.StringJSON("[]"),
+		},
+		{
+			SessionId:       "s1",
+			RequestId:       "r-new",
+			ResponseContent: "new response must not be overwritten by backfill",
+			ToolEvents:      models.StringJSON(`[{"name":"Edit","event_kind":"edit","tool_use_id":"tu-edit"}]`),
+		},
+	}
+
+	backfills := conversationToolEventBackfills(records)
+	if len(backfills) != 1 {
+		t.Fatalf("backfill count = %d, want 1", len(backfills))
+	}
+	if backfills[0].RequestId != "r-new" {
+		t.Fatalf("backfilled request_id = %q, want r-new", backfills[0].RequestId)
+	}
+	if backfills[0].ResponseContent != "new response must not be overwritten by backfill" {
+		t.Fatalf("backfill should carry original record only for tool_events update, response=%q", backfills[0].ResponseContent)
 	}
 }
 

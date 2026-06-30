@@ -48,29 +48,32 @@ type taskSession struct {
 
 // taskConversation 表示一次任务中的单次对话记录，对应 conversation 目录下 JSONL 的每一行。
 type taskConversation struct {
-	Sender           string     `json:"sender"`
-	RequestId        string     `json:"request_id"`
-	Caller           string     `json:"caller"`
-	RepoAddr         string     `json:"repo_addr"`
-	RepoBranch       string     `json:"repo_branch"`
-	WorkDir          string     `json:"work_dir"`
-	PromptMode       string     `json:"prompt_mode"`
-	Mode             string     `json:"mode"`
-	Model            string     `json:"model"`
-	StartTime        string     `json:"start_time"`
-	EndTime          string     `json:"end_time"`
-	ProcessTime      flexInt64  `json:"process_time"`
-	ProcessTtft      flexInt64  `json:"process_ttft"`
-	UpstreamTokens   int64      `json:"upstream_tokens"`
-	DownstreamTokens int64      `json:"downstream_tokens"`
-	Cost             float64    `json:"cost"`
-	RequestContent   string     `json:"request_content"`
-	ResponseContent  string     `json:"response_content"`
-	UserInput        string     `json:"user_input"`
-	Diff             string     `json:"diff"`
-	DiffLines        int64      `json:"diff_lines"`
-	ErrorCode        flexString `json:"error_code"`
-	ErrorReason      flexString `json:"error_reason"`
+	Sender            string          `json:"sender"`
+	RequestId         string          `json:"request_id"`
+	Caller            string          `json:"caller"`
+	RepoAddr          string          `json:"repo_addr"`
+	RepoBranch        string          `json:"repo_branch"`
+	WorkDir           string          `json:"work_dir"`
+	PromptMode        string          `json:"prompt_mode"`
+	Mode              string          `json:"mode"`
+	Model             string          `json:"model"`
+	StartTime         string          `json:"start_time"`
+	EndTime           string          `json:"end_time"`
+	ProcessTime       flexInt64       `json:"process_time"`
+	ProcessTtft       flexInt64       `json:"process_ttft"`
+	UpstreamTokens    flexInt64       `json:"upstream_tokens"`
+	DownstreamTokens  flexInt64       `json:"downstream_tokens"`
+	CacheReadTokens   flexInt64       `json:"cache_read_tokens"`
+	CacheCreateTokens flexInt64       `json:"cache_creation_tokens"`
+	Cost              flexFloat64     `json:"cost"`
+	RequestContent    string          `json:"request_content"`
+	ResponseContent   string          `json:"response_content"`
+	UserInput         string          `json:"user_input"`
+	Diff              string          `json:"diff"`
+	DiffLines         flexInt64       `json:"diff_lines"`
+	ToolEvents        json.RawMessage `json:"tool_events"`
+	ErrorCode         flexString      `json:"error_code"`
+	ErrorReason       flexString      `json:"error_reason"`
 
 	// addedLines 为解析 Diff 后提取的新增代码行，用于后续生成 silica 指纹。
 	sessionId  string
@@ -141,12 +144,46 @@ func (f *flexInt64) UnmarshalJSON(data []byte) error {
 		*f = 0
 		return nil
 	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		s = strings.TrimSpace(text)
+		if s == "" {
+			*f = 0
+			return nil
+		}
+	}
 	// 统一按浮点解析，再四舍五入；这样整数与小数都能正确承载
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return err
 	}
 	*f = flexInt64(math.Round(v))
+	return nil
+}
+
+// flexFloat64 是一个灵活的浮点数类型，用于兼容 JSON number 为整数、浮点或字符串数字的场景。
+// 空值 / null 容错为 0，非法值仍返回错误，避免悄悄吞掉真实坏数据。
+type flexFloat64 float64
+
+func (f *flexFloat64) UnmarshalJSON(data []byte) error {
+	s := strings.TrimSpace(string(data))
+	if s == "" || s == "null" {
+		*f = 0
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		s = strings.TrimSpace(text)
+		if s == "" {
+			*f = 0
+			return nil
+		}
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+	*f = flexFloat64(v)
 	return nil
 }
 
@@ -283,7 +320,7 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 
 		// 若成本缺失且存在 Token 和模型信息，自动计算成本
 		if conv.Cost == 0 && conv.UpstreamTokens > 0 && conv.Model != "" {
-			conversations[i].Cost = util.CalculateCost(conv.Model, conv.UpstreamTokens, conv.DownstreamTokens, appconfig.Cfg.ModelPrices)
+			conversations[i].Cost = flexFloat64(util.CalculateCost(conv.Model, int64(conv.UpstreamTokens), int64(conv.DownstreamTokens), appconfig.Cfg.ModelPrices))
 		}
 		// 去除用户输入的包装标签
 		conversations[i].UserInput = parseUserInput(conv.UserInput)
@@ -293,7 +330,7 @@ func correctConversations(ss *taskSession, conversations []taskConversation) {
 		}
 		// 统计新增代码行数，并清空 Diff 原文以释放内存
 		// 注意：必须读 conversations[i]（切片元素），conv 是 range 的值拷贝，addedLines 不会同步。
-		conversations[i].DiffLines = int64(len(conversations[i].addedLines))
+		conversations[i].DiffLines = flexInt64(len(conversations[i].addedLines))
 		conversations[i].Diff = ""
 	}
 }
@@ -500,18 +537,19 @@ func makeConversationRecords(conversations []taskConversation) []models.Conversa
 			EndTime:          conv.endTime,
 			ProcessTime:      int64(conv.ProcessTime),
 			ProcessTtft:      int64(conv.ProcessTtft),
-			UpstreamTokens:   conv.UpstreamTokens,
-			DownstreamTokens: conv.DownstreamTokens,
-			Cost:             conv.Cost,
+			UpstreamTokens:   int64(conv.UpstreamTokens),
+			DownstreamTokens: int64(conv.DownstreamTokens),
+			Cost:             float64(conv.Cost),
 			// 仅剥离长 base64(粘贴图片/二进制→占位符,保持 JSON 合法) + 清无效 UTF-8。
 			// ⚠️ 不硬截断:efficiency-v2 会从 DB 回读 request/response_content、解析其 JSON 提取工具事件
 			//   (event_kind/tool_name/command/touched_files);截断会让 ~26% 工具事件 JSON 解析失败退化 → stage/silica 降级。
 			//   体积治理走摄取层改造(事件抽取前移到导入+正文卸载,另立项),不在此截断正文。
 			RequestContent:  utils.SanitizeText(utils.StripLargeBase64(conv.RequestContent)),
 			ResponseContent: utils.SanitizeText(utils.StripLargeBase64(conv.ResponseContent)),
+			ToolEvents:      normalizeToolEventsJSON(conv.ToolEvents),
 			UserInput:       cleanedUserInput,
 			UserInputChars:  len(cleanedUserInput),
-			DiffLines:       conv.DiffLines,
+			DiffLines:       int64(conv.DiffLines),
 			ErrorCode:       string(conv.ErrorCode),
 			ErrorReason:     utils.SanitizeText(string(conv.ErrorReason)),
 			RepoAddr:        conv.RepoAddr,
@@ -582,7 +620,32 @@ func saveConversationRecords(db *gorm.DB, records []models.Conversation) error {
 	}).CreateInBatches(&records, importConvConversationBatchSize).Error; err != nil {
 		return fmt.Errorf("写入task_conversations表失败: %w", err)
 	}
+	if err := backfillConversationToolEvents(db, records); err != nil {
+		return fmt.Errorf("回填conversation.tool_events失败: %w", err)
+	}
 	return nil
+}
+
+func backfillConversationToolEvents(db *gorm.DB, records []models.Conversation) error {
+	backfills := conversationToolEventBackfills(records)
+	for i := range backfills {
+		if err := db.Model(&models.Conversation{}).
+			Where("session_id = ? AND request_id = ?", backfills[i].SessionId, backfills[i].RequestId).
+			Update("tool_events", backfills[i].ToolEvents).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func conversationToolEventBackfills(records []models.Conversation) []models.Conversation {
+	backfills := make([]models.Conversation, 0, len(records))
+	for i := range records {
+		if hasConversationToolEvents(records[i].ToolEvents) {
+			backfills = append(backfills, records[i])
+		}
+	}
+	return backfills
 }
 
 // parseUserInput 解析并提取用户输入中的实际内容。
@@ -609,6 +672,30 @@ func parseUserInput(userInput string) string {
 
 	// 截取前缀和后缀之间的内容
 	return userInput[startIdx : startIdx+endIdx]
+}
+
+func normalizeToolEventsJSON(toolEvents json.RawMessage) models.StringJSON {
+	if len(toolEvents) == 0 || strings.TrimSpace(string(toolEvents)) == "" || string(toolEvents) == "null" {
+		return models.StringJSON("[]")
+	}
+	var events []map[string]interface{}
+	if err := json.Unmarshal(toolEvents, &events); err != nil || len(events) == 0 {
+		return models.StringJSON("[]")
+	}
+	data, err := json.Marshal(events)
+	if err != nil {
+		return models.StringJSON("[]")
+	}
+	return models.StringJSON(data)
+}
+
+func hasConversationToolEvents(toolEvents models.StringJSON) bool {
+	raw := strings.TrimSpace(string(toolEvents))
+	if raw == "" || raw == "null" || raw == "[]" {
+		return false
+	}
+	var events []interface{}
+	return json.Unmarshal([]byte(raw), &events) == nil && len(events) > 0
 }
 
 // checkConversation 对单个对话进行字段合法性检查
