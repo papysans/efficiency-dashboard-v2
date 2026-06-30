@@ -11,10 +11,12 @@ import { useTheme } from '@/hooks/useTheme'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { EChart } from '@/components/charts/EChart'
 import { getPalette } from '@/components/charts/chartTheme'
-import { formatNumber } from '@/lib/formatters'
+import { fmtCost, formatNumber } from '@/lib/formatters'
 import { Modal } from '@/components/ui/Modal'
 import SettingsLayout, { BTN_GLASS, ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
 import { ChartCard, ChatUserCell, EmptyHint, PIE_COLORS, multiAreaOption, shortToken } from './platformShared'
+import { useGranularity, GranularityToggle } from '@/pages/dimensions/granularity'
+import { buildBuckets, GRANULARITY_CN } from '@/lib/timeBucket'
 import PerformanceTab from './PerformanceTab'
 import TimeDistributionTab from './TimeDistributionTab'
 
@@ -208,6 +210,9 @@ export default function PlatformOverview() {
 
   const enabled = chatEnabled && rangeValid
 
+  // 趋势粒度（本页统一控制，随区间重置默认）。
+  const { gran, setGran, options: granOptions } = useGranularity(start, end)
+
   const dailyQ = useQuery({
     queryKey: ['chat-overview-daily', start, end],
     queryFn: () => chatGet<ChatDailyGlobal[]>('/stats/global/daily', { start_date: start, end_date: end }),
@@ -305,48 +310,77 @@ export default function PlatformOverview() {
     { title: '总成本', value: `¥${agg.cost.toFixed(2)}`, sub: '估算（按价格表）' },
   ]
 
-  // ---- 图表 option ----
+  // ---- 图表 option（按所选粒度分桶；可加项求和，缓存命中率按 token 比率重算） ----
   const costOpt = useMemo(() => {
     const rows = costQ.data ?? []
+    const byDate = new Map(rows.map((r) => [r.date, r]))
+    const buckets = buildBuckets(rows.map((r) => r.date), gran, { start, end })
+    const sum = (b: (typeof buckets)[number], pick: (r: ChatCostTrendRow) => number) =>
+      b.dates.reduce((acc, d) => { const r = byDate.get(d); return acc + (r ? pick(r) : 0) }, 0)
     return multiAreaOption(p,
-      rows.map((r) => shortDate(r.date)),
+      buckets.map((b) => b.label),
       [
-        { name: '总成本', color: '#ff3b30', data: rows.map((r) => +r.total_cost.toFixed(2)) },
-        { name: '输入成本', color: '#0071e3', data: rows.map((r) => +r.input_cost.toFixed(2)) },
-        { name: '输出成本', color: '#34c759', data: rows.map((r) => +r.output_cost.toFixed(2)) },
-        { name: '缓存成本', color: '#af52de', data: rows.map((r) => +r.cache_cost.toFixed(2)) },
+        { name: '总成本', color: '#ff3b30', data: buckets.map((b) => +sum(b, (r) => r.total_cost).toFixed(2)) },
+        { name: '输入成本', color: '#0071e3', data: buckets.map((b) => +sum(b, (r) => r.input_cost).toFixed(2)) },
+        { name: '输出成本', color: '#34c759', data: buckets.map((b) => +sum(b, (r) => r.output_cost).toFixed(2)) },
+        { name: '缓存成本', color: '#af52de', data: buckets.map((b) => +sum(b, (r) => r.cache_cost).toFixed(2)) },
       ],
-      { yFmt: (v) => `¥${shortToken(v)}` },
+      { yFmt: (v) => `¥${shortToken(v)}`, tipFmt: (v) => `¥${fmtCost(v)}`, headers: buckets.map((b) => b.rangeText) },
     )
-  }, [costQ.data, p])
+  }, [costQ.data, p, gran, start, end])
 
-  const tokenOpt = useMemo(() => multiAreaOption(p,
-    daily.map((r) => shortDate(r.date)),
-    [
-      { name: '输入 Token', color: '#0071e3', data: daily.map((r) => r.sum_prompt_tokens) },
-      { name: '输出 Token', color: '#34c759', data: daily.map((r) => r.sum_completion_tokens) },
-      { name: '缓存 Token', color: '#5ac8fa', data: daily.map((r) => r.sum_cache_tokens) },
-    ],
-    { yFmt: (v) => shortToken(v) },
-  ), [daily, p])
+  const tokenOpt = useMemo(() => {
+    const byDate = new Map(daily.map((r) => [r.date, r]))
+    const buckets = buildBuckets(daily.map((r) => r.date), gran, { start, end })
+    const sum = (b: (typeof buckets)[number], pick: (r: ChatDailyGlobal) => number) =>
+      b.dates.reduce((acc, d) => { const r = byDate.get(d); return acc + (r ? pick(r) : 0) }, 0)
+    return multiAreaOption(p,
+      buckets.map((b) => b.label),
+      [
+        { name: '输入 Token', color: '#0071e3', data: buckets.map((b) => sum(b, (r) => r.sum_prompt_tokens)) },
+        { name: '输出 Token', color: '#34c759', data: buckets.map((b) => sum(b, (r) => r.sum_completion_tokens)) },
+        { name: '缓存 Token', color: '#5ac8fa', data: buckets.map((b) => sum(b, (r) => r.sum_cache_tokens)) },
+      ],
+      { yFmt: (v) => shortToken(v), tipFmt: (v) => formatNumber(v), headers: buckets.map((b) => b.rangeText) },
+    )
+  }, [daily, p, gran, start, end])
 
-  const requestOpt = useMemo(() => multiAreaOption(p,
-    daily.map((r) => shortDate(r.date)),
-    [
-      { name: '请求量', color: '#ff9500', data: daily.map((r) => r.total_requests) },
-      { name: '错误请求', color: '#ff3b30', data: daily.map((r) => r.total_error_requests) },
-    ],
-    { yFmt: (v) => shortToken(v) },
-  ), [daily, p])
+  const requestOpt = useMemo(() => {
+    const byDate = new Map(daily.map((r) => [r.date, r]))
+    const buckets = buildBuckets(daily.map((r) => r.date), gran, { start, end })
+    const sum = (b: (typeof buckets)[number], pick: (r: ChatDailyGlobal) => number) =>
+      b.dates.reduce((acc, d) => { const r = byDate.get(d); return acc + (r ? pick(r) : 0) }, 0)
+    return multiAreaOption(p,
+      buckets.map((b) => b.label),
+      [
+        { name: '请求量', color: '#ff9500', data: buckets.map((b) => sum(b, (r) => r.total_requests)) },
+        { name: '错误请求', color: '#ff3b30', data: buckets.map((b) => sum(b, (r) => r.total_error_requests)) },
+      ],
+      { yFmt: (v) => shortToken(v), tipFmt: (v) => formatNumber(v), headers: buckets.map((b) => b.rangeText) },
+    )
+  }, [daily, p, gran, start, end])
 
   const cacheOpt = useMemo(() => {
     const rows = cacheQ.data ?? []
+    // 命中率本质是 token 比率，不能对 pct 加权：按桶重算 Σ缓存token / Σ输入token ×100
+    //（行内自带 sum_cache_tokens / sum_prompt_tokens）；输入 token 和为 0 的桶显 0。
+    const byDate = new Map(rows.map((r) => [r.date, r]))
+    const buckets = buildBuckets(rows.map((r) => r.date), gran, { start, end })
+    const rate = (b: (typeof buckets)[number]) => {
+      let cache = 0, prompt = 0
+      for (const d of b.dates) {
+        const r = byDate.get(d); if (!r) continue
+        cache += r.sum_cache_tokens || 0
+        prompt += r.sum_prompt_tokens || 0
+      }
+      return prompt > 0 ? +((cache / prompt) * 100).toFixed(1) : 0
+    }
     return multiAreaOption(p,
-      rows.map((r) => shortDate(r.date)),
-      [{ name: '缓存命中率', color: '#34c759', data: rows.map((r) => +r.cache_hit_rate_pct.toFixed(1)) }],
-      { yFmt: (v) => `${v}%`, yMax: 100 },
+      buckets.map((b) => b.label),
+      [{ name: '缓存命中率', color: '#34c759', data: buckets.map(rate) }],
+      { yFmt: (v) => `${v}%`, yMax: 100, headers: buckets.map((b) => b.rangeText) },
     )
-  }, [cacheQ.data, p])
+  }, [cacheQ.data, gran, start, end])
 
   // ---- 模型与成本 ----
 
@@ -422,35 +456,44 @@ export default function PlatformOverview() {
     }
   }, [errorCodeQ.data, p])
 
-  // 模型趋势 option
+  // 模型趋势 option（各模型按 date 并集分桶；桶内 total_requests 求和，可加）
   const modelTrendOpt = useMemo(() => {
     const series = modelTrendQ.data ?? []
     if (series.length === 0) return null
     const dateSet = new Set<string>()
-    series.forEach(s => (s.data || []).forEach(d => dateSet.add(shortDate(d.date))))
-    const dates = Array.from(dateSet).sort()
-    const seriesOpt = series.map((s, i) => ({
-      name: `${s.model} 请求`,
-      type: 'line' as const,
-      data: dates.map(date => {
-        const row = (s.data || []).find(d => shortDate(d.date) === date)
-        return row?.total_requests ?? 0
-      }),
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 4,
-      lineStyle: { width: 2 },
-      itemStyle: { color: PIE_COLORS[i % PIE_COLORS.length] },
-    }))
+    series.forEach(s => (s.data || []).forEach(d => dateSet.add(d.date)))
+    const buckets = buildBuckets(Array.from(dateSet), gran, { start, end })
+    if (buckets.length === 0) return null
+    const headers = buckets.map((b) => b.rangeText)
+    const seriesOpt = series.map((s, i) => {
+      const m = new Map((s.data || []).map((d) => [d.date, d.total_requests ?? 0]))
+      return {
+        name: `${s.model} 请求`,
+        type: 'line' as const,
+        data: buckets.map((b) => b.dates.reduce((acc, d) => acc + (m.get(d) ?? 0), 0)),
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: { width: 2 },
+        itemStyle: { color: PIE_COLORS[i % PIE_COLORS.length] },
+      }
+    })
     return {
-      tooltip: { trigger: 'axis' as const },
+      tooltip: {
+        trigger: 'axis' as const,
+        formatter: (params: unknown) => {
+          const arr = params as { dataIndex: number; seriesName: string; value: number; marker: string; axisValue: string }[]
+          const head = headers[arr[0]?.dataIndex] ?? arr[0]?.axisValue ?? ''
+          return `${head}<br/>${arr.map((it) => `${it.marker}${it.seriesName}: ${formatNumber(it.value)}`).join('<br/>')}`
+        },
+      },
       legend: { type: 'scroll' as const, bottom: 0, textStyle: { fontSize: 10 } },
       grid: { left: 50, right: 16, top: 8, bottom: 40 },
-      xAxis: { type: 'category' as const, data: dates, axisLabel: { fontSize: 10 } },
+      xAxis: { type: 'category' as const, data: buckets.map((b) => b.label), axisLabel: { fontSize: 10 } },
       yAxis: { type: 'value' as const, axisLabel: { formatter: (v: number) => shortToken(v) } },
       series: seriesOpt,
     }
-  }, [modelTrendQ.data])
+  }, [modelTrendQ.data, gran, start, end])
 
   const costModelOptions = useMemo(() => ['all', ...(rankQ.data ?? []).map((r) => r.model).filter(Boolean)], [rankQ.data])
   const availableModels = useMemo(() => {
@@ -555,21 +598,24 @@ export default function PlatformOverview() {
             {/* ---- 全局趋势 Tab ---- */}
             {tab === 'global' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <ChartCard title="成本趋势" sub="按日 · 估算" extra={
-                  <select value={costModel} onChange={(e) => setCostModel(e.target.value)} className={INPUT_CLS}>
-                    <option value="all">全部模型</option>
-                    {costModelOptions.filter(m => m !== 'all').map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
+                <ChartCard title={`成本趋势（${GRANULARITY_CN[gran]}）`} sub="估算" extra={
+                  <>
+                    <GranularityToggle value={gran} options={granOptions} onChange={setGran} />
+                    <select value={costModel} onChange={(e) => setCostModel(e.target.value)} className={INPUT_CLS}>
+                      <option value="all">全部模型</option>
+                      {costModelOptions.filter(m => m !== 'all').map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </>
                 }>
                   {(costQ.data ?? []).length > 0 ? <EChart option={costOpt} height={280} /> : <EmptyHint />}
                 </ChartCard>
-                <ChartCard title="Token 趋势" sub="按日 · 输入 / 输出 / 缓存">
+                <ChartCard title={`Token 趋势（${GRANULARITY_CN[gran]}）`} sub="输入 / 输出 / 缓存" extra={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}>
                   {daily.length > 0 ? <EChart option={tokenOpt} height={280} /> : <EmptyHint />}
                 </ChartCard>
-                <ChartCard title="请求量趋势" sub="按日 · 含错误请求">
+                <ChartCard title={`请求量趋势（${GRANULARITY_CN[gran]}）`} sub="含错误请求" extra={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}>
                   {daily.length > 0 ? <EChart option={requestOpt} height={260} /> : <EmptyHint />}
                 </ChartCard>
-                <ChartCard title="缓存命中率趋势" sub="按日 · cache / prompt">
+                <ChartCard title={`缓存命中率趋势（${GRANULARITY_CN[gran]}）`} sub="cache / prompt" extra={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}>
                   {(cacheQ.data ?? []).length > 0 ? <EChart option={cacheOpt} height={260} /> : <EmptyHint />}
                 </ChartCard>
               </div>
@@ -599,22 +645,28 @@ export default function PlatformOverview() {
                 </div>
 
                 {/* 成本变化曲线 */}
-                <ChartCard title="成本变化曲线" sub="每日总成本 + 构成分析" extra={
-                  <select value={costModel} onChange={(e) => setCostModel(e.target.value)} className={INPUT_CLS}>
-                    <option value="all">总体</option>
-                    {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
+                <ChartCard title={`成本变化曲线（${GRANULARITY_CN[gran]}）`} sub="总成本 + 构成分析" extra={
+                  <>
+                    <GranularityToggle value={gran} options={granOptions} onChange={setGran} />
+                    <select value={costModel} onChange={(e) => setCostModel(e.target.value)} className={INPUT_CLS}>
+                      <option value="all">总体</option>
+                      {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </>
                 }>
                   {(costQ.data ?? []).length > 0 ? <EChart option={costOpt} height={260} /> : <EmptyHint />}
                 </ChartCard>
 
                 {/* 模型请求/Token 趋势 */}
-                <ChartCard title="模型请求量趋势" sub="选择模型对比" extra={
-                  <select multiple value={trendModels}
-                    onChange={(e) => setTrendModels(Array.from(e.target.selectedOptions, o => o.value))}
-                    className={`${INPUT_CLS} min-w-[200px]`} size={Math.min(4, availableModels.length || 1)}>
-                    {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
+                <ChartCard title={`模型请求量趋势（${GRANULARITY_CN[gran]}）`} sub="选择模型对比" extra={
+                  <>
+                    <GranularityToggle value={gran} options={granOptions} onChange={setGran} />
+                    <select multiple value={trendModels}
+                      onChange={(e) => setTrendModels(Array.from(e.target.selectedOptions, o => o.value))}
+                      className={`${INPUT_CLS} min-w-[200px]`} size={Math.min(4, availableModels.length || 1)}>
+                      {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </>
                 }>
                   {modelTrendQ.isLoading ? (
                     <div className="py-8 text-center text-sm text-gray-400">加载中...</div>

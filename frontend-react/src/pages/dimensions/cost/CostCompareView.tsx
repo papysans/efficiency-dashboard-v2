@@ -7,6 +7,8 @@ import type { EChartsOption } from 'echarts'
 import { useTheme } from '@/hooks/useTheme'
 import { getPalette } from '@/components/charts/chartTheme'
 import { ChartCard, EmptyHint, PIE_COLORS, baseTooltip, shortToken } from '@/pages/platform/platformShared'
+import { useGranularity, GranularityToggle } from '../granularity'
+import { buildBuckets, GRANULARITY_CN } from '@/lib/timeBucket'
 import { SortableTh } from '@/components/ui/SortableTh'
 import { EChart } from '@/components/charts/EChart'
 import { fmtCost, formatNumber } from '@/lib/formatters'
@@ -47,6 +49,9 @@ export function CostCompareView({
   const teamTrend = useCostTeamTrend(q)
   const teamComposition = useCostTeamComposition(q)
 
+  // 趋势粒度（随区间重置默认）。
+  const { gran, setGran, options: granOptions } = useGranularity(start, end)
+
   const [sortBy, setSortBy] = useState<SortKey>('total_cost')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
@@ -82,23 +87,35 @@ export function CostCompareView({
     }
   }
 
-  // ---- 各团队每日费用折线：多 series 按 date 对齐 ----
+  // ---- 各团队每日费用折线：多 series 按 date 并集分桶，桶内费用求和（可加） ----
   const trendSeries = (teamTrend.data?.series ?? []) as CostTeamTrendSeries[]
   const trendOpt = useMemo<EChartsOption | null>(() => {
     if (!trendSeries.length) return null
-    const dates = Array.from(new Set(trendSeries.flatMap((s) => s.data.map((d) => d.date)))).sort()
-    const mapByDate = (s: CostTeamTrendSeries) => {
-      const m = new Map(s.data.map((d) => [d.date, d.total_cost]))
-      return dates.map((d) => Number(m.get(d) ?? 0))
+    const dateSet = new Set(trendSeries.flatMap((s) => s.data.map((d) => d.date)))
+    const buckets = buildBuckets(Array.from(dateSet), gran, { start, end })
+    if (!buckets.length) return null
+    const labels = buckets.map((b) => b.label)
+    const headers = buckets.map((b) => b.rangeText)
+    const seriesData = (s: CostTeamTrendSeries) => {
+      const m = new Map(s.data.map((d) => [d.date, Number(d.total_cost) || 0]))
+      return buckets.map((b) => b.dates.reduce((acc, d) => acc + (m.get(d) ?? 0), 0))
     }
     return {
       animation: true,
       grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
-      tooltip: { trigger: 'axis', ...baseTooltip(p) },
+      tooltip: {
+        trigger: 'axis',
+        ...baseTooltip(p),
+        formatter: (params: unknown) => {
+          const arr = params as { dataIndex: number; seriesName: string; value: number; marker: string; axisValue: string }[]
+          const head = headers[arr[0]?.dataIndex] ?? arr[0]?.axisValue ?? ''
+          return `${head}<br/>${arr.map((it) => `${it.marker}${it.seriesName}: ¥${fmtCost(it.value)}`).join('<br/>')}`
+        },
+      },
       legend: { top: 0, left: 'center', textStyle: { color: p.textColor }, itemWidth: 14, itemHeight: 8 },
       xAxis: {
         type: 'category',
-        data: dates,
+        data: labels,
         boundaryGap: false,
         axisLine: { lineStyle: { color: p.axisColor } },
         axisLabel: { color: p.textColor, hideOverlap: true },
@@ -114,11 +131,11 @@ export function CostCompareView({
         type: 'line',
         smooth: true,
         symbol: 'none',
-        data: mapByDate(s),
+        data: seriesData(s),
         lineStyle: { width: 2 },
       })),
     }
-  }, [trendSeries, p])
+  }, [trendSeries, p, gran, start, end])
 
   // ---- 团队费用构成饼图 ----
   const compItems = teamComposition.data?.items ?? []
@@ -236,8 +253,8 @@ export function CostCompareView({
         </div>
       </ChartCard>
 
-      {/* 各团队每日费用折线 */}
-      <ChartCard title="各团队每日费用" sub="按日折线（多团队对齐，缺数据补 0）">
+      {/* 各团队费用趋势折线 */}
+      <ChartCard title={`各团队费用趋势（${GRANULARITY_CN[gran]}）`} sub="折线（多团队对齐，缺数据补 0）" extra={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}>
         {trendOpt ? <EChart option={trendOpt} height={300} /> : <EmptyHint />}
       </ChartCard>
 

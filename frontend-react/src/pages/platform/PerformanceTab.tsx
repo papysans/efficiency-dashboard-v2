@@ -10,6 +10,8 @@ import { getPalette, type ChartPalette } from '@/components/charts/chartTheme'
 import { EChart } from '@/components/charts/EChart'
 import { formatNumber } from '@/lib/formatters'
 import { ChartCard, EmptyHint, multiAreaOption } from './platformShared'
+import { useGranularity, GranularityToggle } from '@/pages/dimensions/granularity'
+import { buildBuckets, GRANULARITY_CN } from '@/lib/timeBucket'
 
 // ---- 页面局部类型（字段实证自平台 web-ui/MetricsDashboard.jsx）----
 interface PerfOverview {
@@ -35,7 +37,6 @@ interface DailyPerfRow {
 }
 
 const fmtMs = (v: number | null | undefined) => (v != null ? `${Number(v).toFixed(0)} ms` : '-')
-const shortDate = (s: string) => s.slice(5, 10)
 
 /** 横向柱状（模型名做 y 轴，避免 x 轴文字拥挤）。unit 决定 tooltip 精度（ms 取整 / t/s 一位）。 */
 function hbarOption(p: ChartPalette, labels: string[], values: number[], unit: string, color: string): EChartsOption {
@@ -104,6 +105,9 @@ export default function PerformanceTab({
   const daily = useMemo(() => dailyQ.data ?? [], [dailyQ.data])
   const sampleRequests = useMemo(() => daily.reduce((s, r) => s + (r.total_requests || 0), 0), [daily])
 
+  // 趋势粒度（本 Tab 统一控制，随区间重置默认）。
+  const { gran, setGran, options: granOptions } = useGranularity(start, end)
+
   // 各模型性能：过滤掉无数据(null)的废弃/边缘模型，避免一排 0 柱误导。
   // TTFT 升序(快者在上)，输出速度降序(快者在上)。
   const ttftModels = useMemo(
@@ -139,38 +143,46 @@ export default function PerformanceTab({
     },
   ]
 
-  // 端到端耗时趋势（按日）
-  const durTrendOpt = useMemo(
-    () =>
-      multiAreaOption(
-        p,
-        daily.map((r) => shortDate(r.date)),
-        [{ name: '平均端到端耗时', color: '#ff3b30', data: daily.map((r) => Math.round(r.avg_duration_ms ?? 0)) }],
-        { yFmt: (v) => `${v} ms` },
-      ),
-    [daily, p],
-  )
+  // 端到端耗时趋势：均值不可相加，按桶内各日 total_requests 加权平均（单日桶=当日值）。
+  const durTrendOpt = useMemo(() => {
+    const byDate = new Map(daily.map((r) => [r.date, r]))
+    const buckets = buildBuckets(daily.map((r) => r.date), gran, { start, end })
+    const data = buckets.map((b) => {
+      let num = 0, den = 0
+      for (const d of b.dates) {
+        const r = byDate.get(d); if (!r) continue
+        if (r.avg_duration_ms == null) continue // 无耗时样本的日：既不进分子也不进分母，避免稀释桶均值
+        const w = r.total_requests || 0
+        num += r.avg_duration_ms * w
+        den += w
+      }
+      return den > 0 ? Math.round(num / den) : 0
+    })
+    return multiAreaOption(p, buckets.map((b) => b.label),
+      [{ name: '平均端到端耗时', color: '#ff3b30', data }],
+      { yFmt: (v) => `${v} ms`, headers: buckets.map((b) => b.rangeText) },
+    )
+  }, [daily, p, gran, start, end])
 
-  // 成功率趋势（按日）= 成功请求 / 含错误总请求
-  const successTrendOpt = useMemo(
-    () =>
-      multiAreaOption(
-        p,
-        daily.map((r) => shortDate(r.date)),
-        [
-          {
-            name: '成功率',
-            color: '#34c759',
-            data: daily.map((r) => {
-              const total = r.total_requests_including_errors > 0 ? r.total_requests_including_errors : r.total_requests
-              return total > 0 ? +(((total - r.total_error_requests) / total) * 100).toFixed(1) : 0
-            }),
-          },
-        ],
-        { yFmt: (v) => `${v}%`, yMax: 100 },
-      ),
-    [daily, p],
-  )
+  // 成功率趋势 = 成功请求 / 含错误总请求；比率按桶重算（Σ成功 / Σ含错误总请求），不是日比率再平均。
+  const successTrendOpt = useMemo(() => {
+    const byDate = new Map(daily.map((r) => [r.date, r]))
+    const buckets = buildBuckets(daily.map((r) => r.date), gran, { start, end })
+    const data = buckets.map((b) => {
+      let succ = 0, tot = 0
+      for (const d of b.dates) {
+        const r = byDate.get(d); if (!r) continue
+        const denom = r.total_requests_including_errors > 0 ? r.total_requests_including_errors : r.total_requests
+        succ += denom - r.total_error_requests
+        tot += denom
+      }
+      return tot > 0 ? +((succ / tot) * 100).toFixed(1) : 0
+    })
+    return multiAreaOption(p, buckets.map((b) => b.label),
+      [{ name: '成功率', color: '#34c759', data }],
+      { yFmt: (v) => `${v}%`, yMax: 100, headers: buckets.map((b) => b.rangeText) },
+    )
+  }, [daily, p, gran, start, end])
 
   const ttftOpt = useMemo(
     () => hbarOption(p, ttftModels.map((m) => m.model || '-'), ttftModels.map((m) => Math.round(m.avg_ttft_ms ?? 0)), 'ms', '#0071e3'),
@@ -198,10 +210,10 @@ export default function PerformanceTab({
 
       {/* 趋势：耗时 + 成功率 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="平均端到端耗时趋势" sub="按日 · 加权均值">
+        <ChartCard title={`平均端到端耗时趋势（${GRANULARITY_CN[gran]}）`} sub="加权均值" extra={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}>
           {daily.length > 0 ? <EChart option={durTrendOpt} height={260} /> : <EmptyHint />}
         </ChartCard>
-        <ChartCard title="请求成功率趋势" sub="按日 · 成功÷含错误总请求">
+        <ChartCard title={`请求成功率趋势（${GRANULARITY_CN[gran]}）`} sub="成功÷含错误总请求" extra={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}>
           {daily.length > 0 ? <EChart option={successTrendOpt} height={260} /> : <EmptyHint />}
         </ChartCard>
       </div>

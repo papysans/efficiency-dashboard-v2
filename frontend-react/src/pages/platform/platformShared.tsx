@@ -96,17 +96,18 @@ export interface AreaSeries {
 
 /**
  * 折线+渐变面积图（分钟/趋势通用）。yFmt 控制 y 轴刻度格式（token 缩写 / 百分比 / 金额）。
- * headers 提供时（按周/月聚合），tooltip 头部用 headers[dataIndex]（日期范围）替代 x 轴标签，
- * 各系列值按 yFmt 格式化。
+ * headers 提供时（按周/月聚合），tooltip 头部用 headers[dataIndex]（日期范围）替代 x 轴标签。
+ * tooltip 正文值优先用 tipFmt（精确，如金额带分位），未传则回退 yFmt（轴刻度缩写）——
+ * 避免成本等缩写格式（¥1.2K）在 tooltip 丢精度；轴刻度仍用 yFmt。
  */
 export function multiAreaOption(
   p: ChartPalette,
   times: string[],
   series: AreaSeries[],
-  opts: { yFmt?: (v: number) => string; yMax?: number; headers?: string[] } = {},
+  opts: { yFmt?: (v: number) => string; yMax?: number; headers?: string[]; tipFmt?: (v: number) => string } = {},
 ): EChartsOption {
   const headers = opts.headers
-  const valFmt = opts.yFmt ?? ((v: number) => String(v))
+  const valFmt = opts.tipFmt ?? opts.yFmt ?? ((v: number) => String(v))
   return {
     animation: true,
     grid: { left: 8, right: 16, top: series.length > 1 ? 36 : 24, bottom: 8, containLabel: true },

@@ -13,8 +13,10 @@ import { useViewState } from '@/store/viewState'
 import { useTheme } from '@/hooks/useTheme'
 import { EChart } from '@/components/charts/EChart'
 import { getPalette } from '@/components/charts/chartTheme'
-import { formatNumber } from '@/lib/formatters'
+import { fmtCost, formatNumber } from '@/lib/formatters'
 import { ChartCard, EmptyHint, multiAreaOption, shortToken } from '@/pages/platform/platformShared'
+import { useGranularity, GranularityToggle } from '@/pages/dimensions/granularity'
+import { buildBuckets, GRANULARITY_CN } from '@/lib/timeBucket'
 
 // ---- 局部类型（对照 PlatformOverview 的 /stats/global/daily、/stats/cost-trend，仅取本块用到的字段） ----
 
@@ -37,11 +39,6 @@ interface ChatCostTrendRow {
   date: string
   total_cost: number
   total_requests: number
-}
-
-/** RFC3339/日期串 → 'MM-DD'（x 轴标签）。 */
-function shortDate(s: string): string {
-  return s.slice(5, 10)
 }
 
 const fmtPct = (v: number | null | undefined) => (v != null ? `${(v * 100).toFixed(2)}%` : '-')
@@ -77,6 +74,9 @@ export function PlatformObjectiveCard() {
   const daily = useMemo(() => dailyQ.data ?? [], [dailyQ.data])
   const costRows = useMemo(() => costQ.data ?? [], [costQ.data])
 
+  // 趋势粒度（随全局时间范围重置默认）。
+  const { gran, setGran, options: granOptions } = useGranularity(start, end)
+
   // ---- KPI：区间合计/平均（对齐 PlatformOverview agg 口径） ----
   const agg = useMemo(() => {
     const sum = (fn: (r: ChatDailyGlobal) => number | null | undefined) =>
@@ -106,27 +106,33 @@ export function PlatformObjectiveCard() {
   // 缓存命中率（区间合计）：缓存 token / 输入 token。
   const cacheHitRate = agg.promptTokens > 0 ? agg.cacheTokens / agg.promptTokens : null
 
-  // ---- 趋势图：优先 cost-trend 的总成本日序列；无成本数据时回退请求量日序列 ----
+  // ---- 趋势图：优先 cost-trend 的总成本序列；无成本数据时回退请求量序列。两者皆可加，按桶求和 ----
   const trendOpt = useMemo(() => {
     if (costRows.length > 0) {
+      const byDate = new Map(costRows.map((r) => [r.date, r]))
+      const buckets = buildBuckets(costRows.map((r) => r.date), gran, { start, end })
+      const data = buckets.map((b) => +b.dates.reduce((acc, d) => acc + (Number(byDate.get(d)?.total_cost) || 0), 0).toFixed(2))
       return multiAreaOption(
         p,
-        costRows.map((r) => shortDate(r.date)),
-        [{ name: 'AI 花费（¥）', color: '#ff3b30', data: costRows.map((r) => +Number(r.total_cost).toFixed(2)) }],
-        { yFmt: (v) => `¥${shortToken(v)}` },
+        buckets.map((b) => b.label),
+        [{ name: 'AI 花费（¥）', color: '#ff3b30', data }],
+        { yFmt: (v) => `¥${shortToken(v)}`, tipFmt: (v) => `¥${fmtCost(v)}`, headers: buckets.map((b) => b.rangeText) },
       )
     }
+    const byDate = new Map(daily.map((r) => [r.date, r]))
+    const buckets = buildBuckets(daily.map((r) => r.date), gran, { start, end })
+    const data = buckets.map((b) => b.dates.reduce((acc, d) => acc + (byDate.get(d)?.total_requests || 0), 0))
     return multiAreaOption(
       p,
-      daily.map((r) => shortDate(r.date)),
-      [{ name: '请求量', color: '#ff9500', data: daily.map((r) => r.total_requests) }],
-      { yFmt: (v) => shortToken(v) },
+      buckets.map((b) => b.label),
+      [{ name: '请求量', color: '#ff9500', data }],
+      { yFmt: (v) => shortToken(v), tipFmt: (v) => formatNumber(v), headers: buckets.map((b) => b.rangeText) },
     )
-  }, [costRows, daily, p])
+  }, [costRows, daily, p, gran, start, end])
 
   const hasTrend = costRows.length > 0 || daily.length > 0
   const trendTitle = costRows.length > 0 ? 'AI 花费趋势' : '请求量趋势'
-  const trendSub = costRows.length > 0 ? '按日 · 估算（chat-indicator-statistics）' : '按日 · 含错误请求'
+  const trendSub = costRows.length > 0 ? '估算（chat-indicator-statistics）' : '含错误请求'
 
   // config 未就绪：不渲染（避免误判降级闪提示）。
   if (!configResolved) return null
@@ -212,7 +218,7 @@ export function PlatformObjectiveCard() {
         ))}
       </div>
 
-      <ChartCard title={trendTitle} sub={trendSub}>
+      <ChartCard title={`${trendTitle}（${GRANULARITY_CN[gran]}）`} sub={trendSub} extra={<GranularityToggle value={gran} options={granOptions} onChange={setGran} />}>
         {hasTrend ? <EChart option={trendOpt} height={280} /> : <EmptyHint />}
       </ChartCard>
     </div>,
