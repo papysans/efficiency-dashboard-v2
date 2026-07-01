@@ -106,11 +106,6 @@ const TreeNode = memo(function TreeNode({ node, depth, selectedId, expanded, onT
                 <RatioPill value={ratio} />
               </span>
             )}
-            {node.child_dept_count > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 tabular-nums">
-                {node.child_dept_count}
-              </span>
-            )}
           </span>
         </button>
       </div>

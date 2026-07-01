@@ -194,9 +194,9 @@ export function DeptAggregateView({
   )
 }
 
-// ============================ 趋势（请求量 + 活跃用户 + 使用率 三线）·粒度可切 ============================
+// ============================ 趋势（请求量柱 + 活跃用户线 组合图）·粒度可切 ============================
 // 请求量/Token 按桶求和（可加）；活跃用户走「桶内日均」(sum/桶内日历天数，四舍五入)——去重人数不可相加。
-// 使用率 = 桶内日均活跃 / 部门花名册人数（与活跃用户成正比，独立右轴 0-100%）。
+// 使用率 = 桶内日均活跃 / 部门花名册人数（与活跃用户严格成正比→形状同活跃线，故不单独占一条线，仅入 tooltip）。
 function TrendBlock({
   loading,
   trend,
@@ -234,24 +234,21 @@ function TrendBlock({
   }, [trend, gran, start, end])
 
   const dayMode = gran === 'day'
-  const reqSeries: TrendSeriesItem[] = useMemo(() => {
-    const arr: TrendSeriesItem[] = [
-      { name: '请求量', color: '#ff9500', data: agg.request },
+  // 组合图：请求量柱(左轴) + 活跃用户线(右轴)，两个独立信号各用一种图形。
+  const reqSeries: TrendSeriesItem[] = useMemo(
+    () => [
+      { name: '请求量', color: '#ff9500', type: 'bar', data: agg.request },
       { name: dayMode ? '活跃用户' : '日均活跃用户', color: '#34c759', axis: 'right', data: agg.active },
-    ]
-    // 使用率 = 桶内日均活跃 / 部门花名册人数（独立第三轴 0-100%）；花名册人数不可得则不加这条线。
-    // 命名与活跃用户对齐（周/月为「日均」口径），与「部门覆盖率」卡(区间去重活跃/花名册)区分。
-    if (headcount > 0) {
-      arr.push({
-        name: dayMode ? '使用率' : '日均使用率',
-        color: '#5856d6',
-        axis: 'third',
-        data: agg.active.map((a) => Math.min(100, Math.round((a / headcount) * 1000) / 10)),
-        tipFmt: (v) => `${v.toFixed(1)}%`,
-      })
-    }
-    return arr
-  }, [agg, dayMode, headcount])
+    ],
+    [agg, dayMode],
+  )
+  // 使用率 = 桶内日均活跃 / 部门花名册人数（与活跃用户严格成正比）；不单独占线，仅随活跃用户进 tooltip。
+  // 命名与活跃用户对齐（周/月为「日均」口径），与「部门覆盖率」卡(区间去重活跃/花名册)区分。
+  const rateLabel = dayMode ? '使用率' : '日均使用率'
+  const usageRate = useMemo(
+    () => (headcount > 0 ? agg.active.map((a) => Math.min(100, Math.round((a / headcount) * 1000) / 10)) : null),
+    [agg, headcount],
+  )
   const tokenOpt = useMemo(
     () =>
       multiAreaOption(
@@ -267,10 +264,31 @@ function TrendBlock({
   )
 
   const gcn = GRANULARITY_CN[gran]
+  // hover 备注：三个值的计算方法（与数据 tooltip 分开）；使用率注明分母为部门现有在职总人数、离职不计。
+  const activeCalc = dayMode
+    ? '活跃用户 = 当日至少 1 次请求的去重人数'
+    : '日均活跃用户 = 桶内各日活跃人数之和 ÷ 桶内天数（去重人数不可相加，取日均）'
+  const trendHelp = [
+    `请求量 = 该${gcn}内所有成功 API 请求数之和（已排除失败请求）`,
+    activeCalc,
+    ...(headcount > 0
+      ? [`${rateLabel} = ${dayMode ? '活跃用户' : '日均活跃用户'} ÷ 部门现有总人数 × 100%（根据部门现有总人数计算，离职员工不包含在内）`]
+      : []),
+  ].join('\n')
+  const trendTitle = (
+    <span className="inline-flex items-center gap-1.5">
+      使用趋势（{gcn}）
+      <span className="cursor-help text-gray-400 hover:text-apple-blue" title={trendHelp} aria-label="指标计算说明">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+        </svg>
+      </span>
+    </span>
+  )
   if (loading) return <SkeletonCard title={`使用趋势（${gcn}）`} />
   if (!trend || !trend.length) {
     return (
-      <ChartCard title={`使用趋势（${gcn}）`} sub="请求量 / 活跃用户 / Token 消耗" extra={granControl}>
+      <ChartCard title={trendTitle} sub="请求量 / 活跃用户" extra={granControl}>
         <EmptyHint />
       </ChartCard>
     )
@@ -278,17 +296,19 @@ function TrendBlock({
   return (
     <>
       <ChartCard
-        title={`使用趋势（${gcn}）`}
-        sub={`请求量（左）· ${dayMode ? '活跃用户' : '日均活跃用户'}（右）${headcount > 0 ? `· ${dayMode ? '使用率' : '日均使用率'}%（右）` : ''}`}
+        title={trendTitle}
+        sub={`请求量（左·柱）· ${dayMode ? '活跃用户' : '日均活跃用户'}（右·线）${headcount > 0 ? ` · 悬停看${rateLabel}` : ''}`}
         extra={granControl}
       >
         <EChart
           option={buildDualAxisTrendOption(p, agg.labels, reqSeries, {
             leftFmt: (v) => shortToken(v),
             rightFmt: (v) => formatNumber(v),
-            thirdFmt: (v) => `${v}%`,
-            thirdMax: 100,
             headers: agg.headers,
+            extraTooltip: usageRate
+              ? (i) =>
+                  `<span style="display:inline-block;margin-right:5px;border-radius:50%;width:10px;height:10px;background-color:#5856d6"></span>${rateLabel}: ${usageRate[i].toFixed(1)}%`
+              : undefined,
           })}
           height={280}
         />
