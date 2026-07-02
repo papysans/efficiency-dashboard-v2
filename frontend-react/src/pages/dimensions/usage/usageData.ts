@@ -2,7 +2,7 @@
 // 部门聚合 /stats/departments/:dept_id/* ；个人 /stats/users/:uid/*。
 // enabled = !!deptId / !!uid（chat_stats_enabled 关闭时上层 UsageKanban 整页不渲染子视图，不发请求）。
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { chatGet } from '@/api/client'
+import { apiGet, chatGet } from '@/api/client'
 import type {
   DeptOverviewResp,
   DeptActiveUsersResp,
@@ -108,6 +108,38 @@ export function useUsagePeriodCompare(q: DeptQuery) {
         previous_start: prevStart,
         previous_end: prevEnd,
         include_children: q.includeChildren ? 'true' : 'false',
+      }),
+    enabled: !!q.deptId,
+  })
+}
+
+// ---- 看板本地库口径（唯一非 chat-stats 的卡）----
+
+/** /v2/dept-tree/mode-usage 返回项：一种对话模式（conversations.mode）的使用人数（去重）+ 请求数。 */
+export interface DeptModeUsageItem {
+  mode: string
+  user_count: number
+  request_count: number
+}
+export interface DeptModeUsageResp {
+  dept_id: string
+  items: DeptModeUsageItem[]
+}
+
+/**
+ * 各 Mode 使用情况 —— 看板口径（本地同步 conversations JOIN sessions），非 chat-stats 代理，
+ * 与平台活跃用户口径不同源；走看板本地 API（apiGet /kanban/api/v2，裸数据无信封），
+ * 日期参数为 startDate/endDate（camelCase，与看板 /v2 全站一致，区别于 chat 侧 start_date/end_date）。
+ */
+export function useUsageDeptModeUsage(q: DeptQuery) {
+  return useQuery({
+    queryKey: ['usage-dept-mode-usage', q.deptId, q.start, q.end, q.includeChildren],
+    queryFn: () =>
+      apiGet<DeptModeUsageResp>('/v2/dept-tree/mode-usage', {
+        dept_id: q.deptId,
+        include_children: q.includeChildren ? 'true' : 'false',
+        startDate: q.start,
+        endDate: q.end,
       }),
     enabled: !!q.deptId,
   })

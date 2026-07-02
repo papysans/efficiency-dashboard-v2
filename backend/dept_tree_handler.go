@@ -898,6 +898,113 @@ func getDeptTreeTrendV2(c *gin.Context) {
 	c.JSON(http.StatusOK, EntityTrendResponse{Data: points})
 }
 
+// ───────────────────────────── Mode 使用情况（看板本地库口径） ─────────────────────────────
+
+// DeptModeUsageItem 一种对话模式（conversations.mode）的使用聚合：使用人数（去重）+ 请求数。
+// mode 空串在 SQL 里归 "unknown"（前端显示 "-"）。人数为去重口径不可相加（一人可用多个 mode），占比按请求数。
+type DeptModeUsageItem struct {
+	Mode         string `json:"mode"`
+	UserCount    int64  `json:"user_count"`
+	RequestCount int64  `json:"request_count"`
+}
+
+// DeptModeUsageResponse /api/v2/dept-tree/mode-usage 顶层响应。
+type DeptModeUsageResponse struct {
+	DeptId string              `json:"dept_id"`
+	Items  []DeptModeUsageItem `json:"items"`
+}
+
+// getDeptModeUsageV2 GET /api/v2/dept-tree/mode-usage?dept_id=&include_children=&startDate=&endDate=
+// 各 Mode 使用情况（使用面板第一张「看板口径」卡）：按 conversations.mode 统计使用人数+请求数。
+// 数据源=看板本地库（conversations JOIN sessions），非 chat-stats 代理——与平台活跃用户口径不同源。
+// 成员过滤：cachedRebuiltDeptTree 定位 dept 节点 → include_children=true(默认) 取整棵子树 dept_id 集合
+// （false 仅本级直属）→ cachedAllDeptMembers 花名册按成员直属 dept_id 归集 → universal_id（==看板 user_id）
+// 过滤 sessions.user_id；c.start_time 落 startDate/endDate 窗口（camelCase，与本族端点一致）。
+func getDeptModeUsageV2(c *gin.Context) {
+	if statDB == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "数据库未连接"})
+		return
+	}
+	deptID := strings.TrimSpace(c.Query("dept_id"))
+	if deptID == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dept_id 不能为空"})
+		return
+	}
+	baseURL, err := deptSyncConfigured()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
+		return
+	}
+	tree, err := cachedRebuiltDeptTree(baseURL, appconfig.Cfg.DeptSync.QueryKey)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门树失败: " + err.Error()})
+		return
+	}
+	node := findDeptNode(tree, deptID)
+	if node == nil {
+		// dept_id 在树里找不到（孤儿/脏数据）：返回空 items，与 ranking 的 parent 未命中口径一致。
+		c.JSON(http.StatusOK, DeptModeUsageResponse{DeptId: deptID, Items: []DeptModeUsageItem{}})
+		return
+	}
+	// 目标 dept_id 集合：include_children=true(默认，与本族端点子树口径一致) → 整棵子树；false → 仅本级。
+	deptIDs := map[string]struct{}{deptID: {}}
+	if c.DefaultQuery("include_children", "true") != "false" {
+		collectDescendantDeptIDs(*node, deptIDs)
+	}
+	members, err := cachedAllDeptMembers(baseURL, appconfig.Cfg.DeptSync.QueryKey, tree)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "获取 dept-sync 部门成员失败: " + err.Error()})
+		return
+	}
+	universalIDs := make([]string, 0, 64)
+	seen := make(map[string]struct{}, 64)
+	for _, src := range members {
+		if _, ok := deptIDs[src.DeptId]; !ok {
+			continue
+		}
+		uid := strings.TrimSpace(src.UniversalId)
+		if uid == "" {
+			continue
+		}
+		if _, dup := seen[uid]; dup {
+			continue
+		}
+		seen[uid] = struct{}{}
+		universalIDs = append(universalIDs, uid)
+	}
+	if len(universalIDs) == 0 {
+		c.JSON(http.StatusOK, DeptModeUsageResponse{DeptId: deptID, Items: []DeptModeUsageItem{}})
+		return
+	}
+	items, err := listDeptModeUsage(statDB, universalIDs, c.Query("startDate"), c.Query("endDate"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "查询 Mode 使用聚合失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, DeptModeUsageResponse{DeptId: deptID, Items: items})
+}
+
+// listDeptModeUsage 按 mode 聚合 conversations（JOIN sessions 取 user_id）：
+// s.user_id IN (universalIDs) + c.start_time 窗口 → GROUP BY mode，使用人数降序（再按请求数、mode 名稳定序）。
+func listDeptModeUsage(db *gorm.DB, universalIDs []string, startDate, endDate string) ([]DeptModeUsageItem, error) {
+	const modeExpr = `COALESCE(NULLIF(c.mode, ''), 'unknown')`
+	q := db.Table("conversations AS c").
+		Select(modeExpr + ` AS mode, COUNT(DISTINCT s.user_id) AS user_count, COUNT(*) AS request_count`).
+		Joins("JOIN sessions s ON s.session_id = c.session_id").
+		Where("s.user_id IN ?", universalIDs)
+	if start, err := parseStartDate(startDate); err == nil && start != nil {
+		q = q.Where("c.start_time >= ?", *start)
+	}
+	if end, err := parseEndDate(endDate); err == nil && end != nil {
+		q = q.Where("c.start_time <= ?", *end)
+	}
+	items := make([]DeptModeUsageItem, 0, 8)
+	if err := q.Group(modeExpr).Order("user_count DESC, request_count DESC, mode").Scan(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 // listDeptTreeWeeklyTrend 把 user_productivity_v2 周表按 week_start 聚合成趋势点：
 // user_id IN (universalIDs)（部门整棵子树成员）+ startDate/endDate 窗口过滤，每周守恒重算 efficiency_pct。
 // 周表已是 ISO 周一对齐的 week_start(date)，直接 GROUP BY，无需 date_trunc。

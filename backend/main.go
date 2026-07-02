@@ -150,6 +150,7 @@ func main() {
 		v2.GET("/dept-tree/members", getDeptTreeMembersV2)
 		v2.GET("/dept-tree/ranking", getDeptRankingV2)
 		v2.GET("/dept-tree/trend", getDeptTreeTrendV2)
+		v2.GET("/dept-tree/mode-usage", getDeptModeUsageV2)
 
 		// 平台客观指标（全量反代 chat-indicator-statistics，见 chat_proxy_handler.go）
 		v2.Any("/chat/*path", proxyChatStatsV2)

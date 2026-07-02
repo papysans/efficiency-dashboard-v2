@@ -18,11 +18,13 @@ import type { DeptTreeNodeWithSummary } from '@/api/types'
 import {
   useUsageDeptActiveUsers,
   useUsageDeptModels,
+  useUsageDeptModeUsage,
   useUsageDeptOverview,
   useUsageDeptResults,
   useUsageDeptTrend,
   useUsageDeptWeekly,
   useUsagePeriodCompare,
+  type DeptModeUsageItem,
 } from './usageData'
 
 /** 在 /v2/dept-tree/overview 返回树里按 dept_id 定位节点（取整棵子树花名册人数 member_count）。 */
@@ -73,6 +75,8 @@ export function DeptAggregateView({
   const weeklyQ = useUsageDeptWeekly(q)
   const resultsQ = useUsageDeptResults(q)
   const compareQ = useUsagePeriodCompare(q)
+  // 各 Mode 使用情况：看板本地库口径（非 chat-stats），不进 fatalErr（数据源独立，失败只影响本卡）。
+  const modeUsageQ = useUsageDeptModeUsage(q)
 
   // 趋势粒度（每页统一控制，随区间重置默认）+ 覆盖率分母（整棵子树花名册人数）。
   const { gran, setGran, options: granOptions } = useGranularity(start, end)
@@ -184,6 +188,9 @@ export function DeptAggregateView({
 
       {/* 需求3 各模型用量 */}
       <ModelsBlock loading={modelsQ.isLoading} models={modelsQ.data?.models} palette={p} />
+
+      {/* 各 Mode 使用情况（看板口径·本地同步数据，与上面 chat-stats 各卡不同源） */}
+      <ModeUsageBlock loading={modeUsageQ.isLoading} error={modeUsageQ.error as Error | null} items={modeUsageQ.data?.items} palette={p} />
 
       {/* 需求4 按星期分布 */}
       <WeeklyBlock loading={weeklyQ.isLoading} weekdays={weeklyQ.data?.weekdays} palette={p} />
@@ -405,6 +412,84 @@ function ModelsBlock({
           </div>
         </div>
       )}
+    </ChartCard>
+  )
+}
+
+// ============================ 各 Mode 使用情况（看板口径·本地库） ============================
+// 数据源=看板本地库 conversations.mode（JOIN sessions 取人），非 chat-stats 代理——与平台活跃用户口径不同源。
+// 人数为去重口径不可相加（一人可用多个 Mode），故占比只按请求数计算。mode="unknown"（空串归一）显示 "-"。
+
+const MODE_TIP = '按看板本地同步的对话模式(conversations.mode)统计；一人可使用多个 Mode，人数不可相加，故占比按请求数计算'
+
+function ModeUsageBlock({
+  loading,
+  error,
+  items,
+  palette: p,
+}: {
+  loading: boolean
+  error: Error | null
+  items?: DeptModeUsageItem[]
+  palette: ChartPalette
+}) {
+  const title = <span className="inline-flex items-center">各 Mode 使用情况<InfoIcon tip={MODE_TIP} /></span>
+  const sub = '看板口径（本地同步数据），与平台活跃用户口径不同源'
+  if (loading) return <SkeletonCard title="各 Mode 使用情况" />
+  if (error) {
+    return (
+      <ChartCard title={title} sub={sub}>
+        <div className="py-8 text-center text-sm text-gray-400 dark:text-gray-500">加载失败：{error.message}</div>
+      </ChartCard>
+    )
+  }
+  if (!items || !items.length) {
+    return (
+      <ChartCard title={title} sub={sub}>
+        <EmptyHint />
+      </ChartCard>
+    )
+  }
+  const totalRequests = items.reduce((acc, it) => acc + it.request_count, 0)
+  return (
+    <ChartCard title={title} sub={sub}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-gray-200/50 dark:border-white/10 text-gray-500 dark:text-gray-400">
+              <th className="px-3 py-2 text-left whitespace-nowrap">Mode</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">使用人数</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">请求数</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">请求占比</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((m, i) => {
+              const pct = totalRequests > 0 ? (m.request_count / totalRequests) * 100 : 0
+              return (
+                <tr key={m.mode || i} className="border-b border-gray-100/50 dark:border-white/5">
+                  <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span className="truncate max-w-[180px]" title={m.mode}>{!m.mode || m.mode === 'unknown' ? '-' : m.mode}</span>
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(m.user_count)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{formatNumber(m.request_count)}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-[140px]">
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: p.brand }} />
+                      </div>
+                      <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-12 text-right">{PCT(pct)}</span>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </ChartCard>
   )
 }
