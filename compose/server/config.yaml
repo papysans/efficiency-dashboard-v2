@@ -20,6 +20,7 @@ storage:
     access_key: "minioadmin"
     secret_key: "minioadmin"
     use_ssl: true
+    skip_bucket_check: true
     skip_verify: true
 
 cors:

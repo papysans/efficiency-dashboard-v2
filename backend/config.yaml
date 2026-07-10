@@ -19,6 +19,7 @@ storage:
     access_key: ""
     secret_key: ""
     use_ssl: true
+    skip_bucket_check: true
     skip_verify: true
 
 cors:

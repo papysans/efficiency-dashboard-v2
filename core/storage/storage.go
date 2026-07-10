@@ -17,10 +17,11 @@ import (
 
 // S3Config S3 兼容对象存储连接配置（MinIO / Ceph 等）
 type S3Config struct {
-	Endpoint  string `yaml:"endpoint"` // 如 minio.intranet:9000（不含 scheme）
-	AccessKey string `yaml:"access_key"`
-	SecretKey string `yaml:"secret_key"`
-	UseSSL    bool   `yaml:"use_ssl"`
+	Endpoint        string `yaml:"endpoint"` // 如 minio.intranet:9000（不含 scheme）
+	AccessKey       string `yaml:"access_key"`
+	SecretKey       string `yaml:"secret_key"`
+	UseSSL          bool   `yaml:"use_ssl"`
+	SkipBucketCheck bool   `yaml:"skip_bucket_check"`
 	// SkipVerify 跳过 TLS 证书校验（仅 use_ssl=true 时生效）。
 	// 内网自建 MinIO 多用自签证书且 endpoint 走 IP/转发端口，证书域名对不上，
 	// 必须跳过校验才能连上（上游 user-indicator 即 useSSL+skipVerify）。
@@ -68,9 +69,10 @@ type backend interface {
 const s3Scheme = "s3://"
 
 var (
-	mu     sync.RWMutex
-	s3back backend
-	disk   backend = diskBackend{}
+	mu         sync.RWMutex
+	s3back     backend
+	activeConf Config
+	disk       backend = diskBackend{}
 )
 
 // Configure 根据配置初始化 S3 客户端。endpoint 为空表示未启用 S3（仅本地磁盘），
@@ -78,6 +80,7 @@ var (
 func Configure(cfg Config) error {
 	mu.Lock()
 	defer mu.Unlock()
+	activeConf = cfg
 	if cfg.S3.Endpoint == "" {
 		s3back = nil
 		return nil
@@ -112,8 +115,10 @@ func ValidateLocations(locs ...string) error {
 		if checked[bucket] {
 			continue
 		}
-		if err := b.(*s3Backend).checkBucket(bucket); err != nil {
-			return fmt.Errorf("S3 bucket %q 不可访问(检查 endpoint/凭证/bucket): %w", bucket, err)
+		if !activeConf.S3.SkipBucketCheck {
+			if err := b.(*s3Backend).checkBucket(bucket); err != nil {
+				return fmt.Errorf("S3 bucket %q 不可访问(检查 endpoint/凭证/bucket): %w", bucket, err)
+			}
 		}
 		checked[bucket] = true
 	}

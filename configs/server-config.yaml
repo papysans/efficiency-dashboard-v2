@@ -33,4 +33,5 @@ storage:
     access_key: "minioadmin"
     secret_key: "minioadmin"
     use_ssl: true                    # 上游 MinIO 为 https
+    skip_bucket_check: true          # reader 账号只有对象读权限，跳过 bucket 级 HeadBucket
     skip_verify: true                # 自签证书 + endpoint 走 IP/转发口，证书域名对不上需跳过校验
