@@ -95,8 +95,17 @@ const BTN_SECONDARY =
   'glass rounded-lg px-3 py-1 text-xs text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue ' +
   'transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue'
 
-const fmtMs = (v: number | null | undefined) => (v != null ? `${Number(v).toFixed(0)} ms` : '-')
 const fmtFloat = (v: number | null | undefined, digits = 2) => (v != null ? Number(v).toFixed(digits) : '-')
+
+function UnitValue({ value, unit }: { value: string; unit?: string }) {
+  if (!unit) return <>{value}</>
+  return (
+    <span className="inline-flex items-baseline gap-0.5 tabular-nums" title={`${value} ${unit}`}>
+      <span>{value}</span>
+      <sub className="text-[10px] leading-none font-medium text-gray-500 dark:text-gray-400">{unit}</sub>
+    </span>
+  )
+}
 
 function finiteValues(rows: ChatDetailRow[], key: keyof ChatDetailRow): number[] {
   return rows
@@ -119,9 +128,19 @@ function percentile(values: number[], p: number): number | null {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (rank - lower)
 }
 
-function formatStat(value: number | null, suffix = '', digits = 2): string {
+function formatStat(value: number | null, unit = '', digits = 2): ReactNode {
   if (value == null || !Number.isFinite(value)) return '-'
-  return `${formatNumber(value, digits)}${suffix}`
+  return <UnitValue value={formatNumber(value, digits)} unit={unit} />
+}
+
+function formatMetricUnit(value: number | null | undefined, unit: string, digits = 2): ReactNode {
+  if (value == null || !Number.isFinite(Number(value))) return '-'
+  return <UnitValue value={formatNumber(value, digits)} unit={unit} />
+}
+
+function formatMillisecondsAsSeconds(value: number | null | undefined): ReactNode {
+  if (value == null || !Number.isFinite(Number(value))) return '-'
+  return <UnitValue value={formatNumber(Number(value) / 1000, 2)} unit="s" />
 }
 
 /** 在文本行中高亮 keyword */
@@ -383,12 +402,12 @@ export default function RealtimeQuery() {
 
   const statItems = [
     { label: '平均输出 Token', value: formatStat(stats.avgCompletionTokens) },
-    { label: '平均 E2E 输出速度', value: formatStat(stats.avgOutputSpeedE2E) },
-    { label: '平均 TTFT', value: formatStat(stats.avgTTFT, ' ms') },
-    { label: 'P90 E2E 输出速度', value: formatStat(stats.p90OutputSpeedE2E) },
-    { label: 'P95 E2E 输出速度', value: formatStat(stats.p95OutputSpeedE2E) },
-    { label: 'P90 TTFT', value: formatStat(stats.p90TTFT, ' ms') },
-    { label: 'P95 TTFT', value: formatStat(stats.p95TTFT, ' ms') },
+    { label: '平均 E2E 输出速度', value: formatStat(stats.avgOutputSpeedE2E, 'token/s') },
+    { label: '平均 TTFT', value: formatMillisecondsAsSeconds(stats.avgTTFT) },
+    { label: 'P90 E2E 输出速度', value: formatStat(stats.p90OutputSpeedE2E, 'token/s') },
+    { label: 'P95 E2E 输出速度', value: formatStat(stats.p95OutputSpeedE2E, 'token/s') },
+    { label: 'P90 TTFT', value: formatMillisecondsAsSeconds(stats.p90TTFT) },
+    { label: 'P95 TTFT', value: formatMillisecondsAsSeconds(stats.p95TTFT) },
   ]
 
   const header = (
@@ -715,7 +734,7 @@ export default function RealtimeQuery() {
                     </td>
                     <td className={TD_NUM}>{formatNumber(row.prompt_tokens)}</td>
                     <td className={TD_NUM}>{formatNumber(row.completion_tokens)}</td>
-                    <td className={TD_NUM}>{fmtMs(row.duration)}</td>
+                    <td className={TD_NUM}>{formatMillisecondsAsSeconds(row.duration)}</td>
                   </tr>
                 ))
               )}
@@ -872,11 +891,11 @@ export default function RealtimeQuery() {
 
 // ---- 详情弹层 ----
 
-function StatBlock({ label, value }: { label: string; value: string }) {
+function StatBlock({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
       <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 truncate" title={label}>{label}</div>
-      <div className="text-lg font-semibold text-gray-900 dark:text-white tabular-nums truncate" title={value}>{value}</div>
+      <div className="text-lg font-semibold text-gray-900 dark:text-white tabular-nums truncate">{value}</div>
     </div>
   )
 }
@@ -937,13 +956,13 @@ function RowDetail({
       </DetailSection>
 
       <DetailSection title="性能指标">
-        <Field label="Duration" value={fmtMs(row.duration)} />
-        <Field label="TTFT" value={fmtMs(row.first_token_duration)} />
+        <Field label="Duration" value={formatMillisecondsAsSeconds(row.duration)} />
+        <Field label="TTFT" value={formatMillisecondsAsSeconds(row.first_token_duration)} />
         <Field label="Slow Chunk" value={formatNumber(row.slow_chunk)} />
         <Field label="Chunk/s" value={fmtFloat(row.chunk_per_second)} />
-        <Field label="Token Output Time" value={fmtMs(row.token_output_time)} />
-        <Field label="Token Output Speed" value={fmtFloat(row.token_output_speed)} />
-        <Field label="Token Output Speed E2E" value={fmtFloat(row.token_output_speed_e2e)} />
+        <Field label="Token Output Time" value={formatMillisecondsAsSeconds(row.token_output_time)} />
+        <Field label="Token Output Speed" value={formatMetricUnit(row.token_output_speed, 'token/s')} />
+        <Field label="Token Output Speed E2E" value={formatMetricUnit(row.token_output_speed_e2e, 'token/s')} />
       </DetailSection>
 
       <DetailSection title="时间链路">
