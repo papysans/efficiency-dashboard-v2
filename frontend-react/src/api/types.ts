@@ -1100,7 +1100,7 @@ export interface ChatDetailQueryReq {
   has_error?: boolean
   model?: string
   routed_model?: string
-  /** 默认/最大 100 */
+  /** 页面默认 100，最大 5000 */
   limit?: number
   /** 'asc' | 'desc'（默认 desc） */
   order?: string

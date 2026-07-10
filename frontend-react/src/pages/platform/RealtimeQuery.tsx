@@ -1,5 +1,5 @@
 // 平台·明细点查 —— chat-indicator-statistics /stats/detail/query 的玻璃拟态重写（现场排查核心）。
-// 一次性查询（无分页），SQL 层过滤，最多 100 条；行点击弹详情（全部字段，错误码醒目）。
+// 一次性查询（无分页），SQL 层过滤，最多 5000 条；行点击弹详情（全部字段，错误码醒目）。
 // 时间发送本地壁钟时间 + 浏览器实际时区偏移（chat 侧按 RFC3339 解析，避免硬编码 +08:00）。
 // 数据源显式选择后传 datasource_id，避免多源环境下误查到服务端默认数据源。
 import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react'
@@ -45,6 +45,8 @@ const QUICK_RANGES = [
   { label: '近12小时', minutes: 720 },
   { label: '近24小时', minutes: 1440 },
 ]
+
+const QUERY_LIMIT_OPTIONS = [1, 10, 100, 300, 500, 1000, 3000, 5000]
 
 interface QueryForm {
   datasourceId: string
@@ -96,6 +98,32 @@ const BTN_SECONDARY =
 const fmtMs = (v: number | null | undefined) => (v != null ? `${Number(v).toFixed(0)} ms` : '-')
 const fmtFloat = (v: number | null | undefined, digits = 2) => (v != null ? Number(v).toFixed(digits) : '-')
 
+function finiteValues(rows: ChatDetailRow[], key: keyof ChatDetailRow): number[] {
+  return rows
+    .map((row) => Number(row[key]))
+    .filter((value) => Number.isFinite(value))
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const rank = (p / 100) * (sorted.length - 1)
+  const lower = Math.floor(rank)
+  const upper = Math.ceil(rank)
+  if (lower === upper) return sorted[lower]
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (rank - lower)
+}
+
+function formatStat(value: number | null, suffix = '', digits = 2): string {
+  if (value == null || !Number.isFinite(value)) return '-'
+  return `${formatNumber(value, digits)}${suffix}`
+}
+
 /** 在文本行中高亮 keyword */
 function highlightRequestId(line: string, keyword: string): ReactNode {
   if (!keyword || !line) return line
@@ -129,6 +157,7 @@ export default function RealtimeQuery() {
   const [form, setForm] = useState<QueryForm>(defaultForm)
   const [validateMsg, setValidateMsg] = useState('')
   const [detailRow, setDetailRow] = useState<ChatDetailRow | null>(null)
+  const [showStats, setShowStats] = useState(false)
   const [logPreview, setLogPreview] = useState<LogPreviewState>({
     open: false,
     loading: false,
@@ -335,12 +364,38 @@ export default function RealtimeQuery() {
 
   const rows = query.data?.items ?? []
   const total = query.data?.total ?? 0
+  const stats = useMemo(() => {
+    const completionTokens = finiteValues(rows, 'completion_tokens')
+    const outputSpeedE2E = finiteValues(rows, 'token_output_speed_e2e')
+    const ttft = finiteValues(rows, 'first_token_duration')
+
+    return {
+      total: rows.length,
+      avgCompletionTokens: average(completionTokens),
+      avgOutputSpeedE2E: average(outputSpeedE2E),
+      avgTTFT: average(ttft),
+      p90OutputSpeedE2E: percentile(outputSpeedE2E, 90),
+      p95OutputSpeedE2E: percentile(outputSpeedE2E, 95),
+      p90TTFT: percentile(ttft, 90),
+      p95TTFT: percentile(ttft, 95),
+    }
+  }, [rows])
+
+  const statItems = [
+    { label: '平均输出 Token', value: formatStat(stats.avgCompletionTokens) },
+    { label: '平均 E2E 输出速度', value: formatStat(stats.avgOutputSpeedE2E) },
+    { label: '平均 TTFT', value: formatStat(stats.avgTTFT, ' ms') },
+    { label: 'P90 E2E 输出速度', value: formatStat(stats.p90OutputSpeedE2E) },
+    { label: 'P95 E2E 输出速度', value: formatStat(stats.p95OutputSpeedE2E) },
+    { label: 'P90 TTFT', value: formatStat(stats.p90TTFT, ' ms') },
+    { label: 'P95 TTFT', value: formatStat(stats.p95TTFT, ' ms') },
+  ]
 
   const header = (
     <header>
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">明细查询</h2>
       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-        按条件点查 LLM 请求明细（直查源库，最多返回 100 条），用于现场排查。
+        按条件点查 LLM 请求明细（直查源库，最多返回 5000 条），用于现场排查。
       </p>
     </header>
   )
@@ -482,9 +537,9 @@ export default function RealtimeQuery() {
             className={`${INPUT_CLS} cursor-pointer`}
             aria-label="最多返回条数"
           >
-            <option value={10}>最多 10 条</option>
-            <option value={50}>最多 50 条</option>
-            <option value={100}>最多 100 条</option>
+            {QUERY_LIMIT_OPTIONS.map((limit) => (
+              <option key={limit} value={limit}>最多 {limit} 条</option>
+            ))}
           </select>
           <select
             value={form.order}
@@ -523,18 +578,47 @@ export default function RealtimeQuery() {
       {/* 查询结果 */}
       <section className="glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200/50 dark:border-white/10">
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            查询结果
+          <div className="min-w-0">
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              查询结果
+              {query.isSuccess && (
+                <span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">共 {total} 条记录</span>
+              )}
+            </span>
+            <div className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">点击行查看全部字段</div>
+          </div>
+          <div className="flex items-center gap-2">
             {query.isSuccess && (
-              <span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">共 {total} 条记录</span>
+              <button
+                type="button"
+                onClick={() => setShowStats((v) => !v)}
+                className={`rounded-lg px-3 py-1 text-xs font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${
+                  showStats
+                    ? 'bg-apple-blue text-white hover:bg-apple-blue-hover'
+                    : 'glass text-gray-700 dark:text-gray-200 hover:text-apple-blue'
+                }`}
+              >
+                统计数据
+              </button>
             )}
-          </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">点击行查看全部字段</span>
+            <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500">本页样本统计</span>
+          </div>
         </div>
 
         {query.error && (
           <div className="px-5 py-2 text-sm text-rose-600 dark:text-rose-400 bg-rose-50/50 dark:bg-rose-900/20">
             {(query.error as Error).message}
+          </div>
+        )}
+
+        {showStats && query.isSuccess && (
+          <div className="px-5 py-4 border-b border-gray-200/50 dark:border-white/10 bg-gray-50/60 dark:bg-white/5">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-x-5 gap-y-4">
+              <StatBlock label="统计样本" value={formatNumber(stats.total)} />
+              {statItems.map((item) => (
+                <StatBlock key={item.label} label={item.label} value={item.value} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -787,6 +871,15 @@ export default function RealtimeQuery() {
 }
 
 // ---- 详情弹层 ----
+
+function StatBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 truncate" title={label}>{label}</div>
+      <div className="text-lg font-semibold text-gray-900 dark:text-white tabular-nums truncate" title={value}>{value}</div>
+    </div>
+  )
+}
 
 function RowDetail({
   row,
