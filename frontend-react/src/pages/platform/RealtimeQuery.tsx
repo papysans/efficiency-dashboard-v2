@@ -120,7 +120,8 @@ function average(values: number[]): number | null {
 
 function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null
-  const sorted = [...values].sort((a, b) => a - b)
+  // 本页 P 系列按值从大到小取位次，因此 P95 <= P90。
+  const sorted = [...values].sort((a, b) => b - a)
   const rank = (p / 100) * (sorted.length - 1)
   const lower = Math.floor(rank)
   const upper = Math.ceil(rank)
