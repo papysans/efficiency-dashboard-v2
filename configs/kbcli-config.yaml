@@ -1,8 +1,8 @@
 stat_database:
-  host: 127.0.0.1
+  host: 192.168.137.106
   port: 5432
   user: postgres
-  password: "1"
+  password: "123456"
   dbname: costrict_stat
   sslmode: disable
 
@@ -175,8 +175,8 @@ task_statistics:
 traditional_dev_lines_per_day: 100
 silica_max_days: 7
 
-task_dir: "/mnt/prod_env/user-indicator/raw/task"
-repo_dir: "/mnt/prod_env/user-indicator/raw/repo"
+task_dir: "s3://user-indicator/raw-dump/task"
+repo_dir: "s3://user-indicator/raw-dump/repo"
 analysed_dir: "./analysed"
 
 # 存储后端：目录路径以 s3:// 开头时走 S3 兼容对象存储（MinIO 等），否则本地磁盘，可混搭。
@@ -184,16 +184,23 @@ analysed_dir: "./analysed"
 #   task_dir: "s3://user-indicator/raw-dump/task"     # bucket=user-indicator, prefix=raw-dump
 #   repo_dir:  "s3://user-indicator/raw-dump/repo"
 # conversation 在 task/conversation/YYYY/MM/DD/<sessionId>/00000N.jsonl 目录分片，import 自动按目录重组。
-# storage:
-#   s3:
-#     endpoint: "10.20.19.101:9000"   # 不含 scheme；内网直连或经 ssh -L 转发
-#     access_key: "minioadmin"
-#     secret_key: "minioadmin"
-#     use_ssl: true                   # 上游 MinIO 为 https
-#     skip_verify: true               # 自签证书 + endpoint 走 IP/转发口，证书域名对不上需跳过校验
+storage:
+  s3:
+    endpoint: "192.168.137.1:9000"   # 不含 scheme；内网直连或经 ssh -L 转发
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    use_ssl: true                    # 上游 MinIO 为 https
+    skip_verify: true                # 自签证书 + endpoint 走 IP/转发口，证书域名对不上需跳过校验
+
+# 上游 user-indicator 使用 S3 时会把 raw 文件索引写入 PostgreSQL。
+# 线上 S3 不支持 ListObjects，因此导入端通过索引表枚举对象，再用 storage.s3 GetObject 读取。
+raw_index:
+  enabled: true
+  dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
+  s3_base: "s3://user-indicator/raw-dump"
 
 org_csv_file: "./analysed/org_mapping.csv"
-org_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
+org_dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
 # dept-sync 部门同步服务（import-dept 用）：拉部门树+人员落库 dept/dept_user 并投影回填 user_org
 # base_url 填 dept-sync 服务地址（不含路由前缀）；query_key 由 dept-sync 管理员发放（X-Query-Key）
 # fallback_org_name：universal_id/工号都未命中 dept-sync 的看板用户兜底 org1（空=不兜底，保持原样）。

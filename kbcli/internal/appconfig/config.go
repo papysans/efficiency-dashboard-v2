@@ -74,6 +74,9 @@ type Config struct {
 	// Storage 存储后端配置。task_dir/repo_dir/analysed_dir 等路径以 s3:// 开头时
 	// 走 S3 兼容对象存储（需配置 storage.s3），否则走本地磁盘，允许混搭。
 	Storage storage.Config `yaml:"storage"`
+	// RawIndex 上游 user-indicator 的 S3 文件索引库。启用后 import-conv/import-repo
+	// 通过 PG 索引枚举 raw 文件，再用 storage.s3 直接 GetObject 读取，避免依赖 S3 ListObjects。
+	RawIndex RawIndexConfig `yaml:"raw_index"`
 	// ContentOffload 导入时正文卸载开关。enabled=true 时 import 把 conversations 三列正文直接落盘/对象存储
 	// (用 AnalysedDir/Storage)、DB 列留空+写 content_location 指针，从源头不让大正文进热库（防 import 再涨回）。
 	// 默认 false=正文照常入库(旧行为)。落盘走配置的 analysed_dir（不随 import 的 --analysed-dir 覆盖；二者
@@ -95,6 +98,12 @@ type Config struct {
 // ContentOffloadConfig 导入时正文卸载开关（见 Config.ContentOffload）。
 type ContentOffloadConfig struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+type RawIndexConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	DSN     string `yaml:"dsn"`
+	S3Base  string `yaml:"s3_base"`
 }
 
 // DeptSyncConfig dept-sync 部门同步服务对接配置（import-dept 使用）
@@ -131,6 +140,9 @@ func LoadFirstConfig(files []string) (*Config, error) {
 		if err == nil {
 			logCfg := *loadedCfg
 			logCfg.Storage = logCfg.Storage.Redacted()
+			if logCfg.RawIndex.DSN != "" {
+				logCfg.RawIndex.DSN = "***"
+			}
 			logx.Debugf("load config [%s] ok, cfg: %+v\n", fname, &logCfg)
 			return loadedCfg, nil
 		}

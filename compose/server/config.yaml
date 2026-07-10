@@ -2,17 +2,25 @@ server:
   port: 9990
 
 stat_database:
-  host: "postgres"
+  host: "192.168.137.106"
   port: 5432
   user: "postgres"
-  password: "1"
+  password: "123456"
   dbname: "costrict_stat"
   sslmode: "disable"
 
-task_dir: "/app/task"
-repo_dir: "/app/repo"
+task_dir: "s3://user-indicator/raw-dump/task"
+repo_dir: "s3://user-indicator/raw-dump/repo"
 analysed_dir: "/app/analysed"
 org_mapping: "/app/org_mapping.csv"
+
+storage:
+  s3:
+    endpoint: "192.168.137.1:9000"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    use_ssl: true
+    skip_verify: true
 
 cors:
   allow_origins:
@@ -22,7 +30,7 @@ dashboard_title_prefix: "Costrict"
 
 ai_estimation:
   enabled: true
-  api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  api_key: ""
   base_url: "https://open.bigmodel.cn/api/anthropic"
   model: "claude-3-5-sonnet-20241022"
   timeout_ms: 300000

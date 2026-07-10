@@ -1,9 +1,9 @@
 
 stat_database:
-  host: postgres
+  host: 192.168.137.106
   port: 5432
   user: postgres
-  password: "1"
+  password: "123456"
   dbname: costrict_stat
   sslmode: disable
 
@@ -117,11 +117,22 @@ model_prices:
     in_price: 0.5
     out_price: 1.0
 
-task_dir: "/app/task"
-repo_dir: "/app/repo"
+task_dir: "s3://user-indicator/raw-dump/task"
+repo_dir: "s3://user-indicator/raw-dump/repo"
 analysed_dir: "/app/analysed"
 org_csv_file: "/app/analysed/org_mapping.csv"
-org_dsn: "host=10.72.10.64 port=25432 user=costrict_reader password=hello_costrict sslmode=disable"
+storage:
+  s3:
+    endpoint: "192.168.137.1:9000"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    use_ssl: true
+    skip_verify: true
+raw_index:
+  enabled: true
+  dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
+  s3_base: "s3://user-indicator/raw-dump"
+org_dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
 # dept-sync 部门同步服务（import-dept 用）：拉部门树+人员落库 dept/dept_user 并投影回填 user_org
 # base_url 填内网 dept-sync 服务地址（不含路由前缀）；query_key 由 dept-sync 管理员发放（X-Query-Key）
 # fallback_org_name：universal_id/工号都未命中 dept-sync 的看板用户兜底 org1（空=不兜底，保持原样）。内网建议填公司名。
@@ -227,8 +238,8 @@ ai_estimation:
   # api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
   # base_url: "https://open.bigmodel.cn/api/anthropic"
   # model: "claude-3-5-sonnet-20241022"
-  api_key: "sk-dS7wLEuc6RbCwgUgURqNt3PImhGFbbIc2XedVIJ03NZNt6dd"
+  api_key: ""
   base_url: "https://newapi-ai.sangfor.com"
-  model: "openrouter-deepseek-v4-flash"
+  model: ""
   timeout_ms: 300000
   http_proxy: ""

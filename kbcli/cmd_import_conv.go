@@ -1168,14 +1168,17 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	summaryDir := storage.Join(taskDir, "summary")
 	conversationDir := storage.Join(taskDir, "conversation")
 
-	// 校验 summary 目录必须存在
-	if ok, err := storage.Exists(summaryDir); err != nil {
-		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
-		return fmt.Errorf("检查summary目录失败: %w", err)
-	} else if !ok {
-		err := fmt.Errorf("summary目录不存在: %s", summaryDir)
-		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
-		return err
+	if !rawIndexEnabled() {
+		// 校验 summary 目录必须存在。raw_index 模式下禁止走 S3 ListObjects，
+		// 目录存在性由索引库查询结果决定。
+		if ok, err := storage.Exists(summaryDir); err != nil {
+			util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+			return fmt.Errorf("检查summary目录失败: %w", err)
+		} else if !ok {
+			err := fmt.Errorf("summary目录不存在: %s", summaryDir)
+			util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+			return err
+		}
 	}
 
 	// 解析日期范围
@@ -1194,17 +1197,39 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	// 扫描 conversation 和 summary 文件
-	convMap, err := scanConversationFiles(conversationDir, startDate, endDate)
-	if err != nil {
-		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
-		return err
-	}
+	var convMap map[string]convSource
+	var sessionMap map[string]string
+	if rawIndexEnabled() {
+		rawDB, closeRawDB, err := openRawIndexDB()
+		if err != nil {
+			util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+			return err
+		}
+		defer closeRawDB()
+		logx.Infof("[raw-index] import-conv 使用 PG 索引枚举 S3 raw 文件")
+		convMap, err = scanConversationFilesFromRawIndex(rawDB, startDate, endDate)
+		if err != nil {
+			util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+			return err
+		}
+		sessionMap, err = scanSessionFilesFromRawIndex(rawDB, convMap)
+		if err != nil {
+			util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+			return err
+		}
+	} else {
+		// 扫描 conversation 和 summary 文件
+		convMap, err = scanConversationFiles(conversationDir, startDate, endDate)
+		if err != nil {
+			util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+			return err
+		}
 
-	sessionMap, err := scanSessionFiles(summaryDir)
-	if err != nil {
-		util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
-		return err
+		sessionMap, err = scanSessionFiles(summaryDir)
+		if err != nil {
+			util.RecordCommandRun("import-conv", startTime, 0, 0, 0, err)
+			return err
+		}
 	}
 
 	// 无 conversation 文件时直接结束

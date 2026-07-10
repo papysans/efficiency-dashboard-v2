@@ -9,7 +9,17 @@ stat_database:
   dbname: "costrict_stat"
   sslmode: "disable"
 
-task_dir: "../task"
+task_dir: "s3://user-indicator/raw-dump/task"
+repo_dir: "s3://user-indicator/raw-dump/repo"
+analysed_dir: "../analysed"
+
+storage:
+  s3:
+    endpoint: ""
+    access_key: ""
+    secret_key: ""
+    use_ssl: true
+    skip_verify: true
 
 cors:
   allow_origins:
@@ -46,6 +56,11 @@ task_real_minutes:
 
 org_mapping_refresh:
   interval_minutes: 5
+dept_sync:
+  base_url: "http://192.168.137.106:8989"
+  query_key: ""
+  # root_dept_name: "深信服科技股份有限公司"
+  root_dept_id: "49"
 
 # chat-indicator-statistics 平台客观指标服务（/api/v2/chat/* 反代用）：
 # base_url 填服务地址（不含路由前缀），空 = 功能关闭（接口返回 503，前端「平台」分组隐藏）。

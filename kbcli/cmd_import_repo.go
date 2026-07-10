@@ -456,13 +456,15 @@ func saveTasksAndConv(db *gorm.DB, tms []taskMatched) error {
 func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDateStr, endDateStr, dateStr string) error {
 	startTime := time.Now()
 
-	if ok, err := storage.Exists(repoDir); err != nil {
-		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
-		return fmt.Errorf("检查repo目录失败: %w", err)
-	} else if !ok {
-		err := fmt.Errorf("repo目录不存在: %s", repoDir)
-		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
-		return err
+	if !rawIndexEnabled() {
+		if ok, err := storage.Exists(repoDir); err != nil {
+			util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
+			return fmt.Errorf("检查repo目录失败: %w", err)
+		} else if !ok {
+			err := fmt.Errorf("repo目录不存在: %s", repoDir)
+			util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
+			return err
+		}
 	}
 
 	startDate, endDate, err := util.ParseDateRange(startDateStr, endDateStr, dateStr)
@@ -487,8 +489,21 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 		return fmt.Errorf("构建conversation指纹索引失败: %w", err)
 	}
 
-	// 扫描 repo 目录
-	files, skipCount, err := scanRepoDir(repoDir, db, force, startDate, endDate)
+	// 扫描 repo 目录或 raw index
+	var files []repoFileMeta
+	var skipCount int
+	if rawIndexEnabled() {
+		rawDB, closeRawDB, err := openRawIndexDB()
+		if err != nil {
+			util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
+			return err
+		}
+		defer closeRawDB()
+		logx.Infof("[raw-index] import-repo 使用 PG 索引枚举 S3 raw 文件")
+		files, skipCount, err = scanRepoDirFromRawIndex(rawDB, db, force, startDate, endDate)
+	} else {
+		files, skipCount, err = scanRepoDir(repoDir, db, force, startDate, endDate)
+	}
 	if err != nil {
 		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("扫描repo目录失败: %w", err)
