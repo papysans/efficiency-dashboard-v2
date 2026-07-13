@@ -118,15 +118,21 @@ function average(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
-function percentile(values: number[], p: number): number | null {
+function percentileBySorted(values: number[], p: number, sorted: number[]): number | null {
   if (values.length === 0) return null
-  // 本页 P 系列按值从大到小取位次，因此 P95 <= P90。
-  const sorted = [...values].sort((a, b) => b - a)
   const rank = (p / 100) * (sorted.length - 1)
   const lower = Math.floor(rank)
   const upper = Math.ceil(rank)
   if (lower === upper) return sorted[lower]
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (rank - lower)
+}
+
+function percentileAsc(values: number[], p: number): number | null {
+  return percentileBySorted(values, p, [...values].sort((a, b) => a - b))
+}
+
+function percentileDesc(values: number[], p: number): number | null {
+  return percentileBySorted(values, p, [...values].sort((a, b) => b - a))
 }
 
 function formatStat(value: number | null, unit = '', digits = 2): ReactNode {
@@ -396,12 +402,12 @@ export default function RealtimeQuery() {
       avgOutputSpeed: average(outputSpeed),
       avgOutputSpeedE2E: average(outputSpeedE2E),
       avgTTFT: average(ttft),
-      p90OutputSpeed: percentile(outputSpeed, 90),
-      p95OutputSpeed: percentile(outputSpeed, 95),
-      p90OutputSpeedE2E: percentile(outputSpeedE2E, 90),
-      p95OutputSpeedE2E: percentile(outputSpeedE2E, 95),
-      p90TTFT: percentile(ttft, 90),
-      p95TTFT: percentile(ttft, 95),
+      p90OutputSpeed: percentileDesc(outputSpeed, 90),
+      p95OutputSpeed: percentileDesc(outputSpeed, 95),
+      p90OutputSpeedE2E: percentileDesc(outputSpeedE2E, 90),
+      p95OutputSpeedE2E: percentileDesc(outputSpeedE2E, 95),
+      p90TTFT: percentileAsc(ttft, 90),
+      p95TTFT: percentileAsc(ttft, 95),
     }
   }, [rows])
 
