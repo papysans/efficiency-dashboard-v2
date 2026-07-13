@@ -4,6 +4,7 @@
 // 数据源显式选择后传 datasource_id，避免多源环境下误查到服务端默认数据源。
 import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import type { EChartsOption } from 'echarts'
 import { chatStats } from '@/api/endpoints'
 import { useChatDatasources, useGlobalConfig } from '@/api/queries'
 import type { ChatDatasource, ChatDetailQueryReq, ChatDetailRow, ChatLogPreviewResponse, ChatTraceLogEntry } from '@/api/types'
@@ -11,6 +12,9 @@ import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { Modal } from '@/components/ui/Modal'
 import { Tag } from '@/components/ui/Tag'
 import { formatLocalTime, formatNumber } from '@/lib/formatters'
+import { EChart } from '@/components/charts/EChart'
+import { getPalette } from '@/components/charts/chartTheme'
+import { useTheme } from '@/hooks/useTheme'
 import SettingsLayout, { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
 import { ChatUserCell, isErrorCode } from './platformShared'
 
@@ -47,6 +51,8 @@ const QUICK_RANGES = [
 ]
 
 const QUERY_LIMIT_OPTIONS = [1, 10, 100, 300, 500, 1000, 3000, 5000]
+const DISPLAY_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 1000]
+const SPEED_BUCKET_COUNT = 24
 
 interface QueryForm {
   datasourceId: string
@@ -62,6 +68,14 @@ interface QueryForm {
   hasError: '' | 'true' | 'false'
   limit: number
   order: 'desc' | 'asc'
+}
+
+interface SpeedBucket {
+  label: string
+  min: number
+  max: number
+  count: number
+  rows: ChatDetailRow[]
 }
 
 function defaultForm(datasourceId = ''): QueryForm {
@@ -150,6 +164,57 @@ function formatMillisecondsAsSeconds(value: number | null | undefined): ReactNod
   return <UnitValue value={formatNumber(Number(value) / 1000, 2)} unit="s" />
 }
 
+function getOutputSpeed(row: ChatDetailRow): number | null {
+  const value = Number(row.token_output_speed)
+  return Number.isFinite(value) ? value : null
+}
+
+function formatSpeedBucketLabel(min: number, max: number): string {
+  if (min === max) return formatNumber(min, 2)
+  return `${formatNumber(min, 2)}~${formatNumber(max, 2)}`
+}
+
+function buildSpeedBuckets(rows: ChatDetailRow[]): SpeedBucket[] {
+  const speedRows = rows
+    .map((row) => ({ row, speed: getOutputSpeed(row) }))
+    .filter((item): item is { row: ChatDetailRow; speed: number } => item.speed != null)
+    .sort((a, b) => a.speed - b.speed)
+
+  if (speedRows.length === 0) return []
+
+  const minSpeed = speedRows[0].speed
+  const maxSpeed = speedRows[speedRows.length - 1].speed
+  const span = maxSpeed - minSpeed
+  const bucketCount = Math.min(SPEED_BUCKET_COUNT, Math.max(1, speedRows.length))
+  const bucketSize = span > 0 ? span / bucketCount : 1
+  const buckets = Array.from({ length: bucketCount }, (_, index): SpeedBucket => {
+    const min = span > 0 ? minSpeed + index * bucketSize : minSpeed
+    const max = span > 0 && index < bucketCount - 1 ? min + bucketSize : maxSpeed
+    return { label: formatSpeedBucketLabel(min, max), min, max, count: 0, rows: [] }
+  })
+
+  speedRows.forEach(({ row, speed }) => {
+    const index = span > 0 ? Math.min(Math.floor((speed - minSpeed) / bucketSize), buckets.length - 1) : 0
+    buckets[index].rows.push(row)
+    buckets[index].count += 1
+  })
+
+  return buckets
+}
+
+function filterRowsBySpeedRange(rows: ChatDetailRow[], minValue: string, maxValue: string): ChatDetailRow[] {
+  const min = minValue === '' ? Number.NEGATIVE_INFINITY : Number(minValue)
+  const max = maxValue === '' ? Number.POSITIVE_INFINITY : Number(maxValue)
+  if (!Number.isFinite(min) && min !== Number.NEGATIVE_INFINITY) return []
+  if (!Number.isFinite(max) && max !== Number.POSITIVE_INFINITY) return []
+  return rows
+    .filter((row) => {
+      const speed = getOutputSpeed(row)
+      return speed != null && speed >= min && speed <= max
+    })
+    .sort((a, b) => (getOutputSpeed(a) ?? 0) - (getOutputSpeed(b) ?? 0))
+}
+
 /** 在文本行中高亮 keyword */
 function highlightRequestId(line: string, keyword: string): ReactNode {
   if (!keyword || !line) return line
@@ -174,6 +239,8 @@ interface LogPreviewState {
 
 export default function RealtimeQuery() {
   // 开关语义与设置区/态势页一致：未启用时整页提示，不让表单提交打到 503 的代理。
+  const { theme } = useTheme()
+  const chartPalette = useMemo(() => getPalette(theme), [theme])
   const { data: gc } = useGlobalConfig()
   const chatEnabled = gc?.chat_stats_enabled === true
   const chatDisabled = !!gc && !chatEnabled
@@ -184,6 +251,10 @@ export default function RealtimeQuery() {
   const [validateMsg, setValidateMsg] = useState('')
   const [detailRow, setDetailRow] = useState<ChatDetailRow | null>(null)
   const [showStats, setShowStats] = useState(false)
+  const [displayPage, setDisplayPage] = useState(1)
+  const [displayPageSize, setDisplayPageSize] = useState(20)
+  const [speedChartOpen, setSpeedChartOpen] = useState(false)
+  const [speedRange, setSpeedRange] = useState({ min: '', max: '' })
   const [logPreview, setLogPreview] = useState<LogPreviewState>({
     open: false,
     loading: false,
@@ -390,6 +461,14 @@ export default function RealtimeQuery() {
 
   const rows = query.data?.items ?? []
   const total = query.data?.total ?? 0
+  const totalDisplayPages = Math.max(1, Math.ceil(rows.length / displayPageSize))
+  const safeDisplayPage = Math.min(displayPage, totalDisplayPages)
+  const pagedRows = useMemo(() => {
+    const start = (safeDisplayPage - 1) * displayPageSize
+    return rows.slice(start, start + displayPageSize)
+  }, [displayPageSize, rows, safeDisplayPage])
+  const pageStart = rows.length === 0 ? 0 : (safeDisplayPage - 1) * displayPageSize + 1
+  const pageEnd = Math.min(safeDisplayPage * displayPageSize, rows.length)
   const stats = useMemo(() => {
     const completionTokens = finiteValues(rows, 'completion_tokens')
     const outputSpeed = finiteValues(rows, 'token_output_speed')
@@ -423,6 +502,81 @@ export default function RealtimeQuery() {
     { label: 'P90 TTFT', value: formatMillisecondsAsSeconds(stats.p90TTFT) },
     { label: 'P95 TTFT', value: formatMillisecondsAsSeconds(stats.p95TTFT) },
   ]
+
+  const speedBuckets = useMemo(() => buildSpeedBuckets(rows), [rows])
+  const selectedSpeedRows = useMemo(
+    () => filterRowsBySpeedRange(rows, speedRange.min, speedRange.max),
+    [rows, speedRange.max, speedRange.min],
+  )
+  const speedRangeMin = speedRange.min === '' ? null : Number(speedRange.min)
+  const speedRangeMax = speedRange.max === '' ? null : Number(speedRange.max)
+  const speedChartOption = useMemo<EChartsOption>(() => ({
+    animation: true,
+    grid: { left: 8, right: 16, top: 18, bottom: 42, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: chartPalette.tooltipBg,
+      borderColor: chartPalette.tooltipBorder,
+      borderWidth: 1,
+      textStyle: { color: chartPalette.tooltipText },
+      formatter: (params) => {
+        const item = Array.isArray(params) ? params[0] : params
+        const bucket = speedBuckets[(item as { dataIndex?: number })?.dataIndex ?? -1]
+        if (!bucket) return ''
+        return `${bucket.label} token/s<br/>请求数：${formatNumber(bucket.count)}`
+      },
+    },
+    xAxis: {
+      type: 'category',
+      name: '输出速度 token/s',
+      data: speedBuckets.map((bucket) => bucket.label),
+      axisLine: { lineStyle: { color: chartPalette.axisColor } },
+      axisLabel: { color: chartPalette.textColor, hideOverlap: true, interval: 0, rotate: speedBuckets.length > 8 ? 30 : 0 },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '请求数量',
+      minInterval: 1,
+      axisLabel: { color: chartPalette.textColor, formatter: (value: number) => formatNumber(value) },
+      splitLine: { lineStyle: { color: chartPalette.splitLineColor } },
+    },
+    series: [{
+      name: '请求数量',
+      type: 'bar',
+      data: speedBuckets.map((bucket) => {
+        const selected = speedRangeMin != null && speedRangeMax != null && bucket.max >= speedRangeMin && bucket.min <= speedRangeMax
+        return {
+          value: bucket.count,
+          itemStyle: { color: selected ? '#ff9500' : chartPalette.brand, borderRadius: [4, 4, 0, 0] },
+        }
+      }),
+      barMaxWidth: 34,
+    }],
+  }), [chartPalette, speedBuckets, speedRangeMax, speedRangeMin])
+
+  useEffect(() => {
+    setDisplayPage(1)
+    setSpeedRange({ min: '', max: '' })
+  }, [query.data, displayPageSize])
+
+  useEffect(() => {
+    if (displayPage > totalDisplayPages) {
+      setDisplayPage(totalDisplayPages)
+    }
+  }, [displayPage, totalDisplayPages])
+
+  useEffect(() => {
+    if (!speedChartOpen || speedBuckets.length === 0) return
+    setSpeedRange((current) => {
+      if (current.min && current.max) return current
+      return {
+        min: String(speedBuckets[0].min),
+        max: String(speedBuckets[speedBuckets.length - 1].max),
+      }
+    })
+  }, [speedBuckets, speedChartOpen])
 
   const header = (
     <header>
@@ -646,6 +800,19 @@ export default function RealtimeQuery() {
 
         {showStats && query.isSuccess && (
           <div className="px-5 py-4 border-b border-gray-200/50 dark:border-white/10 bg-gray-50/60 dark:bg-white/5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                统计基于当前查询返回的 {formatNumber(stats.total)} 条样本，分页只影响下方表格展示。
+              </div>
+              <button
+                type="button"
+                onClick={() => setSpeedChartOpen(true)}
+                disabled={speedBuckets.length === 0}
+                className="glass rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+              >
+                输出速度分布
+              </button>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-x-5 gap-y-4">
               <StatBlock label="统计样本" value={formatNumber(stats.total)} />
               {statItems.map((item) => (
@@ -692,9 +859,9 @@ export default function RealtimeQuery() {
               ) : (
                 // 行 key 禁用 id：ES 数据源所有行 id=0（自增 id 仅 PG 源有），会撞 key。
                 // request_id 为雪花/UUIDv7（唯一性可靠），拼 index 兜底。
-                rows.map((row, idx) => (
+                pagedRows.map((row, idx) => (
                   <tr
-                    key={`${row.request_id || 'row'}-${idx}`}
+                    key={`${row.request_id || 'row'}-${(safeDisplayPage - 1) * displayPageSize + idx}`}
                     onClick={() => setDetailRow(row)}
                     className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5 transition-colors"
                   >
@@ -755,6 +922,43 @@ export default function RealtimeQuery() {
             </tbody>
           </table>
         </div>
+        {query.isSuccess && rows.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-gray-200/50 dark:border-white/10 text-xs text-gray-500 dark:text-gray-400">
+            <div>
+              展示 {formatNumber(pageStart)}-{formatNumber(pageEnd)} / {formatNumber(rows.length)} 条
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span>每页</span>
+              <select
+                value={displayPageSize}
+                onChange={(e) => setDisplayPageSize(Number(e.target.value))}
+                className={`${INPUT_CLS} py-1 text-xs cursor-pointer`}
+                aria-label="表格每页展示条数"
+              >
+                {DISPLAY_PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>{size} 条</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setDisplayPage((page) => Math.max(1, page - 1))}
+                disabled={safeDisplayPage <= 1}
+                className={BTN_SECONDARY}
+              >
+                上一页
+              </button>
+              <span className="tabular-nums">{safeDisplayPage} / {totalDisplayPages}</span>
+              <button
+                type="button"
+                onClick={() => setDisplayPage((page) => Math.min(totalDisplayPages, page + 1))}
+                disabled={safeDisplayPage >= totalDisplayPages}
+                className={BTN_SECONDARY}
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 行详情弹层（全部字段）。标题不用 id 标识行：ES 源所有行 id=0，改用 request_id。 */}
@@ -765,6 +969,126 @@ export default function RealtimeQuery() {
         maxWidth={980}
       >
         {detailRow && <RowDetail row={detailRow} resolveName={resolveName} onPreviewLog={previewLog} />}
+      </Modal>
+
+      <Modal
+        open={speedChartOpen}
+        title="输出速度分布"
+        onClose={() => setSpeedChartOpen(false)}
+        maxWidth={1180}
+      >
+        <div className="space-y-4">
+          {speedBuckets.length === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+              当前结果中没有可用于统计的 Token Output Speed 数据
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl border border-gray-200/50 dark:border-white/10 p-3">
+                <EChart option={speedChartOption} height={320} />
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-xs text-gray-500 dark:text-gray-400">
+                  最小输出速度
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={speedRange.min}
+                    onChange={(e) => setSpeedRange((range) => ({ ...range, min: e.target.value }))}
+                    className={`${INPUT_CLS} mt-1 block w-[150px]`}
+                  />
+                </label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">
+                  最大输出速度
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={speedRange.max}
+                    onChange={(e) => setSpeedRange((range) => ({ ...range, max: e.target.value }))}
+                    className={`${INPUT_CLS} mt-1 block w-[150px]`}
+                  />
+                </label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">
+                  快速选择速度区间
+                  <select
+                    className={`${INPUT_CLS} mt-1 block min-w-[260px] cursor-pointer`}
+                    value=""
+                    onChange={(e) => {
+                      const bucket = speedBuckets[Number(e.target.value)]
+                      if (!bucket) return
+                      setSpeedRange({
+                        min: String(bucket.min),
+                        max: String(bucket.max),
+                      })
+                    }}
+                  >
+                    <option value="">选择一个速度区间</option>
+                    {speedBuckets.map((bucket, index) => (
+                      <option key={`${bucket.min}-${bucket.max}`} value={index}>
+                        {bucket.label} token/s · {bucket.count} 条
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  onClick={() => setSpeedRange({
+                    min: String(speedBuckets[0].min),
+                    max: String(speedBuckets[speedBuckets.length - 1].max),
+                  })}
+                >
+                  全部速度
+                </button>
+              </div>
+              <div className="rounded-xl border border-gray-200/50 dark:border-white/10 overflow-hidden">
+                <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/70 dark:bg-white/5">
+                  速度区间内请求：{formatNumber(selectedSpeedRows.length)} 条
+                </div>
+                <div className="max-h-[320px] overflow-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="sticky top-0 bg-white/95 dark:bg-gray-900/95">
+                      <tr className="border-b border-gray-200/50 dark:border-white/10">
+                        <th className={TH}>时间</th>
+                        <th className={TH}>Request ID</th>
+                        <th className={TH}>Model</th>
+                        <th className={TH_NUM}>输出速度</th>
+                        <th className={TH_NUM}>E2E 输出速度</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSpeedRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">
+                            当前速度区间没有请求
+                          </td>
+                        </tr>
+                      ) : (
+                        selectedSpeedRows.map((row, index) => (
+                          <tr
+                            key={`${row.request_id || 'speed-row'}-${index}`}
+                            className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5"
+                            onClick={() => setDetailRow(row)}
+                          >
+                            <td className={TD}>{formatLocalTime(row.ts)}</td>
+                            <td className={`${TD} font-mono text-xs`}>
+                              <span className="max-w-[260px] block truncate text-apple-blue" title={row.request_id}>
+                                {row.request_id || '-'}
+                              </span>
+                            </td>
+                            <td className={TD}>{row.model ? <Tag tone="primary">{row.model}</Tag> : '-'}</td>
+                            <td className={TD_NUM}>{formatMetricUnit(row.token_output_speed, 'token/s')}</td>
+                            <td className={TD_NUM}>{formatMetricUnit(row.token_output_speed_e2e, 'token/s')}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </Modal>
 
       <Modal
