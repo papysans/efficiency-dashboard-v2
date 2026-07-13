@@ -10,12 +10,14 @@ interface ModalProps {
   footer?: ReactNode
   /** 内容最大宽度，默认 600px */
   maxWidth?: number
+  /** 遮罩层级，默认 100；嵌套弹层可提高层级 */
+  zIndex?: number
 }
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-export function Modal({ open, title, onClose, children, footer, maxWidth = 600 }: ModalProps) {
+export function Modal({ open, title, onClose, children, footer, maxWidth = 600, zIndex = 100 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const prevFocus = useRef<HTMLElement | null>(null)
 
@@ -66,7 +68,8 @@ export function Modal({ open, title, onClose, children, footer, maxWidth = 600 }
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      style={{ zIndex }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}

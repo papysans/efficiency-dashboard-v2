@@ -53,6 +53,7 @@ const QUICK_RANGES = [
 const QUERY_LIMIT_OPTIONS = [1, 10, 100, 300, 500, 1000, 3000, 5000]
 const DISPLAY_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 1000]
 const SPEED_BUCKET_COUNT = 24
+const SPEED_OVERFLOW_THRESHOLD = 1000
 
 interface QueryForm {
   datasourceId: string
@@ -76,6 +77,7 @@ interface SpeedBucket {
   max: number
   count: number
   rows: ChatDetailRow[]
+  overflow?: boolean
 }
 
 function defaultForm(datasourceId = ''): QueryForm {
@@ -174,6 +176,10 @@ function formatSpeedBucketLabel(min: number, max: number): string {
   return `${formatNumber(min, 2)}~${formatNumber(max, 2)}`
 }
 
+function speedRangeValue(value: number): string {
+  return Number.isFinite(value) ? String(value) : ''
+}
+
 function buildSpeedBuckets(rows: ChatDetailRow[]): SpeedBucket[] {
   const speedRows = rows
     .map((row) => ({ row, speed: getOutputSpeed(row) }))
@@ -182,22 +188,48 @@ function buildSpeedBuckets(rows: ChatDetailRow[]): SpeedBucket[] {
 
   if (speedRows.length === 0) return []
 
-  const minSpeed = speedRows[0].speed
-  const maxSpeed = speedRows[speedRows.length - 1].speed
+  const regularRows = speedRows.filter((item) => item.speed <= SPEED_OVERFLOW_THRESHOLD)
+  const overflowRows = speedRows.filter((item) => item.speed > SPEED_OVERFLOW_THRESHOLD)
+  const buckets: SpeedBucket[] = []
+
+  if (regularRows.length === 0) {
+    return [{
+      label: `>${formatNumber(SPEED_OVERFLOW_THRESHOLD)}`,
+      min: SPEED_OVERFLOW_THRESHOLD,
+      max: Number.POSITIVE_INFINITY,
+      count: overflowRows.length,
+      rows: overflowRows.map((item) => item.row),
+      overflow: true,
+    }]
+  }
+
+  const minSpeed = regularRows[0].speed
+  const maxSpeed = regularRows[regularRows.length - 1].speed
   const span = maxSpeed - minSpeed
-  const bucketCount = Math.min(SPEED_BUCKET_COUNT, Math.max(1, speedRows.length))
+  const bucketCount = Math.min(SPEED_BUCKET_COUNT, Math.max(1, regularRows.length))
   const bucketSize = span > 0 ? span / bucketCount : 1
-  const buckets = Array.from({ length: bucketCount }, (_, index): SpeedBucket => {
+  buckets.push(...Array.from({ length: bucketCount }, (_, index): SpeedBucket => {
     const min = span > 0 ? minSpeed + index * bucketSize : minSpeed
     const max = span > 0 && index < bucketCount - 1 ? min + bucketSize : maxSpeed
     return { label: formatSpeedBucketLabel(min, max), min, max, count: 0, rows: [] }
-  })
+  }))
 
-  speedRows.forEach(({ row, speed }) => {
+  regularRows.forEach(({ row, speed }) => {
     const index = span > 0 ? Math.min(Math.floor((speed - minSpeed) / bucketSize), buckets.length - 1) : 0
     buckets[index].rows.push(row)
     buckets[index].count += 1
   })
+
+  if (overflowRows.length > 0) {
+    buckets.push({
+      label: `>${formatNumber(SPEED_OVERFLOW_THRESHOLD)}`,
+      min: SPEED_OVERFLOW_THRESHOLD,
+      max: Number.POSITIVE_INFINITY,
+      count: overflowRows.length,
+      rows: overflowRows.map((item) => item.row),
+      overflow: true,
+    })
+  }
 
   return buckets
 }
@@ -207,10 +239,11 @@ function filterRowsBySpeedRange(rows: ChatDetailRow[], minValue: string, maxValu
   const max = maxValue === '' ? Number.POSITIVE_INFINITY : Number(maxValue)
   if (!Number.isFinite(min) && min !== Number.NEGATIVE_INFINITY) return []
   if (!Number.isFinite(max) && max !== Number.POSITIVE_INFINITY) return []
+  const lowerExclusive = minValue !== '' && maxValue === ''
   return rows
     .filter((row) => {
       const speed = getOutputSpeed(row)
-      return speed != null && speed >= min && speed <= max
+      return speed != null && (lowerExclusive ? speed > min : speed >= min) && speed <= max
     })
     .sort((a, b) => (getOutputSpeed(a) ?? 0) - (getOutputSpeed(b) ?? 0))
 }
@@ -246,6 +279,10 @@ export default function RealtimeQuery() {
   const chatDisabled = !!gc && !chatEnabled
   const { data: datasources, isLoading: dsLoading, error: dsError } = useChatDatasources(chatEnabled)
   const enabledDatasources = useMemo(() => (datasources || []).filter((d) => d.is_enabled && (d.source_type === 'postgres' || d.source_type === 'elasticsearch')), [datasources])
+  const hasEnabledLokiDatasource = useMemo(
+    () => (datasources || []).some((d) => d.source_type === 'loki' && d.is_enabled),
+    [datasources],
+  )
 
   const [form, setForm] = useState<QueryForm>(defaultForm)
   const [validateMsg, setValidateMsg] = useState('')
@@ -546,7 +583,11 @@ export default function RealtimeQuery() {
       name: '请求数量',
       type: 'bar',
       data: speedBuckets.map((bucket) => {
-        const selected = speedRangeMin != null && speedRangeMax != null && bucket.max >= speedRangeMin && bucket.min <= speedRangeMax
+        const selected = speedRangeMin != null && (
+          speedRangeMax == null
+            ? bucket.overflow === true || bucket.max > speedRangeMin
+            : bucket.max >= speedRangeMin && bucket.min <= speedRangeMax
+        )
         return {
           value: bucket.count,
           itemStyle: { color: selected ? '#ff9500' : chartPalette.brand, borderRadius: [4, 4, 0, 0] },
@@ -570,11 +611,8 @@ export default function RealtimeQuery() {
   useEffect(() => {
     if (!speedChartOpen || speedBuckets.length === 0) return
     setSpeedRange((current) => {
-      if (current.min && current.max) return current
-      return {
-        min: String(speedBuckets[0].min),
-        max: String(speedBuckets[speedBuckets.length - 1].max),
-      }
+      if (current.min || current.max) return current
+      return { min: '', max: '' }
     })
   }, [speedBuckets, speedChartOpen])
 
@@ -837,20 +875,22 @@ export default function RealtimeQuery() {
                 <th className={TH_NUM}>输入 Token</th>
                 <th className={TH_NUM}>输出 Token</th>
                 <th className={TH_NUM}>耗时</th>
+                <th className={TH_NUM}>输出速度</th>
+                <th className={TH_NUM}>E2E 输出速度</th>
               </tr>
             </thead>
             <tbody>
               {query.isPending ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                    <td className={TD} colSpan={11}>
+                    <td className={TD} colSpan={13}>
                       <div className="skeleton h-6 rounded" />
                     </td>
                   </tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11}>
+                  <td colSpan={13}>
                     <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                       {query.isSuccess ? '未查询到符合条件的记录' : '设置查询条件后点击「查询」'}
                     </div>
@@ -871,7 +911,7 @@ export default function RealtimeQuery() {
                         <span className="max-w-[220px] truncate text-apple-blue bg-apple-blue/5 px-1.5 py-0.5 rounded font-semibold" title={row.request_id}>
                           {row.request_id || '-'}
                         </span>
-                        {row.request_id && (datasources || []).some(d => d.source_type === 'loki' && d.is_enabled) && (
+                        {row.request_id && hasEnabledLokiDatasource && (
                           <button
                             type="button"
                             className="text-gray-400 hover:text-apple-blue cursor-pointer bg-transparent border-none p-0 leading-none text-sm"
@@ -916,6 +956,8 @@ export default function RealtimeQuery() {
                     <td className={TD_NUM}>{formatNumber(row.prompt_tokens)}</td>
                     <td className={TD_NUM}>{formatNumber(row.completion_tokens)}</td>
                     <td className={TD_NUM}>{formatMillisecondsAsSeconds(row.duration)}</td>
+                    <td className={TD_NUM}>{formatMetricUnit(row.token_output_speed, 'token/s')}</td>
+                    <td className={TD_NUM}>{formatMetricUnit(row.token_output_speed_e2e, 'token/s')}</td>
                   </tr>
                 ))
               )}
@@ -967,8 +1009,16 @@ export default function RealtimeQuery() {
         title={`请求详情 · ${detailRow?.request_id || '-'}`}
         onClose={() => setDetailRow(null)}
         maxWidth={980}
+        zIndex={150}
       >
-        {detailRow && <RowDetail row={detailRow} resolveName={resolveName} onPreviewLog={previewLog} />}
+        {detailRow && (
+          <RowDetail
+            row={detailRow}
+            resolveName={resolveName}
+            onPreviewLog={previewLog}
+            onOpenTrace={detailRow.request_id && hasEnabledLokiDatasource ? openTraceDrawer : undefined}
+          />
+        )}
       </Modal>
 
       <Modal
@@ -976,6 +1026,7 @@ export default function RealtimeQuery() {
         title="输出速度分布"
         onClose={() => setSpeedChartOpen(false)}
         maxWidth={1180}
+        zIndex={100}
       >
         <div className="space-y-4">
           {speedBuckets.length === 0 ? (
@@ -1017,8 +1068,8 @@ export default function RealtimeQuery() {
                       const bucket = speedBuckets[Number(e.target.value)]
                       if (!bucket) return
                       setSpeedRange({
-                        min: String(bucket.min),
-                        max: String(bucket.max),
+                        min: speedRangeValue(bucket.min),
+                        max: speedRangeValue(bucket.max),
                       })
                     }}
                   >
@@ -1033,10 +1084,7 @@ export default function RealtimeQuery() {
                 <button
                   type="button"
                   className={BTN_SECONDARY}
-                  onClick={() => setSpeedRange({
-                    min: String(speedBuckets[0].min),
-                    max: String(speedBuckets[speedBuckets.length - 1].max),
-                  })}
+                  onClick={() => setSpeedRange({ min: '', max: '' })}
                 >
                   全部速度
                 </button>
@@ -1130,6 +1178,7 @@ export default function RealtimeQuery() {
         open={true}
         title={`链路日志 · ${trace.requestId}`}
         maxWidth={900}
+        zIndex={180}
         onClose={() => setTrace((s) => ({ ...s, open: false }))}
         footer={<button type="button" className={BTN_SECONDARY} onClick={() => setTrace((s) => ({ ...s, open: false }))}>关闭</button>}
       >
@@ -1206,6 +1255,7 @@ export default function RealtimeQuery() {
         open={true}
         title="日志详情"
         maxWidth={800}
+        zIndex={200}
         onClose={() => setTraceDetail({ open: false, entry: null, mode: 'raw' })}
         footer={
           <div className="flex gap-2">
@@ -1242,10 +1292,12 @@ function RowDetail({
   row,
   resolveName,
   onPreviewLog,
+  onOpenTrace,
 }: {
   row: ChatDetailRow
   resolveName: (userId?: string) => string
   onPreviewLog: (localLogPath: string | null | undefined) => void
+  onOpenTrace?: (requestId: string) => void
 }) {
   const hasErr = isErrorCode(row.error_code)
   const localLogPath = (row.local_log_path || '').trim()
@@ -1264,7 +1316,24 @@ function RowDetail({
           label="状态"
           value={hasErr ? <Tag tone="error" mono>{row.error_code}</Tag> : <Tag tone="success">OK</Tag>}
         />
-        <Field label="Request ID" value={row.request_id} span2 mono />
+        <Field
+          label="Request ID"
+          value={
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono break-all">{row.request_id || '-'}</span>
+              {row.request_id && onOpenTrace && (
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  onClick={() => onOpenTrace(row.request_id)}
+                >
+                  查询链路日志
+                </button>
+              )}
+            </div>
+          }
+          span2
+        />
         <Field label="Universal ID" value={row.universal_id} mono />
         <Field label="User ID" value={row.user_id} mono />
         <Field
