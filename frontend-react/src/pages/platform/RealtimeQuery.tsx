@@ -386,14 +386,18 @@ export default function RealtimeQuery() {
   const total = query.data?.total ?? 0
   const stats = useMemo(() => {
     const completionTokens = finiteValues(rows, 'completion_tokens')
+    const outputSpeed = finiteValues(rows, 'token_output_speed')
     const outputSpeedE2E = finiteValues(rows, 'token_output_speed_e2e')
     const ttft = finiteValues(rows, 'first_token_duration')
 
     return {
       total: rows.length,
       avgCompletionTokens: average(completionTokens),
+      avgOutputSpeed: average(outputSpeed),
       avgOutputSpeedE2E: average(outputSpeedE2E),
       avgTTFT: average(ttft),
+      p90OutputSpeed: percentile(outputSpeed, 90),
+      p95OutputSpeed: percentile(outputSpeed, 95),
       p90OutputSpeedE2E: percentile(outputSpeedE2E, 90),
       p95OutputSpeedE2E: percentile(outputSpeedE2E, 95),
       p90TTFT: percentile(ttft, 90),
@@ -403,8 +407,11 @@ export default function RealtimeQuery() {
 
   const statItems = [
     { label: '平均输出 Token', value: formatStat(stats.avgCompletionTokens) },
+    { label: '平均输出速度', value: formatStat(stats.avgOutputSpeed, 'token/s') },
     { label: '平均 E2E 输出速度', value: formatStat(stats.avgOutputSpeedE2E, 'token/s') },
     { label: '平均 TTFT', value: formatMillisecondsAsSeconds(stats.avgTTFT) },
+    { label: 'P90 输出速度', value: formatStat(stats.p90OutputSpeed, 'token/s') },
+    { label: 'P95 输出速度', value: formatStat(stats.p95OutputSpeed, 'token/s') },
     { label: 'P90 E2E 输出速度', value: formatStat(stats.p90OutputSpeedE2E, 'token/s') },
     { label: 'P95 E2E 输出速度', value: formatStat(stats.p95OutputSpeedE2E, 'token/s') },
     { label: 'P90 TTFT', value: formatMillisecondsAsSeconds(stats.p90TTFT) },
@@ -633,7 +640,7 @@ export default function RealtimeQuery() {
 
         {showStats && query.isSuccess && (
           <div className="px-5 py-4 border-b border-gray-200/50 dark:border-white/10 bg-gray-50/60 dark:bg-white/5">
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-x-5 gap-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-x-5 gap-y-4">
               <StatBlock label="统计样本" value={formatNumber(stats.total)} />
               {statItems.map((item) => (
                 <StatBlock key={item.label} label={item.label} value={item.value} />
