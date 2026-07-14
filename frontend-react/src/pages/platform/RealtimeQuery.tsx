@@ -80,6 +80,25 @@ interface SpeedBucket {
   overflow?: boolean
 }
 
+interface ConcurrencyRequest {
+  row: ChatDetailRow
+  startMs: number
+  endMs: number
+}
+
+interface ConcurrencyStats {
+  valid: number
+  invalid: number
+  peak: number
+  avg: number | null
+  p90: number | null
+  p95: number | null
+  startMs: number | null
+  endMs: number | null
+  points: Array<[number, number]>
+  peakRows: ChatDetailRow[]
+}
+
 function defaultForm(datasourceId = ''): QueryForm {
   const end = new Date()
   const start = new Date(end.getTime() - 30 * 60_000)
@@ -248,6 +267,116 @@ function filterRowsBySpeedRange(rows: ChatDetailRow[], minValue: string, maxValu
     .sort((a, b) => (getOutputSpeed(a) ?? 0) - (getOutputSpeed(b) ?? 0))
 }
 
+function parseTimeMs(value: string | null | undefined): number | null {
+  if (!value) return null
+  const ms = new Date(value).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+function getConcurrencyStartMs(row: ChatDetailRow, useProcessedRequestTime: boolean): number | null {
+  const requestMs = parseTimeMs(row.request_time)
+  if (requestMs == null) return null
+  if (!useProcessedRequestTime) return requestMs
+  const ttft = Number(row.first_token_duration)
+  return Number.isFinite(ttft) && ttft >= 0 ? requestMs + ttft : requestMs
+}
+
+function percentileFromWeightedSegments(segments: Array<{ value: number; duration: number }>, p: number): number | null {
+  const totalDuration = segments.reduce((sum, segment) => sum + segment.duration, 0)
+  if (totalDuration <= 0) return null
+  const target = totalDuration * (p / 100)
+  let elapsed = 0
+  for (const segment of [...segments].sort((a, b) => a.value - b.value)) {
+    elapsed += segment.duration
+    if (elapsed >= target) return segment.value
+  }
+  return segments.length > 0 ? segments[segments.length - 1].value : null
+}
+
+function buildConcurrencyStats(rows: ChatDetailRow[], useProcessedRequestTime: boolean): ConcurrencyStats {
+  const requests: ConcurrencyRequest[] = []
+  rows.forEach((row) => {
+    const startMs = getConcurrencyStartMs(row, useProcessedRequestTime)
+    const endMs = parseTimeMs(row.end_time)
+    if (startMs == null || endMs == null || endMs <= startMs) return
+    requests.push({ row, startMs, endMs })
+  })
+
+  if (requests.length === 0) {
+    return {
+      valid: 0,
+      invalid: rows.length,
+      peak: 0,
+      avg: null,
+      p90: null,
+      p95: null,
+      startMs: null,
+      endMs: null,
+      points: [],
+      peakRows: [],
+    }
+  }
+
+  const events = requests
+    .flatMap((request) => [
+      { time: request.startMs, delta: 1, order: 1 },
+      { time: request.endMs, delta: -1, order: 0 },
+    ])
+    .sort((a, b) => a.time - b.time || a.order - b.order)
+
+  const points: Array<[number, number]> = []
+  const weightedSegments: Array<{ value: number; duration: number }> = []
+  let current = 0
+  let peak = 0
+  let lastTime = events[0].time
+  let weightedSum = 0
+
+  points.push([lastTime, 0])
+  for (let index = 0; index < events.length;) {
+    const time = events[index].time
+    const duration = time - lastTime
+    if (duration > 0) {
+      weightedSegments.push({ value: current, duration })
+      weightedSum += current * duration
+      points.push([time, current])
+    }
+
+    while (index < events.length && events[index].time === time) {
+      current += events[index].delta
+      index += 1
+    }
+
+    peak = Math.max(peak, current)
+    points.push([time, current])
+    lastTime = time
+  }
+
+  const startMs = requests.reduce((min, request) => Math.min(min, request.startMs), Number.POSITIVE_INFINITY)
+  const endMs = requests.reduce((max, request) => Math.max(max, request.endMs), Number.NEGATIVE_INFINITY)
+  const span = endMs - startMs
+  const peakRows = requests
+    .filter((request) => request.startMs < endMs && request.endMs > startMs)
+    .filter((request) => {
+      const peakPoint = points.find((point) => point[1] === peak)
+      if (!peakPoint) return false
+      return request.startMs <= peakPoint[0] && request.endMs > peakPoint[0]
+    })
+    .map((request) => request.row)
+
+  return {
+    valid: requests.length,
+    invalid: rows.length - requests.length,
+    peak,
+    avg: span > 0 ? weightedSum / span : null,
+    p90: percentileFromWeightedSegments(weightedSegments, 90),
+    p95: percentileFromWeightedSegments(weightedSegments, 95),
+    startMs,
+    endMs,
+    points,
+    peakRows,
+  }
+}
+
 /** 在文本行中高亮 keyword */
 function highlightRequestId(line: string, keyword: string): ReactNode {
   if (!keyword || !line) return line
@@ -291,6 +420,8 @@ export default function RealtimeQuery() {
   const [displayPage, setDisplayPage] = useState(1)
   const [displayPageSize, setDisplayPageSize] = useState(20)
   const [speedChartOpen, setSpeedChartOpen] = useState(false)
+  const [concurrencyChartOpen, setConcurrencyChartOpen] = useState(false)
+  const [useProcessedRequestTime, setUseProcessedRequestTime] = useState(false)
   const [speedRange, setSpeedRange] = useState({ min: '', max: '' })
   const [logPreview, setLogPreview] = useState<LogPreviewState>({
     open: false,
@@ -547,6 +678,10 @@ export default function RealtimeQuery() {
   )
   const speedRangeMin = speedRange.min === '' ? null : Number(speedRange.min)
   const speedRangeMax = speedRange.max === '' ? null : Number(speedRange.max)
+  const concurrencyStats = useMemo(
+    () => buildConcurrencyStats(rows, useProcessedRequestTime),
+    [rows, useProcessedRequestTime],
+  )
   const speedChartOption = useMemo<EChartsOption>(() => ({
     animation: true,
     grid: { left: 8, right: 16, top: 18, bottom: 42, containLabel: true },
@@ -596,6 +731,48 @@ export default function RealtimeQuery() {
       barMaxWidth: 34,
     }],
   }), [chartPalette, speedBuckets, speedRangeMax, speedRangeMin])
+  const concurrencyChartOption = useMemo<EChartsOption>(() => ({
+    animation: true,
+    grid: { left: 8, right: 18, top: 18, bottom: 40, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: chartPalette.tooltipBg,
+      borderColor: chartPalette.tooltipBorder,
+      borderWidth: 1,
+      textStyle: { color: chartPalette.tooltipText },
+      formatter: (params) => {
+        const item = Array.isArray(params) ? params[0] : params
+        const value = (item as { value?: [number, number] })?.value
+        if (!Array.isArray(value)) return ''
+        return `${formatLocalTime(new Date(value[0]).toISOString())}<br/>并发：${formatNumber(value[1])}`
+      },
+    },
+    xAxis: {
+      type: 'time',
+      name: '时间',
+      axisLine: { lineStyle: { color: chartPalette.axisColor } },
+      axisLabel: { color: chartPalette.textColor },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: '并发数',
+      min: 0,
+      minInterval: 1,
+      axisLabel: { color: chartPalette.textColor, formatter: (value: number) => formatNumber(value) },
+      splitLine: { lineStyle: { color: chartPalette.splitLineColor } },
+    },
+    series: [{
+      name: '并发',
+      type: 'line',
+      step: 'end',
+      showSymbol: false,
+      smooth: false,
+      lineStyle: { width: 2, color: chartPalette.brand },
+      areaStyle: { color: 'rgba(0, 113, 227, 0.12)' },
+      data: concurrencyStats.points,
+    }],
+  }), [chartPalette, concurrencyStats.points])
 
   useEffect(() => {
     setDisplayPage(1)
@@ -814,19 +991,28 @@ export default function RealtimeQuery() {
           </div>
           <div className="flex items-center gap-2">
             {query.isSuccess && (
-              <button
-                type="button"
-                onClick={() => setShowStats((v) => !v)}
-                className={`rounded-lg px-3 py-1 text-xs font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${
-                  showStats
-                    ? 'bg-apple-blue text-white hover:bg-apple-blue-hover'
-                    : 'glass text-gray-700 dark:text-gray-200 hover:text-apple-blue'
-                }`}
-              >
-                统计数据
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowStats((v) => !v)}
+                  className={`rounded-lg px-3 py-1 text-xs font-medium cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${
+                    showStats
+                      ? 'bg-apple-blue text-white hover:bg-apple-blue-hover'
+                      : 'glass text-gray-700 dark:text-gray-200 hover:text-apple-blue'
+                  }`}
+                >
+                  速度统计
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConcurrencyChartOpen(true)}
+                  className="glass rounded-lg px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 cursor-pointer hover:text-apple-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+                >
+                  并发统计
+                </button>
+              </>
             )}
-            <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500">本页样本统计</span>
+            <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500">当前查询结果统计</span>
           </div>
         </div>
 
@@ -1129,6 +1315,105 @@ export default function RealtimeQuery() {
                             <td className={TD_NUM}>{formatMetricUnit(row.token_output_speed_e2e, 'token/s')}</td>
                           </tr>
                         ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={concurrencyChartOpen}
+        title="并发统计"
+        onClose={() => setConcurrencyChartOpen(false)}
+        maxWidth={1180}
+        zIndex={100}
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              统计基于当前查询返回的 {formatNumber(rows.length)} 条样本，分页只影响表格展示。
+            </div>
+            <label className="inline-flex min-h-[32px] cursor-pointer items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={useProcessedRequestTime}
+                onChange={(e) => setUseProcessedRequestTime(e.target.checked)}
+                className="h-4 w-4 cursor-pointer accent-apple-blue"
+              />
+              Request Time + TTFT
+            </label>
+          </div>
+
+          {concurrencyStats.valid === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+              当前结果中没有可用于并发统计的完整 Request Time / End Time 数据
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-x-5 gap-y-4">
+                <StatBlock label="有效样本" value={formatNumber(concurrencyStats.valid)} />
+                <StatBlock label="排除样本" value={formatNumber(concurrencyStats.invalid)} />
+                <StatBlock label="峰值并发" value={formatNumber(concurrencyStats.peak)} />
+                <StatBlock label="平均并发" value={formatStat(concurrencyStats.avg)} />
+                <StatBlock label="P90 并发" value={formatStat(concurrencyStats.p90, '', 0)} />
+                <StatBlock label="P95 并发" value={formatStat(concurrencyStats.p95, '', 0)} />
+                <StatBlock
+                  label="时间范围"
+                  value={
+                    concurrencyStats.startMs != null && concurrencyStats.endMs != null
+                      ? `${formatLocalTime(new Date(concurrencyStats.startMs).toISOString())} ~ ${formatLocalTime(new Date(concurrencyStats.endMs).toISOString())}`
+                      : '-'
+                  }
+                />
+              </div>
+              <div className="rounded-xl border border-gray-200/50 dark:border-white/10 p-3">
+                <EChart option={concurrencyChartOption} height={360} />
+              </div>
+              <div className="rounded-xl border border-gray-200/50 dark:border-white/10 overflow-hidden">
+                <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/70 dark:bg-white/5">
+                  峰值并发请求：{formatNumber(concurrencyStats.peakRows.length)} 条
+                </div>
+                <div className="max-h-[260px] overflow-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="sticky top-0 bg-white/95 dark:bg-gray-900/95">
+                      <tr className="border-b border-gray-200/50 dark:border-white/10">
+                        <th className={TH}>Request ID</th>
+                        <th className={TH}>Request Time</th>
+                        <th className={TH}>End Time</th>
+                        <th className={TH}>Model</th>
+                        <th className={TH_NUM}>TTFT</th>
+                        <th className={TH_NUM}>耗时</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {concurrencyStats.peakRows.slice(0, 100).map((row, index) => (
+                        <tr
+                          key={`${row.request_id || 'concurrency-row'}-${index}`}
+                          className="border-b border-gray-100/50 dark:border-white/5 cursor-pointer hover:bg-apple-blue/5 dark:hover:bg-white/5"
+                          onClick={() => setDetailRow(row)}
+                        >
+                          <td className={`${TD} font-mono text-xs`}>
+                            <span className="max-w-[260px] block truncate text-apple-blue" title={row.request_id}>
+                              {row.request_id || '-'}
+                            </span>
+                          </td>
+                          <td className={TD}>{row.request_time ? formatLocalTime(row.request_time) : '-'}</td>
+                          <td className={TD}>{row.end_time ? formatLocalTime(row.end_time) : '-'}</td>
+                          <td className={TD}>{row.model ? <Tag tone="primary">{row.model}</Tag> : '-'}</td>
+                          <td className={TD_NUM}>{formatMillisecondsAsSeconds(row.first_token_duration)}</td>
+                          <td className={TD_NUM}>{formatMillisecondsAsSeconds(row.duration)}</td>
+                        </tr>
+                      ))}
+                      {concurrencyStats.peakRows.length > 100 && (
+                        <tr>
+                          <td colSpan={6} className="py-3 text-center text-xs text-gray-400 dark:text-gray-500">
+                            仅展示前 100 条峰值请求
+                          </td>
+                        </tr>
                       )}
                     </tbody>
                   </table>
