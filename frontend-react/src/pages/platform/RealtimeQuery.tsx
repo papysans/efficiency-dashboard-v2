@@ -52,6 +52,7 @@ const QUICK_RANGES = [
 
 const QUERY_LIMIT_OPTIONS = [1, 10, 100, 300, 500, 1000, 3000, 5000]
 const DISPLAY_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 1000]
+const DEFAULT_QUICK_RANGE_MINUTES = 30
 const SPEED_BUCKET_COUNT = 24
 const SPEED_OVERFLOW_THRESHOLD = 1000
 
@@ -100,14 +101,13 @@ interface ConcurrencyStats {
 }
 
 function defaultForm(datasourceId = ''): QueryForm {
-  const end = new Date()
-  const start = new Date(end.getTime() - 30 * 60_000)
+  const { start, end } = buildQuickRangeValues(DEFAULT_QUICK_RANGE_MINUTES)
   return {
-  userId: '',
-  userName: '',
+    userId: '',
+    userName: '',
     datasourceId,
-    start: toLocalInputValue(start),
-    end: toLocalInputValue(end),
+    start,
+    end,
     universalId: '',
     requestId: '',
     model: '',
@@ -115,6 +115,15 @@ function defaultForm(datasourceId = ''): QueryForm {
     hasError: '',
     limit: 100,
     order: 'desc',
+  }
+}
+
+function buildQuickRangeValues(minutes: number): Pick<QueryForm, 'start' | 'end'> {
+  const end = new Date()
+  const start = new Date(end.getTime() - minutes * 60_000)
+  return {
+    start: toLocalInputValue(start),
+    end: toLocalInputValue(end),
   }
 }
 
@@ -414,6 +423,7 @@ export default function RealtimeQuery() {
   )
 
   const [form, setForm] = useState<QueryForm>(defaultForm)
+  const [activeQuickRangeMinutes, setActiveQuickRangeMinutes] = useState<number | null>(DEFAULT_QUICK_RANGE_MINUTES)
   const [validateMsg, setValidateMsg] = useState('')
   const [detailRow, setDetailRow] = useState<ChatDetailRow | null>(null)
   const [showStats, setShowStats] = useState(false)
@@ -547,23 +557,34 @@ export default function RealtimeQuery() {
     setForm((f) => ({ ...f, [key]: value }))
   }
 
+  function setTimeField(key: 'start' | 'end', value: string) {
+    setActiveQuickRangeMinutes(null)
+    setForm((f) => ({ ...f, [key]: value }))
+  }
+
   function applyQuickRange(minutes: number) {
-    const end = new Date()
-    const start = new Date(end.getTime() - minutes * 60_000)
-    setForm((f) => ({ ...f, start: toLocalInputValue(start), end: toLocalInputValue(end) }))
+    setActiveQuickRangeMinutes(minutes)
+    setForm((f) => ({ ...f, ...buildQuickRangeValues(minutes) }))
   }
 
   function submit() {
-    if (!form.datasourceId) {
+    const effectiveForm = activeQuickRangeMinutes == null
+      ? form
+      : { ...form, ...buildQuickRangeValues(activeQuickRangeMinutes) }
+    if (activeQuickRangeMinutes != null) {
+      setForm(effectiveForm)
+    }
+
+    if (!effectiveForm.datasourceId) {
       setValidateMsg('请选择数据源')
       return
     }
-    if (!form.start || !form.end) {
+    if (!effectiveForm.start || !effectiveForm.end) {
       setValidateMsg('请选择查询起止时间')
       return
     }
-    const startMs = new Date(form.start).getTime()
-    const endMs = new Date(form.end).getTime()
+    const startMs = new Date(effectiveForm.start).getTime()
+    const endMs = new Date(effectiveForm.end).getTime()
     if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
       setValidateMsg('时间格式无效')
       return
@@ -576,32 +597,33 @@ export default function RealtimeQuery() {
 
     // 所有文本输入提交前 .trim()（CLAUDE.md 输入处理规范）。
     const body: ChatDetailQueryReq = {
-      datasource_id: form.datasourceId,
-      start_time: toIsoWithOffset(form.start),
-      end_time: toIsoWithOffset(form.end),
-      limit: form.limit,
-      order: form.order,
+      datasource_id: effectiveForm.datasourceId,
+      start_time: toIsoWithOffset(effectiveForm.start),
+      end_time: toIsoWithOffset(effectiveForm.end),
+      limit: effectiveForm.limit,
+      order: effectiveForm.order,
     }
-    const universalId = form.universalId.trim()
-    const requestId = form.requestId.trim()
-    const userId = form.userId.trim()
-    const userName = form.userName.trim()
+    const universalId = effectiveForm.universalId.trim()
+    const requestId = effectiveForm.requestId.trim()
+    const userId = effectiveForm.userId.trim()
+    const userName = effectiveForm.userName.trim()
     if (userId) body.user_id = userId
     if (userName) body.username = userName
-    const model = form.model.trim()
-    const routedModel = form.routedModel.trim()
+    const model = effectiveForm.model.trim()
+    const routedModel = effectiveForm.routedModel.trim()
     if (universalId) body.universal_id = universalId
     if (requestId) body.request_id = requestId
     if (model) body.model = model
     if (routedModel) body.routed_model = routedModel
-    if (form.hasError === 'true') body.has_error = true
-    else if (form.hasError === 'false') body.has_error = false
+    if (effectiveForm.hasError === 'true') body.has_error = true
+    else if (effectiveForm.hasError === 'false') body.has_error = false
 
     query.mutate(body)
   }
 
   function resetForm() {
     setForm(defaultForm(form.datasourceId || (enabledDatasources[0] ? String(enabledDatasources[0].id) : '')))
+    setActiveQuickRangeMinutes(DEFAULT_QUICK_RANGE_MINUTES)
     setValidateMsg('')
   }
 
@@ -855,7 +877,7 @@ export default function RealtimeQuery() {
             id="rq-start"
             type="datetime-local"
             value={form.start}
-            onChange={(e) => setField('start', e.target.value)}
+            onChange={(e) => setTimeField('start', e.target.value)}
             className={INPUT_CLS}
             aria-label="开始时间"
           />
@@ -863,7 +885,7 @@ export default function RealtimeQuery() {
           <input
             type="datetime-local"
             value={form.end}
-            onChange={(e) => setField('end', e.target.value)}
+            onChange={(e) => setTimeField('end', e.target.value)}
             className={INPUT_CLS}
             aria-label="结束时间"
           />
@@ -873,7 +895,11 @@ export default function RealtimeQuery() {
               key={r.minutes}
               type="button"
               onClick={() => applyQuickRange(r.minutes)}
-              className="px-2 py-1 rounded-md text-xs text-gray-600 dark:text-gray-300 hover:text-apple-blue hover:bg-white/50 dark:hover:bg-white/10 cursor-pointer transition-colors bg-transparent border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue"
+              className={`px-2 py-1 rounded-md text-xs cursor-pointer transition-colors border-none focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue ${
+                activeQuickRangeMinutes === r.minutes
+                  ? 'bg-apple-blue text-white hover:bg-apple-blue-hover'
+                  : 'bg-transparent text-gray-600 dark:text-gray-300 hover:text-apple-blue hover:bg-white/50 dark:hover:bg-white/10'
+              }`}
             >
               {r.label}
             </button>
