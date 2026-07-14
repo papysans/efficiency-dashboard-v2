@@ -1144,6 +1144,7 @@ export default function RealtimeQuery() {
         title="日志预览"
         onClose={() => setLogPreview({ open: false, loading: false, data: null, error: '', path: '' })}
         maxWidth={1180}
+        zIndex={220}
       >
         {logPreview.loading ? (
           <div className="space-y-3">
