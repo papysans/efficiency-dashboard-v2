@@ -11,10 +11,12 @@ import (
 	"kanban/kbcli/internal/logx"
 	"kanban/kbcli/internal/util"
 	"math"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"kanban/core/models"
@@ -344,6 +346,7 @@ type preparedImportTask struct {
 	conversationDate string
 	convRef          rawdump.ConversationRef
 	silicaPath       string
+	silicaObjectPath string
 }
 
 // prepareImportTask 读取并解析单个任务的 summary 与 conversation 文件，算好待写入的记录。
@@ -355,7 +358,7 @@ func prepareImportTask(summaryPath string, src convSource, silicaPath string) (*
 	}
 
 	var ss taskSession
-	if err := json.Unmarshal(data, &ss); err != nil {
+	if err := unmarshalTaskSummary(summaryPath, data, &ss); err != nil {
 		return nil, fmt.Errorf("解析summary JSON失败: %w", err)
 	}
 
@@ -393,6 +396,26 @@ func prepareImportTask(summaryPath string, src convSource, silicaPath string) (*
 	}, nil
 }
 
+var firstBadSummaryLogOnce sync.Once
+
+func unmarshalTaskSummary(summaryPath string, data []byte, ss *taskSession) error {
+	if err := json.Unmarshal(data, ss); err != nil {
+		firstBadSummaryLogOnce.Do(func() {
+			logx.Errorf("[debug] 首个不合格 summary: path=%s bytes=%d err=%v tail_hex=% x raw_quoted=%q",
+				summaryPath, len(data), err, tailBytes(data, 64), string(data))
+		})
+		return err
+	}
+	return nil
+}
+
+func tailBytes(data []byte, n int) []byte {
+	if len(data) <= n {
+		return data
+	}
+	return data[len(data)-n:]
+}
+
 // writeImportTask 在给定（事务）连接上写入一个已解析任务：session + 其全部 conversation。
 // 用 clause.OnConflict 保证幂等。供批量事务与逐条回退共用。
 func writeImportTask(tx *gorm.DB, p *preparedImportTask) error {
@@ -415,11 +438,14 @@ func writeImportTaskBatch(tx *gorm.DB, batch []*preparedImportTask) error {
 	return nil
 }
 
-// finalizeImportTaskSilica 写库成功后生成 task silica 文件（用于下次增量检测）；失败仅告警，不阻断。
-func finalizeImportTaskSilica(p *preparedImportTask) {
+// finalizeImportTaskSilica writes the object first, then publishes its relative
+// path in PostgreSQL. This ordering prevents readers from observing an index row
+// whose S3 object has not been written yet.
+func finalizeImportTaskSilica(db *gorm.DB, p *preparedImportTask) error {
 	if err := generateTaskSilicaFile(p.ss, p.conversations, p.convRef, p.silicaPath); err != nil {
-		logx.Warnf("生成task silica文件失败 [%s]: %v", p.ss.SessionId, err)
+		return err
 	}
+	return indexTaskSilicaFile(db, p.ss.SessionId, p.silicaObjectPath, p.silicaPath, p.conversationDate)
 }
 
 // flushImportConvBatch 把一批已解析任务在单个事务内写入：将「每 session 一次提交(一次 fsync)」
@@ -436,9 +462,14 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 	})
 	if err == nil {
 		for _, p := range batch {
-			finalizeImportTaskSilica(p)
+			if e := finalizeImportTaskSilica(db, p); e != nil {
+				logx.Warnf("生成或索引task silica文件失败 [%s]: %v", p.ss.SessionId, e)
+				fail++
+				continue
+			}
+			success++
 		}
-		return len(batch), 0
+		return success, fail
 	}
 
 	// 整批失败（多为 DB/schema 级错误）：逐条单事务重试，定位并隔离坏记录
@@ -451,7 +482,11 @@ func flushImportConvBatch(db *gorm.DB, batch []*preparedImportTask) (success, fa
 			fail++
 			continue
 		}
-		finalizeImportTaskSilica(p)
+		if e := finalizeImportTaskSilica(db, p); e != nil {
+			logx.Warnf("生成或索引task silica文件失败 [%s]: %v", p.ss.SessionId, e)
+			fail++
+			continue
+		}
 		success++
 	}
 	return success, fail
@@ -989,6 +1024,52 @@ func generateTaskSilicaFile(ss *taskSession, conversations []taskConversation, c
 	return nil
 }
 
+func silicaObjectRelativePath(sessionID string) string {
+	return path.Join("task", "conversation", sessionID+".silica.json")
+}
+
+func silicaObjectUpsertClause() clause.OnConflict {
+	return clause.OnConflict{
+		Columns: []clause.Column{{Name: "session_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"object_path", "data_date", "object_size", "conversation_num", "updated_at",
+		}),
+	}
+}
+
+// indexTaskSilicaFile stores only the path below analysed_dir. The configured
+// bucket and prefix remain deployment details and can change without rewriting
+// database rows.
+func indexTaskSilicaFile(db *gorm.DB, sessionID, objectPath, objectLocation, dataDate string) error {
+	if sessionID == "" || objectPath == "" {
+		return fmt.Errorf("silica索引缺少session_id或object_path")
+	}
+	info, err := storage.Stat(objectLocation)
+	if err != nil {
+		return fmt.Errorf("读取task silica对象元数据失败: %w", err)
+	}
+	ss, err := loadTaskSilicaFile(objectLocation)
+	if err != nil {
+		return fmt.Errorf("校验task silica对象失败: %w", err)
+	}
+	if ss.SessionId != sessionID {
+		return fmt.Errorf("task silica对象session_id不匹配: got=%s want=%s", ss.SessionId, sessionID)
+	}
+	record := models.SilicaObjectIndex{
+		SessionId:       sessionID,
+		ObjectPath:      filepath.ToSlash(objectPath),
+		DataDate:        dataDate,
+		ObjectSize:      info.Size,
+		ConversationNum: ss.ConversationNum,
+	}
+	if err := withImportConvDBRetry(func() error {
+		return db.Clauses(silicaObjectUpsertClause()).Create(&record).Error
+	}); err != nil {
+		return fmt.Errorf("写入silica_object_index失败: %w", err)
+	}
+	return nil
+}
+
 // convSource 描述一个会话的 conversation 来源：可重组的 ref + 内容日期(YYYY/MM/DD)。
 type convSource struct {
 	ref  rawdump.ConversationRef
@@ -1272,8 +1353,14 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 		}
 
 		// 构造 silica 文件路径并判断是否需要增量更新
-		silicaPath := storage.Join(analysedDir, "task", "conversation", sessionId+".silica.json")
+		silicaObjectPath := silicaObjectRelativePath(sessionId)
+		silicaPath := storage.Join(analysedDir, silicaObjectPath)
 		if !needUpdateConversations(src.ref, silicaPath, force) {
+			if err := indexTaskSilicaFile(db, sessionId, silicaObjectPath, silicaPath, src.date); err != nil {
+				logx.Warnf("回填task silica索引失败 [%s]: %v", sessionId, err)
+				failCount++
+				continue
+			}
 			logx.Debugf("跳过(conversation未更新): %s", sessionId)
 			skipCount++
 			continue
@@ -1291,6 +1378,7 @@ func runImportConv(taskDir, analysedDir string, force bool, startDateStr, endDat
 			failCount++
 			continue
 		}
+		p.silicaObjectPath = silicaObjectPath
 		batch = append(batch, p)
 		if len(batch) >= importConvTaskBatchSize {
 			flush()

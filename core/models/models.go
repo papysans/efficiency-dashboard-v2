@@ -47,6 +47,21 @@ type Session struct {
 
 func (Session) TableName() string { return "sessions" }
 
+// SilicaObjectIndex records generated task silica objects without coupling the
+// database to a concrete bucket or analysed_dir prefix. ObjectPath is always
+// relative to analysed_dir, for example task/conversation/<session>.silica.json.
+type SilicaObjectIndex struct {
+	SessionId       string    `gorm:"primaryKey;type:varchar(255)" json:"session_id"`
+	ObjectPath      string    `gorm:"type:text;not null" json:"object_path"`
+	DataDate        string    `gorm:"type:varchar(10);index" json:"data_date"`
+	ObjectSize      int64     `gorm:"type:bigint" json:"object_size"`
+	ConversationNum int       `gorm:"type:int" json:"conversation_num"`
+	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (SilicaObjectIndex) TableName() string { return "silica_object_index" }
+
 type Conversation struct {
 	ID               int        `gorm:"primaryKey;autoIncrement" json:"id"`
 	SessionId        string     `gorm:"type:varchar(255);not null;uniqueIndex:idx_session_request" json:"session_id"`
@@ -381,6 +396,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&UserOrg{},
 		&Task{},
 		&Session{},
+		&SilicaObjectIndex{},
 		&Conversation{},
 		&Commit{},
 		&Project{},

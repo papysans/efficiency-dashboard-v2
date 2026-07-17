@@ -481,9 +481,9 @@ func runImportRepo(repoDir, analysedDir string, force bool, maxDays int, startDa
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	// 先构建 conversation 索引
-	taskFPDir := storage.Join(analysedDir, "task", "conversation")
-	idx, err := buildConversationsIndexer(taskFPDir)
+	// 先构建 conversation 索引。对象路径从 PostgreSQL 的 silica_object_index
+	// 枚举，再按 analysedDir 拼回完整位置，S3 模式不依赖 ListObjects。
+	idx, err := buildConversationsIndexer(db, analysedDir)
 	if err != nil {
 		util.RecordCommandRun("import-repo", startTime, 0, 0, 0, err)
 		return fmt.Errorf("构建conversation指纹索引失败: %w", err)

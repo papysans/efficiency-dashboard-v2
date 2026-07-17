@@ -3,9 +3,48 @@ package main
 import (
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/estimator"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestSilicaObjectRelativePath(t *testing.T) {
+	got := silicaObjectRelativePath("a7b1d72b-0842-485a-b93d-5d7e3f2e3ea1")
+	want := "task/conversation/a7b1d72b-0842-485a-b93d-5d7e3f2e3ea1.silica.json"
+	if got != want {
+		t.Fatalf("relative silica path = %q, want %q", got, want)
+	}
+}
+
+func TestIndexedTaskSilicaLocationS3Prefix(t *testing.T) {
+	base := "s3://chat-rag/efficiency-dashboard/analysed"
+	rel := "task/conversation/a7b1.silica.json"
+	got, err := indexedTaskSilicaLocation(base, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "s3://chat-rag/efficiency-dashboard/analysed/task/conversation/a7b1.silica.json"
+	if got != want {
+		t.Fatalf("indexed silica location = %q, want %q", got, want)
+	}
+}
+
+func TestIndexedTaskSilicaLocationRejectsNonRelativePaths(t *testing.T) {
+	base := "s3://chat-rag/efficiency-dashboard/analysed"
+	invalid := []string{
+		"s3://chat-rag/efficiency-dashboard/analysed/task/conversation/a.silica.json",
+		"/task/conversation/a.silica.json",
+		"../task/conversation/a.silica.json",
+		"task/content/a.json",
+	}
+	for _, objectPath := range invalid {
+		if _, err := indexedTaskSilicaLocation(base, objectPath); err == nil {
+			t.Errorf("expected invalid object_path %q to fail", objectPath)
+		} else if !strings.Contains(err.Error(), "object_path") {
+			t.Errorf("error for %q should identify object_path: %v", objectPath, err)
+		}
+	}
+}
 
 // TestLookupGroups 覆盖主分组 / work_dir_id 后备分组 / 合并 / 全不命中 四种情形。
 func TestLookupGroups(t *testing.T) {

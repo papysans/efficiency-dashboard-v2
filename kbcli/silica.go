@@ -8,9 +8,12 @@ import (
 	"kanban/kbcli/internal/appconfig"
 	"kanban/kbcli/internal/governance"
 	"kanban/kbcli/internal/logx"
+	"path"
 	"sort"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // convMeta 存储单个对话（conversation）的元数据，用于在组内标识一次AI交互。
@@ -182,29 +185,17 @@ func buildCommitParser(commitId string, fpHashes []string, totalLines int) *comm
 //     采用 endTime 最晚的对话作为归属（时间最近优先原则），这基于一个假设：
 //     越接近commit时间的对话，其生成代码被直接采纳的概率越高。
 //  4. 索引构建完成后，可通过 buildCandidateHashs 按时间窗口快速筛选候选指纹。
-func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) {
+func buildConversationsIndexer(db *gorm.DB, analysedDir string) (*conversationsIndexer, error) {
 	idx := &conversationsIndexer{
 		groups:   make(map[groupKey]groupIndexer),
 		wdGroups: make(map[wdKey]groupIndexer),
 	}
 
-	// 目录不存在时返回空索引，不报错（兼容增量分析场景）
-	if ok, err := storage.Exists(taskFPDir); err != nil {
-		return nil, err
-	} else if !ok {
-		return idx, nil
-	}
-
-	// 第一步：递归扫描所有 .silica.json 文件
-	var silicaFiles []string
-	err := storage.Walk(taskFPDir, func(path string, info storage.FileInfo) error {
-		if strings.HasSuffix(info.Name, ".silica.json") {
-			silicaFiles = append(silicaFiles, path)
-		}
-		return nil
-	})
+	// 第一步：从 PostgreSQL 索引枚举对象。S3 模式严禁回退到目录扫描，
+	// 因为线上对象存储只支持按 key 读写、不支持 ListObjects。
+	silicaFiles, err := indexedTaskSilicaFiles(db, analysedDir)
 	if err != nil {
-		return nil, fmt.Errorf("扫描task silica目录失败: %w", err)
+		return nil, err
 	}
 
 	// 第二步：逐个解析文件并构建索引
@@ -320,6 +311,64 @@ func buildConversationsIndexer(taskFPDir string) (*conversationsIndexer, error) 
 		convCount, missRepoCount, missStartTimeCount, missStartTimeCount)
 	logx.Infof("共[%d]个分组, [%d]个唯一哈希", len(idx.groups), hashCount)
 	return idx, nil
+}
+
+func indexedTaskSilicaFiles(db *gorm.DB, analysedDir string) ([]string, error) {
+	var rows []models.SilicaObjectIndex
+	if err := db.Order("session_id ASC").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("查询silica_object_index失败: %w", err)
+	}
+	if len(rows) > 0 {
+		files := make([]string, 0, len(rows))
+		for _, row := range rows {
+			loc, err := indexedTaskSilicaLocation(analysedDir, row.ObjectPath)
+			if err != nil {
+				return nil, fmt.Errorf("silica_object_index session=%s: %w", row.SessionId, err)
+			}
+			files = append(files, loc)
+		}
+		logx.Infof("从silica_object_index加载[%d]个对象路径", len(files))
+		return files, nil
+	}
+
+	if storage.IsS3(analysedDir) {
+		logx.Warnf("silica_object_index为空，S3模式跳过目录枚举；请先运行import-conv生成对象索引")
+		return nil, nil
+	}
+
+	// 本地旧部署可能已有 silica 文件但尚未生成数据库索引，保留一次兼容扫描。
+	taskFPDir := storage.Join(analysedDir, "task", "conversation")
+	if ok, err := storage.Exists(taskFPDir); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, nil
+	}
+	var files []string
+	if err := storage.Walk(taskFPDir, func(filePath string, info storage.FileInfo) error {
+		if strings.HasSuffix(info.Name, ".silica.json") {
+			files = append(files, filePath)
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("扫描本地task silica目录失败: %w", err)
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func indexedTaskSilicaLocation(analysedDir, objectPath string) (string, error) {
+	rel := strings.TrimSpace(strings.ReplaceAll(objectPath, "\\", "/"))
+	if rel == "" || storage.IsS3(rel) || path.IsAbs(rel) {
+		return "", fmt.Errorf("object_path必须是analysed_dir下的相对路径: %q", objectPath)
+	}
+	rel = path.Clean(rel)
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", fmt.Errorf("object_path越出analysed_dir: %q", objectPath)
+	}
+	if !strings.HasPrefix(rel, "task/conversation/") || !strings.HasSuffix(rel, ".silica.json") {
+		return "", fmt.Errorf("object_path不是task silica路径: %q", objectPath)
+	}
+	return storage.Join(analysedDir, rel), nil
 }
 
 // loadTaskSilicaFile 读取并解析单个task的silica数据文件。
