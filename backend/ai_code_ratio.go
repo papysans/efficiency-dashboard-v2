@@ -47,9 +47,16 @@ func calcRepoNeedAICodeRatio(aggs map[repoNeedAICodeAggKey]needAICodeAgg, repoAd
 	return calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
 }
 
+// AI 代码占比是「AI 覆盖行 / 总变更行」的原始度量，只依赖 commit 的有效行数（need_aggregate
+// 里按 commit 直接汇总 ai_covered_loc/total_loc_net，与 boundary 置信度无关）。因此这里【不】用
+// coverage_eligible 过滤——coverage_eligible = merged && 置信度(高/中)，那是提效比/基线是否可信的
+// 门槛，会把只有裸 commit（Low 置信度、未匹配 PR/branch/issue）的 need 整条滤掉，导致这些成员
+// AI 代码占比显示「-」。占比是事实数据，置信度高低无所谓（用户要求），故只保留 NOT outlier_flag
+// （防极端 LOC dump 拉偏）与 total_loc_net > 0（防除零）。提效比/日历口径仍在各自 SUM 里按
+// coverage_eligible 过滤，不受本改动影响。
 func needAICodeAggSelect() string {
-	return `COALESCE(SUM(ai_covered_loc) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND total_loc_net > 0), 0) AS ai_covered_loc,
-		COALESCE(SUM(total_loc_net) FILTER (WHERE coverage_eligible AND NOT outlier_flag AND total_loc_net > 0), 0) AS total_loc_net`
+	return `COALESCE(SUM(ai_covered_loc) FILTER (WHERE NOT outlier_flag AND total_loc_net > 0), 0) AS ai_covered_loc,
+		COALESCE(SUM(total_loc_net) FILTER (WHERE NOT outlier_flag AND total_loc_net > 0), 0) AS total_loc_net`
 }
 
 func applyNeedAICodeDateFilter(q *gorm.DB, startTime, endTime string) *gorm.DB {
