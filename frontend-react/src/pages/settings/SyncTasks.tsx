@@ -8,6 +8,7 @@ import type { ChatSyncTask } from '@/api/types'
 import { formatDateTimeShort } from '@/lib/formatters'
 import { Modal } from '@/components/ui/Modal'
 import { Tag, type TagTone } from '@/components/ui/Tag'
+import { formatShanghaiDayRange, toShanghaiSyncRange } from './syncDates'
 import SettingsLayout, {
   BTN_DANGER,
   BTN_GLASS,
@@ -33,13 +34,6 @@ const STATUS_TONE: Record<string, TagTone> = {
 
 const ACTIVE_STATUSES = new Set(['pending', 'running', 'retrying'])
 
-/** datetime-local 输入值 → ISO 8601（无效返回 null）。 */
-function toISO(local: string): string | null {
-  if (!local.trim()) return null
-  const d = new Date(local.trim())
-  return Number.isNaN(d.getTime()) ? null : d.toISOString()
-}
-
 function progressPercent(t: ChatSyncTask): number {
   if (!t.total_gaps) return t.status === 'completed' ? 100 : 0
   return Math.round((t.completed_gaps / t.total_gaps) * 100)
@@ -56,9 +50,8 @@ export default function SyncTasks() {
 
   // ---- 提交同步 ----
   const [sourceId, setSourceId] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
-  const [force, setForce] = useState(false)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitMsg, setSubmitMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -68,14 +61,9 @@ export default function SyncTasks() {
   }, [sourceId, enabledSources])
 
   async function handleSubmit() {
-    const start = toISO(startTime)
-    const end = toISO(endTime)
-    if (!start || !end) {
-      setSubmitMsg({ ok: false, text: '请完整选择开始和结束时间' })
-      return
-    }
-    if (start >= end) {
-      setSubmitMsg({ ok: false, text: '开始时间必须早于结束时间' })
+    const range = toShanghaiSyncRange(startDate, endDate)
+    if (!range) {
+      setSubmitMsg({ ok: false, text: '请选择有效的开始和结束日期，且开始日期不能晚于结束日期' })
       return
     }
     if (!sourceId) {
@@ -86,18 +74,16 @@ export default function SyncTasks() {
     setSubmitMsg(null)
     try {
       const res = await chatStats.submitSyncTask({
-        start_time: start,
-        end_time: end,
+        ...range,
         source_id: Number(sourceId),
-        force,
+        force: false,
       })
       setSubmitMsg({
         ok: true,
-        text: `同步任务已提交${force ? '（强制覆盖）' : ''}（数据源：${res?.source_name || sourceId}）`,
+        text: `同步任务已提交（数据源：${res?.source_name || sourceId}）`,
       })
-      setStartTime('')
-      setEndTime('')
-      setForce(false)
+      setStartDate('')
+      setEndDate('')
       await queryClient.invalidateQueries({ queryKey: ['chat-sync-tasks'] })
     } catch (e: unknown) {
       setSubmitMsg({ ok: false, text: e instanceof Error ? e.message : '提交失败' })
@@ -153,24 +139,19 @@ export default function SyncTasks() {
               ))}
             </select>
           </Field>
-          <Field label="开始时间">
-            <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={INPUT_CLS} />
+          <Field label="开始日期（含）">
+            <input type="date" value={startDate} max={endDate || undefined} onChange={(e) => setStartDate(e.target.value)} className={INPUT_CLS} />
           </Field>
-          <Field label="结束时间">
-            <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={INPUT_CLS} />
+          <Field label="结束日期（含）">
+            <input type="date" value={endDate} min={startDate || undefined} onChange={(e) => setEndDate(e.target.value)} className={INPUT_CLS} />
           </Field>
           <div className="flex items-end">
-            <button type="button" onClick={handleSubmit} disabled={submitting} className={force ? BTN_DANGER : BTN_PRIMARY}>
-              {submitting ? '提交中...' : force ? '强制覆盖同步' : '开始同步'}
+            <button type="button" onClick={handleSubmit} disabled={submitting} className={BTN_PRIMARY}>
+              {submitting ? '提交中...' : '开始同步'}
             </button>
           </div>
         </div>
-        <label className="inline-flex items-center gap-1.5 text-sm cursor-pointer select-none">
-          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} className="accent-rose-500 cursor-pointer" />
-          <span className={force ? 'text-rose-500' : 'text-gray-500 dark:text-gray-400'}>
-            强制覆盖模式：先删除所选日期的汇总数据，再重新计算写入
-          </span>
-        </label>
+        <p className="text-xs text-gray-500 dark:text-gray-400">按北京时间同步，开始和结束日期均包含。</p>
         {submitMsg && (
           <div className={`text-sm ${submitMsg.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
             {submitMsg.text}
@@ -253,7 +234,8 @@ export default function SyncTasks() {
                       </td>
                       <td className={TD}>
                         <span className="text-xs whitespace-nowrap">
-                          {formatDateTimeShort(t.req_start_time)} ~ {formatDateTimeShort(t.req_end_time)}
+                          {formatShanghaiDayRange(t.req_start_time, t.req_end_time) ||
+                            `${formatDateTimeShort(t.req_start_time)} ~ ${formatDateTimeShort(t.req_end_time)}`}
                         </span>
                       </td>
                       <td className={TD_NUM}>{t.total_rows_processed?.toLocaleString() ?? '-'}</td>
