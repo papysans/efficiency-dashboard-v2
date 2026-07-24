@@ -249,7 +249,9 @@ export interface UserV2Row {
   actual_work_min: number
   baseline_work_min: number
   work_ratio: number | null // 小数口径
+  /** 有效 commit 数：commits 直聚，与 silica 同过滤、同 commit_time 窗口。 */
   commit_count: number
+  /** 有效 commit 的 diff_lines 合计，与 silica 加权分母同源。 */
   commit_diff_lines: number
   cost: number
   tokens: number
@@ -365,6 +367,7 @@ export interface OrgV2Row {
   calendar_ratio: number | null // 小数口径
   work_ratio: number | null // 小数口径
   ai_code_ratio?: number | null // 小数口径
+  /** commits 直聚，与 silica 同过滤、同 commit_time 窗口。 */
   commit_count: number
   commit_diff_lines: number
   cost: number
@@ -565,6 +568,7 @@ export interface DeptMember {
   ai_code_ratio?: number | null // 小数口径
   /** 含硅量（指纹口径）：commits.silica 按 diff_lines 加权。与 ai_code_ratio 是两套口径，null=无可计入 commit。 */
   silica?: number | null // 小数口径
+  /** commits 直聚，与 silica 同过滤、同 commit_time 窗口。 */
   commit_count: number
   commit_diff_lines: number
   cost: number
@@ -583,6 +587,7 @@ export interface DeptMembersSummary {
   ai_code_ratio?: number | null // 小数口径
   /** 含硅量合计：Σ匹配行 / Σ总行 重算（非成员比值平均）。 */
   silica?: number | null // 小数口径
+  /** 成员 commits 直聚结果的合计，与 silica 同源。 */
   commit_count: number
   commit_diff_lines: number
   cost: number

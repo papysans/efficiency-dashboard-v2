@@ -1,21 +1,21 @@
-// 「个人 · 贡献」维度内容（看板派生，不接平台 / chatStats）。
-// 口径决策⑤：贡献用看板派生（提交 / 代码行 / 合并需求），平台 tokens=消耗量≠贡献，**故本组件零平台请求**。
+// 「个人 · 贡献」维度内容（看板数据，不接平台 / chatStats）。
+// 提交/代码行汇总按 commits 直聚，合并需求与周趋势沿用看板派生；平台 tokens=消耗量≠贡献，故本组件零平台请求。
 //
 // 两态由壳的聚焦对象（useEntityFocus().object）决定：
 //   聚合态(object 空)：顶部 KPI（总合并需求 / 总代码行 / 总提交） + 用户贡献排行表
 //     （用户 / 合并需求 / 代码行 / 提交 / AI 占比），点行下钻进 /user/:id 独立详情，或在壳里选对象进聚焦态。
 //   聚焦态(object=某 userId)：复用 UserDetail（embedded），它已含个人合并需求 / 代码行 / 提交 / 周明细 / 关联 Need / Commit。
 //
-// 时间线：贡献维度**有现成的「按周贡献」时序**——/v2/efficiency 是 用户×周 聚合行（UserProductivityV2），
-//   每行带 week_start + 贡献计数（merged_need_count / commit_diff_lines / commit_count）。本组件复用它画
-//   按周贡献趋势（ContributionTrend，多系列：合并需求 / 提交 / 代码行）。
+// 时间线：/v2/efficiency 是用户×周的 Need 关联聚合行（UserProductivityV2），每行带 week_start +
+//   贡献计数（merged_need_count / commit_diff_lines / commit_count）。本组件复用它画按周贡献趋势，
+//   与 getAllUsersV2 中 commits 直聚的提交/代码行汇总是两套口径，不要求周值加总后相等。
 //     聚合态(无 object)：拉全量周行（不传 userId）→ 按 week_start 分桶**求和** → 每周公司级贡献趋势。
 //     聚焦态(object=userId)：拉该用户周行（传 userId）→ 该用户按周贡献趋势（与 UserDetail 自带周趋势互补，口径一致）。
 //   不复用 DimensionTrend：那是 efficiency_ratio **平均/百分比/单系列/单 Y 轴** 口径，硬塞计数会破坏其 6 个调用方；
 //   贡献是 **求和/计数/多系列**，且 commit_diff_lines 量级远大于需求/提交数 → 需双 Y 轴。故用 platformShared 同源的
 //   低层原语（getPalette + EChart + ISO 周工具）自建一个计数趋势，空态文案与 DimensionTrend 对齐（积累中 / 单周提示）。
 //
-// 数据：全局时间范围（useViewState().timeRange）→ getAllUsersV2（用户列表全量），与 UserList 同口径同获取方式。
+// 汇总数据：全局时间范围（useViewState().timeRange）→ getAllUsersV2（用户列表全量），与 UserList 同口径同获取方式。
 //   用户名解析用 useUserNameMap（user_name 多为 UUID，用 commits 的 git_user_name 兜底）。
 //   口径：ai_code_ratio / calendar_ratio / work_ratio 均为**小数口径** → RatioPill（×100）；merged/commit/diff 为计数 → formatNumber。
 import { useMemo } from 'react'
@@ -53,7 +53,7 @@ function shortName(name: string): string {
   return n.length > 20 ? `${n.slice(0, 20)}…` : n
 }
 
-// ---- 按周贡献趋势（看板派生 · /v2/efficiency 周表）----
+// ---- 按周贡献趋势（Need 关联 · /v2/efficiency 周表）----
 
 interface ContribWeekPoint {
   key: string
@@ -82,7 +82,7 @@ function aggregateContribByWeek(rows: UserProductivityV2[]): ContribWeekPoint[] 
 }
 
 /**
- * 通用「按周贡献趋势」卡片（看板派生，多系列计数）。
+ * 通用「按周贡献趋势」卡片（Need 关联周表，多系列计数）。
  * 量级问题：commit_diff_lines 远大于合并需求 / 提交数 → 代码行走**第二 Y 轴**，避免压扁需求/提交两条线。
  * 空态文案与 DimensionTrend 对齐（unavailable / 积累中 / 单周提示），不编造数据。
  */
@@ -90,7 +90,7 @@ function ContributionTrend({
   rows,
   loading = false,
   error = null,
-  title = '贡献趋势',
+  title = '贡献趋势（Need 关联）',
   subtitle,
 }: {
   rows: UserProductivityV2[] | undefined
@@ -248,7 +248,7 @@ function FocusedContribution({ object, objectLabel }: { object: string; objectLa
     () => ({ startDate: formatDateParam(timeRange[0]), endDate: formatDateParam(timeRange[1]), userId: object }),
     [timeRange, object],
   )
-  // 该用户周表行（/v2/efficiency 支持 userId 过滤）→ 顶部贡献周趋势，与聚合态口径一致。
+  // 该用户周表行（/v2/efficiency 支持 userId 过滤）→ 顶部 Need 关联贡献周趋势。
   const trendQ = useEfficiencyV2(dateParams, object !== '')
   return (
     <div className="flex flex-col gap-4">
@@ -256,11 +256,11 @@ function FocusedContribution({ object, objectLabel }: { object: string; objectLa
         rows={trendQ.data?.data}
         loading={trendQ.isLoading}
         error={trendQ.error ? (trendQ.error as Error).message : null}
-        subtitle={`个人 · ${objectLabel || object} · 按 ISO 周 · 看板派生`}
+        subtitle={`个人 · ${objectLabel || object} · 按 ISO 周`}
       />
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        贡献口径 = <b className="font-medium text-gray-600 dark:text-gray-300">看板派生</b>（合并需求 / 代码行 / 提交）。
-        平台（chat-stats）的 tokens 为消耗量≠贡献，故本维度不接入平台。下方为 {objectLabel || object} 的个人贡献明细。
+        汇总中的 Commit / 代码行按 <b className="font-medium text-gray-600 dark:text-gray-300">commits 直聚</b>；
+        上方趋势沿用 Need 关联周表，两者不要求加总一致。下方为 {objectLabel || object} 的个人贡献明细。
       </p>
       <UserDetail userIdProp={object} dateRangeProp={timeRange} embedded />
     </div>
@@ -281,13 +281,13 @@ function AggregateContribution() {
   const { data, isLoading, error } = useAllUsers(dateParams)
   const rows = useMemo<UserV2Row[]>(() => data ?? [], [data])
 
-  // 按周贡献趋势：/v2/efficiency 不传 userId = 全量 用户×周 行 → 按周求和（与排行/KPI 互补，趋势是时序维）。
+  // 按周贡献趋势：/v2/efficiency 不传 userId = 全量用户×周的 Need 关联行 → 按周求和。
   const trendQ = useEfficiencyV2(dateParams)
 
   // 贡献排行：按合并需求倒序（null 沉底）—— 贡献维度以「交付的需求」为首要排序键。
   const ranked = useMemo(() => sortRows(rows, (r) => r.merged_need_count, true), [rows])
 
-  // KPI：总合并需求 / 总代码行 / 总提交（+ 贡献人数做上下文）。
+  // KPI：合并需求沿用周表聚合；总代码行/总提交来自 commits 直聚（+ 贡献人数做上下文）。
   const kpi = useMemo(() => {
     const contributors = rows.length
     const merged = rows.reduce((s, r) => s + (r.merged_need_count || 0), 0)
@@ -314,17 +314,17 @@ function AggregateContribution() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* 时间线：复用 /v2/efficiency 周表（用户×周）按周求和 → 公司级按周贡献趋势（看板派生）。 */}
+      {/* 时间线：复用 /v2/efficiency 的 Need 关联周表按周求和。 */}
       <ContributionTrend
         rows={trendQ.data?.data}
         loading={trendQ.isLoading}
         error={trendQ.error ? (trendQ.error as Error).message : null}
-        subtitle="全部用户 · 按 ISO 周 · 看板派生"
+        subtitle="全部用户 · 按 ISO 周"
       />
 
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        贡献口径 = <b className="font-medium text-gray-600 dark:text-gray-300">看板派生</b>（合并需求 / 代码行 / 提交）。
-        平台（chat-stats）的 tokens 为消耗量≠贡献，故本维度不接入平台。
+        KPI / 排行中的 Commit 与代码行按 <b className="font-medium text-gray-600 dark:text-gray-300">commits 直聚</b>；
+        上方趋势沿用 Need 关联周表，两者不要求加总一致。
       </p>
 
       {/* KPI */}
@@ -336,7 +336,7 @@ function AggregateContribution() {
       </div>
 
       {/* 排行表 */}
-      <ChartCard title="个人贡献排行（看板派生）" sub="按合并需求倒序，点行查看个人明细">
+      <ChartCard title="个人贡献排行（区间汇总）" sub="按合并需求倒序，点行查看个人明细">
         <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur">

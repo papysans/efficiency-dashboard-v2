@@ -47,11 +47,12 @@ func weekStart(s string) time.Time {
 func seedE2EScreenshotScenario(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
-	// 周表：三个人都有看板活动（has_kanban_data=true，Commit/代码行有值）。
+	// 周表：三个人都有看板活动。u-dengbin 故意保留 need 反推得到的 Commit/代码行 0，
+	// 用于验证用户汇总会改取 commits 直聚的 3/240。
 	upv := []models.UserProductivityV2{
-		// 邓彬型：合并需求 1、Commit 3、代码行 240，但 need 侧配不上（见下方 needs 只给 u-full）。
+		// 邓彬型：合并需求 1，但 need 侧配不上 commit（见下方 needs 只给 u-full）。
 		{UserProductivityV2Id: "w-dengbin", WeekStart: weekStart("2026-07-13"), UserId: "u-dengbin", UserName: "邓彬",
-			MergedNeedCount: 1, CommitCount: 3, CommitDiffLines: 240},
+			MergedNeedCount: 1, CommitCount: 0, CommitDiffLines: 0},
 		// 真没用 AI 型：有提交，但 commit 指纹一行没中。
 		{UserProductivityV2Id: "w-noai", WeekStart: weekStart("2026-07-13"), UserId: "u-noai", UserName: "手写型",
 			MergedNeedCount: 1, CommitCount: 2, CommitDiffLines: 180},
@@ -79,12 +80,12 @@ func seedE2EScreenshotScenario(t *testing.T, db *gorm.DB) {
 		t.Fatalf("seed needs: %v", err)
 	}
 
-	// commits：含硅量的唯一数据源，不经 need 边界。
+	// commits：含硅量与用户提交指标的唯一数据源，不经 need 边界。
 	commits := []models.Commit{
 		// 邓彬：3 个 commit 共 240 行，其中 150 行指纹命中 → 150/240 = 0.625
-		{CommitId: "c-d1", UserId: "u-dengbin", CommitTime: ts("2026-07-14T10:00:00Z"), DiffLines: 100, Silica: 0.8},  // 80
-		{CommitId: "c-d2", UserId: "u-dengbin", CommitTime: ts("2026-07-14T14:00:00Z"), DiffLines: 100, Silica: 0.6},  // 60
-		{CommitId: "c-d3", UserId: "u-dengbin", CommitTime: ts("2026-07-15T09:00:00Z"), DiffLines: 40, Silica: 0.25},  // 10
+		{CommitId: "c-d1", UserId: "u-dengbin", CommitTime: ts("2026-07-14T10:00:00Z"), DiffLines: 100, Silica: 0.8}, // 80
+		{CommitId: "c-d2", UserId: "u-dengbin", CommitTime: ts("2026-07-14T14:00:00Z"), DiffLines: 100, Silica: 0.6}, // 60
+		{CommitId: "c-d3", UserId: "u-dengbin", CommitTime: ts("2026-07-15T09:00:00Z"), DiffLines: 40, Silica: 0.25}, // 10
 		// 手写型：有行数，零命中 → 0（不是 nil）
 		{CommitId: "c-n1", UserId: "u-noai", CommitTime: ts("2026-07-14T10:00:00Z"), DiffLines: 80, Silica: 0},
 		{CommitId: "c-n2", UserId: "u-noai", CommitTime: ts("2026-07-14T11:00:00Z"), DiffLines: 100, Silica: 0},
@@ -149,13 +150,13 @@ func TestE2E_UsersAPI_SilicaFillsWhereAICodeRatioIsDash(t *testing.T) {
 	}
 
 	// ① 邓彬型——本次改动的核心目标：
-	//    AI 代码占比 nil（前端 '-'，与截图一致），含硅量有值。
+	//    AI 代码占比 nil（前端 '-'，与截图一致），提交指标与含硅量均来自 commits 直聚。
 	air, sil, cc, cdl := get("u-dengbin")
 	if air != nil {
 		t.Fatalf("u-dengbin 的 ai_code_ratio 应为 nil（need 侧配不上），got %v", *air)
 	}
 	if cc != 3 || cdl != 240 {
-		t.Fatalf("u-dengbin 周表指标应为 commit=3/lines=240，got %d/%d", cc, cdl)
+		t.Fatalf("u-dengbin commits 直聚应为 commit=3/lines=240，got %d/%d", cc, cdl)
 	}
 	if sil == nil {
 		t.Fatal("u-dengbin 的 silica 不应为 nil —— 换成含硅量后本行应该出数（本次改动的核心诉求）")
@@ -218,8 +219,10 @@ func TestE2E_UsersAPI_SilicaRespectsDateWindow(t *testing.T) {
 
 	var resp struct {
 		Data []struct {
-			UserId string   `json:"user_id"`
-			Silica *float64 `json:"silica"`
+			UserId          string   `json:"user_id"`
+			CommitCount     int64    `json:"commit_count"`
+			CommitDiffLines int64    `json:"commit_diff_lines"`
+			Silica          *float64 `json:"silica"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -228,6 +231,10 @@ func TestE2E_UsersAPI_SilicaRespectsDateWindow(t *testing.T) {
 	for _, row := range resp.Data {
 		if row.UserId != "u-dengbin" {
 			continue
+		}
+		if row.CommitCount != 2 || row.CommitDiffLines != 200 {
+			t.Fatalf("窗口收窄后 commit 聚合 got %d/%d, want 2/200（c-d3 应被日期过滤排除）",
+				row.CommitCount, row.CommitDiffLines)
 		}
 		if row.Silica == nil {
 			t.Fatal("u-dengbin 在窗口内应有含硅量")
@@ -238,4 +245,68 @@ func TestE2E_UsersAPI_SilicaRespectsDateWindow(t *testing.T) {
 		return
 	}
 	t.Fatal("返回里没有 u-dengbin")
+}
+
+// 用户详情页的「最近 Commit」列表必须与顶部「Commit / 代码行」卡同口径——
+// 否则会复现「下面列了 commit、上面卡显示 0」的自相矛盾（治理排除 / 0 行 commit 正是此类）。
+func TestE2E_UserDetail_CommitListMatchesCardCaliber(t *testing.T) {
+	db := resetE2EDB(t)
+
+	if err := db.Create(&[]models.UserProductivityV2{{
+		UserProductivityV2Id: "w-z", WeekStart: weekStart("2026-07-13"),
+		UserId: "u-zang", UserName: "臧某", MergedNeedCount: 0,
+	}}).Error; err != nil {
+		t.Fatalf("seed upv: %v", err)
+	}
+	// 一条正常 commit + 一条治理排除 + 一条 0 行：后两条既不该进卡、也不该进列表。
+	if err := db.Create(&[]models.Commit{
+		{CommitId: "c-ok", UserId: "u-zang", CommitTime: ts("2026-07-14T10:00:00Z"), DiffLines: 39, Silica: 0.641},
+		{CommitId: "c-excl", UserId: "u-zang", CommitTime: ts("2026-07-14T11:00:00Z"), DiffLines: 500, Silica: 1.0, ExcludedFlag: true},
+		{CommitId: "c-zero", UserId: "u-zang", CommitTime: ts("2026-07-14T12:00:00Z"), DiffLines: 0, Silica: 0},
+	}).Error; err != nil {
+		t.Fatalf("seed commits: %v", err)
+	}
+
+	prev := statDB
+	statDB = db
+	defer func() { statDB = prev }()
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/api/v2/users/:userId", getUserV2DetailNative)
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/users/u-zang?startDate=2026-07-01&endDate=2026-07-31", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("HTTP %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Summary struct {
+			CommitCount     int64 `json:"commit_count"`
+			CommitDiffLines int64 `json:"commit_diff_lines"`
+		} `json:"summary"`
+		Commits []struct {
+			CommitId string `json:"commit_id"`
+		} `json:"commits"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v — %s", err, w.Body.String())
+	}
+
+	// 卡：只计正常那条
+	if resp.Summary.CommitCount != 1 || resp.Summary.CommitDiffLines != 39 {
+		t.Fatalf("汇总卡应为 1/39，got %d/%d", resp.Summary.CommitCount, resp.Summary.CommitDiffLines)
+	}
+	// 列表：条数必须与卡一致，且不含被排除/0 行的
+	if len(resp.Commits) != int(resp.Summary.CommitCount) {
+		ids := make([]string, 0, len(resp.Commits))
+		for _, c := range resp.Commits {
+			ids = append(ids, c.CommitId)
+		}
+		t.Fatalf("列表条数 %v 与卡 %d 不一致（口径漂移）", ids, resp.Summary.CommitCount)
+	}
+	if resp.Commits[0].CommitId != "c-ok" {
+		t.Fatalf("列表应只含 c-ok，got %s", resp.Commits[0].CommitId)
+	}
 }

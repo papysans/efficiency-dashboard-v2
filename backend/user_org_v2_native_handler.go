@@ -27,8 +27,8 @@ type UserV2Row struct {
 	ActualWorkMin       float64  `json:"actual_work_min"`
 	BaselineWorkMin     float64  `json:"baseline_work_min"`
 	WorkRatio           *float64 `json:"work_ratio"`
-	CommitCount         int64    `json:"commit_count"`
-	CommitDiffLines     int64    `json:"commit_diff_lines"`
+	CommitCount         int64    `json:"commit_count"`      // commits 直聚，与含硅量同过滤、同 commit_time 窗口
+	CommitDiffLines     int64    `json:"commit_diff_lines"` // commits.diff_lines 直聚，与含硅量分母同源
 	Cost                float64  `json:"cost"`
 	Tokens              int64    `json:"tokens"`
 	ConfidenceLimited   bool     `json:"confidence_limited"`
@@ -74,12 +74,10 @@ type OrgsV2NativeResponse struct {
 	NoOrgMapping bool       `json:"no_org_mapping"`
 }
 
-// aggregateUsersV2 把 user_productivity_v2 的周行按用户聚合。
-func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
-	agg, err := QueryEfficiencyV2Aggregate(statDB, startDate, endDate, userID)
-	if err != nil {
-		return nil, err
-	}
+// parseCommitTimeWindow 把 YYYY-MM-DD 的起止日期转成 RFC3339 时间串，供 commits 侧
+// （含硅量聚合 / 用户详情 commit 列表）共用，保证同一请求下各处窗口完全一致。
+// 解析失败或为空 → 返回空串，调用方按「不限」处理。
+func parseCommitTimeWindow(startDate, endDate string) (string, string) {
 	var startTime, endTime string
 	if start, err := parseStartDate(startDate); err == nil && start != nil {
 		startTime = start.Format(time.RFC3339)
@@ -87,12 +85,22 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 	if end, err := parseEndDate(endDate); err == nil && end != nil {
 		endTime = end.Format(time.RFC3339)
 	}
+	return startTime, endTime
+}
+
+// aggregateUsersV2 把 user_productivity_v2 的周行按用户聚合；提交数与代码行改由 commits 直聚。
+func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
+	agg, err := QueryEfficiencyV2Aggregate(statDB, startDate, endDate, userID)
+	if err != nil {
+		return nil, err
+	}
+	startTime, endTime := parseCommitTimeWindow(startDate, endDate)
 	aiAggs, err := queryUserNeedAICodeAggs(statDB, startTime, endTime, strings.TrimSpace(userID))
 	if err != nil {
 		return nil, err
 	}
-	// 含硅量走 commits 直聚（不经 need 边界/caliber 过滤），与 AI 代码占比是两套独立口径：
-	// 前者是指纹匹配（AI 产出行落地了多少），后者是时间窗归因（提交是否发生在会话窗内）。
+	// 含硅量、提交数与代码行走同一次 commits 直聚（不经 need 边界/caliber 过滤）；
+	// AI 代码占比仍是独立的 need 时间窗归因口径。
 	silicaAggs, err := queryUserSilicaAggs(statDB, startTime, endTime, strings.TrimSpace(userID))
 	if err != nil {
 		return nil, err
@@ -117,8 +125,6 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 		r.BaselineCalendarMin += w.BaselineCalendarMin
 		r.ActualWorkMin += w.ActualActiveWorkCorrectedMin
 		r.BaselineWorkMin += w.BaselineFusedWorkMin
-		r.CommitCount += w.CommitCount
-		r.CommitDiffLines += w.CommitDiffLines
 		r.Cost += w.Cost
 		r.Tokens += w.UpstreamTokens + w.DownstreamTokens
 		if w.ConfidenceLimited {
@@ -145,6 +151,8 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 			r.AICodeRatio = calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
 		}
 		if agg, ok := silicaAggs[uid]; ok {
+			r.CommitCount = agg.CommitCount
+			r.CommitDiffLines = agg.SilicaWeight
 			r.silicaWeighted = agg.SilicaWeighted
 			r.silicaWeight = agg.SilicaWeight
 			r.Silica = calcSilicaRatio(agg.SilicaWeighted, agg.SilicaWeight)
@@ -237,14 +245,13 @@ func getUserV2DetailNative(c *gin.Context) {
 		resp.Needs = needResp.Data
 	}
 
-	// 该用户的 Commit（按时间倒序取最近 100 条）
-	cq := statDB.Model(&models.Commit{}).Where("user_id = ?", userID)
-	if start, e := parseStartDate(startDate); e == nil && start != nil {
-		cq = cq.Where("commit_time >= ?", *start)
-	}
-	if endT, e := parseEndDate(endDate); e == nil && endT != nil {
-		cq = cq.Where("commit_time <= ?", *endT)
-	}
+	// 该用户的 Commit（按时间倒序取最近 100 条）。
+	// ⚠️ 过滤必须与 queryUserSilicaAggs 完全一致（复用 applySilicaCommitFilter，别各写各的）：
+	// 顶部「Commit / 代码行」卡与含硅量都走那套口径，本列表若不同口径，就会出现
+	// 「下面列了 commit、上面卡显示 0」的自相矛盾（治理排除 / 0 行的 commit 正是此类）。
+	cStart, cEnd := parseCommitTimeWindow(startDate, endDate)
+	cq := applySilicaCommitFilter(statDB.Model(&models.Commit{})).Where("user_id = ?", userID)
+	cq = applySilicaDateFilter(cq, cStart, cEnd)
 	_ = cq.Order("commit_time DESC").Limit(100).Find(&resp.Commits).Error
 
 	c.JSON(http.StatusOK, resp)

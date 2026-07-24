@@ -103,13 +103,27 @@ func TestQueryUserSilicaAggs_RealDB(t *testing.T) {
 				uid, *got, want, agg.SilicaWeighted, agg.SilicaWeight)
 		}
 	}
+	assertCommitAgg := func(uid string, wantCount, wantLines int64) {
+		t.Helper()
+		agg, ok := aggs[uid]
+		if !ok {
+			t.Fatalf("%s 应出现在聚合结果里", uid)
+		}
+		if agg.CommitCount != wantCount || agg.SilicaWeight != wantLines {
+			t.Fatalf("%s commit 聚合 got %d/%d, want %d/%d",
+				uid, agg.CommitCount, agg.SilicaWeight, wantCount, wantLines)
+		}
+	}
 
 	// 加权而非平均
 	assertRatio("u-alice", 6.0/303.0)
+	assertCommitAgg("u-alice", 2, 303)
 	// 治理排除的 commit 不计入
 	assertRatio("u-bob", 0.5)
+	assertCommitAgg("u-bob", 1, 100)
 	// 零匹配是 0，不是无数据
 	assertRatio("u-carol", 0)
+	assertCommitAgg("u-carol", 1, 240)
 
 	// diff_lines=0 的用户不进结果（否则会得到一个分母为 0 的假行）
 	if _, ok := aggs["u-dave"]; ok {
@@ -140,6 +154,9 @@ func TestQueryUserSilicaAggs_ScopedToSingleUser(t *testing.T) {
 	if got := calcSilicaRatio(agg.SilicaWeighted, agg.SilicaWeight); got == nil || *got != 0.5 {
 		t.Fatalf("u-bob 含硅量 got %v, want 0.5", got)
 	}
+	if agg.CommitCount != 1 || agg.SilicaWeight != 100 {
+		t.Fatalf("u-bob commit 聚合 got %d/%d, want 1/100", agg.CommitCount, agg.SilicaWeight)
+	}
 }
 
 // 无日期窗口时不应漏掉任何用户——防止有人给 applySilicaDateFilter 加上"默认近 N 天"。
@@ -153,5 +170,8 @@ func TestQueryUserSilicaAggs_NoDateFilterIncludesAll(t *testing.T) {
 	}
 	if _, ok := aggs["u-eve"]; !ok {
 		t.Fatal("无日期过滤时 u-eve 应被包含")
+	}
+	if agg := aggs["u-eve"]; agg.CommitCount != 1 || agg.SilicaWeight != 50 {
+		t.Fatalf("u-eve commit 聚合 got %d/%d, want 1/50", agg.CommitCount, agg.SilicaWeight)
 	}
 }

@@ -160,9 +160,9 @@ function DeptKanbanCostCard({
 
 /**
  * 「会话费用 · 单位产出成本」卡（个人维度）。
- * 同源口径：分子分母都看板 —— 分子 = 看板会话费用(cost=tasks.cost 聚合)；分母 = 看板产出（合并需求 / 生成代码行）。
+ * 看板口径：分子 = 看板会话费用(cost=tasks.cost 聚合)；分母 = 看板产出（合并需求 / commits.diff_lines 直聚）。
  *   ¥/需求 = 看板会话费用 ÷ 看板合并需求数
- *   ¥/千行 = 看板会话费用 ÷ 看板生成代码行 ×1000
+ *   ¥/千行 = 看板会话费用 ÷ 有效 commit 代码行 ×1000
  * 聚合=总量÷总量；聚焦=该用户÷该用户。分母 0 或缺数据 → 显 '-'（不编造）。
  * 会话费用 = 任务会话的模型调用费用，非人天×单价的人力成本折算（看板无人天单价）。
  */
@@ -196,7 +196,7 @@ function CostEfficiencyCard({
             </svg>
           </span>
         </h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">{caption} · 看板同源</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500">{caption} · 看板口径</span>
       </div>
       {loading ? (
         <div className="grid grid-cols-2 gap-3">
@@ -216,15 +216,15 @@ function CostEfficiencyCard({
             hint="会话费用(看板) ÷ 看板合并需求数"
           />
           <MetricCard
-            label="¥ / 千行生成代码"
+            label="¥ / 千行提交代码"
             value={perKLoc != null ? fmtYuan(perKLoc) : '-'}
-            hint="会话费用(看板) ÷ 看板生成代码行 ×1000"
+            hint="会话费用(看板) ÷ commits.diff_lines ×1000"
           />
         </div>
       )}
       <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-        看板同源口径：分子 = <b className="text-gray-600 dark:text-gray-300">会话费用（看板）</b>（tasks.cost 聚合），
-        分母 = <b className="text-gray-600 dark:text-gray-300">看板产出</b>（合并需求 / 代码行），分子分母同源。
+        看板口径：分子 = <b className="text-gray-600 dark:text-gray-300">会话费用</b>（tasks.cost 聚合），
+        分母 = <b className="text-gray-600 dark:text-gray-300">产出</b>（合并需求 / commits 直聚代码行），两者关联边界独立。
         与平台 AI 花费（Token 调用花费）不是一回事，勿混读。
       </p>
     </section>
@@ -318,7 +318,7 @@ function CostContent({
   const focusedRow = focused ? pickFocusedRow(focusQ.data, object) : null
 
   // 会话费用卡的看板侧分子(cost)+产出分母：区间全量用户行（与 UserContribution 同口径同获取方式）。
-  //   分子分母同源(都看板)：cost=tasks.cost 聚合；产出=合并需求/生成代码行。
+  //   cost=tasks.cost 聚合；合并需求来自周表，代码行来自 commits 直聚，三者关联边界独立。
   //   聚合 = 全量求和；聚焦 = 取 user_id == object 的那行（universal_id 与看板 user_id 同源）。
   const kanbanUsersQ = useAllUsers({ startDate: formatDateParam(start), endDate: formatDateParam(end) })
   const kanbanOutput = useMemo(() => {
@@ -352,7 +352,7 @@ function CostContent({
 
   const rows = rankQ.data?.data ?? []
 
-  // 会话费用卡：分子分母同源(都看板)——分子=看板 cost(tasks.cost 聚合)，分母=看板产出。仅依赖看板用户行。
+  // 会话费用卡：分子分母都取看板库，但 tasks.cost 与 commits 代码行的关联边界独立。
   const costEffLoading = kanbanUsersQ.isLoading
 
   return (

@@ -61,12 +61,14 @@ func calcRepoNeedAICodeRatio(aggs map[repoNeedAICodeAggKey]needAICodeAgg, repoAd
 type silicaAgg struct {
 	SilicaWeighted float64 `gorm:"column:silica_weighted"`
 	SilicaWeight   int64   `gorm:"column:silica_weight"`
+	CommitCount    int64   `gorm:"column:commit_count"`
 }
 
 type userSilicaAgg struct {
 	UserId         string  `gorm:"column:user_id"`
 	SilicaWeighted float64 `gorm:"column:silica_weighted"`
 	SilicaWeight   int64   `gorm:"column:silica_weight"`
+	CommitCount    int64   `gorm:"column:commit_count"`
 }
 
 // calcSilicaRatio 把聚合中间量还原成比值；无有效行数时返回 nil（前端渲染 '-'，
@@ -79,7 +81,7 @@ func calcSilicaRatio(weighted float64, weight int64) *float64 {
 	return &r
 }
 
-// silicaAggSelect 是含硅量聚合的 SELECT 片段。
+// silicaAggSelect 是含硅量及其同源 commit 计数的聚合 SELECT 片段。
 //
 // 口径说明：含硅量是「AI 产出的代码行有多少落到了 commit 里」的原始度量，直接取自
 // commits.silica（对话 diff 指纹 ∩ commit diff 指纹），**不经过 need 边界**。因此这里
@@ -89,7 +91,8 @@ func calcSilicaRatio(weighted float64, weight int64) *float64 {
 // 不含分支。与 needAICodeAggSelect 解绑置信度门槛的思路一致。
 func silicaAggSelect() string {
 	return `COALESCE(SUM(silica * diff_lines), 0) AS silica_weighted,
-		COALESCE(SUM(diff_lines), 0) AS silica_weight`
+		COALESCE(SUM(diff_lines), 0) AS silica_weight,
+		COUNT(*) AS commit_count`
 }
 
 // applySilicaCommitFilter 是含硅量聚合的公共过滤：治理排除的 commit 不计，
@@ -110,7 +113,7 @@ func applySilicaDateFilter(q *gorm.DB, startTime, endTime string) *gorm.DB {
 	return q
 }
 
-// queryUserSilicaAggs 按 commits.user_id 聚合含硅量。
+// queryUserSilicaAggs 按 commits.user_id 同时聚合含硅量、有效提交数与代码行。
 // userID 非空时只查该用户；返回 map 缺 key 表示该用户窗口内无可计入 commit（比值为 nil）。
 func queryUserSilicaAggs(db *gorm.DB, startTime, endTime, userID string) (map[string]silicaAgg, error) {
 	var rows []userSilicaAgg
@@ -126,7 +129,11 @@ func queryUserSilicaAggs(db *gorm.DB, startTime, endTime, userID string) (map[st
 	}
 	result := make(map[string]silicaAgg, len(rows))
 	for _, row := range rows {
-		result[row.UserId] = silicaAgg{SilicaWeighted: row.SilicaWeighted, SilicaWeight: row.SilicaWeight}
+		result[row.UserId] = silicaAgg{
+			SilicaWeighted: row.SilicaWeighted,
+			SilicaWeight:   row.SilicaWeight,
+			CommitCount:    row.CommitCount,
+		}
 	}
 	return result, nil
 }

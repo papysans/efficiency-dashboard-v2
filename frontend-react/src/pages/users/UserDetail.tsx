@@ -156,12 +156,13 @@ export default function UserDetail({ userIdProp, dateRangeProp, embedded = false
         <MetricCard
           label="Commit / 代码行"
           value={`${summary?.commit_count ?? 0} / ${formatNumber(summary?.commit_diff_lines, 0)}`}
+          hint="commits 直聚"
         />
       </section>
 
       {/* 周明细 + 周趋势 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Panel title="周明细" hint={`${weeks.length} 周`} bodyClass="overflow-x-auto">
+        <Panel title="周明细" hint={`${weeks.length} 周 · Need 关联口径`} bodyClass="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-200/50 dark:border-white/10">
@@ -170,7 +171,7 @@ export default function UserDetail({ userIdProp, dateRangeProp, embedded = false
                 <th className={TH_NUM}>活跃</th>
                 <th className={TH}>日历提效</th>
                 <th className={TH}>人力提效</th>
-                <th className={TH_NUM}>Commit</th>
+                <th className={TH_NUM}>关联 Commit</th>
                 <th className={TH}>置信</th>
               </tr>
             </thead>
