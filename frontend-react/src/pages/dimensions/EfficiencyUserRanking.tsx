@@ -15,6 +15,7 @@ import type { UserV2Row } from '@/api/types'
 import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { formatDateParam } from '@/lib/date'
 import { formatNumber, formatV2Ratio } from '@/lib/formatters'
+import { glossaryTip } from '@/lib/glossary'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { SortableTh } from '@/components/ui/SortableTh'
@@ -31,7 +32,7 @@ function shortName(name: string): string {
 }
 
 // 仅效率列参与排序（snake_case，纯客户端，不传后端）。
-const NUMERIC_FIELDS = new Set<string>(['calendar_ratio', 'work_ratio', 'calendar_saved_days', 'merged_need_count'])
+const NUMERIC_FIELDS = new Set<string>(['calendar_ratio', 'work_ratio', 'calendar_saved_days', 'merged_need_count', 'silica'])
 
 /** 该用户日历节省人天 = (baseline_calendar - actual_calendar) / 1440；非正 → null 沉底。 */
 function calendarSavedDays(row: UserV2Row): number | null {
@@ -166,6 +167,9 @@ export default function EfficiencyUserRanking({ timeRange }: { timeRange: [strin
                   <th className={TH}>
                     <SortableTh field="work_ratio" label="人力提效比" active={isSortActive('work_ratio')} desc={isSortDesc('work_ratio')} onSort={onSortChange} />
                   </th>
+                  <th className={TH} title={glossaryTip('silica')}>
+                    <SortableTh field="silica" label="含硅量" active={isSortActive('silica')} desc={isSortDesc('silica')} onSort={onSortChange} />
+                  </th>
                   <th className={TH_NUM}>
                     <span className="inline-flex justify-end w-full">
                       <SortableTh field="calendar_saved_days" label="节省（人天）" numeric active={isSortActive('calendar_saved_days')} desc={isSortDesc('calendar_saved_days')} onSort={onSortChange} />
@@ -182,14 +186,14 @@ export default function EfficiencyUserRanking({ timeRange }: { timeRange: [strin
                 {isLoading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="border-b border-gray-100/50 dark:border-white/5">
-                      <td className={TD} colSpan={6}>
+                      <td className={TD} colSpan={7}>
                         <div className="skeleton h-6 rounded" />
                       </td>
                     </tr>
                   ))
                 ) : sortedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <EmptyHint compact />
                     </td>
                   </tr>
@@ -218,6 +222,7 @@ export default function EfficiencyUserRanking({ timeRange }: { timeRange: [strin
                         </td>
                         <td className={TD}><RatioPill value={row.calendar_ratio} /></td>
                         <td className={TD}><RatioPill value={row.work_ratio} /></td>
+                        <td className={TD}><RatioPill value={row.silica} /></td>
                         <td className={TD_NUM}>{saved != null ? formatNumber(saved, 1) : '-'}</td>
                         <td className={TD_NUM}>{formatNumber(row.merged_need_count)}</td>
                       </tr>

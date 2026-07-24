@@ -254,6 +254,8 @@ export interface UserV2Row {
   cost: number
   tokens: number
   ai_code_ratio?: number | null // 小数口径
+  /** 含硅量（指纹口径）：commits.silica 按 diff_lines 加权，不经 need 边界。null=窗口内无可计入 commit。 */
+  silica?: number | null // 小数口径
   confidence_limited: boolean
   confidence_reason?: string
 }
@@ -561,6 +563,8 @@ export interface DeptMember {
   calendar_ratio: number | null // 小数口径
   work_ratio: number | null // 小数口径
   ai_code_ratio?: number | null // 小数口径
+  /** 含硅量（指纹口径）：commits.silica 按 diff_lines 加权。与 ai_code_ratio 是两套口径，null=无可计入 commit。 */
+  silica?: number | null // 小数口径
   commit_count: number
   commit_diff_lines: number
   cost: number
@@ -577,6 +581,8 @@ export interface DeptMembersSummary {
   calendar_ratio: number | null // 小数口径
   work_ratio: number | null // 小数口径
   ai_code_ratio?: number | null // 小数口径
+  /** 含硅量合计：Σ匹配行 / Σ总行 重算（非成员比值平均）。 */
+  silica?: number | null // 小数口径
   commit_count: number
   commit_diff_lines: number
   cost: number

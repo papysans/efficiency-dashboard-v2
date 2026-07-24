@@ -10,6 +10,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { getDeptTreeMembersV2 } from '@/api/endpoints'
 import type { DeptMember, DeptMembersSummary } from '@/api/types'
 import { formatDuration, formatNumber } from '@/lib/formatters'
+import { glossaryTip } from '@/lib/glossary'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { Tag } from '@/components/ui/Tag'
@@ -29,9 +30,10 @@ interface DeptMembersPanelProps {
   dateRange: [string, string]
 }
 
-// 列宽（成员表头与虚拟行共用，保证对齐）。10 列：成员/工号/职级/合并需求/实际周期/日历提效/人力提效/AI占比/Commit/代码行。
-const GRID_COLS = 'minmax(150px,1.6fr) 96px 90px 92px 96px 88px 88px 100px 76px 92px'
-const ROW_MIN_W = 980 // 横向最小宽（窄屏横向滚动）
+// 列宽（成员表头与虚拟行共用，保证对齐）。10 列：成员/工号/职级/合并需求/实际周期/日历提效/人力提效/含硅量/Commit/代码行。
+// 注：AI 代码占比列暂时下线（temporal 归因口径歧义，见含硅量替代），保留后端字段以便回补。
+const GRID_COLS = 'minmax(150px,1.6fr) 96px 90px 92px 96px 88px 88px 88px 76px 92px'
+const ROW_MIN_W = 968 // 横向最小宽（窄屏横向滚动）
 const ROW_H = 44 // 估算行高（虚拟化用）
 
 const TH = 'px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap'
@@ -121,7 +123,7 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
         <MetricCard label="实际周期" value={formatDuration(summary?.actual_calendar_min)} />
         <MetricCard label="日历提效" value={<RatioPill value={summary?.calendar_ratio} />} />
         <MetricCard label="人力提效" value={<RatioPill value={summary?.work_ratio} />} />
-        <MetricCard label="AI 代码占比" value={<RatioPill value={summary?.ai_code_ratio} />} />
+        <MetricCard label="含硅量" value={<RatioPill value={summary?.silica} />} tip={glossaryTip('silica')} />
         <MetricCard label="Commit" value={formatNumber(summary?.commit_count ?? 0)} />
         <MetricCard label="代码行" value={formatNumber(summary?.commit_diff_lines ?? 0)} />
         <MetricCard label="费用" value={fmtCostVal(summary?.cost)} />
@@ -146,7 +148,7 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
               <div className={TH_NUM}>实际周期</div>
               <div className={TH_CENTER}>日历提效</div>
               <div className={TH_CENTER}>人力提效</div>
-              <div className={TH_CENTER}>AI 代码占比</div>
+              <div className={TH_CENTER} title={glossaryTip('silica')}>含硅量</div>
               <div className={TH_NUM}>Commit</div>
               <div className={TH_NUM}>代码行</div>
             </div>
@@ -216,7 +218,7 @@ export function DeptMembersPanel({ deptId, deptName, dateRange }: DeptMembersPan
                         <div className={CELL_NUM}>{m.has_kanban_data ? formatDuration(m.actual_calendar_min) : DASH}</div>
                         <div className={CELL_CENTER}>{m.has_kanban_data ? <RatioPill value={m.calendar_ratio} /> : DASH}</div>
                         <div className={CELL_CENTER}>{m.has_kanban_data ? <RatioPill value={m.work_ratio} /> : DASH}</div>
-                        <div className={CELL_CENTER}>{m.has_kanban_data ? <RatioPill value={m.ai_code_ratio} /> : DASH}</div>
+                        <div className={CELL_CENTER}>{m.has_kanban_data ? <RatioPill value={m.silica} /> : DASH}</div>
                         <div className={CELL_NUM}>{m.has_kanban_data ? formatNumber(m.commit_count) : DASH}</div>
                         <div className={CELL_NUM}>{m.has_kanban_data ? formatNumber(m.commit_diff_lines, 0) : DASH}</div>
                       </div>

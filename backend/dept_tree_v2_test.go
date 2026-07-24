@@ -103,3 +103,51 @@ func TestComputeDeptSubtreeAccums_Conservation(t *testing.T) {
 		t.Fatalf("R 子树日历提效比应≈1.0，实际 %v", r.summary.CalendarRatio)
 	}
 }
+
+// 含硅量的子树 rollup 必须按「Σ匹配行 / Σ总行」守恒重算，不能对成员比值求平均。
+// 场景刻意做成"小仓全中 + 大仓几乎没中"，两种算法差 20 倍以上，改坏必炸。
+func TestComputeDeptSubtreeAccums_SilicaWeightedConservation(t *testing.T) {
+	appconfig.Cfg.DeptSync = appconfig.DeptSyncConfig{}
+	tree := rebuildSingleRootTree(nestedForest())
+
+	members := []deptSyncMemberNode{
+		{UserId: "e1", UniversalId: "u1", DeptId: "A1"},
+		{UserId: "e2", UniversalId: "u2", DeptId: "A"},
+		{UserId: "e3", UniversalId: "u3", DeptId: "B"},
+	}
+	// u1: 3 行全中(1.0)；u2: 300 行几乎没中(0.01)；u3: 无可计入 commit。
+	rowByUser := map[string]UserV2Row{
+		"u1": {UserId: "u1", silicaWeighted: 3 * 1.0, silicaWeight: 3},
+		"u2": {UserId: "u2", silicaWeighted: 300 * 0.01, silicaWeight: 300},
+		"u3": {UserId: "u3"},
+	}
+
+	accs := computeDeptSubtreeAccums(tree, members, rowByUser)
+
+	// A 子树 = u2(直属) + A1(u1) → (3.0 + 3.0) / 303
+	a := accs["A"]
+	if a == nil || a.summary.Silica == nil {
+		t.Fatalf("A 子树含硅量不应为 nil：%+v", a)
+	}
+	if want := 6.0 / 303.0; !approxV2(*a.summary.Silica, want) {
+		t.Fatalf("A 子树含硅量 got %v, want %v（疑似退回比值平均）", *a.summary.Silica, want)
+	}
+	// 守住与「比值平均」(1.0+0.01)/2=0.505 的距离
+	if *a.summary.Silica > 0.1 {
+		t.Fatalf("A 子树含硅量 %v 过高，加权口径可能被改成平均", *a.summary.Silica)
+	}
+
+	// R 子树 = A + B，B 的 u3 无权重不改变分母
+	r := accs["R"]
+	if r == nil || r.summary.Silica == nil {
+		t.Fatalf("R 子树含硅量不应为 nil：%+v", r)
+	}
+	if want := 6.0 / 303.0; !approxV2(*r.summary.Silica, want) {
+		t.Fatalf("R 子树含硅量 got %v, want %v", *r.summary.Silica, want)
+	}
+
+	// X 无成员 → nil（无数据），不能是 0（会被读成"AI 一行没写"）
+	if x := accs["X"]; x == nil || x.summary.Silica != nil {
+		t.Fatalf("X 无成员时含硅量应为 nil，got %+v", x)
+	}
+}

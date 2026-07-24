@@ -47,6 +47,90 @@ func calcRepoNeedAICodeRatio(aggs map[repoNeedAICodeAggKey]needAICodeAgg, repoAd
 	return calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
 }
 
+// silicaAgg 是含硅量（指纹口径）的聚合中间量：分子 = Σ(silica × diff_lines) 即匹配行数，
+// 分母 = Σ(diff_lines) 即总新增行数。
+//
+// ⚠️ 必须先还原成「匹配行 / 总行」再求比，不能对各 commit 的 silica 值直接求平均——
+// 否则 3 行的小 commit 和 300 行的大 commit 权重相同，整体被拉偏（与 queryRepoNeedAICodeAggsByAddr
+// 的跨分支 rollup 同理）。
+//
+// 权重用 diff_lines（原始新增行）而非 GetEffectiveDiffLines()：commit.silica 的分母在
+// analyzeCommitSilica 里就是原始 diff 行数（cmd_import_repo.go「silica 分母 = 原始 diff 行数，
+// 护栏不改口径」），用治理后行数加权会让分子分母口径错位。治理排除的 commit 直接在
+// WHERE 里滤掉，不进聚合。
+type silicaAgg struct {
+	SilicaWeighted float64 `gorm:"column:silica_weighted"`
+	SilicaWeight   int64   `gorm:"column:silica_weight"`
+}
+
+type userSilicaAgg struct {
+	UserId         string  `gorm:"column:user_id"`
+	SilicaWeighted float64 `gorm:"column:silica_weighted"`
+	SilicaWeight   int64   `gorm:"column:silica_weight"`
+}
+
+// calcSilicaRatio 把聚合中间量还原成比值；无有效行数时返回 nil（前端渲染 '-'，
+// 与「无数据」而非「真 0」区分开）。
+func calcSilicaRatio(weighted float64, weight int64) *float64 {
+	if weight <= 0 {
+		return nil
+	}
+	r := weighted / float64(weight)
+	return &r
+}
+
+// silicaAggSelect 是含硅量聚合的 SELECT 片段。
+//
+// 口径说明：含硅量是「AI 产出的代码行有多少落到了 commit 里」的原始度量，直接取自
+// commits.silica（对话 diff 指纹 ∩ commit diff 指纹），**不经过 need 边界**。因此这里
+// 不用 applyNeedCaliberFilter——那套过滤（status/主干分支/软件用户）是 Need 口径的门槛，
+// 而含硅量在 commit 级就已成立。这也是它能覆盖「AI 会话在别分支/别仓库、need 配不上」
+// 那部分工作的原因：silica 的指纹分组键是 (repo_addr, user_id) 与 (work_dir_id, user_id)，
+// 不含分支。与 needAICodeAggSelect 解绑置信度门槛的思路一致。
+func silicaAggSelect() string {
+	return `COALESCE(SUM(silica * diff_lines), 0) AS silica_weighted,
+		COALESCE(SUM(diff_lines), 0) AS silica_weight`
+}
+
+// applySilicaCommitFilter 是含硅量聚合的公共过滤：治理排除的 commit 不计，
+// 无新增行的 commit 不计（避免 0 权重行混入，也防分母为 0）。
+func applySilicaCommitFilter(q *gorm.DB) *gorm.DB {
+	return q.Where("NOT excluded_flag").Where("diff_lines > 0")
+}
+
+// applySilicaDateFilter 按 commit_time 过滤。注意与 applyNeedAICodeDateFilter 的 dev_end_ts
+// 不同：含硅量挂在 commit 上，没有 need 的开发周期概念，用提交时刻即可。
+func applySilicaDateFilter(q *gorm.DB, startTime, endTime string) *gorm.DB {
+	if startTime != "" {
+		q = q.Where("commit_time >= ?", startTime)
+	}
+	if endTime != "" {
+		q = q.Where("commit_time <= ?", endTime)
+	}
+	return q
+}
+
+// queryUserSilicaAggs 按 commits.user_id 聚合含硅量。
+// userID 非空时只查该用户；返回 map 缺 key 表示该用户窗口内无可计入 commit（比值为 nil）。
+func queryUserSilicaAggs(db *gorm.DB, startTime, endTime, userID string) (map[string]silicaAgg, error) {
+	var rows []userSilicaAgg
+	q := applySilicaCommitFilter(db.Model(&models.Commit{})).
+		Select("user_id, " + silicaAggSelect()).
+		Where("user_id <> ''")
+	q = applySilicaDateFilter(q, startTime, endTime)
+	if userID != "" {
+		q = q.Where("user_id = ?", userID)
+	}
+	if err := q.Group("user_id").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("查询用户含硅量聚合失败: %w", err)
+	}
+	result := make(map[string]silicaAgg, len(rows))
+	for _, row := range rows {
+		result[row.UserId] = silicaAgg{SilicaWeighted: row.SilicaWeighted, SilicaWeight: row.SilicaWeight}
+	}
+	return result, nil
+}
+
 // AI 代码占比是「AI 覆盖行 / 总变更行」的原始度量，只依赖 commit 的有效行数（need_aggregate
 // 里按 commit 直接汇总 ai_covered_loc/total_loc_net，与 boundary 置信度无关）。因此这里【不】用
 // coverage_eligible 过滤——coverage_eligible = merged && 置信度(高/中)，那是提效比/基线是否可信的

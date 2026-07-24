@@ -84,6 +84,7 @@ type DeptMember struct {
 	CommitDiffLines     int64    `json:"commit_diff_lines"`
 	Cost                float64  `json:"cost"`
 	AICodeRatio         *float64 `json:"ai_code_ratio"`
+	Silica              *float64 `json:"silica"`
 }
 
 // DeptMembersSummary 该部门直属成员的合计（仅匹配到看板数据的计入指标合计；提效比按合计基线/实际重算）。
@@ -100,6 +101,7 @@ type DeptMembersSummary struct {
 	CommitDiffLines     int64    `json:"commit_diff_lines"`
 	Cost                float64  `json:"cost"`
 	AICodeRatio         *float64 `json:"ai_code_ratio"`
+	Silica              *float64 `json:"silica"`
 }
 
 type DeptMembersResponse struct {
@@ -358,6 +360,9 @@ func getDeptTreeMembersV2(c *gin.Context) {
 	summary := DeptMembersSummary{DeptId: deptID}
 	var totalActualWork, totalBaselineWork float64
 	var totalAICoveredLoc, totalLocNet int64
+	// 含硅量合计同样按「Σ匹配行 / Σ总行」重算，不对成员比值求平均（口径见 silicaAgg）。
+	var totalSilicaWeighted float64
+	var totalSilicaWeight int64
 	for _, src := range membersResp.Data {
 		m := DeptMember{
 			UniversalId: src.UniversalId,
@@ -379,6 +384,7 @@ func getDeptTreeMembersV2(c *gin.Context) {
 				m.CommitDiffLines = row.CommitDiffLines
 				m.Cost = row.Cost
 				m.AICodeRatio = row.AICodeRatio
+				m.Silica = row.Silica
 
 				summary.KanbanMemberCount++
 				summary.MergedNeedCount += row.MergedNeedCount
@@ -391,6 +397,8 @@ func getDeptTreeMembersV2(c *gin.Context) {
 				totalBaselineWork += row.BaselineWorkMin
 				totalAICoveredLoc += row.aiCoveredLoc
 				totalLocNet += row.totalLocNet
+				totalSilicaWeighted += row.silicaWeighted
+				totalSilicaWeight += row.silicaWeight
 			}
 		}
 		members = append(members, m)
@@ -400,6 +408,7 @@ func getDeptTreeMembersV2(c *gin.Context) {
 	summary.CalendarRatio = efficiencyV2Ratio(summary.BaselineCalendarMin, summary.ActualCalendarMin)
 	summary.WorkRatio = efficiencyV2Ratio(totalBaselineWork, totalActualWork)
 	summary.AICodeRatio = calcNeedAICodeRatio(totalAICoveredLoc, totalLocNet)
+	summary.Silica = calcSilicaRatio(totalSilicaWeighted, totalSilicaWeight)
 
 	// 有看板活动的成员上提、无活动的下沉；活跃组内按合并需求数→提交数→实际日历分钟降序（活跃在前，
 	// 与 aggregateUsersV2 的"活跃在前"口径一致）；无活动组内按真名升序（RealName 为空退用 EmpNo）。
@@ -628,11 +637,13 @@ func getDeptRankingV2(c *gin.Context) {
 
 // deptBucketAccum 部门桶累加器：summary + 提效比/AI占比守恒重算所需的工作量/LOC 中间量（口径同 getDeptRankingV2 内联桶）。
 type deptBucketAccum struct {
-	summary           DeptMembersSummary
-	totalActualWork   float64
-	totalBaselineWork float64
-	totalAICoveredLoc int64
-	totalLocNet       int64
+	summary             DeptMembersSummary
+	totalActualWork     float64
+	totalBaselineWork   float64
+	totalAICoveredLoc   int64
+	totalLocNet         int64
+	totalSilicaWeighted float64
+	totalSilicaWeight   int64
 }
 
 // accumulate 把一名命中看板数据的成员指标累加进桶（口径与 members/ranking 累加完全一致）。
@@ -648,6 +659,8 @@ func (a *deptBucketAccum) accumulate(row UserV2Row) {
 	a.totalBaselineWork += row.BaselineWorkMin
 	a.totalAICoveredLoc += row.aiCoveredLoc
 	a.totalLocNet += row.totalLocNet
+	a.totalSilicaWeighted += row.silicaWeighted
+	a.totalSilicaWeight += row.silicaWeight
 }
 
 // merge 把另一桶 b 的全部原始量并入 a（子树/森林汇总用）；不并 ratio 指针（finalize 由并完原始量守恒重算）。
@@ -664,6 +677,8 @@ func (a *deptBucketAccum) merge(b *deptBucketAccum) {
 	a.totalBaselineWork += b.totalBaselineWork
 	a.totalAICoveredLoc += b.totalAICoveredLoc
 	a.totalLocNet += b.totalLocNet
+	a.totalSilicaWeighted += b.totalSilicaWeighted
+	a.totalSilicaWeight += b.totalSilicaWeight
 }
 
 // finalize 守恒重算各比值（小数口径，与 members/ranking 一致）。
@@ -671,6 +686,7 @@ func (a *deptBucketAccum) finalize() {
 	a.summary.CalendarRatio = efficiencyV2Ratio(a.summary.BaselineCalendarMin, a.summary.ActualCalendarMin)
 	a.summary.WorkRatio = efficiencyV2Ratio(a.totalBaselineWork, a.totalActualWork)
 	a.summary.AICodeRatio = calcNeedAICodeRatio(a.totalAICoveredLoc, a.totalLocNet)
+	a.summary.Silica = calcSilicaRatio(a.totalSilicaWeighted, a.totalSilicaWeight)
 }
 
 // computeDeptSubtreeAccums 一次遍历算出森林中【每个 dept 节点整棵子树】的守恒累加器（ratio 已 finalize）。

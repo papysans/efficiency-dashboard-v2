@@ -10,6 +10,7 @@ import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { useViewState } from '@/store/viewState'
 import { formatDuration, formatNumber } from '@/lib/formatters'
 import { formatDateParam } from '@/lib/date'
+import { glossaryTip } from '@/lib/glossary'
 import { parseOrder, sortRows, toOrder } from '@/lib/sort'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { SortableTh } from '@/components/ui/SortableTh'
@@ -34,7 +35,7 @@ const NUMERIC_FIELDS = new Set<string>([
   'calendar_ratio',
   'actual_work_min',
   'work_ratio',
-  'ai_code_ratio',
+  'silica',
   'commit_count',
   'commit_diff_lines',
   'week_count',
@@ -250,8 +251,8 @@ export default function UserList() {
                 <th className={TH}>
                   <SortableTh field="work_ratio" label="人力提效" active={isSortActive('work_ratio')} desc={isSortDesc('work_ratio')} onSort={onSortChange} />
                 </th>
-                <th className={TH}>
-                  <SortableTh field="ai_code_ratio" label="AI 代码占比" active={isSortActive('ai_code_ratio')} desc={isSortDesc('ai_code_ratio')} onSort={onSortChange} />
+                <th className={TH} title={glossaryTip('silica')}>
+                  <SortableTh field="silica" label="含硅量" active={isSortActive('silica')} desc={isSortDesc('silica')} onSort={onSortChange} />
                 </th>
                 <th className={TH_NUM}>
                   <span className="inline-flex justify-end w-full">
@@ -313,7 +314,7 @@ export default function UserList() {
                     <td className={TD}><RatioPill value={row.calendar_ratio} /></td>
                     <td className={TD_NUM}>{formatDuration(row.actual_work_min)}</td>
                     <td className={TD}><RatioPill value={row.work_ratio} /></td>
-                    <td className={TD}><RatioPill value={row.ai_code_ratio} /></td>
+                    <td className={TD}><RatioPill value={row.silica} /></td>
                     <td className={TD_NUM}>{row.commit_count}</td>
                     <td className={TD_NUM}>{formatNumber(row.commit_diff_lines, 0)}</td>
                     <td className={TD_NUM}>{row.week_count}</td>

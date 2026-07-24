@@ -34,8 +34,11 @@ type UserV2Row struct {
 	ConfidenceLimited   bool     `json:"confidence_limited"`
 	ConfidenceReason    string   `json:"confidence_reason"`
 	AICodeRatio         *float64 `json:"ai_code_ratio"`
+	Silica              *float64 `json:"silica"`
 	aiCoveredLoc        int64
 	totalLocNet         int64
+	silicaWeighted      float64
+	silicaWeight        int64
 }
 
 type UsersV2NativeResponse struct {
@@ -88,6 +91,12 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 含硅量走 commits 直聚（不经 need 边界/caliber 过滤），与 AI 代码占比是两套独立口径：
+	// 前者是指纹匹配（AI 产出行落地了多少），后者是时间窗归因（提交是否发生在会话窗内）。
+	silicaAggs, err := queryUserSilicaAggs(statDB, startTime, endTime, strings.TrimSpace(userID))
+	if err != nil {
+		return nil, err
+	}
 	byUser := make(map[string]*UserV2Row)
 	order := make([]string, 0)
 	for _, w := range agg.Data {
@@ -134,6 +143,11 @@ func aggregateUsersV2(startDate, endDate, userID string) ([]UserV2Row, error) {
 			r.aiCoveredLoc = agg.AICoveredLoc
 			r.totalLocNet = agg.TotalLocNet
 			r.AICodeRatio = calcNeedAICodeRatio(agg.AICoveredLoc, agg.TotalLocNet)
+		}
+		if agg, ok := silicaAggs[uid]; ok {
+			r.silicaWeighted = agg.SilicaWeighted
+			r.silicaWeight = agg.SilicaWeight
+			r.Silica = calcSilicaRatio(agg.SilicaWeighted, agg.SilicaWeight)
 		}
 		r.CalendarRatio = efficiencyV2Ratio(r.BaselineCalendarMin, r.ActualCalendarMin)
 		r.WorkRatio = efficiencyV2Ratio(r.BaselineWorkMin, r.ActualWorkMin)
