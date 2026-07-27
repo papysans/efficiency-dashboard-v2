@@ -32,6 +32,11 @@ var rootCmd = &cobra.Command{
 		if err := storage.Configure(appconfig.Cfg.Storage); err != nil {
 			return err
 		}
+		// 精确对象诊断不能先探测 bucket，否则无法验证只有 Put/Get/Delete
+		// 权限的受限 S3。
+		if cmd.Annotations["skipStorageLocationValidation"] == "true" {
+			return nil
+		}
 		return storage.ValidateLocations(appconfig.Cfg.TaskDir, appconfig.Cfg.RepoDir, appconfig.Cfg.AnalysedDir, appconfig.Cfg.OrgCSVFile)
 	},
 }

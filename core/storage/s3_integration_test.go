@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // TestS3Integration 针对真实 S3 兼容存储（MinIO）的集成测试。
@@ -29,27 +29,28 @@ func TestS3Integration(t *testing.T) {
 	if bucket == "" {
 		bucket = "kanban-test"
 	}
-	// 测试前置：bucket 不存在则创建
-	cli, err := minio.New(endpoint, &minio.Options{
-		Creds: credentials.NewStaticV4(os.Getenv("MINIO_TEST_AK"), os.Getenv("MINIO_TEST_SK"), ""),
-	})
-	if err != nil {
-		t.Fatalf("minio.New: %v", err)
-	}
-	if ok, err := cli.BucketExists(context.Background(), bucket); err != nil {
-		t.Fatalf("BucketExists: %v", err)
-	} else if !ok {
-		if err := cli.MakeBucket(context.Background(), bucket, minio.MakeBucketOptions{}); err != nil {
-			t.Fatalf("MakeBucket: %v", err)
-		}
-	}
-
-	err = Configure(Config{S3: S3Config{
+	cfg := S3Config{
 		Endpoint:  endpoint,
 		AccessKey: os.Getenv("MINIO_TEST_AK"),
 		SecretKey: os.Getenv("MINIO_TEST_SK"),
 		UseSSL:    false,
-	}})
+	}
+	// 测试前置：bucket 不存在则创建
+	testBackend, err := newS3Backend(cfg)
+	if err != nil {
+		t.Fatalf("newS3Backend: %v", err)
+	}
+	if _, err := testBackend.client.HeadBucket(context.Background(), &s3.HeadBucketInput{
+		Bucket: aws.String(bucket),
+	}); err != nil {
+		if _, err := testBackend.client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+			Bucket: aws.String(bucket),
+		}); err != nil {
+			t.Fatalf("CreateBucket: %v", err)
+		}
+	}
+
+	err = Configure(Config{S3: cfg})
 	if err != nil {
 		t.Fatalf("Configure: %v", err)
 	}

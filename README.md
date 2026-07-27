@@ -222,22 +222,38 @@ cd frontend-react && npm run test     # 前端 vitest
 `task_dir` / `repo_dir` / `analysed_dir` 等目录路径支持两种存储后端，按路径前缀自动识别，可混搭：
 
 - 本地磁盘：普通路径，如 `/mnt/prod_env/user-indicator/raw/task`（默认，行为不变）
-- S3 兼容对象存储（MinIO 等）：`s3://bucket/prefix` 形式，需同时配置 `storage.s3` 连接参数
+- S3 兼容对象存储（MinIO、Ceph、仅支持精确 Put/Get 的受限网关等）：`s3://bucket/prefix` 形式，需同时配置 `storage.s3` 连接参数
 
 ```yaml
 storage:
   s3:
-    endpoint: "minio.intranet:9000"   # 不含 scheme
+    endpoint: "http://s3.internal:80" # 也兼容旧格式 minio.intranet:9000 + use_ssl
     access_key: "xxx"
     secret_key: "xxx"
     use_ssl: false
+    skip_bucket_check: true           # 无 HeadBucket/ListBucket 权限时必须开启
+    skip_verify: false                # 仅 HTTPS 生效
+    region: "us-east-1"               # 空值默认 us-east-1
 
 task_dir: "s3://kanban-raw/task"
 repo_dir: "s3://kanban-raw/repo"
 analysed_dir: "./analysed"            # 可与 s3 混搭
 ```
 
-配置了 `s3://` 路径但 `storage.s3` 缺失或凭证无效时，kbcli / backend 启动即报错退出（fail-fast）。
+S3 客户端使用 path-style 和普通可回卷请求正文，并在代码中禁用可选 CRC/checksum；
+HTTP 下不会使用 `aws-chunked`。不支持 ListObjects 的部署必须启用 `raw_index`，
+Silica 对象则由 PostgreSQL `silica_object_index` 枚举。配置了 `s3://` 路径但
+`storage.s3` 缺失时，kbcli / backend 启动即报错；未开启 `skip_bucket_check` 时还会
+使用 HeadBucket 验证 endpoint、凭证和 bucket。
+
+受限 S3 上线前可用现网配置执行一次精确对象 E2E（不调用 Head/List/multipart）：
+
+```bash
+/app/bin/kbcli --config /app/config.yaml s3-smoke
+```
+
+命令在 `analysed_dir/_smoke/` 写入唯一 JSON 对象，精确回读并比较字节长度和
+SHA-256，最后删除该对象。若删除权限不足，命令会失败并打印需人工清理的精确 key。
 
 ---
 

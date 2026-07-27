@@ -21,6 +21,7 @@ storage:
     use_ssl: true
     skip_bucket_check: true
     skip_verify: true
+    region: "us-east-1"
 
 cors:
   allow_origins:

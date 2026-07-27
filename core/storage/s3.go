@@ -4,63 +4,128 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
+	"net/url"
 	"path"
 	"strings"
+	"time"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// s3Backend S3 兼容对象存储实现（minio-go）。
-// "目录"概念用 key 前缀模拟：Walk/Exists 对目录位置按 prefix 列举。
+const defaultS3Region = "us-east-1"
+
+// s3Backend uses path-style requests so restricted S3-compatible gateways only
+// need exact object operations. Production import paths enumerate objects from
+// PostgreSQL indexes and do not depend on ListObjects.
 type s3Backend struct {
-	client *minio.Client
+	client *s3.Client
 }
 
 func newS3Backend(cfg S3Config) (*s3Backend, error) {
-	opts := &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
-		Secure: cfg.UseSSL,
-		Region: cfg.Region,
-	}
-	// 自签证书的内网 MinIO：用自定义 transport 跳过 TLS 校验。
-	if cfg.UseSSL && cfg.SkipVerify {
-		tr, err := minio.DefaultTransport(true)
-		if err != nil {
-			return nil, fmt.Errorf("构造 S3 transport 失败: %w", err)
-		}
-		if tr.TLSClientConfig == nil {
-			tr.TLSClientConfig = &tls.Config{}
-		}
-		tr.TLSClientConfig.InsecureSkipVerify = true
-		opts.Transport = tr
-	}
-	cli, err := minio.New(cfg.Endpoint, opts)
+	endpoint, secure, err := s3Endpoint(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &s3Backend{client: cli}, nil
-}
-
-// checkBucket 启动期连通性校验：验证 endpoint 可达、凭证有效且 bucket 存在
-func (b *s3Backend) checkBucket(bucket string) error {
-	ok, err := b.client.BucketExists(context.Background(), bucket)
+	region := strings.TrimSpace(cfg.Region)
+	if region == "" {
+		region = defaultS3Region
+	}
+	httpClient, err := s3HTTPClient(secure && cfg.SkipVerify)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !ok {
-		return fmt.Errorf("bucket 不存在")
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+		awsconfig.WithRegion(region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			cfg.AccessKey, cfg.SecretKey, "",
+		)),
+		awsconfig.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
+		awsconfig.WithResponseChecksumValidation(aws.ResponseChecksumValidationWhenRequired),
+		awsconfig.WithHTTPClient(httpClient),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("加载 S3 配置失败: %w", err)
 	}
-	return nil
+	client := s3.NewFromConfig(awsCfg, func(options *s3.Options) {
+		options.BaseEndpoint = aws.String(endpoint)
+		options.UsePathStyle = true
+	})
+	return &s3Backend{client: client}, nil
 }
 
-// notExistErr 将 S3 的 NoSuchKey 类错误统一转换为满足 IsNotExist 的错误
+func s3Endpoint(cfg S3Config) (endpoint string, secure bool, err error) {
+	endpoint = strings.TrimSpace(cfg.Endpoint)
+	if endpoint == "" {
+		return "", false, fmt.Errorf("S3 endpoint 不能为空")
+	}
+	if !strings.Contains(endpoint, "://") {
+		scheme := "http"
+		if cfg.UseSSL {
+			scheme = "https"
+		}
+		endpoint = scheme + "://" + endpoint
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return "", false, fmt.Errorf("无效的 S3 endpoint %q", cfg.Endpoint)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", false, fmt.Errorf("S3 endpoint 仅支持 http/https: %q", cfg.Endpoint)
+	}
+	return strings.TrimRight(endpoint, "/"), u.Scheme == "https", nil
+}
+
+func s3HTTPClient(skipVerify bool) (*http.Client, error) {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("默认 HTTP transport 类型异常")
+	}
+	customTransport := transport.Clone()
+	customTransport.ResponseHeaderTimeout = 30 * time.Second
+	if skipVerify {
+		tlsConfig := &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+		if customTransport.TLSClientConfig != nil {
+			tlsConfig = customTransport.TLSClientConfig.Clone()
+			tlsConfig.InsecureSkipVerify = true //nolint:gosec
+		}
+		customTransport.TLSClientConfig = tlsConfig
+	}
+	return &http.Client{Transport: customTransport}, nil
+}
+
+// checkBucket is optional because restricted deployments may grant object
+// Put/Get permission without HeadBucket.
+func (b *s3Backend) checkBucket(bucket string) error {
+	_, err := b.client.HeadBucket(context.Background(), &s3.HeadBucketInput{
+		Bucket: aws.String(bucket),
+	})
+	return err
+}
+
+// notExistErr converts S3 NoSuchKey/404 errors to an fs.ErrNotExist wrapper.
 func notExistErr(loc string, err error) error {
-	resp := minio.ToErrorResponse(err)
-	if resp.Code == "NoSuchKey" || resp.Code == "NoSuchBucket" {
+	if err == nil {
+		return nil
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NoSuchBucket", "NotFound", "404":
+			return fmt.Errorf("%s: %w", loc, fs.ErrNotExist)
+		}
+	}
+	var responseErr *smithyhttp.ResponseError
+	if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == http.StatusNotFound {
 		return fmt.Errorf("%s: %w", loc, fs.ErrNotExist)
 	}
 	return err
@@ -75,19 +140,29 @@ func (b *s3Backend) Walk(loc string, fn WalkFunc) error {
 	if prefix != "" {
 		prefix += "/"
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	for obj := range b.client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
-		if obj.Err != nil {
-			return fmt.Errorf("列举 %s 失败: %w", loc, obj.Err)
+	paginator := s3.NewListObjectsV2Paginator(b.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	})
+	ctx := context.Background()
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("列举 %s 失败: %w", loc, err)
 		}
-		// 跳过"目录占位"对象（以 / 结尾、size 0）
-		if strings.HasSuffix(obj.Key, "/") {
-			continue
-		}
-		full := s3Scheme + bucket + "/" + obj.Key
-		if err := fn(full, FileInfo{Name: path.Base(obj.Key), Size: obj.Size, ModTime: obj.LastModified}); err != nil {
-			return err
+		for _, obj := range page.Contents {
+			objectKey := aws.ToString(obj.Key)
+			if strings.HasSuffix(objectKey, "/") {
+				continue
+			}
+			full := s3Scheme + bucket + "/" + objectKey
+			if err := fn(full, FileInfo{
+				Name:    path.Base(objectKey),
+				Size:    aws.ToInt64(obj.Size),
+				ModTime: aws.ToTime(obj.LastModified),
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -111,16 +186,14 @@ func (b *s3Backend) Open(loc string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	obj, err := b.client.GetObject(context.Background(), bucket, key, minio.GetObjectOptions{})
+	output, err := b.client.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
 		return nil, notExistErr(loc, err)
 	}
-	// GetObject 是惰性的，先 Stat 一次让"对象不存在"在 Open 阶段就暴露
-	if _, err := obj.Stat(); err != nil {
-		obj.Close()
-		return nil, notExistErr(loc, err)
-	}
-	return obj, nil
+	return output.Body, nil
 }
 
 func (b *s3Backend) WriteFile(loc string, data []byte) error {
@@ -128,8 +201,12 @@ func (b *s3Backend) WriteFile(loc string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	_, err = b.client.PutObject(context.Background(), bucket, key,
-		bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{})
+	_, err = b.client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket:        aws.String(bucket),
+		Key:           aws.String(key),
+		Body:          bytes.NewReader(data),
+		ContentLength: aws.Int64(int64(len(data))),
+	})
 	if err != nil {
 		return fmt.Errorf("写入 %s 失败: %w", loc, err)
 	}
@@ -141,8 +218,10 @@ func (b *s3Backend) Remove(loc string) error {
 	if err != nil {
 		return err
 	}
-	// minio RemoveObject 对不存在的 key 不报错（幂等），符合接口语义。
-	if err := b.client.RemoveObject(context.Background(), bucket, key, minio.RemoveObjectOptions{}); err != nil {
+	if _, err := b.client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}); err != nil {
 		return fmt.Errorf("删除 %s 失败: %w", loc, err)
 	}
 	return nil
@@ -153,21 +232,26 @@ func (b *s3Backend) Stat(loc string) (FileInfo, error) {
 	if err != nil {
 		return FileInfo{}, err
 	}
-	info, err := b.client.StatObject(context.Background(), bucket, key, minio.StatObjectOptions{})
+	info, err := b.client.HeadObject(context.Background(), &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
 		return FileInfo{}, notExistErr(loc, err)
 	}
-	return FileInfo{Name: path.Base(key), Size: info.Size, ModTime: info.LastModified}, nil
+	return FileInfo{
+		Name:    path.Base(key),
+		Size:    aws.ToInt64(info.ContentLength),
+		ModTime: aws.ToTime(info.LastModified),
+	}, nil
 }
 
 func (b *s3Backend) Exists(loc string) (bool, error) {
-	// 先按精确对象查
 	if _, err := b.Stat(loc); err == nil {
 		return true, nil
 	} else if !IsNotExist(err) {
 		return false, err
 	}
-	// 再按目录前缀查：前缀下有任意对象即视为存在
 	bucket, key, err := parseS3(loc)
 	if err != nil {
 		return false, err
@@ -176,13 +260,13 @@ func (b *s3Backend) Exists(loc string) (bool, error) {
 	if prefix != "" {
 		prefix += "/"
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	for obj := range b.client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true, MaxKeys: 1}) {
-		if obj.Err != nil {
-			return false, obj.Err
-		}
-		return true, nil
+	output, err := b.client.ListObjectsV2(context.Background(), &s3.ListObjectsV2Input{
+		Bucket:  aws.String(bucket),
+		Prefix:  aws.String(prefix),
+		MaxKeys: aws.Int32(1),
+	})
+	if err != nil {
+		return false, err
 	}
-	return false, nil
+	return len(output.Contents) > 0, nil
 }

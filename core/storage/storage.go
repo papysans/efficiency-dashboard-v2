@@ -15,9 +15,10 @@ import (
 	"time"
 )
 
-// S3Config S3 兼容对象存储连接配置（MinIO / Ceph 等）
+// S3Config S3 兼容对象存储连接配置（MinIO / Ceph / 受限 S3 网关等）
 type S3Config struct {
-	Endpoint        string `yaml:"endpoint"` // 如 minio.intranet:9000（不含 scheme）
+	// Endpoint 可写 host:port（协议由 use_ssl 决定），也可直接写完整 http(s) URL。
+	Endpoint        string `yaml:"endpoint"`
 	AccessKey       string `yaml:"access_key"`
 	SecretKey       string `yaml:"secret_key"`
 	UseSSL          bool   `yaml:"use_ssl"`
@@ -26,7 +27,7 @@ type S3Config struct {
 	// 内网自建 MinIO 多用自签证书且 endpoint 走 IP/转发端口，证书域名对不上，
 	// 必须跳过校验才能连上（上游 user-indicator 即 useSSL+skipVerify）。
 	SkipVerify bool   `yaml:"skip_verify"`
-	Region     string `yaml:"region"` // 可选，MinIO 通常留空
+	Region     string `yaml:"region"` // 可选，空值默认 us-east-1
 }
 
 // Config 存储后端配置。目录路径以 s3:// 开头时使用 S3，否则使用本地磁盘。

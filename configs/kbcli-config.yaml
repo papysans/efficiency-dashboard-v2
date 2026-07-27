@@ -186,12 +186,13 @@ analysed_dir: "./analysed"
 # conversation 在 task/conversation/YYYY/MM/DD/<sessionId>/00000N.jsonl 目录分片，import 自动按目录重组。
 storage:
   s3:
-    endpoint: "192.168.137.1:9000"   # 不含 scheme；内网直连或经 ssh -L 转发
+    endpoint: "192.168.137.1:9000"   # 可写 host:port，也可写完整 http(s) URL
     access_key: "minioadmin"
     secret_key: "minioadmin"
     use_ssl: true                    # 上游 MinIO 为 https
     skip_bucket_check: true          # reader 账号只有对象读权限，跳过 bucket 级 HeadBucket
     skip_verify: true                # 自签证书 + endpoint 走 IP/转发口，证书域名对不上需跳过校验
+    region: "us-east-1"              # 空值也默认 us-east-1；受限 S3 需与服务端签名 region 一致
 
 # 上游 user-indicator 使用 S3 时会把 raw 文件索引写入 PostgreSQL。
 # 线上 S3 不支持 ListObjects，因此导入端通过索引表枚举对象，再用 storage.s3 GetObject 读取。
