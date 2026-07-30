@@ -1099,6 +1099,16 @@ export interface ChatRealtimeResponse {
 }
 
 /** POST /v2/chat/stats/detail/query 请求体（realtime.go RawDataQuery；时间 ISO 8601，必填）。 */
+export type ChatDetailSortBy =
+  | 'ts'
+  | 'first_token_duration'
+  | 'token_output_speed'
+  | 'token_output_speed_e2e'
+  | 'prompt_tokens'
+  | 'completion_tokens'
+
+export type ChatSortOrder = 'asc' | 'desc'
+
 export interface ChatDetailQueryReq {
   datasource_id?: string
   start_time: string
@@ -1113,8 +1123,10 @@ export interface ChatDetailQueryReq {
   routed_model?: string
   /** 页面默认 100，最大 5000 */
   limit?: number
-  /** 'asc' | 'desc'（默认 desc） */
-  order?: string
+  /** 默认 ts */
+  sort_by?: ChatDetailSortBy
+  /** 默认 desc */
+  order?: ChatSortOrder
 }
 
 /** 明细行（rawMetricItem；指针字段可为 null）。 */

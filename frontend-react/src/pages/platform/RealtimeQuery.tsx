@@ -17,6 +17,12 @@ import { getPalette } from '@/components/charts/chartTheme'
 import { useTheme } from '@/hooks/useTheme'
 import SettingsLayout, { ChatDisabledNotice } from '@/pages/settings/SettingsLayout'
 import { ChatUserCell, isErrorCode } from './platformShared'
+import {
+  DEFAULT_REALTIME_QUERY_SORT,
+  REALTIME_QUERY_SORT_OPTIONS,
+  parseRealtimeQuerySort,
+  type RealtimeQuerySortValue,
+} from './realtimeQuerySort'
 
 // ---- 时间工具（datetime-local <-> ISO 8601 带偏移） ----
 
@@ -69,7 +75,7 @@ interface QueryForm {
   /** '' = 全部，'true' = 仅错误，'false' = 仅成功 */
   hasError: '' | 'true' | 'false'
   limit: number
-  order: 'desc' | 'asc'
+  sort: RealtimeQuerySortValue
 }
 
 interface SpeedBucket {
@@ -114,7 +120,7 @@ function defaultForm(datasourceId = ''): QueryForm {
     routedModel: '',
     hasError: '',
     limit: 100,
-    order: 'desc',
+    sort: DEFAULT_REALTIME_QUERY_SORT,
   }
 }
 
@@ -601,7 +607,7 @@ export default function RealtimeQuery() {
       start_time: toIsoWithOffset(effectiveForm.start),
       end_time: toIsoWithOffset(effectiveForm.end),
       limit: effectiveForm.limit,
-      order: effectiveForm.order,
+      ...parseRealtimeQuerySort(effectiveForm.sort),
     }
     const universalId = effectiveForm.universalId.trim()
     const requestId = effectiveForm.requestId.trim()
@@ -969,14 +975,19 @@ export default function RealtimeQuery() {
               <option key={limit} value={limit}>最多 {limit} 条</option>
             ))}
           </select>
+          <label className="text-sm text-gray-600 dark:text-gray-300" htmlFor="rq-sort">
+            排序
+          </label>
           <select
-            value={form.order}
-            onChange={(e) => setField('order', e.target.value as QueryForm['order'])}
-            className={`${INPUT_CLS} cursor-pointer`}
-            aria-label="排序方向"
+            id="rq-sort"
+            value={form.sort}
+            onChange={(e) => setField('sort', e.target.value as RealtimeQuerySortValue)}
+            disabled={query.isPending}
+            className={`${INPUT_CLS} min-w-[220px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <option value="desc">时间倒序</option>
-            <option value="asc">时间正序</option>
+            {REALTIME_QUERY_SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
           </select>
           <button
             type="button"

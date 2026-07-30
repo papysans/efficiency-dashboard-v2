@@ -363,7 +363,7 @@ export const chatStats = {
     return chatGet<ChatRealtimeResponse>('/stats/realtime', params)
   },
 
-  /** 明细点查（最多 100 条；时间 ISO 8601 必填）。 */
+  /** 明细点查（最多 5000 条；时间 ISO 8601 必填）。 */
   queryDetail(body: ChatDetailQueryReq) {
     return chatPost<ChatDetailQueryResponse>('/stats/detail/query', body)
   },
