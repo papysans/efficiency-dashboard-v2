@@ -1419,15 +1419,14 @@ var importConvCmd = &cobra.Command{
 
 		// 若指定了 remote 地址，则将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
+			warnIgnoredRemoteFlags(cmd, "task-dir", "analysed-dir")
 			return util.SendToRemote(remote, "import-conv", map[string]interface{}{
-				"task_dir":      taskDir,
-				"analysed_dir":  analysedDir,
-				"force":         force,
-				"start_date":    startDate,
-				"end_date":      endDate,
-				"date":          date,
-				"create_pseudo": createPseudo,
-			})
+					"force":         force,
+					"start_date":    startDate,
+					"end_date":      endDate,
+					"date":          date,
+					"create_pseudo": createPseudo,
+				})
 		}
 		// 若未显式指定目录，回退到配置文件中的默认值
 		if taskDir == "" {

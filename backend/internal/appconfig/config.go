@@ -63,11 +63,13 @@ var Cfg Config
 func loadConfig(path string) (*Config, error) {
 	var cfg Config
 	cfg.Server.Port = 9990
+	// 默认值不含凭据：密码留空，必须由配置文件显式提供。
+	// 曾硬编码 password:"1"，既是弱口令又会在配置缺失时静默连上本地库。
 	cfg.StatDatabase = config.DatabaseConfig{
 		Host:     "localhost",
 		Port:     5432,
 		User:     "postgres",
-		Password: "1",
+		Password: "",
 		DBName:   "costrict_stat",
 		SSLMode:  "disable",
 	}

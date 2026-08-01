@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+// 【安全约定】路径类与 DSN 类参数一律不从 params 读取，只取 appconfig.Cfg。
+//
+// params 直接来自 HTTP 请求体（cmd_serve.go 的 createTaskHandlerFunc 整体 BindJSON）。
+// 若允许外部指定，则：
+//   - to_csv / analysed_dir / task_dir / repo_dir → storage.WriteFile 任意路径写入（会自动建父目录）
+//   - from_db → 任意 DSN 连接，构成 SSRF 与内网探测
+//
+// 新增 executor 时，时间窗、force、max_days 这类无副作用参数可以继续走 getStringParam；
+// 但凡是会变成文件路径或连接串的，必须取配置值。
+//
 // resolveStartDateByDays 支持 cron 增量：params 指定 days>0 且未显式给 start_date/date 时，
 // 运行时把起始日设为 today-days（YYYYMMDD），只处理最近 N 天而非全量重拉/重算。
 func resolveStartDateByDays(params map[string]interface{}, startDate, date string) string {
@@ -92,8 +102,9 @@ func getIntParam(params map[string]interface{}, key string, defaultVal int) int 
 
 func executeImportConv(params map[string]interface{}) error {
 	return withImportAdvisoryLock("import-conv", func() error {
-		taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
-		analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
+		// 路径类参数只取服务端配置，不读请求体：见本文件顶部「路径/DSN 参数不接受外部输入」。
+		taskDir := appconfig.Cfg.TaskDir
+		analysedDir := appconfig.Cfg.AnalysedDir
 		force := getBoolParam(params, "force", false)
 		startDate := getStringParam(params, "start_date", "")
 		endDate := getStringParam(params, "end_date", "")
@@ -108,8 +119,8 @@ func executeImportConv(params map[string]interface{}) error {
 
 func executeImportRepo(params map[string]interface{}) error {
 	return withImportAdvisoryLock("import-repo", func() error {
-		repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
-		analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
+		repoDir := appconfig.Cfg.RepoDir
+		analysedDir := appconfig.Cfg.AnalysedDir
 		force := getBoolParam(params, "force", false)
 		maxDays := getIntParam(params, "max_days", appconfig.Cfg.TaskCreate.SilicaMaxDays)
 		startDate := getStringParam(params, "start_date", "")
@@ -124,21 +135,23 @@ func executeImportRepo(params map[string]interface{}) error {
 
 func executeImportOrg(params map[string]interface{}) error {
 	return withImportAdvisoryLock("import-org", func() error {
-		fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
-		fromCSV := getStringParam(params, "from_csv", "")
-		toCSV := getStringParam(params, "to_csv", "")
-		return runImportOrg(fromDB, fromCSV, toCSV)
+		// from_db 若可由请求体指定 = 任意 DSN 连接（SSRF / 内网探测）；
+		// to_csv 若可指定 = 任意路径文件写入（WriteFile 会自动建父目录）。
+		// 两者一律走服务端配置：fromCSV/toCSV 保持空串，与改动前 HTTP 侧默认行为一致
+		// （原本默认就不从 CSV 读、不导出 CSV，只有 CLI 显式传 flag 才做）。
+		fromDB := appconfig.Cfg.OrgDSN
+		return runImportOrg(fromDB, "", "")
 	})
 }
 
 func executeImport(params map[string]interface{}) error {
 	return withImportAdvisoryLock("import", func() error {
-		taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
-		repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
-		analysedDir := getStringParam(params, "analysed_dir", appconfig.Cfg.AnalysedDir)
+		taskDir := appconfig.Cfg.TaskDir
+		repoDir := appconfig.Cfg.RepoDir
+		analysedDir := appconfig.Cfg.AnalysedDir
 		force := getBoolParam(params, "force", false)
-		fromDB := getStringParam(params, "from_db", appconfig.Cfg.OrgDSN)
-		fromCSV := getStringParam(params, "from_csv", "")
+		fromDB := appconfig.Cfg.OrgDSN
+		fromCSV := ""
 		startDate := getStringParam(params, "start_date", "")
 		endDate := getStringParam(params, "end_date", "")
 		date := getStringParam(params, "date", "")
@@ -219,7 +232,7 @@ func executeEfficiencyV2(params map[string]interface{}) error {
 }
 
 func executeFixTask(params map[string]interface{}) error {
-	taskDir := getStringParam(params, "task_dir", appconfig.Cfg.TaskDir)
+	taskDir := appconfig.Cfg.TaskDir
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")
@@ -232,7 +245,7 @@ func executeFixTask(params map[string]interface{}) error {
 }
 
 func executeFixCommit(params map[string]interface{}) error {
-	repoDir := getStringParam(params, "repo_dir", appconfig.Cfg.RepoDir)
+	repoDir := appconfig.Cfg.RepoDir
 	startDate := getStringParam(params, "start_date", "")
 	endDate := getStringParam(params, "end_date", "")
 	date := getStringParam(params, "date", "")

@@ -130,10 +130,11 @@ storage:
     skip_bucket_check: true
     skip_verify: true
 raw_index:
-  enabled: true
-  dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
+  # 填好下面的 dsn 后再改为 true（占位符状态下开启会导致 import-conv/import-repo 连不上索引库）
+  enabled: false
+  dsn: "host=<内网只读库地址> port=45432 user=<用户> password=<密码> dbname=user_indicator sslmode=disable"
   s3_base: "s3://user-indicator/raw-dump"
-org_dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
+org_dsn: "host=<内网只读库地址> port=45432 user=<用户> password=<密码> dbname=user_indicator sslmode=disable"
 # dept-sync 部门同步服务（import-dept 用）：拉部门树+人员落库 dept/dept_user 并投影回填 user_org
 # base_url 填内网 dept-sync 服务地址（不含路由前缀）；query_key 由 dept-sync 管理员发放（X-Query-Key）
 # fallback_org_name：universal_id/工号都未命中 dept-sync 的看板用户兜底 org1（空=不兜底，保持原样）。内网建议填公司名。
@@ -235,10 +236,11 @@ algo_estimation:
   # commit_line_per_minutes: 0.5
 
 ai_estimation:
-  enabled: true
-  # api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  # 填好下面的 api_key 后再改为 true（无密钥时开启会让 LLM 基线静默跳过）
+  enabled: false
   # base_url: "https://open.bigmodel.cn/api/anthropic"
   # model: "claude-3-5-sonnet-20241022"
+  # 真实密钥不提交进仓库：本地放 config.local.yaml，部署走 helm values / 环境变量
   api_key: ""
   base_url: "https://newapi-ai.sangfor.com"
   model: ""

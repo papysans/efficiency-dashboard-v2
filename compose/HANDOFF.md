@@ -165,7 +165,7 @@ postgres 数据卷为空的首次启动会跑 `initdb.d`：
 
 4. **首次全量 import 耗时**。kbcli serve 启动即增量 import；要立刻出 v2 看板需手动跑一次 `import -f` + `efficiency-v2`（见 [§3](#3-启动命令)）。给 kbcli 留足 CPU/内存与启动宽限。
 
-5. **健康检查**：server `GET /healthz`、chat-stats `GET /health`、postgres `pg_isready`。portal/kbcli 无内置 HTTP 健康端点（kbcli serve 的 :8080 可作存活探针）。
+5. **健康检查**：server `GET /healthz`、chat-stats `GET /health`、postgres `pg_isready`、kbcli serve `GET :8080/health`。portal 无内置 HTTP 健康端点。
 
 6. **启动依赖顺序**：postgres(healthy) → server / kbcli → portal。Helm 无强依赖编排，靠各服务 restart + 健康检查自愈即可。
 

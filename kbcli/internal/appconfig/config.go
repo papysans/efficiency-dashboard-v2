@@ -143,6 +143,13 @@ func LoadFirstConfig(files []string) (*Config, error) {
 			if logCfg.RawIndex.DSN != "" {
 				logCfg.RawIndex.DSN = "***"
 			}
+			// debug 日志会落盘/进 stdout，凭据类字段一律脱敏后再打印
+			if logCfg.OrgDSN != "" {
+				logCfg.OrgDSN = "***"
+			}
+			if logCfg.AIEstimation.APIKey != "" {
+				logCfg.AIEstimation.APIKey = "***"
+			}
 			logx.Debugf("load config [%s] ok, cfg: %+v\n", fname, &logCfg)
 			return loadedCfg, nil
 		}

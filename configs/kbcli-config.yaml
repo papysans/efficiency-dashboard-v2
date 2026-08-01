@@ -117,11 +117,12 @@ model_prices:
     out_price: 1.0
 
 ai_estimation:
-  enabled: true
-  # api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  # 填好下面的 api_key 后再改为 true（无密钥时开启会让 LLM 基线静默跳过）
+  enabled: false
   # base_url: "https://open.bigmodel.cn/api/anthropic"
   # model: "claude-3-5-sonnet-20241022"
-  api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  # 真实密钥不提交进仓库：本地放 kbcli-config.local.yaml，部署走 helm values / 环境变量
+  api_key: ""
   base_url: "https://open.bigmodel.cn/api/anthropic"
   model: "claude-3-5-sonnet-20241022"
   timeout_ms: 300000
@@ -197,12 +198,13 @@ storage:
 # 上游 user-indicator 使用 S3 时会把 raw 文件索引写入 PostgreSQL。
 # 线上 S3 不支持 ListObjects，因此导入端通过索引表枚举对象，再用 storage.s3 GetObject 读取。
 raw_index:
-  enabled: true
-  dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
+  # 填好下面的 dsn 后再改为 true（占位符状态下开启会导致 import-conv/import-repo 连不上索引库）
+  enabled: false
+  dsn: "host=<内网只读库地址> port=45432 user=<用户> password=<密码> dbname=user_indicator sslmode=disable"
   s3_base: "s3://user-indicator/raw-dump"
 
 org_csv_file: "./analysed/org_mapping.csv"
-org_dsn: "host=192.168.137.1 port=45432 user=costrict password=costrict dbname=user_indicator sslmode=disable"
+org_dsn: "host=<内网只读库地址> port=45432 user=<用户> password=<密码> dbname=user_indicator sslmode=disable"
 # dept-sync 部门同步服务（import-dept 用）：拉部门树+人员落库 dept/dept_user 并投影回填 user_org
 # base_url 填 dept-sync 服务地址（不含路由前缀）；query_key 由 dept-sync 管理员发放（X-Query-Key）
 # fallback_org_name：universal_id/工号都未命中 dept-sync 的看板用户兜底 org1（空=不兜底，保持原样）。

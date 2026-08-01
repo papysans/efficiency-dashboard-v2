@@ -72,6 +72,9 @@ func loadUserOrgsFromCSV(csvFile string) ([]models.UserOrg, error) {
 			return nil, fmt.Errorf("第 %d 行数据列数不足，需要13列", i+1)
 		}
 
+		// 剥离导出侧加的公式转义前缀，保证 导出→导入 往返后数据不变
+		record = unescapeCSVRow(record)
+
 		userOrg := models.UserOrg{
 			UserId:       record[0],
 			UserName:     record[1],
@@ -256,17 +259,73 @@ func loadDefaultUserOrgsFromLocalData(db *gorm.DB) ([]models.UserOrg, error) {
 	return userOrgs, nil
 }
 
+// escapeCSVFormula 防表格软件公式注入。
+//
+// 导出字段里 user_name / git_user_name / git_user_email 均源自外部：git 提交者名由
+// 提交人用 `git config user.name` 完全控制，auth 库的 name 字段也可由用户自行修改。
+// 以 = + - @ 或 制表符/回车 开头的单元格，会被 Excel / LibreOffice 当公式执行
+// （如 =HYPERLINK 外带数据、=cmd|'...'!A1 调起外部程序）。
+// 前置单引号让表格软件按纯文本处理，不影响 CSV 本身的解析与再导入。
+func escapeCSVFormula(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	case '\'':
+		// 本身就以单引号开头的值（如 '=foo、'99）同样加一层。
+		// 不加的话，回读侧无法区分「转义前缀」与「数据自带的单引号」，
+		// 往返一次就会把 '=foo 误剥成 =foo。加一层后剥离规则变得无歧义。
+		return "'" + s
+	}
+	return s
+}
+
+func escapeCSVRow(fields []string) []string {
+	out := make([]string, len(fields))
+	for i, f := range fields {
+		out[i] = escapeCSVFormula(f)
+	}
+	return out
+}
+
+// unescapeCSVFormula 是 escapeCSVFormula 的精确逆运算，供回读路径使用
+//（--from-csv / org_csv_file 会把导出的 CSV 再读回来写库）。
+//
+// 因为 escape 侧对「公式起始字符」和「单引号」都统一加一层前缀，
+// 这里只需无条件剥掉一层，即可保证 导出→导入 往返幂等（含 '=foo、'99 这类值）。
+//
+// 已知限制：单引号前缀本身有歧义。导入**非本命令导出**的第三方 CSV 时，
+// 其中形如 'abc 的值会被剥成 abc。此格式是本命令的导出/回读闭环约定，
+// 外部 CSV 若含前导单引号需自行按此约定预处理。
+func unescapeCSVFormula(s string) string {
+	if s != "" && s[0] == '\'' {
+		return s[1:]
+	}
+	return s
+}
+
+func unescapeCSVRow(fields []string) []string {
+	out := make([]string, len(fields))
+	for i, f := range fields {
+		out[i] = unescapeCSVFormula(f)
+	}
+	return out
+}
+
 func writeOrgCSV(path string, rows []models.UserOrg) error {
 	// 先写入内存缓冲，再经 storage 一次性落盘/上传（兼容 s3 后端）
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 
+	// 表头是固定字面量，无需转义
 	if err := w.Write([]string{"user_id", "user_name", "org1", "org2", "org3", "org4", "org5", "org6", "org7", "org8", "org9", "git_user_name", "git_user_email"}); err != nil {
 		return err
 	}
 
 	for _, r := range rows {
-		if err := w.Write([]string{r.UserId, r.UserName, r.Org1, r.Org2, r.Org3, r.Org4, r.Org5, r.Org6, r.Org7, r.Org8, r.Org9, r.GitUserName, r.GitUserEmail}); err != nil {
+		if err := w.Write(escapeCSVRow([]string{r.UserId, r.UserName, r.Org1, r.Org2, r.Org3, r.Org4, r.Org5, r.Org6, r.Org7, r.Org8, r.Org9, r.GitUserName, r.GitUserEmail})); err != nil {
 			return err
 		}
 	}
@@ -408,11 +467,8 @@ var importOrgCmd = &cobra.Command{
 		remote, _ := cmd.Flags().GetString("remote")
 
 		if remote != "" {
-			return util.SendToRemote(remote, "import-org", map[string]interface{}{
-				"from_db":  fromDSN,
-				"from_csv": fromCSV,
-				"to_csv":   toCSV,
-			})
+			warnIgnoredRemoteFlags(cmd, "from-db", "from-csv", "to-csv")
+			return util.SendToRemote(remote, "import-org", map[string]interface{}{})
 		}
 
 		if fromDSN == "" {

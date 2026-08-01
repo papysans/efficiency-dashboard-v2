@@ -38,19 +38,15 @@ var importCmd = &cobra.Command{
 
 		// 如果指定了远程地址，发送到远程 kbcli 服务执行
 		if remote != "" {
+			warnIgnoredRemoteFlags(cmd, "task-dir", "repo-dir", "analysed-dir", "from-db", "from-csv")
 			return util.SendToRemote(remote, "import", map[string]interface{}{
-				"task_dir":      taskDir,
-				"repo_dir":      repoDir,
-				"analysed_dir":  analysedDir,
-				"force":         force,
-				"from_db":       fromDB,
-				"from_csv":      fromCSV,
-				"date":          dateStr,
-				"start_date":    startDateStr,
-				"end_date":      endDateStr,
-				"max_days":      maxDays,
-				"create_pseudo": createPseudo,
-			})
+					"force":         force,
+					"date":          dateStr,
+					"start_date":    startDateStr,
+					"end_date":      endDateStr,
+					"max_days":      maxDays,
+					"create_pseudo": createPseudo,
+				})
 		}
 		return withImportAdvisoryLock("import", func() error {
 			if taskDir == "" {

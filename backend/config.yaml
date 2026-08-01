@@ -36,8 +36,10 @@ commit_minutes_per_line: 2.0
 # cost_per_person_day: 2000
 
 ai_estimation:
-  enabled: true
-  api_key: "c0bebb770966452d9c415863d59c5161.alDVcnduh2Dgy3dN"
+  # 填好下面的 api_key 后再改为 true（无密钥时开启会让 LLM 基线静默跳过）
+  enabled: false
+  # 真实密钥不提交进仓库：本地放 config.local.yaml，部署走 helm values / 环境变量
+  api_key: ""
   base_url: "https://open.bigmodel.cn/api/anthropic"
   model: "claude-3-5-sonnet-20241022"
   timeout_ms: 300000

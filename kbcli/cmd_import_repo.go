@@ -561,15 +561,14 @@ var importRepoCmd = &cobra.Command{
 		maxDays, _ := cmd.Flags().GetInt("max-days")
 		// 若指定了 remote，将命令参数序列化后发送到远程 kbcli 服务执行
 		if remote != "" {
+			warnIgnoredRemoteFlags(cmd, "repo-dir", "analysed-dir")
 			return util.SendToRemote(remote, "import-repo", map[string]interface{}{
-				"repo_dir":     repoDir,
-				"analysed_dir": analysedDir,
-				"force":        force,
-				"start_date":   startDate,
-				"end_date":     endDate,
-				"date":         date,
-				"max_days":     maxDays,
-			})
+					"force":      force,
+					"start_date": startDate,
+					"end_date":   endDate,
+					"date":       date,
+					"max_days":   maxDays,
+				})
 		}
 
 		// 未指定目录时，回退到配置文件中的默认值

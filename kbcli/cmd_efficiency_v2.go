@@ -32,12 +32,12 @@ var efficiencyV2Cmd = &cobra.Command{
 
 		if remote != "" {
 			return util.SendToRemote(remote, "efficiency-v2", map[string]interface{}{
-				"date":       dateStr,
-				"start_date": startDate,
-				"end_date":   endDate,
-				"project":    projectID,
-				"force_llm":  forceLLM,
-			})
+					"date":       dateStr,
+					"start_date": startDate,
+					"end_date":   endDate,
+					"project":    projectID,
+					"force_llm":  forceLLM,
+				})
 		}
 		// 项目级按需 LLM：只对该项目候选池内 merged+有会话的 need 跑 LLM+重融合（不走全量管线，防 429）。
 		if strings.TrimSpace(projectID) != "" {
