@@ -46,16 +46,46 @@ definitions:
         example: import-conv
         type: string
     type: object
-  main.EfficiencyBody:
-    properties:
-      date:
-        example: "20240101"
-        type: string
-    type: object
   main.ErrorResponse:
     properties:
       error:
         example: 任务不存在
+        type: string
+    type: object
+  main.FixCommitBody:
+    properties:
+      commit:
+        example: abc123
+        type: string
+      date:
+        example: "20240101"
+        type: string
+      end_date:
+        example: "2024-01-31"
+        type: string
+      max:
+        example: 10
+        type: integer
+      start_date:
+        example: "2024-01-01"
+        type: string
+    type: object
+  main.FixTaskBody:
+    properties:
+      date:
+        example: "20240101"
+        type: string
+      end_date:
+        example: "2024-01-31"
+        type: string
+      max:
+        example: 10
+        type: integer
+      start_date:
+        example: "2024-01-01"
+        type: string
+      task:
+        example: task-id-123
         type: string
     type: object
   main.HealthResponse:
@@ -66,75 +96,26 @@ definitions:
     type: object
   main.ImportBody:
     properties:
-      analysed_dir:
-        example: ./analysed
-        type: string
+      create_pseudo:
+        example: false
+        type: boolean
       date:
         example: "20240101"
         type: string
       force:
         example: false
         type: boolean
-      from_csv:
-        example: ./org.csv
-        type: string
-      from_db:
-        example: host=localhost dbname=auth
-        type: string
-      repo_dir:
-        example: /path/to/repo
-        type: string
-      task_dir:
-        example: /path/to/task
-        type: string
     type: object
   main.ImportOrgBody:
-    properties:
-      from_csv:
-        example: ./org.csv
-        type: string
-      from_db:
-        example: host=localhost dbname=auth
-        type: string
-      to_csv:
-        example: ./output.csv
-        type: string
     type: object
   main.ImportRepoBody:
     properties:
-      analysed_dir:
-        example: ./analysed
-        type: string
       force:
         example: false
         type: boolean
-      repo_dir:
-        example: /path/to/repo
-        type: string
-    type: object
-  main.importConvBody:
-    properties:
-      analysed_dir:
-        example: ./analysed
-        type: string
-      end_date:
-        example: "2024-01-31"
-        type: string
-      force:
-        example: false
-        type: boolean
-      start_date:
-        example: "2024-01-01"
-        type: string
-      task_dir:
-        example: /path/to/task
-        type: string
     type: object
   main.SilicaBody:
     properties:
-      analysed_dir:
-        example: ./analysed
-        type: string
       force:
         example: false
         type: boolean
@@ -166,6 +147,21 @@ definitions:
     - TaskStatusCompleted
     - TaskStatusFailed
     - TaskStatusCancelled
+  main.importConvBody:
+    properties:
+      create_pseudo:
+        example: false
+        type: boolean
+      end_date:
+        example: "2024-01-31"
+        type: string
+      force:
+        example: false
+        type: boolean
+      start_date:
+        example: "2024-01-01"
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -254,18 +250,18 @@ paths:
       summary: 查询异步任务
       tags:
       - tasks
-  /api/tasks/efficiency:
+  /api/tasks/fix-commit:
     post:
       consumes:
       - application/json
-      description: 将 efficiency 逻辑以异步任务方式提交到队列执行
+      description: 将 fix-commit 逻辑以异步任务方式提交到队列执行
       parameters:
       - description: 请求参数
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.EfficiencyBody'
+          $ref: '#/definitions/main.FixCommitBody'
       produces:
       - application/json
       responses:
@@ -281,7 +277,37 @@ paths:
           description: Method Not Allowed
           schema:
             $ref: '#/definitions/main.ErrorResponse'
-      summary: 提交 efficiency 异步任务
+      summary: 提交 fix-commit 异步任务
+      tags:
+      - tasks
+  /api/tasks/fix-task:
+    post:
+      consumes:
+      - application/json
+      description: 将 fix-task 逻辑以异步任务方式提交到队列执行
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.FixTaskBody'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.CreateTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 提交 fix-task 异步任务
       tags:
       - tasks
   /api/tasks/import:
@@ -289,7 +315,7 @@ paths:
       consumes:
       - application/json
       description: 将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org
-        → silica → efficiency
+        → import-dept → efficiency-v2
       parameters:
       - description: 请求参数
         in: body
@@ -313,6 +339,36 @@ paths:
           schema:
             $ref: '#/definitions/main.ErrorResponse'
       summary: 提交 import 异步任务
+      tags:
+      - tasks
+  /api/tasks/import-conv:
+    post:
+      consumes:
+      - application/json
+      description: 将 import-conv 逻辑以异步任务方式提交到队列执行
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.importConvBody'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.CreateTaskResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 提交 import-conv 异步任务
       tags:
       - tasks
   /api/tasks/import-org:
@@ -373,36 +429,6 @@ paths:
           schema:
             $ref: '#/definitions/main.ErrorResponse'
       summary: 提交 import-repo 异步任务
-      tags:
-      - tasks
-  /api/tasks/import-conv:
-    post:
-      consumes:
-      - application/json
-      description: 将 import-conv 逻辑以异步任务方式提交到队列执行
-      parameters:
-      - description: 请求参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/main.importConvBody'
-      produces:
-      - application/json
-      responses:
-        "202":
-          description: Accepted
-          schema:
-            $ref: '#/definitions/main.CreateTaskResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: 提交 import-conv 异步任务
       tags:
       - tasks
   /api/tasks/silica:

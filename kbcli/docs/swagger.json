@@ -38,9 +38,9 @@
                 }
             }
         },
-        "/api/tasks/efficiency": {
+        "/api/tasks/fix-commit": {
             "post": {
-                "description": "将 efficiency 逻辑以异步任务方式提交到队列执行",
+                "description": "将 fix-commit 逻辑以异步任务方式提交到队列执行",
                 "consumes": [
                     "application/json"
                 ],
@@ -50,7 +50,7 @@
                 "tags": [
                     "tasks"
                 ],
-                "summary": "提交 efficiency 异步任务",
+                "summary": "提交 fix-commit 异步任务",
                 "parameters": [
                     {
                         "description": "请求参数",
@@ -58,7 +58,53 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/main.EfficiencyBody"
+                            "$ref": "#/definitions/main.FixCommitBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/main.CreateTaskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tasks/fix-task": {
+            "post": {
+                "description": "将 fix-task 逻辑以异步任务方式提交到队列执行",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "提交 fix-task 异步任务",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.FixTaskBody"
                         }
                     }
                 ],
@@ -86,7 +132,7 @@
         },
         "/api/tasks/import": {
             "post": {
-                "description": "将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org → silica → efficiency",
+                "description": "将 import 逻辑以异步任务方式提交到队列执行，顺序执行 import-conv → import-repo → import-org → import-dept → efficiency-v2",
                 "consumes": [
                     "application/json"
                 ],
@@ -105,6 +151,52 @@
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/main.ImportBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/main.CreateTaskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tasks/import-conv": {
+            "post": {
+                "description": "将 import-conv 逻辑以异步任务方式提交到队列执行",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "提交 import-conv 异步任务",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.importConvBody"
                         }
                     }
                 ],
@@ -197,52 +289,6 @@
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/main.ImportRepoBody"
-                        }
-                    }
-                ],
-                "responses": {
-                    "202": {
-                        "description": "Accepted",
-                        "schema": {
-                            "$ref": "#/definitions/main.CreateTaskResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/tasks/import-conv": {
-            "post": {
-                "description": "将 import-conv 逻辑以异步任务方式提交到队列执行",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "tasks"
-                ],
-                "summary": "提交 import-conv 异步任务",
-                "parameters": [
-                    {
-                        "description": "请求参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/main.importConvBody"
                         }
                     }
                 ],
@@ -495,21 +541,62 @@
                 }
             }
         },
-        "main.EfficiencyBody": {
-            "type": "object",
-            "properties": {
-                "date": {
-                    "type": "string",
-                    "example": "20240101"
-                }
-            }
-        },
         "main.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
                     "type": "string",
                     "example": "任务不存在"
+                }
+            }
+        },
+        "main.FixCommitBody": {
+            "type": "object",
+            "properties": {
+                "commit": {
+                    "type": "string",
+                    "example": "abc123"
+                },
+                "date": {
+                    "type": "string",
+                    "example": "20240101"
+                },
+                "end_date": {
+                    "type": "string",
+                    "example": "2024-01-31"
+                },
+                "max": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "start_date": {
+                    "type": "string",
+                    "example": "2024-01-01"
+                }
+            }
+        },
+        "main.FixTaskBody": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "example": "20240101"
+                },
+                "end_date": {
+                    "type": "string",
+                    "example": "2024-01-31"
+                },
+                "max": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "start_date": {
+                    "type": "string",
+                    "example": "2024-01-01"
+                },
+                "task": {
+                    "type": "string",
+                    "example": "task-id-123"
                 }
             }
         },
@@ -525,9 +612,9 @@
         "main.ImportBody": {
             "type": "object",
             "properties": {
-                "analysed_dir": {
-                    "type": "string",
-                    "example": "./analysed"
+                "create_pseudo": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "date": {
                     "type": "string",
@@ -536,91 +623,24 @@
                 "force": {
                     "type": "boolean",
                     "example": false
-                },
-                "from_csv": {
-                    "type": "string",
-                    "example": "./org.csv"
-                },
-                "from_db": {
-                    "type": "string",
-                    "example": "host=localhost dbname=auth"
-                },
-                "repo_dir": {
-                    "type": "string",
-                    "example": "/path/to/repo"
-                },
-                "task_dir": {
-                    "type": "string",
-                    "example": "/path/to/task"
                 }
             }
         },
         "main.ImportOrgBody": {
-            "type": "object",
-            "properties": {
-                "from_csv": {
-                    "type": "string",
-                    "example": "./org.csv"
-                },
-                "from_db": {
-                    "type": "string",
-                    "example": "host=localhost dbname=auth"
-                },
-                "to_csv": {
-                    "type": "string",
-                    "example": "./output.csv"
-                }
-            }
+            "type": "object"
         },
         "main.ImportRepoBody": {
             "type": "object",
             "properties": {
-                "analysed_dir": {
-                    "type": "string",
-                    "example": "./analysed"
-                },
                 "force": {
                     "type": "boolean",
                     "example": false
-                },
-                "repo_dir": {
-                    "type": "string",
-                    "example": "/path/to/repo"
-                }
-            }
-        },
-        "main.importConvBody": {
-            "type": "object",
-            "properties": {
-                "analysed_dir": {
-                    "type": "string",
-                    "example": "./analysed"
-                },
-                "end_date": {
-                    "type": "string",
-                    "example": "2024-01-31"
-                },
-                "force": {
-                    "type": "boolean",
-                    "example": false
-                },
-                "start_date": {
-                    "type": "string",
-                    "example": "2024-01-01"
-                },
-                "task_dir": {
-                    "type": "string",
-                    "example": "/path/to/task"
                 }
             }
         },
         "main.SilicaBody": {
             "type": "object",
             "properties": {
-                "analysed_dir": {
-                    "type": "string",
-                    "example": "./analysed"
-                },
                 "force": {
                     "type": "boolean",
                     "example": false
@@ -662,6 +682,27 @@
                 "TaskStatusFailed",
                 "TaskStatusCancelled"
             ]
+        },
+        "main.importConvBody": {
+            "type": "object",
+            "properties": {
+                "create_pseudo": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "end_date": {
+                    "type": "string",
+                    "example": "2024-01-31"
+                },
+                "force": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "start_date": {
+                    "type": "string",
+                    "example": "2024-01-01"
+                }
+            }
         }
     }
 }
