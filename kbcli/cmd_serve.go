@@ -70,10 +70,12 @@ type TaskListResponse struct {
 	Total int          `json:"total" example:"1"`
 }
 
+// 注：路径类与 DSN 类参数（task_dir/repo_dir/analysed_dir/from_db/from_csv/to_csv）
+// 一律由服务端配置决定，不接受请求体传入，故不在下列请求体中声明。
+// 详见 exec_cmd.go 顶部的安全约定。
+//
 // importConvBody import-conv 请求体
 type importConvBody struct {
-	TaskDir      string `json:"task_dir" example:"/path/to/task"`
-	AnalysedDir  string `json:"analysed_dir" example:"./analysed"`
 	Force        bool   `json:"force" example:"false"`
 	StartDate    string `json:"start_date" example:"2024-01-01"`
 	EndDate      string `json:"end_date" example:"2024-01-31"`
@@ -82,28 +84,21 @@ type importConvBody struct {
 
 // ImportRepoBody import-repo 请求体
 type ImportRepoBody struct {
-	RepoDir     string `json:"repo_dir" example:"/path/to/repo"`
-	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
-	Force       bool   `json:"force" example:"false"`
+	Force bool `json:"force" example:"false"`
 }
 
-// ImportOrgBody import-org 请求体
-type ImportOrgBody struct {
-	FromDB  string `json:"from_db" example:"host=localhost dbname=auth"`
-	FromCSV string `json:"from_csv" example:"./org.csv"`
-	ToCSV   string `json:"to_csv" example:"./output.csv"`
-}
+// ImportOrgBody import-org 请求体。
+// 该命令的全部参数（源库 DSN、输入/输出 CSV 路径）均取自服务端配置，无可传字段。
+type ImportOrgBody struct{}
 
 // SilicaBody silica 请求体
 type SilicaBody struct {
-	AnalysedDir string `json:"analysed_dir" example:"./analysed"`
-	Force       bool   `json:"force" example:"false"`
-	MaxDays     int    `json:"max_days" example:"7"`
+	Force   bool `json:"force" example:"false"`
+	MaxDays int  `json:"max_days" example:"7"`
 }
 
 // FixTaskBody fix-task 请求体
 type FixTaskBody struct {
-	TaskDir   string `json:"task_dir" example:"/path/to/task"`
 	StartDate string `json:"start_date" example:"2024-01-01"`
 	EndDate   string `json:"end_date" example:"2024-01-31"`
 	Date      string `json:"date" example:"20240101"`
@@ -113,7 +108,6 @@ type FixTaskBody struct {
 
 // FixCommitBody fix-commit 请求体
 type FixCommitBody struct {
-	RepoDir   string `json:"repo_dir" example:"/path/to/repo"`
 	StartDate string `json:"start_date" example:"2024-01-01"`
 	EndDate   string `json:"end_date" example:"2024-01-31"`
 	Date      string `json:"date" example:"20240101"`
@@ -123,12 +117,7 @@ type FixCommitBody struct {
 
 // ImportBody import 请求体
 type ImportBody struct {
-	TaskDir      string `json:"task_dir" example:"/path/to/task"`
-	RepoDir      string `json:"repo_dir" example:"/path/to/repo"`
-	AnalysedDir  string `json:"analysed_dir" example:"./analysed"`
 	Force        bool   `json:"force" example:"false"`
-	FromDB       string `json:"from_db" example:"host=localhost dbname=auth"`
-	FromCSV      string `json:"from_csv" example:"./org.csv"`
 	Date         string `json:"date" example:"20240101"`
 	CreatePseudo bool   `json:"create_pseudo" example:"false"`
 }
