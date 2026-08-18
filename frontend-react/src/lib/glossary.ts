@@ -82,6 +82,23 @@ export const GLOSSARY = {
     short: '代码中可追溯到 AI 生成的比重（实验指标）。',
     caliber: '当前采集填充率极低，本看板暂不作为质量维度展示。',
   },
+  tool_users: {
+    term: '总用户数（工具口径）',
+    short: '当期在 AI 工具里留下任务记录的人数，衡量"多少人在用"。',
+    formula: 'tasks 表按 user_id 去重',
+    caliber: '与「活跃用户(V2)」区别：这里只要用过工具就算，不要求产出可计入需求；tasks 为空时回退按 commit 作者去重。',
+  },
+  repo_scale: {
+    term: '仓库 / 分支数',
+    short: '当期有提交发生的代码仓库与分支规模。',
+    formula: 'commits 按 repo_addr 去重；分支按 repo_addr+repo_branch 去重',
+    caliber: '继承当前日期窗与治理过滤，非全时段总量。',
+  },
+  commit_count: {
+    term: 'Commit 次数',
+    short: '当期提交的次数，衡量交付频次（行数看「总代码行」）。',
+    formula: 'commits 表计数',
+  },
   dept_efficiency: {
     term: '部门提效',
     short: '按部门聚合的提效比，用于部门间对比。',

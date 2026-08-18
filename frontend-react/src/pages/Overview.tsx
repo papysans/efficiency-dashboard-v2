@@ -138,9 +138,17 @@ function ScorecardStrip({ startDate, endDate }: { startDate: string; endDate: st
   )
 }
 
-/** 底部规模概览卡：复用 PR0 的总仓库/用户/需求/Commit/代码行 MetricCard 网格。 */
+/**
+ * 底部规模概览卡：复用 PR0 的总仓库/用户/需求/Commit/代码行 MetricCard 网格。
+ * hint 只写"这张卡独有的信息"，口径细节走 ⓘ（glossaryTip），避免六张卡互相复述：
+ * - 总 Commit 的 hint 原为「代码行 N」，与相邻「总代码行」是同一个数 → 改为均行/次（派生信息）。
+ * - 总用户数(工具口径,tasks 去重) vs 活跃用户V2(需求口径,有可计入需求) 两者都是"人数"，
+ *   原 hint「参与提交的贡献者」/「需求口径参与者」既分不出差别、前者也与后端主口径不符。
+ */
 function CountsCard({ startDate, endDate }: { startDate: string; endDate: string }) {
   const { data, isLoading, error } = useDashboardSummary({ startDate, endDate })
+  // 均行/次：总代码行 ÷ 总 commit 数（commit 为 0 时不显示）
+  const linesPerCommit = data && data.total_commits > 0 ? data.total_commit_lines / data.total_commits : null
 
   return (
     <div className="glass rounded-2xl p-5 md:p-6 hover:shadow-lg transition-shadow flex flex-col">
@@ -157,16 +165,42 @@ function CountsCard({ startDate, endDate }: { startDate: string; endDate: string
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <MetricCard label="总仓库数" value={formatNumber(data.total_repos)} hint={`分支 ${formatNumber(data.total_branchs)} 个`} />
-          <MetricCard label="总用户数" value={formatNumber(data.total_users)} hint="参与提交的贡献者" />
+          <MetricCard
+            label="总仓库数"
+            value={formatNumber(data.total_repos)}
+            hint={`分支 ${formatNumber(data.total_branchs)} 个`}
+            tip={glossaryTip('repo_scale')}
+          />
+          <MetricCard
+            label="总用户数"
+            value={formatNumber(data.total_users)}
+            hint="用过 AI 工具的人"
+            tip={glossaryTip('tool_users')}
+          />
           <MetricCard
             label="需求"
             value={formatNumber(data.total_needs)}
             hint={`已合并 ${formatNumber(data.merged_needs)} · 可计入 ${formatNumber(data.eligible_needs)}`}
+            tip={glossaryTip('merged_need')}
           />
-          <MetricCard label="总 Commit" value={formatNumber(data.total_commits)} hint={`代码行 ${formatNumber(data.total_commit_lines)}`} />
-          <MetricCard label="总代码行" value={formatNumber(data.total_commit_lines)} hint="commit 净改动行数" />
-          <MetricCard label="活跃用户(V2)" value={formatNumber(data.total_users_v2)} hint="需求口径参与者" />
+          <MetricCard
+            label="总 Commit"
+            value={formatNumber(data.total_commits)}
+            hint={linesPerCommit != null ? `均 ${formatNumber(linesPerCommit, 0)} 行/次` : undefined}
+            tip={glossaryTip('commit_count')}
+          />
+          <MetricCard
+            label="总代码行"
+            value={formatNumber(data.total_commit_lines)}
+            hint="增删相抵后的净行数"
+            tip={glossaryTip('commit_diff_lines')}
+          />
+          <MetricCard
+            label="活跃用户(V2)"
+            value={formatNumber(data.total_users_v2)}
+            hint="有可计入需求的人"
+            tip={glossaryTip('active_users')}
+          />
         </div>
       )}
     </div>
