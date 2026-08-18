@@ -10,12 +10,15 @@ import { getUserNamesV2 } from '@/api/endpoints'
 /**
  * 返回 resolveName(userId)：把用户 UUID 解析为「真名(工号)」。
  * 空 userId → '-'；命中映射 → 真名(工号)/真名；否则回退原 userId。
+ * options.enabled=false → 懒查询（不发请求，resolveName 原样回退 userId），
+ * 供「默认不展示人名、切到人维度才需要」的场景（如总览 Top 榜的人 tab）。
  */
-export function useUserNameMap() {
+export function useUserNameMap(options?: { enabled?: boolean }) {
   const nameQuery = useQuery({
     queryKey: ['user-name-map'],
     queryFn: () => getUserNamesV2(),
     staleTime: 5 * 60_000,
+    enabled: options?.enabled ?? true,
   })
 
   // user_id → 「真名(工号)」（工号为空则只显真名）

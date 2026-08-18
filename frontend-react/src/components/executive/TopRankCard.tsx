@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useAllNeeds, useUsers } from '@/api/queries'
+import { useUserNameMap } from '@/hooks/useUserNameMap'
 import { RatioPill } from '@/components/ui/RatioPill'
 import { sortRows } from '@/lib/sort'
 import type { NeedsV2Summary, UserV2Row } from '@/api/types'
@@ -37,6 +38,9 @@ export function TopRankCard({ startDate, endDate }: TopRankCardProps) {
   // pageSize:1000 一次性全量（对齐 UserList）：/v2/users 默认 pageSize=50 会服务端截断，
   // 人榜需全量再客户端 sortRows 取 top6，否则只在前 50 名里排。
   const usersQ = useUsers({ startDate, endDate, pageSize: 1000 })
+  // 人榜 user_name 是 UUID（后端不回真名）→ 复用组织花名册同源的 /v2/user-names 解析「真名(工号)」。
+  // 懒查询：只有切到「人」tab 才发请求，默认「需求」tab 不为此拉全量映射。
+  const { resolveName } = useUserNameMap({ enabled: tab === 'user' })
 
   const topNeeds = useMemo<NeedsV2Summary[]>(() => {
     const rows = (needsQ.data ?? []).filter((r) => r.coverage_eligible && r.efficiency_ratio != null)
@@ -95,7 +99,7 @@ export function TopRankCard({ startDate, endDate }: TopRankCardProps) {
             <RankRow
               key={r.user_id}
               rank={i + 1}
-              title={r.user_name}
+              title={resolveName(r.user_id)}
               sub={`合并需求 ${r.merged_need_count}`}
               pill={<RatioPill value={r.calendar_ratio} />}
               onClick={() => navigate(`/user/${encodeURIComponent(r.user_id)}`)}
